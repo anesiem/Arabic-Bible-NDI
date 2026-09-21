@@ -1,0 +1,6 @@
+{
+  "name": "Bible NDI",
+  "description": "Arabic SAD & English Bible with live NDI broadcast lower-third feed for OBS and vMix",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

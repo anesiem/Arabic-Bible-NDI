@@ -1,7 +1,7 @@
 package com.example.model
 
 enum class BibleVersion(val displayName: String, val languageCode: String) {
-    ARABIC_SVD("العربية - سميث وفاندايك (SAD)", "ar"),
+    ARABIC_SVD("العربية - سميث وفاندايك (SVD)", "ar"),
     ENGLISH_KJV("English - King James Version (KJV)", "en"),
     ENGLISH_WEB("English - World English Bible (WEB)", "en"),
     DUAL_BILINGUAL("عربي / English Dual", "ar-en")

@@ -1,6 +1,6 @@
 # Bible NDI (Version 1.0)
 
-Professional Arabic/English Bible broadcast controller for Android. Transform your tablet into a high-quality NDI 6 source and HTTP overlay server optimized for church presentations and live streaming.
+Professional Arabic/English Bible broadcast controller for Android. Transform your tablet or phone into a high-quality NDI 6 source and HTTP overlay server optimized for church presentations and live streaming.
 
 ## 🚀 Features
 

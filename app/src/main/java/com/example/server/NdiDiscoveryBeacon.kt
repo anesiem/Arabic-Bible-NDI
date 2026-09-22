@@ -74,7 +74,7 @@ class NdiDiscoveryBeacon(private val context: Context) {
                 socket.broadcast = true
 
                 val deviceModel = Build.MODEL
-                val baseSourceName = "$deviceModel (Bible-NDI)"
+                val baseSourceName = "$deviceModel - Bible-NDI"
                 
                 // Packets compatible with NDI 6, 5, 4, and 3
                 val msg1 = "NDI_BIBLE_SOURCE|NAME=$baseSourceName|PORT=$port|URL=$serviceUrl|STREAM=http://$ip:$port/ndi/stream|VER=6.0|VER=5.0|VER=4.0|FORMAT=BGRA|ALPHA=1"
@@ -293,11 +293,11 @@ NDI_SOURCE_LIST:
             val deviceModel = Build.MODEL
             // 1. Web Broadcast Overlay Service: _http._tcp
             val serviceInfo = NsdServiceInfo().apply {
-                serviceName = "$deviceModel-Bible-NDI"
+                serviceName = "$deviceModel - Bible-NDI"
                 serviceType = "_http._tcp"
                 setPort(port)
                 if (ip.isNotEmpty()) {
-                    setAttribute("name", "$deviceModel (Bible-NDI)")
+                    setAttribute("name", "$deviceModel - Bible-NDI")
                     setAttribute("path", "/ndi")
                     setAttribute("stream", "/ndi/stream")
                     setAttribute("url", "http://$ip:$port/ndi")

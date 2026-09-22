@@ -70,11 +70,9 @@ class NdiNativeSender {
         synchronized(activeSenders) {
             if (activeSenders.containsKey(name)) return true
             
-            // Register as just "Source Name". NDI Discovery will often use the device hostname.
-            // If hostname is localhost, it's a system setting. 
-            // We can try to force a name like "Tablet (Source)"
+            // Register as "$machineName - $name" to ensure it's easily identifiable in NDI tools.
             val machineName = Build.MODEL
-            val fullName = "$machineName ($name)"
+            val fullName = "$machineName - $name"
             val ptr = nativeCreateSender(fullName)
             if (ptr == 0L) return false
             

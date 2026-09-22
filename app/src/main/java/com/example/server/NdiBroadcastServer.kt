@@ -914,8 +914,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             canvas.drawColor(bgCol)
         }
 
-        // When off-air and rendering for transparent overlay, return 100% transparent alpha frame
-        if (!isLive && !isForStream) {
+        // When off-air and rendering for transparent overlay, return 100% transparent alpha frame.
+        // Special Case: Full Show (Projector) should typically NOT be blanked even if not 'Live' for broadcast,
+        // as the projector usually remains active with a background or current verse.
+        if (!isLive && !isForStream && !tpl.isFullScreen) {
             return bitmap
         }
 

@@ -11,7 +11,7 @@
         <DialogSelection />
       </SelectionState>
       <SelectionState runConfigName="androidTest">
-        <option name="selectionMode" value="DROPDOWN" />
+        <option name="selectionMode" value="DIALOG" />
         <DropdownSelection timestamp="2026-09-22T15:28:30.998797100Z">
           <Target type="DEFAULT_BOOT">
             <handle>
@@ -24,11 +24,6 @@
             <Target type="DEFAULT_BOOT">
               <handle>
                 <DeviceId pluginId="PhysicalDevice" identifier="serial=R5GL20MNFYE" />
-              </handle>
-            </Target>
-            <Target type="DEFAULT_BOOT">
-              <handle>
-                <DeviceId pluginId="LocalEmulator" identifier="path=C:\Users\anesi\.android\avd\Pixel_7.avd" />
               </handle>
             </Target>
           </targets>

@@ -60,3 +60,13 @@ This project uses the NDI® SDK. NDI® is a registered trademark of Vizrt NDI AB
 - **Dark Theme Optimization**: Full dark mode support across all screens, including the NDI Link and Template Editor tabs.
 - **Bugfixes**: Resolved issue with blindingly bright backgrounds on cued verses in dark mode.
 
+## 🔮 Upcoming Features (Next Release roadmap)
+*   **Multilingual Scripture Expansion**: Comprehensive support for additional languages and localized text formats.
+*   **Pixel-Perfect Layout Control**: Enhanced rendering engine fixes for advanced Lower Third overlays and complex multi-line Full Screen projector layouts.
+*   **Hardware Interface Bindings**: Direct connection configuration for external HDMI port mirroring and dedicated live video display units.
+*   **SRT Streaming Interop**: High-performance Secure Reliable Transport (SRT) output stream support for professional low-latency broadcasting over complex network conditions.
+*   **Advanced Theme Framework**: Enhanced premium style templates, custom corner radii, padding bounds, and rich typography optimization parameters.
+*   **Dynamic Backdrop Layers**: Polished media assets with high-fidelity image backdrops, ambient video loop backgrounds, and custom motion graphics filters.
+*   **Smart Search Processor**: High-speed, natural-language query engine to offer superior verse discovery, keyword analytics, and instant text filtering.
+
+

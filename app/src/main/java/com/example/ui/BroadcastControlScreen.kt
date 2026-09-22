@@ -93,6 +93,22 @@ fun BroadcastControlScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val bento = LocalBentoColors.current
+    val BentoBg = bento.bg
+    val BentoCardWhite = bento.card
+    val BentoSurfaceContainer = bento.surfaceContainer
+    val BentoSurfaceVariant = bento.surfaceVariant
+    val BentoBorder = bento.border
+    val BentoBorderSubtle = bento.borderSubtle
+    val BentoTextPrimary = bento.textPrimary
+    val BentoTextSecondary = bento.textSecondary
+    val BentoPrimary = bento.primary
+    val BentoOnPrimary = bento.onPrimary
+    val BentoPrimaryContainer = bento.primaryContainer
+    val BentoOnPrimaryContainer = bento.onPrimaryContainer
+    val BentoSecondary = bento.secondary
+    val BentoOnSecondary = bento.onSecondary
+
     var copiedUrlType by remember { mutableStateOf<String?>(null) }
     var showHelpGuide by remember { mutableStateOf(false) }
 

@@ -5,6 +5,7 @@ import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -137,28 +139,38 @@ fun FullscreenOverlayContent(
             }
         }
 
-        // Lower Third Positioned at Bottom
+        // Lower Third Positioned at Bottom or Full Show Projector Centered
         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(
-                        start = (template.horizontalMarginPercent * 4).dp,
-                        end = (template.horizontalMarginPercent * 4).dp,
-                        bottom = (template.positionBottomPercent * 5).dp
+                        start = if (template.isFullScreen) 0.dp else (template.horizontalMarginPercent * 4).dp,
+                        end = if (template.isFullScreen) 0.dp else (template.horizontalMarginPercent * 4).dp,
+                        bottom = if (template.isFullScreen) 0.dp else (template.positionBottomPercent * 5).dp
                     ),
-                contentAlignment = Alignment.BottomCenter
+                contentAlignment = if (template.isFullScreen) Alignment.Center else Alignment.BottomCenter
             ) {
                 Surface(
-                    shape = RoundedCornerShape(template.cornerRadiusDp.dp),
+                    shape = RoundedCornerShape(if (template.isFullScreen) 0.dp else template.cornerRadiusDp.dp),
                     color = if (template.style == TemplateStyle.TRANSPARENT_OUTLINE) Color.Transparent else bgCol.copy(alpha = template.bgOpacity),
-                    border = if (template.showAccentBorder && template.style != TemplateStyle.TRANSPARENT_OUTLINE) {
-                        androidx.compose.foundation.BorderStroke(2.dp, accentCol)
+                    border = if (template.showAccentBorder && template.style != TemplateStyle.TRANSPARENT_OUTLINE && !template.isFullScreen) {
+                        BorderStroke(2.dp, accentCol)
                     } else null,
-                    shadowElevation = if (template.showDropShadow) 16.dp else 0.dp,
-                    modifier = Modifier.fillMaxWidth()
+                    shadowElevation = if (template.showDropShadow && !template.isFullScreen) 16.dp else 0.dp,
+                    modifier = if (template.isFullScreen) Modifier.fillMaxSize() else Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(24.dp)) {
+                    Column(
+                        modifier = if (template.isFullScreen) Modifier.fillMaxSize().padding(48.dp) else Modifier.padding(24.dp),
+                        verticalArrangement = if (template.isFullScreen) Arrangement.Center else Arrangement.Top,
+                        horizontalAlignment = if (template.isFullScreen) {
+                            when (template.alignment) {
+                                BroadcastTextAlignment.CENTER -> Alignment.CenterHorizontally
+                                BroadcastTextAlignment.LEFT -> Alignment.Start
+                                else -> Alignment.End
+                            }
+                        } else Alignment.Start
+                    ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             if (template.showCrossEmblem) {
                                 Box(
@@ -198,7 +210,13 @@ fun FullscreenOverlayContent(
                                 Text(
                                     text = "${verse.englishText} (${verse.getFormattedEnglishCitation()})",
                                     fontSize = (template.verseFontSize * 0.55).sp,
-                                    color = Color(0xFFCBD5E1)
+                                    color = Color(0xFFCBD5E1),
+                                    textAlign = when (template.alignment) {
+                                        BroadcastTextAlignment.CENTER -> TextAlign.Center
+                                        BroadcastTextAlignment.LEFT -> TextAlign.Left
+                                        else -> TextAlign.Right
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
                                 )
                             }
                         }

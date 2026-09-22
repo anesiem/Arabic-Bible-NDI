@@ -1,4 +1,4 @@
-# Bible NDI (Version 1.0)
+# Bible NDI (Version 1.1)
 
 Professional Arabic/English Bible broadcast controller for Android. Transform your tablet or phone into a high-quality NDI 6 source and HTTP overlay server optimized for church presentations and live streaming.
 
@@ -54,4 +54,9 @@ The app hosts its own local server. Ensure your tablet and production PC are on 
 This project uses the NDI® SDK. NDI® is a registered trademark of Vizrt NDI AB. Please refer to the NDI SDK License Agreement for usage terms.
 
 ---
-**Version 1.0 Stable - Release Candidate 1**
+**Version 1.1 Stable - Release Candidate 1**
+- **Enhanced Full Show Projector**: Improved vertical and horizontal centering for projectors.
+- **Improved UI Accessibility**: Updated cued verse highlight colors to comfortable bluish tones for both light and dark themes.
+- **Dark Theme Optimization**: Full dark mode support across all screens, including the NDI Link and Template Editor tabs.
+- **Bugfixes**: Resolved issue with blindingly bright backgrounds on cued verses in dark mode.
+

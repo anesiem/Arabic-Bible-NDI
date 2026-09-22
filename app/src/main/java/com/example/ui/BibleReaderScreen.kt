@@ -360,7 +360,12 @@ fun BentoVerseCard(
     onClick: () -> Unit
 ) {
     val bento = LocalBentoColors.current
-    val highlightColor = if (isLiveOnAir) Color(0xFFFFECE8) else bento.primary.copy(alpha = 0.25f)
+    val isDark = MaterialTheme.colorScheme.surface == BentoCardDark
+    val highlightColor = if (isLiveOnAir) {
+        if (isDark) Color(0xFF1E293B) else Color(0xFFE0F2FE)
+    } else {
+        bento.primary.copy(alpha = 0.25f)
+    }
     val bgColor by animateColorAsState(if (isCued) highlightColor else bento.card, label = "cardBg")
     val borderColor = if (isLiveOnAir) bento.liveRed else if (isCued) bento.primary else bento.border
 

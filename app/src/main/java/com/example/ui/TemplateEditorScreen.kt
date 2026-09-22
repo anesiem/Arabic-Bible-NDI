@@ -263,8 +263,8 @@ fun SliderWithLabel(label: String, value: Float, range: ClosedFloatingPointRange
 @Composable
 fun EditorTabItem(label: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val bento = LocalBentoColors.current
-    Box(modifier = modifier.clip(RoundedCornerShape(8.dp)).background(if (selected) bento.card else Color.Transparent).clickable { onClick() }.padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
-        Text(label, color = if (selected) bento.textPrimary else bento.textSecondary, fontSize = 12.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
+    Box(modifier = modifier.clip(RoundedCornerShape(8.dp)).background(if (selected) bento.primary else Color.Transparent).clickable { onClick() }.padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
+        Text(label, color = if (selected) Color.White else bento.textSecondary, fontSize = 12.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
     }
 }
 
@@ -321,7 +321,11 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
                     color = if (template.isPureTransparentBackground) Color.Transparent else bgCol.copy(alpha = template.bgOpacity),
                     modifier = if (isFS) Modifier.fillMaxSize() else Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(20.dp), horizontalAlignment = if (template.alignment == BroadcastTextAlignment.CENTER) Alignment.CenterHorizontally else Alignment.Start) {
+                    Column(
+                        modifier = if (isFS) Modifier.fillMaxSize().padding(24.dp) else Modifier.padding(20.dp),
+                        verticalArrangement = if (isFS) Arrangement.Center else Arrangement.Top,
+                        horizontalAlignment = if (template.alignment == BroadcastTextAlignment.CENTER) Alignment.CenterHorizontally else if (template.alignment == BroadcastTextAlignment.LEFT) Alignment.Start else Alignment.End
+                    ) {
                         Text(verse.getFormattedArabicCitation(true), fontSize = (template.referenceFontSize * 0.5).sp, fontWeight = if (template.referenceIsBold) FontWeight.Bold else FontWeight.Normal, fontStyle = if (template.referenceIsItalic) FontStyle.Italic else FontStyle.Normal, color = try { Color(android.graphics.Color.parseColor(template.referenceColorHex)) } catch (e: Exception) { Color.Yellow })
                         Text(verse.arabicText, fontSize = (template.verseFontSize * 0.5).sp, lineHeight = (template.verseFontSize * 0.7).sp, fontWeight = if (template.verseIsBold) FontWeight.Bold else FontWeight.Normal, fontStyle = if (template.verseIsItalic) FontStyle.Italic else FontStyle.Normal, color = textCol, textAlign = when (template.alignment) {
                             BroadcastTextAlignment.CENTER -> TextAlign.Center
@@ -332,12 +336,111 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
                         if (template.bilingualMode) {
                             Spacer(Modifier.height(template.bilingualSpacing.dp / 4))
                             CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-                                Text(verse.englishText ?: "", fontSize = (template.secondaryVerseFontSize * 0.5).sp, color = try { Color(android.graphics.Color.parseColor(template.secondaryTextColorHex)) } catch (e: Exception) { Color.Gray })
+                                Text(
+                                    text = buildAnnotatedString {
+                                        append(verse.englishText)
+                                        withStyle(SpanStyle(
+                                            color = try { Color(android.graphics.Color.parseColor(template.secondaryReferenceColorHex)) } catch (e: Exception) { Color.Gray },
+                                            fontSize = (template.secondaryReferenceFontSize * 0.4).sp,
+                                            fontWeight = if (template.secondaryReferenceIsBold) FontWeight.Bold else FontWeight.Normal,
+                                            fontStyle = if (template.secondaryReferenceIsItalic) FontStyle.Italic else FontStyle.Normal
+                                        )) {
+                                            append(" (${verse.getFormattedEnglishCitation()})")
+                                        }
+                                    },
+                                    fontSize = (template.secondaryVerseFontSize * 0.5).sp,
+                                    fontWeight = if (template.secondaryVerseIsBold) FontWeight.Bold else FontWeight.Normal,
+                                    fontStyle = if (template.secondaryVerseIsItalic) FontStyle.Italic else FontStyle.Normal,
+                                    color = try { Color(android.graphics.Color.parseColor(template.secondaryTextColorHex)) } catch (e: Exception) { Color.Gray },
+                                    textAlign = when (template.alignment) {
+                                        BroadcastTextAlignment.CENTER -> TextAlign.Center
+                                        BroadcastTextAlignment.LEFT -> TextAlign.Left
+                                        else -> TextAlign.Right
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
                             }
                         }
                     }
                 }
             }
         }
+    }
+}
+
+/**
+ * HIGH FIDELITY DESIGN PREVIEWS
+ * Use these to see exactly how the NDI/HTTP output looks while you code!
+ */
+
+@Preview(name = "Lower Third Design", showBackground = true, widthDp = 1280, heightDp = 720)
+@Composable
+fun PreviewLowerThirdDesign() {
+    val sampleTemplate = TemplateRepository.DEFAULT_TEMPLATES[1] // Modern Glass
+    val sampleVerse = BibleVerse(
+        id = "jhn_3_16", bookId = "jhn", bookArabicName = "إنجيل يوحنا", bookEnglishName = "John", chapter = 3, verse = 16,
+        arabicText = "لأَنَّهُ هكَذَا أَحَبَّ اللهُ الْعَالَمَ حَتَّى بَذَلَ ابْنَهُ الْوَحِيدَ، لِكَيْ لاَ يَهْلِكَ كُلُّ مَنْ يُؤْمِنُ بِهِ، بَلْ تَكُونُ لَهُ الْحَيَاةُ الأَبَدِيَّةُ.",
+        englishText = "For God so loved the world that He gave His only begotten Son, that whoever believes in Him should not perish but have everlasting life."
+    )
+    
+    MyApplicationTheme {
+        Box(modifier = Modifier.fillMaxSize().background(Color(0xFF0F172A))) {
+            BroadcastPreviewViewport(
+                template = sampleTemplate.copy(bilingualMode = true),
+                verse = sampleVerse,
+                previewBg = PreviewBackground.SIMULATED_STUDIO_CAMERA
+            )
+        }
+    }
+}
+
+@Preview(name = "Full Show Projector", showBackground = true, widthDp = 1280, heightDp = 720)
+@Composable
+fun PreviewFullShowDesign() {
+    val sampleTemplate = LowerThirdTemplate(
+        id = "preview_show",
+        name = "Projector Style",
+        isFullScreen = true,
+        bgColorHex = "#020617",
+        bgOpacity = 1f,
+        textColorHex = "#FFFFFF",
+        verseFontSize = 60,
+        alignment = BroadcastTextAlignment.CENTER,
+        animatedBackground = AnimatedBackgroundType.GOLDEN_DIVINE_RAYS,
+        animatedBackgroundOpacity = 0.4f
+    )
+    val sampleVerse = BibleVerse(
+        id = "jhn_3_16", bookId = "jhn", bookArabicName = "إنجيل يوحنا", bookEnglishName = "John", chapter = 3, verse = 16,
+        arabicText = "لأَنَّهُ هكَذَا أَحَبَّ اللهُ الْعَالَمَ حَتَّى بَذَلَ ابْنَهُ الْوَحِيدَ...",
+        englishText = "For God so loved the world..."
+    )
+    
+    MyApplicationTheme {
+        BroadcastPreviewViewport(
+            template = sampleTemplate,
+            verse = sampleVerse,
+            previewBg = PreviewBackground.PURE_BLACK
+        )
+    }
+}
+
+@Preview(name = "Template Editor Screen", showBackground = true, widthDp = 1000, heightDp = 800)
+@Composable
+fun FullEditorPreview() {
+    MyApplicationTheme {
+        TemplateEditorScreen(
+            currentTemplate = TemplateRepository.DEFAULT_TEMPLATES[0],
+            activeShowTemplate = TemplateRepository.DEFAULT_TEMPLATES[0].copy(isFullScreen = true),
+            templates = TemplateRepository.DEFAULT_TEMPLATES,
+            activeVerse = null,
+            onSelectTemplate = {},
+            onUpdateTemplate = {},
+            onUpdateShowTemplate = {},
+            onSaveAsNew = { _, _ -> },
+            onResetDefaults = {},
+            onToggleNdiSource = {},
+            ndiLowerThirdActive = true,
+            ndiFullShowActive = false
+        )
     }
 }

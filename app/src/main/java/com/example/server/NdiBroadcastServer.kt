@@ -381,12 +381,14 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>NDI Bible Live Lower Third</title>
+  <title>NDI Bible Live Overlay</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Amiri:ital,wght@0,400;0,700;1,400&family=Cairo:wght@400;600;700;800&family=Noto+Naskh+Arabic:wght@400;700&display=swap" rel="stylesheet">
   <style>
-    /* CRITICAL REQUIREMENT: 100% Transparent Background for OBS Studio and vMix */
+    /* ==========================================================================
+       1. Global Reset & Base Setup (100% Transparent Background for OBS/vMix)
+       ========================================================================== */
     *, *::before, *::after {
       margin: 0;
       padding: 0;
@@ -402,18 +404,28 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       -webkit-font-smoothing: antialiased;
     }
 
+    /* Stage Container (Default: Lower Third alignment at screen bottom) */
     #stage {
       position: absolute;
       top: 0;
       left: 0;
-      width: 100%;
-      height: 100%;
+      width: 100vw;
+      height: 100vh;
       pointer-events: none;
       display: flex;
       flex-direction: column;
       justify-content: flex-end;
     }
 
+    /* Stage Container (Full Show Mode: Centered vertically and horizontally) */
+    #stage.mode-full-show {
+      justify-content: center !important;
+      align-items: center !important;
+    }
+
+    /* ==========================================================================
+       2. Overlay Container & Animations
+       ========================================================================== */
     #lowerthird-container {
       transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1),
                   transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
@@ -429,32 +441,30 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       transform: translateY(0);
     }
 
-    #lowerthird-container.anim-fade {
-      transform: translateY(0) !important;
-    }
-    #lowerthird-container.anim-fade:not(.visible) {
-      opacity: 0;
-    }
-
-    #lowerthird-container.anim-slide-up {
-      transform: translateY(60px);
-    }
-    #lowerthird-container.anim-slide-up.visible {
-      transform: translateY(0);
+    /* Full Show Mode Container */
+    #lowerthird-container.mode-full-show {
+      width: 100vw !important;
+      height: 100vh !important;
+      margin: 0 !important;
+      display: flex !important;
+      flex-direction: column !important;
+      align-items: center !important;
+      justify-content: center !important;
+      transform: none !important;
     }
 
-    #lowerthird-container.anim-slide-right {
-      transform: translateX(80px);
-    }
-    #lowerthird-container.anim-slide-right.visible {
-      transform: translateX(0);
-    }
+    /* Animation Presets */
+    #lowerthird-container.anim-fade { transform: translateY(0) !important; }
+    #lowerthird-container.anim-fade:not(.visible) { opacity: 0; }
+    #lowerthird-container.anim-slide-up { transform: translateY(60px); }
+    #lowerthird-container.anim-slide-up.visible { transform: translateY(0); }
+    #lowerthird-container.anim-slide-right { transform: translateX(80px); }
+    #lowerthird-container.anim-slide-right.visible { transform: translateX(0); }
+    #lowerthird-container.anim-cut { transition: none !important; }
 
-    #lowerthird-container.anim-cut {
-      transition: none !important;
-    }
-
-    /* Outer Card Wrapper */
+    /* ==========================================================================
+       3. Card Content & Flex Layouts
+       ========================================================================== */
     .card-content {
       position: relative;
       display: inline-block;
@@ -464,7 +474,37 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       box-sizing: border-box;
     }
 
-    /* Animated Background Video / Motion Graphic Layer */
+    /* Card Box in Full Show Mode (Flex-centered vertically in middle of screen) */
+    .card-content.mode-full-show {
+      width: 100% !important;
+      height: 100% !important;
+      max-width: 100vw !important;
+      display: flex !important;
+      flex-direction: column !important;
+      justify-content: center !important;
+      align-items: center !important;
+      padding: 8vh 8vw !important;
+      border-radius: 0 !important;
+      margin: 0 !important;
+    }
+
+    .card-inner-content {
+      position: relative;
+      z-index: 1;
+      width: 100%;
+    }
+
+    .card-content.mode-full-show .card-inner-content {
+      display: flex !important;
+      flex-direction: column !important;
+      justify-content: center !important;
+      align-items: center !important;
+      text-align: center !important;
+    }
+
+    /* ==========================================================================
+       4. Motion Graphic / Animated Background Layer
+       ========================================================================== */
     .animated-bg-layer {
       position: absolute;
       top: 0;
@@ -479,7 +519,6 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       overflow: hidden;
     }
 
-    /* Animation Presets with Smooth Looping */
     .anim-golden-rays {
       background: radial-gradient(circle at 50% 50%, rgba(251, 191, 36, 0.4) 0%, transparent 70%),
                   linear-gradient(135deg, rgba(217, 119, 6, 0.3) 0%, rgba(251, 191, 36, 0.5) 50%, rgba(217, 119, 6, 0.3) 100%);
@@ -532,12 +571,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       border-radius: inherit;
     }
 
-    .card-inner-content {
-      position: relative;
-      z-index: 1;
-    }
-
-    /* Citation Badge */
+    /* ==========================================================================
+       5. Typography Elements
+       ========================================================================== */
     .citation-badge {
       display: inline-flex;
       align-items: center;
@@ -556,7 +592,6 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       box-shadow: 0 0 10px currentColor;
     }
 
-    /* Verse Text */
     .verse-text {
       line-height: 1.55;
       font-weight: 600;
@@ -589,7 +624,6 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   <div id="stage">
     <div id="lowerthird-container" class="visible">
       <div id="card-box" class="card-content">
-        <!-- Animated Background / Video Layer -->
         <div id="animated-bg-layer" class="animated-bg-layer">
           <video id="custom-video-bg" style="display:none;" autoplay loop muted playsinline></video>
         </div>
@@ -610,6 +644,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   </div>
 
   <script>
+    // Elements
     const stage = document.getElementById('stage');
     const container = document.getElementById('lowerthird-container');
     const cardBox = document.getElementById('card-box');
@@ -623,88 +658,125 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     const englishText = document.getElementById('english-text');
     const englishCitation = document.getElementById('english-citation');
 
+    /**
+     * Main Renderer: Applies state data to the DOM elements
+     */
     function applyData(data) {
       if (!data.isLive || !data.arabicText) {
         container.classList.remove('visible');
         return;
       }
 
-      // Content
+      const isFull = data.isFullScreen || $forceFullScreen;
+
+      // 1. Set mode classes
+      if (isFull) {
+        stage.classList.add('mode-full-show');
+        container.classList.add('mode-full-show');
+        cardBox.classList.add('mode-full-show');
+      } else {
+        stage.classList.remove('mode-full-show');
+        container.classList.remove('mode-full-show');
+        cardBox.classList.remove('mode-full-show');
+      }
+
+      // 2. Text Content
       verseText.textContent = data.arabicText;
       citationText.textContent = data.arabicCitation;
 
+      // 3. Bilingual Mode
       if (data.bilingual && data.englishText) {
         englishSection.style.display = 'block';
         englishText.textContent = data.englishText;
         englishCitation.textContent = '(' + data.englishCitation + ')';
-        
         englishText.style.color = data.secondaryTextColorHex || '#CBD5E1';
         englishCitation.style.color = data.secondaryReferenceColorHex || '#94A3B8';
         englishText.style.fontSize = (data.secondaryVerseFontSize || 18) + 'px';
         englishCitation.style.fontSize = (data.secondaryReferenceFontSize || 14) + 'px';
         englishText.style.fontFamily = data.secondaryFontFamily || 'system-ui';
-        
         englishText.style.fontWeight = data.secondaryVerseIsBold ? 'bold' : 'normal';
         englishText.style.fontStyle = data.secondaryVerseIsItalic ? 'italic' : 'normal';
         englishCitation.style.fontWeight = data.secondaryReferenceIsBold ? 'bold' : 'normal';
         englishCitation.style.fontStyle = data.secondaryReferenceIsItalic ? 'italic' : 'normal';
-        
-        // Controlled spacing
         const spacing = data.showBilingualSpacing ? (data.bilingualSpacing || 20) : 0;
         englishSection.style.marginTop = spacing + 'px';
       } else {
         englishSection.style.display = 'none';
       }
 
-      if (data.isFullScreen || $forceFullScreen) {
-        stage.style.justifyContent = 'center';
+      // 4. Layout & Alignment (Ensures Full Show remains vertically centered in middle)
+      if (isFull) {
         container.style.marginBottom = '0';
-        container.style.width = '100vw';
-        container.style.height = '100vh';
-        container.style.display = 'flex';
-        container.style.alignItems = 'center';
-        container.style.justifyContent = 'center';
-        
-        // Full screen motion background fix: expand to entire screen
-        animBgLayer.style.borderRadius = '0';
-        
-        cardBox.style.width = '100%';
-        cardBox.style.height = '100%';
+        container.style.marginLeft = '0';
+        container.style.marginRight = '0';
+
         cardBox.style.display = 'flex';
         cardBox.style.flexDirection = 'column';
         cardBox.style.justifyContent = 'center';
         cardBox.style.alignItems = 'center';
-        cardBox.style.padding = '10vh 10vw';
-        cardBox.style.borderRadius = '0';
-        cardBox.style.overflow = 'hidden';
+        cardBox.style.margin = '0 auto';
+        cardBox.style.textAlign = 'center';
+
+        citationRow.style.display = 'flex';
+        citationRow.style.width = '100%';
+        citationRow.style.justifyContent = 'center';
+
+        verseText.style.textAlign = 'center';
+        englishSection.style.textAlign = 'center';
       } else {
-        stage.style.justifyContent = 'flex-end';
-        container.style.height = 'auto';
-        cardBox.style.width = 'auto';
-        cardBox.style.minWidth = '450px';
-        cardBox.style.display = 'inline-block';
-        cardBox.style.padding = '18px 26px';
-        cardBox.style.maxWidth = '92vw';
-        cardBox.style.overflow = 'hidden';
+        const botMargin = (data.positionBottomPercent || 6) + 'vh';
+        const hMargin = (data.horizontalMarginPercent || 6) + 'vw';
+        container.style.marginBottom = botMargin;
+        container.style.marginLeft = hMargin;
+        container.style.marginRight = hMargin;
+
+        if (data.alignment === 'CENTER') {
+          container.style.direction = 'rtl';
+          cardBox.style.textAlign = 'center';
+          cardBox.style.display = 'block';
+          cardBox.style.margin = '0 auto';
+          citationRow.style.display = 'flex';
+          citationRow.style.width = '100%';
+          citationRow.style.justifyContent = 'center';
+          verseText.style.textAlign = 'center';
+          englishSection.style.textAlign = 'center';
+        } else if (data.alignment === 'LEFT') {
+          container.style.direction = 'ltr';
+          cardBox.style.textAlign = 'left';
+          cardBox.style.display = 'inline-block';
+          cardBox.style.margin = '0';
+          citationRow.style.display = 'flex';
+          citationRow.style.width = '100%';
+          citationRow.style.justifyContent = 'flex-start';
+          verseText.style.textAlign = 'left';
+          englishSection.style.textAlign = 'left';
+        } else {
+          container.style.direction = 'rtl';
+          cardBox.style.textAlign = 'right';
+          cardBox.style.display = 'inline-block';
+          cardBox.style.margin = '0';
+          citationRow.style.display = 'flex';
+          citationRow.style.width = '100%';
+          citationRow.style.justifyContent = 'flex-start';
+          verseText.style.textAlign = 'right';
+          englishSection.style.textAlign = 'right';
+        }
       }
 
-      // Font Family
+      // 5. Typography & Font Styling
       const font = data.fontFamily === 'Cairo' ? "'Cairo', sans-serif" :
                    data.fontFamily === 'Amiri' ? "'Amiri', serif" :
                    data.fontFamily === 'Noto Naskh Arabic' ? "'Noto Naskh Arabic', serif" :
                    data.fontFamily || "'Amiri', serif";
       cardBox.style.fontFamily = font;
-
       verseText.style.fontWeight = data.verseIsBold ? 'bold' : 'normal';
       verseText.style.fontStyle = data.verseIsItalic ? 'italic' : 'normal';
       citationRow.style.fontWeight = data.referenceIsBold ? 'bold' : 'normal';
       citationRow.style.fontStyle = data.referenceIsItalic ? 'italic' : 'normal';
-
-      // Font Sizes
       verseText.style.fontSize = (data.verseFontSize || 26) + 'px';
       citationRow.style.fontSize = (data.referenceFontSize || 18) + 'px';
 
-      // Colors
+      // 6. Color Schemes & Container Styling
       const hex = data.bgColorHex || '#0A1128';
       const opacity = data.bgOpacity !== undefined ? data.bgOpacity : 0.85;
       const r = parseInt(hex.slice(1,3), 16) || 10;
@@ -721,53 +793,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       crossEmblem.style.color = accent;
       crossEmblem.style.display = data.showCrossEmblem ? 'inline-block' : 'none';
 
-      // Layout & Margins
-      const botMargin = (data.positionBottomPercent || 6) + 'vh';
-      const hMargin = (data.horizontalMarginPercent || 6) + 'vw';
-      container.style.marginBottom = botMargin;
-      container.style.marginLeft = hMargin;
-      container.style.marginRight = hMargin;
-
-      // Alignment
-      if (data.alignment === 'CENTER') {
-        container.style.direction = 'rtl';
-        cardBox.style.textAlign = 'center';
-        citationRow.style.display = 'flex';
-        citationRow.style.width = '100%';
-        citationRow.style.justifyContent = 'center';
-        cardBox.style.display = 'block';
-        cardBox.style.margin = '0 auto';
-        // Ensure child elements also align
-        verseText.style.textAlign = 'center';
-        englishSection.style.textAlign = 'center';
-      } else if (data.alignment === 'LEFT') {
-        container.style.direction = 'ltr';
-        cardBox.style.textAlign = 'left';
-        citationRow.style.display = 'flex';
-        citationRow.style.width = '100%';
-        citationRow.style.justifyContent = 'flex-start';
-        cardBox.style.display = 'inline-block';
-        cardBox.style.margin = '0';
-        verseText.style.textAlign = 'left';
-        englishSection.style.textAlign = 'left';
-      } else {
-        container.style.direction = 'rtl';
-        cardBox.style.textAlign = 'right';
-        citationRow.style.display = 'flex';
-        citationRow.style.width = '100%';
-        citationRow.style.justifyContent = 'flex-start'; // Flex start in RTL is Right
-        cardBox.style.display = 'inline-block';
-        cardBox.style.margin = '0';
-        verseText.style.textAlign = 'right';
-        englishSection.style.textAlign = 'right';
-      }
-
-      // Corner radius & padding
-      const radius = (data.cornerRadiusDp || 16) + 'px';
+      const radius = isFull ? '0' : (data.cornerRadiusDp || 16) + 'px';
       cardBox.style.borderRadius = radius;
-      cardBox.style.padding = '18px 26px';
+      if (!isFull) cardBox.style.padding = '18px 26px';
 
-      // Background Handling: Transparent vs Styled
       if (data.style === 'TRANSPARENT_OUTLINE') {
         cardBox.style.backgroundColor = 'transparent';
         cardBox.style.backdropFilter = 'none';
@@ -779,21 +808,20 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         cardBox.style.backgroundColor = 'rgba(' + r + ',' + g + ',' + b + ',' + opacity + ')';
         cardBox.style.borderRight = data.showAccentBorder ? '6px solid ' + accent : 'none';
         cardBox.style.borderLeft = 'none';
-        cardBox.style.borderRadius = '4px';
+        cardBox.style.borderRadius = isFull ? '0' : '4px';
         cardBox.style.boxShadow = data.showDropShadow ? '0 12px 36px rgba(0,0,0,0.6)' : 'none';
       } else if (data.style === 'ROYAL_LITURGICAL') {
         cardBox.style.background = 'linear-gradient(135deg, rgba(' + r + ',' + g + ',' + b + ',' + opacity + ') 0%, rgba(20,20,35,' + opacity + ') 100%)';
         cardBox.style.border = data.showAccentBorder ? '2px solid ' + accent : 'none';
         cardBox.style.boxShadow = data.showDropShadow ? '0 10px 40px rgba(0,0,0,0.7)' : 'none';
       } else {
-        // Default / Modern Glass
         cardBox.style.backgroundColor = 'rgba(' + r + ',' + g + ',' + b + ',' + opacity + ')';
         cardBox.style.backdropFilter = 'blur(16px)';
         cardBox.style.border = data.showAccentBorder ? '1.5px solid ' + accent + '77' : 'none';
         cardBox.style.boxShadow = data.showDropShadow ? '0 16px 40px rgba(0, 0, 0, 0.55)' : 'none';
       }
 
-      // Animated Background Video Handling
+      // 7. Motion Background Layer
       const animType = data.animatedBackground || 'none';
       const animOpacity = data.animatedBackgroundOpacity !== undefined ? data.animatedBackgroundOpacity : 0.65;
 
@@ -816,14 +844,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         animBgLayer.classList.add('anim-particles');
         animBgLayer.style.opacity = animOpacity;
       } else if (animType === 'custom_video' && data.customVideoUrl) {
-        // If it's a local path, use our proxy endpoint
         const videoUrl = (data.customVideoUrl.startsWith('http') || data.customVideoUrl.startsWith('blob:')) 
            ? data.customVideoUrl 
            : '/ndi/video_file?path=' + encodeURIComponent(data.customVideoUrl);
-        
-        if (customVideoBg.src !== videoUrl) {
-          customVideoBg.src = videoUrl;
-        }
+        if (customVideoBg.src !== videoUrl) customVideoBg.src = videoUrl;
         customVideoBg.style.display = 'block';
         customVideoBg.style.opacity = animOpacity;
         animBgLayer.style.opacity = '1';
@@ -831,22 +855,21 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         animBgLayer.style.opacity = '0';
       }
 
-      // Transition classes
-      container.className = '';
+      // 8. Entry Transitions
+      container.className = isFull ? 'mode-full-show' : '';
       if (data.transition === 'FADE') container.classList.add('anim-fade');
       else if (data.transition === 'SLIDE_RIGHT') container.classList.add('anim-slide-right');
       else if (data.transition === 'CUT') container.classList.add('anim-cut');
       else container.classList.add('anim-slide-up');
 
-      const dur = (data.transitionDurationMs || 350) + 'ms';
-      container.style.transitionDuration = dur;
+      container.style.transitionDuration = (data.transitionDurationMs || 350) + 'ms';
 
       requestAnimationFrame(() => {
         container.classList.add('visible');
       });
     }
 
-    // Connect to Server-Sent Events for zero-latency live broadcast updates
+    // Connect Server-Sent Events (SSE)
     function connectSse() {
       const urlParams = new URLSearchParams(window.location.search);
       const isShow = urlParams.get('show') === '1' || window.location.pathname.includes('/show');
@@ -855,8 +878,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       const evtSource = new EventSource(sseUrl);
       evtSource.onmessage = function(e) {
         try {
-          const data = JSON.parse(e.data);
-          applyData(data);
+          applyData(JSON.parse(e.data));
         } catch (err) {
           console.error('Failed to parse SSE payload', err);
         }
@@ -867,10 +889,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       };
     }
 
-    // Apply pre-rendered initial data immediately (0ms instant display)
+    // Initial payload render
     try {
-      const initialPayload = $initialJson;
-      applyData(initialPayload);
+      applyData($initialJson);
     } catch (e) {
       console.error(e);
     }

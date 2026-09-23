@@ -1,10 +1,13 @@
 package com.example
 
+import androidx.test.core.app.ApplicationProvider
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
+import com.example.data.BibleRepository
 import com.example.ui.theme.MyApplicationTheme
 import com.github.takahirom.roborazzi.RobolectricDeviceQualifiers
 import com.github.takahirom.roborazzi.captureRoboImage
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -18,6 +21,11 @@ import org.robolectric.annotation.GraphicsMode
 class GreetingScreenshotTest {
 
   @get:Rule val composeTestRule = createComposeRule()
+
+  @Before
+  fun setUp() {
+    BibleRepository.initialize(ApplicationProvider.getApplicationContext())
+  }
 
   @Test
   fun greeting_screenshot() {

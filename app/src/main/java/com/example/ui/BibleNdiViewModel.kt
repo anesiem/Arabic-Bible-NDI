@@ -301,8 +301,10 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             selectedBook = book,
             selectedChapter = chapter,
             displayedVerses = verses,
-            selectedTestament = book.testament
+            selectedTestament = book.testament,
+            activeVerse = null
         )
+        broadcastServer.setLiveState(false)
     }
 
     fun selectChapter(chapter: Int) {
@@ -310,8 +312,40 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         val verses = BibleRepository.getVerses(book.id, chapter)
         _uiState.value = _uiState.value.copy(
             selectedChapter = chapter,
-            displayedVerses = verses
+            displayedVerses = verses,
+            activeVerse = null
         )
+        broadcastServer.setLiveState(false)
+    }
+
+    fun nextChapter() {
+        val currentBook = _uiState.value.selectedBook
+        val currentChapter = _uiState.value.selectedChapter
+        if (currentChapter < currentBook.totalChapters) {
+            selectChapter(currentChapter + 1)
+        } else {
+            val allBooks = BibleRepository.allBooks
+            val currentIndex = allBooks.indexOfFirst { it.id == currentBook.id }
+            if (currentIndex != -1 && currentIndex < allBooks.size - 1) {
+                val nextBook = allBooks[currentIndex + 1]
+                selectBook(nextBook, 1)
+            }
+        }
+    }
+
+    fun prevChapter() {
+        val currentBook = _uiState.value.selectedBook
+        val currentChapter = _uiState.value.selectedChapter
+        if (currentChapter > 1) {
+            selectChapter(currentChapter - 1)
+        } else {
+            val allBooks = BibleRepository.allBooks
+            val currentIndex = allBooks.indexOfFirst { it.id == currentBook.id }
+            if (currentIndex > 0) {
+                val prevBook = allBooks[currentIndex - 1]
+                selectBook(prevBook, prevBook.totalChapters)
+            }
+        }
     }
 
     fun setBibleVersion(version: BibleVersion) {

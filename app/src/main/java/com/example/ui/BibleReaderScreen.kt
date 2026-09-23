@@ -37,6 +37,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
+import kotlinx.coroutines.coroutineScope
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -49,6 +56,7 @@ import com.example.model.BibleVerse
 import com.example.model.BibleVersion
 import com.example.model.Testament
 import com.example.ui.theme.*
+import kotlin.math.abs
 
 @Composable
 fun BibleReaderScreen(
@@ -57,6 +65,8 @@ fun BibleReaderScreen(
     onSelectTestament: (Testament) -> Unit,
     onSelectBook: (BibleBook, Int) -> Unit,
     onSelectChapter: (Int) -> Unit,
+    onNextChapter: () -> Unit = {},
+    onPrevChapter: () -> Unit = {},
     onSelectVersion: (BibleVersion) -> Unit,
     onSearchChanged: (String) -> Unit,
     onClearSearch: () -> Unit,
@@ -69,7 +79,6 @@ fun BibleReaderScreen(
     onSetAppThemeMode: (AppThemeMode) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    var versionDropdownExpanded by remember { mutableStateOf(false) }
     var showSearchBar by remember { mutableStateOf(false) }
     var displayMenuExpanded by remember { mutableStateOf(false) }
     var scripturePickerExpanded by remember { mutableStateOf(false) }
@@ -167,29 +176,14 @@ fun BibleReaderScreen(
                 }
 
                 AnimatedVisibility(visible = scripturePickerExpanded) {
-                    Column(modifier = Modifier.fillMaxWidth().background(bento.card).padding(12.dp)) {
-                        // Bible Version Picker (Moved inside)
-                        Row(modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text("الترجمة:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary, modifier = Modifier.width(60.dp))
-                            Box(modifier = Modifier.weight(1f)) {
-                                Surface(
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = bento.surfaceVariant,
-                                    modifier = Modifier.fillMaxWidth().clickable { versionDropdownExpanded = true }
-                                ) {
-                                    Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                        Text(uiState.bibleVersion.displayName, fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                                        Icon(Icons.Default.ArrowDropDown, null, modifier = Modifier.size(16.dp))
-                                    }
-                                }
-                                DropdownMenu(expanded = versionDropdownExpanded, onDismissRequest = { versionDropdownExpanded = false }) {
-                                    BibleVersion.entries.forEach { version ->
-                                        DropdownMenuItem(text = { Text(version.displayName) }, onClick = { onSelectVersion(version); versionDropdownExpanded = false })
-                                    }
-                                }
-                            }
-                        }
-
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 380.dp)
+                            .verticalScroll(rememberScrollState())
+                            .background(bento.card)
+                            .padding(12.dp)
+                    ) {
                         // OT/NT Selector
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             FilterChip(
@@ -220,7 +214,7 @@ fun BibleReaderScreen(
 
                         // Chapters Grid
                         Text("الفصل:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary, modifier = Modifier.padding(top = 8.dp))
-                        Box(modifier = Modifier.height(130.dp)) {
+                        Box(modifier = Modifier.heightIn(min = 100.dp, max = 160.dp)) {
                             LazyVerticalGrid(
                                 columns = GridCells.Adaptive(minSize = 40.dp),
                                 horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -231,7 +225,10 @@ fun BibleReaderScreen(
                                     Box(
                                         modifier = Modifier.size(36.dp).clip(CircleShape)
                                             .background(if (isSelected) bento.primary else bento.surfaceVariant)
-                                            .clickable { onSelectChapter(ch) },
+                                            .clickable { 
+                                                onSelectChapter(ch)
+                                                scripturePickerExpanded = false
+                                            },
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Text(ArabicTextFormatter.toEasternArabicDigits(ch), color = if (isSelected) Color.White else bento.textPrimary, fontSize = 11.sp)
@@ -243,7 +240,7 @@ fun BibleReaderScreen(
                         // Verse Grid (Optional quick access)
                         if (uiState.displayedVerses.isNotEmpty()) {
                             Text("الآية:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary, modifier = Modifier.padding(top = 8.dp))
-                            Box(modifier = Modifier.height(100.dp)) {
+                            Box(modifier = Modifier.heightIn(min = 80.dp, max = 140.dp)) {
                                 LazyVerticalGrid(
                                     columns = GridCells.Adaptive(minSize = 36.dp),
                                     horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -297,7 +294,39 @@ fun BibleReaderScreen(
                 val versesToShow = if (uiState.isSearching) uiState.searchResults else uiState.displayedVerses
                 LazyColumn(
                     state = lazyListState,
-                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .pointerInput(uiState.selectedBook.id, uiState.selectedChapter) {
+                            coroutineScope {
+                                awaitEachGesture {
+                                    val down = awaitFirstDown(requireUnconsumed = false)
+                                    var dragX = 0f
+                                    var dragY = 0f
+                                    var swiped = false
+
+                                    while (true) {
+                                        val event = awaitPointerEvent()
+                                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                        if (!change.pressed) break
+
+                                        val dragAmount = change.positionChange()
+                                        dragX += dragAmount.x
+                                        dragY += dragAmount.y
+
+                                        if (!swiped && abs(dragX) > 120f && abs(dragX) > abs(dragY) * 1.5f) {
+                                            swiped = true
+                                            change.consume()
+                                            if (dragX < 0) {
+                                                onNextChapter()
+                                            } else {
+                                                onPrevChapter()
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        },
                     contentPadding = PaddingValues(12.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {

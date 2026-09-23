@@ -263,6 +263,8 @@ class MainActivity : ComponentActivity() {
                                 onSelectTestament = { viewModel.selectTestament(it) },
                                 onSelectBook = { book, ch -> viewModel.selectBook(book, ch) },
                                 onSelectChapter = { viewModel.selectChapter(it) },
+                                onNextChapter = { viewModel.nextChapter() },
+                                onPrevChapter = { viewModel.prevChapter() },
                                 onSelectVersion = { viewModel.setBibleVersion(it) },
                                 onSearchChanged = { viewModel.onSearchQueryChanged(it) },
                                 onClearSearch = { viewModel.clearSearch() },

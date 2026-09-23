@@ -132,19 +132,35 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         sseClients.clear()
     }
 
+    @Volatile
+    private var isCacheDirtyLower = true
+    @Volatile
+    private var isCacheDirtyShow = true
+
+    private var cachedLowerBitmap: Bitmap? = null
+    private var cachedShowBitmap: Bitmap? = null
+
+    fun invalidateBitmapCache() {
+        isCacheDirtyLower = true
+        isCacheDirtyShow = true
+    }
+
     fun updateVerse(verse: BibleVerse, live: Boolean = true) {
         currentVerse = verse
         isLive = live
+        invalidateBitmapCache()
         broadcastStateToClients()
     }
 
     fun updateTemplate(template: LowerThirdTemplate) {
         currentTemplate = template
+        invalidateBitmapCache()
         broadcastStateToClients()
     }
 
     fun setLiveState(live: Boolean) {
         isLive = live
+        invalidateBitmapCache()
         broadcastStateToClients()
     }
 
@@ -174,6 +190,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     private fun handleClient(socket: Socket) {
         try {
             socket.soTimeout = 15000
+            socket.tcpNoDelay = true
+            try { socket.sendBufferSize = 64 * 1024 } catch (e: Exception) {}
+            try { socket.receiveBufferSize = 64 * 1024 } catch (e: Exception) {}
             val rawInput = socket.getInputStream()
             val pushback = java.io.PushbackInputStream(rawInput, 4)
             val firstByte = pushback.read()
@@ -904,10 +923,34 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     }
 
     fun renderCurrentFrame(width: Int = 1920, height: Int = 1080, isForStream: Boolean = false, overrideTemplate: LowerThirdTemplate? = null): Bitmap {
-        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val tpl = overrideTemplate ?: currentTemplate
+        val isFull = tpl.isFullScreen
+
+        // Fast Path: Return cached Bitmap if state hasn't changed (0ms allocation-free)
+        if (!isForStream && overrideTemplate == null && width == 1920 && height == 1080) {
+            if (isFull && !isCacheDirtyShow && cachedShowBitmap != null && !cachedShowBitmap!!.isRecycled) {
+                return cachedShowBitmap!!
+            }
+            if (!isFull && !isCacheDirtyLower && cachedLowerBitmap != null && !cachedLowerBitmap!!.isRecycled) {
+                return cachedLowerBitmap!!
+            }
+        }
+
+        val bitmap = if (!isForStream && overrideTemplate == null && width == 1920 && height == 1080) {
+            val target = if (isFull) cachedShowBitmap else cachedLowerBitmap
+            if (target != null && !target.isRecycled) {
+                target
+            } else {
+                val newBmp = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                if (isFull) cachedShowBitmap = newBmp else cachedLowerBitmap = newBmp
+                newBmp
+            }
+        } else {
+            Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        }
+
         val canvas = Canvas(bitmap)
 
-        val tpl = overrideTemplate ?: currentTemplate
         val fallbackVerse = BibleVerse(
             id = "jhn_3_16",
             bookId = "jhn",
@@ -1263,6 +1306,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             canvas.drawRoundRect(badgeRect, 14f * scale, 14f * scale, standbyBgPaint)
             canvas.drawRoundRect(badgeRect, 14f * scale, 14f * scale, standbyBorderPaint)
             canvas.drawText("وضع الاستعداد • STANDBY (اضغط على الهواء للبث)", width / 2f, 35f * scale + (badgeH * 0.65f), standbyTextPaint)
+        }
+
+        if (!isForStream && overrideTemplate == null && width == 1920 && height == 1080) {
+            if (isFull) isCacheDirtyShow = false else isCacheDirtyLower = false
         }
 
         return bitmap

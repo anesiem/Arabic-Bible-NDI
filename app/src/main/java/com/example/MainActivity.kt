@@ -2,6 +2,7 @@ package com.example
 
 import android.content.Intent
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -84,6 +85,15 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val uiState by viewModel.uiState.collectAsState()
+
+            LaunchedEffect(uiState.isKeepScreenOn) {
+                if (uiState.isKeepScreenOn) {
+                    window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                } else {
+                    window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                }
+            }
+
             MyApplicationTheme(themeMode = uiState.appThemeMode) {
                 val bento = LocalBentoColors.current
                 val snackbarHostState = remember { SnackbarHostState() }
@@ -302,7 +312,8 @@ class MainActivity : ComponentActivity() {
                                 onClearBroadcast = { viewModel.clearBroadcast() },
                                 onSelectInterface = { viewModel.selectNetworkInterface(it) },
                                 onRefreshInterfaces = { viewModel.refreshNetworkInterfaces() },
-                                onSetNdiProtocolEnabled = { viewModel.setNdiProtocolEnabled(it) }
+                                onSetNdiProtocolEnabled = { viewModel.setNdiProtocolEnabled(it) },
+                                onToggleKeepScreenOn = { viewModel.toggleKeepScreenOn() }
                             )
                         }
                     }

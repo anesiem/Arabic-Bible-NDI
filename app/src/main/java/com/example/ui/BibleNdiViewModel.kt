@@ -60,7 +60,8 @@ data class BibleNdiUiState(
     ),
     val statusMessage: String? = null,
     val appThemeMode: AppThemeMode = AppThemeMode.SYSTEM,
-    val readerFontSize: Int = 18
+    val readerFontSize: Int = 18,
+    val isKeepScreenOn: Boolean = true
 )
 
 class BibleNdiViewModel(application: Application) : AndroidViewModel(application) {
@@ -515,6 +516,14 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
 
     fun setAppThemeMode(mode: AppThemeMode) {
         _uiState.value = _uiState.value.copy(appThemeMode = mode)
+    }
+
+    fun toggleKeepScreenOn() {
+        val newKeep = !_uiState.value.isKeepScreenOn
+        _uiState.value = _uiState.value.copy(
+            isKeepScreenOn = newKeep,
+            statusMessage = if (newKeep) "تم تفعيل إبقاء الشاشة مضاءة (Keep Screen Awake)" else "تم إيقاف إبقاء الشاشة مضاءة"
+        )
     }
 
     fun dismissStatusMessage() {

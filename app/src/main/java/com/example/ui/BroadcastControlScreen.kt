@@ -90,6 +90,7 @@ fun BroadcastControlScreen(
     onSelectInterface: (NetworkInterfaceInfo) -> Unit = {},
     onRefreshInterfaces: () -> Unit = {},
     onSetNdiProtocolEnabled: (Boolean) -> Unit = {},
+    onToggleKeepScreenOn: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -633,6 +634,66 @@ fun BroadcastControlScreen(
                         }
                     }
                 }
+            }
+        }
+
+        // Card: Keep Screen Awake
+        Surface(
+            shape = RoundedCornerShape(20.dp),
+            color = BentoCardWhite,
+            border = BorderStroke(1.dp, BentoBorder),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(14.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(CircleShape)
+                            .background(if (uiState.isKeepScreenOn) BentoPrimaryContainer else BentoSurfaceVariant)
+                    ) {
+                        Icon(
+                            imageVector = if (uiState.isKeepScreenOn) Icons.Default.LiveTv else Icons.Default.Tv,
+                            contentDescription = null,
+                            tint = if (uiState.isKeepScreenOn) BentoPrimary else BentoTextSecondary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    Column {
+                        Text(
+                            text = "إبقاء الشاشة مفعلة (Keep Screen Awake)",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = BentoTextPrimary
+                        )
+                        Text(
+                            text = "يمنع خمول الشاشة أو توقف معالج الجهاز أثناء البث المباشر",
+                            fontSize = 11.sp,
+                            color = BentoTextSecondary
+                        )
+                    }
+                }
+
+                Switch(
+                    checked = uiState.isKeepScreenOn,
+                    onCheckedChange = { onToggleKeepScreenOn() },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Color.White,
+                        checkedTrackColor = BentoPrimary
+                    )
+                )
             }
         }
 

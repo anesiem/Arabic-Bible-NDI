@@ -10,12 +10,12 @@ plugins {
 }
 
 android {
-  namespace = "com.example"
+  namespace = "com.arabicchristianmedia"
   compileSdk = 36
   ndkVersion = "28.2.13676358"
 
   defaultConfig {
-    applicationId = "com.aistudio.biblendi.xptvqz"
+    applicationId = "com.arabicchristianmedia"
     minSdk = 24
     targetSdk = 36
     versionCode = 5

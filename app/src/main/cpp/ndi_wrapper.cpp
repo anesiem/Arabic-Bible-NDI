@@ -24,7 +24,7 @@ struct NdiSenderContext {
 };
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_example_server_NdiNativeSender_nativeInitialize(JNIEnv* env, jobject /* this */) {
+Java_com_arabicchristianmedia_server_NdiNativeSender_nativeInitialize(JNIEnv* env, jobject /* this */) {
     if (!NDIlib_initialize()) {
         LOGE("NDIlib_initialize failed.");
         return JNI_FALSE;
@@ -34,7 +34,7 @@ Java_com_example_server_NdiNativeSender_nativeInitialize(JNIEnv* env, jobject /*
 }
 
 extern "C" JNIEXPORT jlong JNICALL
-Java_com_example_server_NdiNativeSender_nativeCreateSender(JNIEnv* env, jobject /* this */, jstring name, jint fps) {
+Java_com_arabicchristianmedia_server_NdiNativeSender_nativeCreateSender(JNIEnv* env, jobject /* this */, jstring name, jint fps) {
     const char* native_name = env->GetStringUTFChars(name, nullptr);
 
     NDIlib_send_create_t create_settings;
@@ -63,7 +63,7 @@ Java_com_example_server_NdiNativeSender_nativeCreateSender(JNIEnv* env, jobject 
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_example_server_NdiNativeSender_nativeDestroySender(JNIEnv* env, jobject /* this */, jlong ptr) {
+Java_com_arabicchristianmedia_server_NdiNativeSender_nativeDestroySender(JNIEnv* env, jobject /* this */, jlong ptr) {
     if (ptr) {
         NdiSenderContext* context = reinterpret_cast<NdiSenderContext*>(ptr);
         if (context->p_send) {
@@ -78,7 +78,7 @@ Java_com_example_server_NdiNativeSender_nativeDestroySender(JNIEnv* env, jobject
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_example_server_NdiNativeSender_nativeSendVideoBitmap(JNIEnv* env, jobject /* this */, jlong ptr, jobject bitmap, jint width, jint height) {
+Java_com_arabicchristianmedia_server_NdiNativeSender_nativeSendVideoBitmap(JNIEnv* env, jobject /* this */, jlong ptr, jobject bitmap, jint width, jint height) {
     if (!ptr || !bitmap) return JNI_FALSE;
 
     NdiSenderContext* context = reinterpret_cast<NdiSenderContext*>(ptr);

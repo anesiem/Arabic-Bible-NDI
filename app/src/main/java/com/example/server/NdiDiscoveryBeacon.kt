@@ -206,15 +206,16 @@ class NdiDiscoveryBeacon(private val context: Context) {
 
             val out = socket.getOutputStream()
             val writer = PrintWriter(out)
+            val deviceModel = Build.MODEL
 
-            val json = """{"version":"6.0","sources":[{"name":"Bible-NDI","address":"$ip","port":$port,"url":"http://$ip:$port/ndi","stream":"http://$ip:$port/ndi/stream","format":"BGRA","alpha":true,"width":1920,"height":1080,"fps":30}]}"""
+            val json = """{"version":"6.0","sources":[{"name":"$deviceModel - Bible-NDI-Lower","address":"$ip","port":$port,"url":"http://$ip:$port/ndi","stream":"http://$ip:$port/ndi/stream","format":"BGRA","alpha":true,"width":1920,"height":1080,"fps":30},{"name":"$deviceModel - Bible-NDI-Full","address":"$ip","port":$port,"url":"http://$ip:$port/show","stream":"http://$ip:$port/show","format":"BGRA","alpha":true,"width":1920,"height":1080,"fps":30}]}"""
 
             if (firstLine != null && (firstLine.startsWith("GET") || firstLine.startsWith("POST") || firstLine.startsWith("HEAD"))) {
                 val httpHeader = "HTTP/1.1 200 OK\r\n" +
                     "Server: Bible-NDI-v6\r\n" +
                     "Content-Type: application/json; charset=utf-8\r\n" +
                     "Content-Length: ${json.toByteArray(Charsets.UTF_8).size}\r\n" +
-                    "NDI-Source: Bible-NDI\r\n" +
+                    "NDI-Source: $deviceModel - Bible-NDI\r\n" +
                     "NDI-Stream: http://$ip:$port/ndi/stream\r\n" +
                     "Access-Control-Allow-Origin: *\r\n" +
                     "Connection: close\r\n\r\n"
@@ -225,7 +226,7 @@ class NdiDiscoveryBeacon(private val context: Context) {
                 val ndiResponse = """
 NDI/6.0 200 OK
 Server: Bible-NDI-v6
-Source-Name: Bible-NDI
+Source-Name: $deviceModel - Bible-NDI
 Port: $port
 Stream-Url: http://$ip:$port/ndi/stream
 Overlay-Url: http://$ip:$port/ndi
@@ -236,7 +237,8 @@ Alpha-Channel: true
 Connection: close
 
 NDI_SOURCE_LIST:
-1: Bible-NDI (Channel 1)|http://$ip:$port/ndi/stream|BGRA
+1: $deviceModel - Bible-NDI-Lower|http://$ip:$port/ndi/stream|BGRA
+2: $deviceModel - Bible-NDI-Full|http://$ip:$port/show|BGRA
 """.trimIndent() + "\r\n\r\n"
 
                 writer.print(ndiResponse)
@@ -293,11 +295,11 @@ NDI_SOURCE_LIST:
             val deviceModel = Build.MODEL
             // 1. Web Broadcast Overlay Service: _http._tcp
             val serviceInfo = NsdServiceInfo().apply {
-                serviceName = "$deviceModel - Bible-NDI"
+                serviceName = "$deviceModel - Bible-NDI-Lower"
                 serviceType = "_http._tcp"
                 setPort(port)
                 if (ip.isNotEmpty()) {
-                    setAttribute("name", "$deviceModel - Bible-NDI")
+                    setAttribute("name", "$deviceModel - Bible-NDI-Lower")
                     setAttribute("path", "/ndi")
                     setAttribute("stream", "/ndi/stream")
                     setAttribute("url", "http://$ip:$port/ndi")
@@ -326,11 +328,11 @@ NDI_SOURCE_LIST:
 
             // 2. Official NDI Video Service: _ndi._tcp
             val videoServiceInfo = NsdServiceInfo().apply {
-                serviceName = "Bible-NDI"
+                serviceName = "$deviceModel - Bible-NDI-Full"
                 serviceType = "_ndi._tcp"
                 setPort(port)
                 if (ip.isNotEmpty()) {
-                    setAttribute("name", "Bible-NDI")
+                    setAttribute("name", "$deviceModel - Bible-NDI-Full")
                     setAttribute("ndi_version", "6.0.0")
                     setAttribute("format", "BGRA")
                 }

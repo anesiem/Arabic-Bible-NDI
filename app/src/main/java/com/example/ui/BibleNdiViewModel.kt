@@ -44,7 +44,7 @@ data class BibleNdiUiState(
     val isNativeNdiActive: Boolean = false,
     val isNativeShowActive: Boolean = false,
     val ndiLowerThirdEnabled: Boolean = true,
-    val ndiFullShowEnabled: Boolean = false,
+    val ndiFullShowEnabled: Boolean = true,
     val templates: List<LowerThirdTemplate> = emptyList(),
     val activeTemplate: LowerThirdTemplate = TemplateRepository.DEFAULT_TEMPLATES[0],
     val activeShowTemplate: LowerThirdTemplate = TemplateRepository.DEFAULT_TEMPLATES[0].copy(

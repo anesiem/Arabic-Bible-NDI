@@ -495,16 +495,17 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
     /* Card Box in Full Show Mode (Flex-centered vertically in middle of screen) */
     .card-content.mode-full-show {
-      width: 100% !important;
-      height: 100% !important;
+      width: 100vw !important;
+      height: 100vh !important;
       max-width: 100vw !important;
       display: flex !important;
       flex-direction: column !important;
       justify-content: center !important;
       align-items: center !important;
-      padding: 8vh 8vw !important;
+      padding: 6vh 6vw !important;
       border-radius: 0 !important;
       margin: 0 !important;
+      text-align: center !important;
     }
 
     .card-inner-content {
@@ -519,6 +520,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       justify-content: center !important;
       align-items: center !important;
       text-align: center !important;
+      width: 100% !important;
+      margin: 0 auto !important;
     }
 
     /* ==========================================================================
@@ -723,25 +726,37 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         englishSection.style.display = 'none';
       }
 
-      // 4. Layout & Alignment (Ensures Full Show remains vertically centered in middle)
+      // 4. Layout & Alignment (Ensures Full Show remains vertically & horizontally centered in middle)
       if (isFull) {
         container.style.marginBottom = '0';
         container.style.marginLeft = '0';
         container.style.marginRight = '0';
+        container.style.width = '100vw';
+        container.style.height = '100vh';
 
         cardBox.style.display = 'flex';
         cardBox.style.flexDirection = 'column';
         cardBox.style.justifyContent = 'center';
         cardBox.style.alignItems = 'center';
         cardBox.style.margin = '0 auto';
+        cardBox.style.padding = '6vh 6vw';
+        cardBox.style.width = '100vw';
+        cardBox.style.maxWidth = '100vw';
         cardBox.style.textAlign = 'center';
 
         citationRow.style.display = 'flex';
         citationRow.style.width = '100%';
         citationRow.style.justifyContent = 'center';
 
+        verseText.style.width = '100%';
         verseText.style.textAlign = 'center';
+        verseText.style.margin = '0 auto';
+
+        englishSection.style.width = '100%';
         englishSection.style.textAlign = 'center';
+        englishSection.style.margin = '10px auto 0 auto';
+        englishText.style.width = '100%';
+        englishText.style.textAlign = 'center';
       } else {
         const botMargin = (data.positionBottomPercent || 6) + 'vh';
         const hMargin = (data.horizontalMarginPercent || 6) + 'vw';
@@ -1252,25 +1267,36 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         }
 
         val citationY = startY + (refPaint.textSize * 0.9f)
-        when (tpl.alignment) {
-            BroadcastTextAlignment.CENTER -> {
-                refPaint.textAlign = Paint.Align.CENTER
-                canvas.drawText(citation, width / 2f, citationY, refPaint)
+        if (tpl.isFullScreen) {
+            refPaint.textAlign = Paint.Align.CENTER
+            canvas.drawText(citation, width / 2f, citationY, refPaint)
+        } else {
+            when (tpl.alignment) {
+                BroadcastTextAlignment.CENTER -> {
+                    refPaint.textAlign = Paint.Align.CENTER
+                    canvas.drawText(citation, width / 2f, citationY, refPaint)
+                }
+                BroadcastTextAlignment.LEFT -> {
+                    refPaint.textAlign = Paint.Align.LEFT
+                    canvas.drawText(citation, boxLeft + paddingH, citationY, refPaint)
+                }
+                BroadcastTextAlignment.RIGHT -> {
+                    refPaint.textAlign = Paint.Align.RIGHT
+                    canvas.drawText(citation, boxRight - paddingH, citationY, refPaint)
+                }
             }
-            BroadcastTextAlignment.LEFT -> {
-                refPaint.textAlign = Paint.Align.LEFT
-                canvas.drawText(citation, boxLeft + paddingH, citationY, refPaint)
-            }
-            BroadcastTextAlignment.RIGHT -> {
-                refPaint.textAlign = Paint.Align.RIGHT
-                canvas.drawText(citation, boxRight - paddingH, citationY, refPaint)
-            }
+        }
+
+        val translateX = if (tpl.isFullScreen || tpl.alignment == BroadcastTextAlignment.CENTER) {
+            (width - contentWidth) / 2f
+        } else {
+            boxLeft + paddingH
         }
 
         // Draw Multi-line Verse Text wrapped smoothly
         val textY = citationY + (16f * scale)
         canvas.save()
-        canvas.translate(boxLeft + paddingH, textY)
+        canvas.translate(translateX, textY)
         staticLayout.draw(canvas)
         canvas.restore()
 
@@ -1279,7 +1305,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             val bilSpacing = if (tpl.showBilingualSpacing) tpl.bilingualSpacing * scale else 0f
             val secY = textY + staticLayout.height + bilSpacing
             canvas.save()
-            canvas.translate(boxLeft + paddingH, secY)
+            canvas.translate(translateX, secY)
             secondaryLayout.draw(canvas)
             canvas.restore()
         }

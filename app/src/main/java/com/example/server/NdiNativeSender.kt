@@ -70,7 +70,7 @@ class NdiNativeSender {
         synchronized(activeSenders) {
             if (activeSenders.containsKey(name)) return true
             
-            // Register as "$machineName - $name" to ensure it's easily identifiable in NDI tools.
+            // Format full name with tablet model name: "SM-X238U - Bible-NDI-Lower" / "SM-X238U - Bible-NDI-Full"
             val machineName = Build.MODEL
             val fullName = "$machineName - $name"
             val ptr = nativeCreateSender(fullName)

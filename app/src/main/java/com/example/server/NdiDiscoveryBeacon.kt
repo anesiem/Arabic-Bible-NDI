@@ -42,6 +42,8 @@ class NdiDiscoveryBeacon(private val context: Context) {
 
     private var ndiRegistrationListener: NsdManager.RegistrationListener? = null
     private var ndiVideoRegistrationListener: NsdManager.RegistrationListener? = null
+    /** mDNS listeners for the 4 native NDI feeds (Lower/Full x Full/HX tiers). */
+    private val feedMdnsListeners = mutableListOf<NsdManager.RegistrationListener>()
     var isRunning = false
         private set
 
@@ -208,7 +210,7 @@ class NdiDiscoveryBeacon(private val context: Context) {
             val writer = PrintWriter(out)
             val deviceModel = Build.MODEL
 
-            val json = """{"version":"6.0","sources":[{"name":"$deviceModel - Bible-NDI-Lower","address":"$ip","port":$port,"url":"http://$ip:$port/ndi","stream":"http://$ip:$port/ndi/stream","format":"BGRA","alpha":true,"width":1920,"height":1080,"fps":30},{"name":"$deviceModel - Bible-NDI-Full","address":"$ip","port":$port,"url":"http://$ip:$port/show","stream":"http://$ip:$port/show","format":"BGRA","alpha":true,"width":1920,"height":1080,"fps":30}]}"""
+            val json = """{"version":"6.0","sources":[{"name":"$deviceModel - Bible-NDI-Lower","address":"$ip","port":$port,"url":"http://$ip:$port/ndi","stream":"http://$ip:$port/ndi/stream","format":"BGRA","alpha":true,"width":1920,"height":1080,"fps":30,"tier":"full"},{"name":"$deviceModel - Bible-NDI-Lower-HX","address":"$ip","port":$port,"url":"http://$ip:$port/ndi","stream":"http://$ip:$port/ndi/stream","format":"BGRA","alpha":true,"width":960,"height":540,"fps":15,"tier":"hx"},{"name":"$deviceModel - Bible-NDI-Full","address":"$ip","port":$port,"url":"http://$ip:$port/show","stream":"http://$ip:$port/show","format":"BGRA","alpha":true,"width":1920,"height":1080,"fps":30,"tier":"full"},{"name":"$deviceModel - Bible-NDI-Full-HX","address":"$ip","port":$port,"url":"http://$ip:$port/show","stream":"http://$ip:$port/show","format":"BGRA","alpha":true,"width":960,"height":540,"fps":15,"tier":"hx"}]}"""
 
             if (firstLine != null && (firstLine.startsWith("GET") || firstLine.startsWith("POST") || firstLine.startsWith("HEAD"))) {
                 val httpHeader = "HTTP/1.1 200 OK\r\n" +
@@ -238,7 +240,9 @@ Connection: close
 
 NDI_SOURCE_LIST:
 1: $deviceModel - Bible-NDI-Lower|http://$ip:$port/ndi/stream|BGRA
-2: $deviceModel - Bible-NDI-Full|http://$ip:$port/show|BGRA
+2: $deviceModel - Bible-NDI-Lower-HX|http://$ip:$port/ndi/stream|BGRA
+3: $deviceModel - Bible-NDI-Full|http://$ip:$port/show|BGRA
+4: $deviceModel - Bible-NDI-Full-HX|http://$ip:$port/show|BGRA
 """.trimIndent() + "\r\n\r\n"
 
                 writer.print(ndiResponse)
@@ -347,6 +351,47 @@ NDI_SOURCE_LIST:
 
             nsdManager?.registerService(videoServiceInfo, NsdManager.PROTOCOL_DNS_SD, ndiVideoRegistrationListener)
 
+            // 3. Native NDI feeds (Lower/Full x Full/HX tiers) as _ndi._tcp services so the
+            //    exact on-air names ("<TabletModel> - <FeedName>") are discoverable via mDNS.
+            val feeds = listOf(
+                Triple(NdiNativeSender.FEED_LOWER, "1920", "1080"),
+                Triple(NdiNativeSender.FEED_LOWER_HX, "960", "540"),
+                Triple(NdiNativeSender.FEED_FULL, "1920", "1080"),
+                Triple(NdiNativeSender.FEED_FULL_HX, "960", "540")
+            )
+            for ((feedKey, w, h) in feeds) {
+                try {
+                    val feedName = NdiNativeSender.displayName(feedKey)
+                    val feedInfo = NsdServiceInfo().apply {
+                        serviceName = feedName
+                        serviceType = "_ndi._tcp"
+                        setPort(port)
+                        if (ip.isNotEmpty()) {
+                            setAttribute("name", feedName)
+                            setAttribute("ndi_version", "6.0.0")
+                            setAttribute("format", "BGRA")
+                            setAttribute("width", w)
+                            setAttribute("height", h)
+                            setAttribute("tier", if (feedKey.endsWith("-HX")) "hx" else "full")
+                        }
+                    }
+                    val listener = object : NsdManager.RegistrationListener {
+                        override fun onServiceRegistered(info: NsdServiceInfo?) {
+                            Log.i("NdiDiscoveryBeacon", "mDNS NDI feed registered: ${info?.serviceName}")
+                        }
+                        override fun onRegistrationFailed(info: NsdServiceInfo?, errorCode: Int) {
+                            Log.w("NdiDiscoveryBeacon", "mDNS NDI feed registration failed ($feedName): $errorCode")
+                        }
+                        override fun onServiceUnregistered(info: NsdServiceInfo?) {}
+                        override fun onUnregistrationFailed(info: NsdServiceInfo?, errorCode: Int) {}
+                    }
+                    nsdManager?.registerService(feedInfo, NsdManager.PROTOCOL_DNS_SD, listener)
+                    feedMdnsListeners.add(listener)
+                } catch (e: Exception) {
+                    Log.w("NdiDiscoveryBeacon", "mDNS feed registration error: ${e.message}")
+                }
+            }
+
         } catch (e: Exception) {
             Log.w("NdiDiscoveryBeacon", "NsdManager registration failed: ${e.message}")
         }
@@ -405,11 +450,15 @@ NDI_SOURCE_LIST:
         try {
             ndiRegistrationListener?.let { nsdManager?.unregisterService(it) }
             ndiVideoRegistrationListener?.let { nsdManager?.unregisterService(it) }
+            feedMdnsListeners.forEach { listener ->
+                try { nsdManager?.unregisterService(listener) } catch (e: Exception) { /* ignore */ }
+            }
         } catch (e: Exception) {
             // ignore
         }
         ndiRegistrationListener = null
         ndiVideoRegistrationListener = null
+        feedMdnsListeners.clear()
 
         try {
             if (multicastLock?.isHeld == true) {

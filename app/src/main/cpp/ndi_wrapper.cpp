@@ -4,6 +4,7 @@
 #include <mutex>
 #include <cstring>
 #include <android/log.h>
+#include <android/bitmap.h>
 #include <Processing.NDI.Lib.h>
 
 #define LOG_TAG "NDI_Wrapper"
@@ -71,51 +72,78 @@ Java_com_example_server_NdiNativeSender_nativeDestroySender(JNIEnv* env, jobject
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_example_server_NdiNativeSender_nativeSendVideo(JNIEnv* env, jobject /* this */, jlong ptr, jintArray pixels, jint width, jint height) {
-    if (!ptr || !pixels) return JNI_FALSE;
+Java_com_example_server_NdiNativeSender_nativeSendVideoBitmap(JNIEnv* env, jobject /* this */, jlong ptr, jobject bitmap, jint width, jint height) {
+    if (!ptr || !bitmap) return JNI_FALSE;
 
     NdiSenderContext* context = reinterpret_cast<NdiSenderContext*>(ptr);
 
-    jsize len = env->GetArrayLength(pixels);
-    if (len < width * height) {
-        LOGE("Pixel array too small: %d < %d", len, width * height);
+    // Zero-copy: lock the Bitmap's pixel memory directly instead of round-tripping
+    // through a Java IntArray (which cost an extra 8.3 MB copy per 1080p frame).
+    AndroidBitmapInfo info;
+    if (AndroidBitmap_getInfo(env, bitmap, &info) < 0) {
+        LOGE("AndroidBitmap_getInfo failed.");
+        return JNI_FALSE;
+    }
+    if (info.format != ANDROID_BITMAP_FORMAT_RGBA_8888) {
+        LOGE("Unsupported bitmap format: %d (need RGBA_8888).", info.format);
+        return JNI_FALSE;
+    }
+    if ((int)info.width < width || (int)info.height < height) {
+        LOGE("Bitmap too small: %ux%u < %dx%d.", info.width, info.height, width, height);
         return JNI_FALSE;
     }
 
-    jint* p_pixels = env->GetIntArrayElements(pixels, nullptr);
-    if (!p_pixels) return JNI_FALSE;
+    void* pixels = nullptr;
+    if (AndroidBitmap_lockPixels(env, bitmap, &pixels) < 0 || !pixels) {
+        LOGE("AndroidBitmap_lockPixels failed.");
+        return JNI_FALSE;
+    }
 
+    jboolean result = JNI_FALSE;
     {
         // Use a per-sender mutex to prevent concurrent buffer writes
         std::lock_guard<std::mutex> lock(context->send_mutex);
 
-        size_t required_size = width * height * 4;
+        size_t required_size = (size_t)width * (size_t)height * 4;
         if (!context->p_buffer || context->buffer_size < required_size) {
             if (context->p_buffer) free(context->p_buffer);
             context->p_buffer = (uint8_t*)malloc(required_size);
             context->buffer_size = required_size;
         }
 
-        // On Android (little-endian), IntArray pixels (ARGB_8888) are already in BGRA byte order in memory.
-        // NDIlib_FourCC_type_BGRA expects Blue, Green, Red, Alpha bytes.
-        // Since we need to keep the buffer valid until the NEXT frame, we must copy it.
-        memcpy(context->p_buffer, p_pixels, required_size);
+        if (context->p_buffer) {
+            // On Android (little-endian), ARGB_8888 bitmap memory is already in BGRA
+            // byte order, which is exactly what NDIlib_FourCC_type_BGRA expects.
+            // The buffer must stay valid until the NEXT frame, hence the copy into
+            // the sender-owned buffer (NDI sends asynchronously).
+            const size_t row_bytes = (size_t)width * 4;
+            if (info.stride == row_bytes) {
+                memcpy(context->p_buffer, pixels, required_size);
+            } else {
+                // Stride can exceed width*4; copy row by row to stay correct.
+                const uint8_t* src = static_cast<const uint8_t*>(pixels);
+                for (int y = 0; y < height; y++) {
+                    memcpy(context->p_buffer + (size_t)y * row_bytes, src + (size_t)y * info.stride, row_bytes);
+                }
+            }
 
-        NDIlib_video_frame_v2_t video_frame;
-        video_frame.xres = width;
-        video_frame.yres = height;
-        video_frame.FourCC = NDIlib_FourCC_type_BGRA;
-        video_frame.frame_rate_N = 30000;
-        video_frame.frame_rate_D = 1001;
-        video_frame.picture_aspect_ratio = (float)width / (float)height;
-        video_frame.frame_format_type = NDIlib_frame_format_type_progressive;
-        video_frame.timecode = NDIlib_send_timecode_synthesize;
-        video_frame.p_data = context->p_buffer;
-        video_frame.line_stride_in_bytes = width * 4;
+            NDIlib_video_frame_v2_t video_frame;
+            video_frame.xres = width;
+            video_frame.yres = height;
+            video_frame.FourCC = NDIlib_FourCC_type_BGRA;
+            video_frame.frame_rate_N = 30000;
+            video_frame.frame_rate_D = 1001;
+            video_frame.picture_aspect_ratio = (float)width / (float)height;
+            video_frame.frame_format_type = NDIlib_frame_format_type_progressive;
+            video_frame.timecode = NDIlib_send_timecode_synthesize;
+            video_frame.p_data = context->p_buffer;
+            video_frame.line_stride_in_bytes = width * 4;
 
-        NDIlib_send_send_video_v2(context->p_send, &video_frame);
+            NDIlib_send_send_video_v2(context->p_send, &video_frame);
+            result = JNI_TRUE;
+        }
     }
 
-    env->ReleaseIntArrayElements(pixels, p_pixels, JNI_ABORT);
-    return JNI_TRUE;
+    AndroidBitmap_unlockPixels(env, bitmap);
+    return result;
 }

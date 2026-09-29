@@ -57,8 +57,10 @@ fun TemplateEditorScreen(
     onSaveAsNew: (String, LowerThirdTemplate) -> Unit,
     onResetDefaults: () -> Unit,
     onToggleNdiSource: (String) -> Unit,
-    ndiLowerThirdActive: Boolean,
-    ndiFullShowActive: Boolean,
+    ndiLowerFullActive: Boolean,
+    ndiLowerHxActive: Boolean,
+    ndiFullShowFullActive: Boolean,
+    ndiFullShowHxActive: Boolean,
     modifier: Modifier = Modifier
 ) {
     var editorTab by remember { mutableIntStateOf(0) } // 0: Lower Third, 1: Full Show
@@ -213,10 +215,17 @@ fun TemplateEditorScreen(
                         }
                     }
                     Column(Modifier.weight(0.6f)) {
-                        val isActive = if (editorTab == 0) ndiLowerThirdActive else ndiFullShowActive
-                        Text("مصدر NDI المباشر", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
+                        // Independent Full NDI + HX (bandwidth-saver) toggles per feed
+                        val feedLabel = if (editorTab == 0) "Lower Third" else "Full Show"
+                        val fullKey = if (editorTab == 0) "lower_full" else "full_full"
+                        val hxKey = if (editorTab == 0) "lower_hx" else "full_hx"
+                        val fullActive = if (editorTab == 0) ndiLowerFullActive else ndiFullShowFullActive
+                        val hxActive = if (editorTab == 0) ndiLowerHxActive else ndiFullShowHxActive
+                        Text("مصادر NDI المباشرة", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
                         Spacer(Modifier.height(4.dp))
-                        SourceToggleChip(if (editorTab == 0) "Lower Third" else "Full Show", isActive, { onToggleNdiSource(if (editorTab == 0) "lower" else "full") })
+                        SourceToggleChip("$feedLabel • Full NDI", fullActive, { onToggleNdiSource(fullKey) })
+                        Spacer(Modifier.height(4.dp))
+                        SourceToggleChip("$feedLabel • HX", hxActive, { onToggleNdiSource(hxKey) })
                     }
                 }
 

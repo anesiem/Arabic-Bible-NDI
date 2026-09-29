@@ -28,6 +28,14 @@ Professional Arabic/English Bible broadcast controller for Android. Transform yo
 * **Zero Interference**: Uses independent native buffer pools to allow both feeds to run simultaneously without flashing.
 * **Discovery**: Automatically identified on the network by device model name (e.g., `SM-X238U - Bible-NDI-Lower`).
 
+### 📶 Dual-Tier NDI: Full + HX (Bandwidth Saver)
+Each feed (Lower Third and Full Show) can broadcast in **two independent tiers**, each with its own on/off switch in the app:
+* **Full NDI** (`… - Bible-NDI-Lower`, `… - Bible-NDI-Full`): 1920×1080 BGRA with 100% alpha transparency. Best quality for fast local networks.
+* **HX** (`… - Bible-NDI-Lower-HX`, `… - Bible-NDI-Full-HX`): 960×540 bandwidth-saver tier for slow/congested Wi-Fi. Same NDI protocol, so OBS/vMix discover it with zero extra setup, at a fraction of the bandwidth.
+* **Smart sending**: frames are pushed to the NDI network only when the verse/template actually changes (plus a 2-second keep-alive heartbeat), instead of re-encoding identical frames 15×/second — dramatically lower CPU, battery, and network use during static verses.
+
+> **Note on true NDI|HX**: the standard NDI SDK's send API exposes no codec/HX option — HX *encoding* requires Vizrt's paid NDI Advanced SDK. The HX tier here is therefore a reduced-resolution/reduced-rate NDI stream (not HX-encoded), structured so a true HX encoder can be plugged in later without UI changes.
+
 ### 🌐 HTTP & Web Overlays
 * **HTML5 Overlays**: Transparent browser sources for OBS at `/ndi` and projector views at `/show`.
 * **Zero Latency (SSE)**: Persistent Server-Sent Events push live state changes instantly.

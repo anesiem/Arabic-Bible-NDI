@@ -5,7 +5,6 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.os.Build
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
@@ -76,6 +75,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.server.InterfaceType
+import com.example.server.NdiNativeSender
 import com.example.server.NetworkInterfaceInfo
 import com.example.ui.theme.*
 
@@ -91,6 +91,7 @@ fun BroadcastControlScreen(
     onRefreshInterfaces: () -> Unit = {},
     onSetNdiProtocolEnabled: (Boolean) -> Unit = {},
     onToggleKeepScreenOn: () -> Unit = {},
+    onToggleNdiSource: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -393,11 +394,15 @@ fun BroadcastControlScreen(
                                                 modifier = Modifier
                                                     .clip(RoundedCornerShape(8.dp))
                                                     .clickable {
-                                                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                                        val clip = ClipData.newPlainText("Bible NDI Overlay URL", uiState.serverUrl)
-                                                        clipboard.setPrimaryClip(clip)
-                                                        copiedUrlType = "OVERLAY"
-                                                        Toast.makeText(context, "تم نسخ رابط التغذية الشفافة!", Toast.LENGTH_SHORT).show()
+                                                        if (uiState.serverUrl.isBlank()) {
+                                                            Toast.makeText(context, "لا يوجد اتصال شبكة محلية (Wi-Fi) — الرابط غير متاح", Toast.LENGTH_SHORT).show()
+                                                        } else {
+                                                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                                            val clip = ClipData.newPlainText("Bible NDI Overlay URL", uiState.serverUrl)
+                                                            clipboard.setPrimaryClip(clip)
+                                                            copiedUrlType = "OVERLAY"
+                                                            Toast.makeText(context, "تم نسخ رابط التغذية الشفافة!", Toast.LENGTH_SHORT).show()
+                                                        }
                                                     }
                                                     .padding(horizontal = 8.dp, vertical = 5.dp)
                                             ) {
@@ -424,11 +429,15 @@ fun BroadcastControlScreen(
                                                 modifier = Modifier
                                                     .clip(RoundedCornerShape(8.dp))
                                                     .clickable {
-                                                        try {
-                                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(uiState.serverUrl))
-                                                            context.startActivity(intent)
-                                                        } catch (e: Exception) {
-                                                            Toast.makeText(context, "تعذر فتح المتصفح", Toast.LENGTH_SHORT).show()
+                                                        if (uiState.serverUrl.isBlank()) {
+                                                            Toast.makeText(context, "لا يوجد اتصال شبكة محلية (Wi-Fi) — الرابط غير متاح", Toast.LENGTH_SHORT).show()
+                                                        } else {
+                                                            try {
+                                                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(uiState.serverUrl))
+                                                                context.startActivity(intent)
+                                                            } catch (e: Exception) {
+                                                                Toast.makeText(context, "تعذر فتح المتصفح", Toast.LENGTH_SHORT).show()
+                                                            }
                                                         }
                                                     }
                                                     .padding(horizontal = 7.dp, vertical = 5.dp)
@@ -549,20 +558,49 @@ fun BroadcastControlScreen(
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Column(modifier = Modifier.padding(10.dp)) {
-                                        val model = Build.MODEL
                                         Text("ابحث في برامج vMix/OBS عن المصادر التالية:", fontSize = 10.sp, color = BentoTextSecondary)
                                         Spacer(modifier = Modifier.height(6.dp))
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Icon(Icons.Default.Videocam, null, tint = BentoPrimary, modifier = Modifier.size(14.dp))
-                                            Spacer(modifier = Modifier.width(8.dp))
-                                            Text("$model (Bible-NDI-Lower)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BentoPrimary)
-                                        }
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Icon(Icons.Default.Videocam, null, tint = Color(0xFF10B981), modifier = Modifier.size(14.dp))
-                                            Spacer(modifier = Modifier.width(8.dp))
-                                            Text("$model (Bible-NDI-Full)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF10B981))
-                                        }
+                                        // Exact on-air names: "<TabletModel> - <FeedName>" (never localhost/IP)
+                                        NdiSourceRow(
+                                            feedKey = NdiNativeSender.FEED_LOWER,
+                                            toggleKey = "lower_full",
+                                            tierLabel = "Full NDI • 1080p • شفاف",
+                                            enabled = uiState.ndiLowerFullEnabled,
+                                            active = uiState.isNativeNdiActive,
+                                            tint = BentoPrimary,
+                                            textSecondary = BentoTextSecondary,
+                                            onToggle = onToggleNdiSource
+                                        )
+                                        NdiSourceRow(
+                                            feedKey = NdiNativeSender.FEED_LOWER_HX,
+                                            toggleKey = "lower_hx",
+                                            tierLabel = "HX • 540p • للشبكات البطيئة",
+                                            enabled = uiState.ndiLowerHxEnabled,
+                                            active = uiState.isNativeLowerHxActive,
+                                            tint = BentoPrimary,
+                                            textSecondary = BentoTextSecondary,
+                                            onToggle = onToggleNdiSource
+                                        )
+                                        NdiSourceRow(
+                                            feedKey = NdiNativeSender.FEED_FULL,
+                                            toggleKey = "full_full",
+                                            tierLabel = "Full NDI • 1080p • شفاف",
+                                            enabled = uiState.ndiFullShowFullEnabled,
+                                            active = uiState.isNativeShowActive,
+                                            tint = Color(0xFF10B981),
+                                            textSecondary = BentoTextSecondary,
+                                            onToggle = onToggleNdiSource
+                                        )
+                                        NdiSourceRow(
+                                            feedKey = NdiNativeSender.FEED_FULL_HX,
+                                            toggleKey = "full_hx",
+                                            tierLabel = "HX • 540p • للشبكات البطيئة",
+                                            enabled = uiState.ndiFullShowHxEnabled,
+                                            active = uiState.isNativeFullHxActive,
+                                            tint = Color(0xFF10B981),
+                                            textSecondary = BentoTextSecondary,
+                                            onToggle = onToggleNdiSource
+                                        )
                                     }
                                 }
 
@@ -603,11 +641,15 @@ fun BroadcastControlScreen(
                                             modifier = Modifier
                                                 .clip(RoundedCornerShape(8.dp))
                                                 .clickable {
-                                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                                    val clip = ClipData.newPlainText("Bible NDI Stream URL", uiState.streamUrl)
-                                                    clipboard.setPrimaryClip(clip)
-                                                    copiedUrlType = "STREAM"
-                                                    Toast.makeText(context, "تم نسخ رابط بث الفيديو المباشر!", Toast.LENGTH_SHORT).show()
+                                                    if (uiState.streamUrl.isBlank()) {
+                                                        Toast.makeText(context, "لا يوجد اتصال شبكة محلية (Wi-Fi) — الرابط غير متاح", Toast.LENGTH_SHORT).show()
+                                                    } else {
+                                                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                                        val clip = ClipData.newPlainText("Bible NDI Stream URL", uiState.streamUrl)
+                                                        clipboard.setPrimaryClip(clip)
+                                                        copiedUrlType = "STREAM"
+                                                        Toast.makeText(context, "تم نسخ رابط بث الفيديو المباشر!", Toast.LENGTH_SHORT).show()
+                                                    }
                                                 }
                                                 .padding(horizontal = 8.dp, vertical = 5.dp)
                                                 .testTag("copy_stream_button")
@@ -1060,6 +1102,54 @@ fun BroadcastControlScreen(
                 }
             }
         }
+    }
+}
+
+/**
+ * One NDI source row: exact on-air name ("<TabletModel> - <FeedName>"),
+ * live status dot, and an independent on/off switch.
+ */
+@Composable
+private fun NdiSourceRow(
+    feedKey: String,
+    toggleKey: String,
+    tierLabel: String,
+    enabled: Boolean,
+    active: Boolean,
+    tint: Color,
+    textSecondary: Color,
+    onToggle: (String) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(8.dp)
+                .clip(CircleShape)
+                .background(if (active) Color(0xFF10B981) else Color(0xFF94A3B8))
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = NdiNativeSender.displayName(feedKey),
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = tint
+            )
+            Text(
+                text = tierLabel + if (active) " • يعمل الآن" else " • متوقف",
+                fontSize = 9.sp,
+                color = textSecondary
+            )
+        }
+        Switch(
+            checked = enabled,
+            onCheckedChange = { onToggle(toggleKey) }
+        )
     }
 }
 

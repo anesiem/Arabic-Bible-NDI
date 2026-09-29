@@ -1,27 +1,32 @@
-# Bible NDI (Version 1.2)
+# Bible NDI (Version 1.3 - Latest Release)
+
+[![Latest Release](https://img.shields.io/github/v/release/anesiem/Arabic-Bible-NDI?color=10B981&label=Latest%20Release)](https://github.com/anesiem/Arabic-Bible-NDI/releases/tag/v1.3)
+[![License](https://img.shields.io/badge/License-NDI%206-3B82F6)](https://github.com/anesiem/Arabic-Bible-NDI)
+[![Platform](https://img.shields.io/badge/Platform-Android%207.0%2B-F59E0B)](https://github.com/anesiem/Arabic-Bible-NDI)
 
 Professional Arabic/English Bible broadcast controller for Android. Transform your tablet or phone into a high-quality NDI 6 source and HTTP overlay server optimized for church presentations, live streaming, and OBS/vMix broadcast integration.
 
 ---
 
-## 🚀 What's New in Version 1.2
+## 🚀 What's New in Version 1.3 (Latest Release)
 
-* **⚡ Ultra-Low Latency NDI & SSE Architecture**: Zero-allocation bitmap caching eliminates garbage collection (GC) pauses (`0ms` allocation-free rendering when idle). Socket-level `TCP_NODELAY` and 64 KB buffers deliver instantaneous (<5ms) verse updates across the network.
-* **☀️ Keep Device Awake (Keep Screen On)**: Integrated `FLAG_KEEP_SCREEN_ON` toggle in the settings and NDI Link tab. Prevents phone/tablet sleep, screen dimming, or CPU throttling during continuous live broadcasts.
-* **👉 Gesture-Based Chapter Navigation**: Horizontal swipe gestures on the main scripture view allow seamless navigation between chapters (Swipe Left for Next Chapter, Swipe Right for Previous Chapter).
-* **📱 Scrollable Scripture Selector**: Responsive, scrollable hierarchy selector for Testament, Book, Chapter, and Verse picking on all mobile and tablet screen sizes.
-* **📌 Centered Full Show / Projector Feed**: Refactored CSS/JS layout for `/show` feeds ensuring verse text and citation badges are centered vertically in the middle of the screen.
-* **🎯 Focused Library UI**: Streamlined scripture reader UI for rapid verse cued selection and live broadcast control.
+* 📺 **Restored NDI Device Model Naming**: NDI protocol sources now broadcast your tablet/phone device model name cleanly (e.g., `SM-X238U - Bible-NDI-Lower` and `SM-X238U - Bible-NDI-Full`).
+* 🎨 **Restored 16:9 Editor Preview Canvas**: Lower Third preview viewport maintains a 16:9 canvas aspect ratio, ensuring Lower Third cards are 100% visible and crisp against Studio, Pure Black, Chroma Green, or Transparent Checkerboard backdrops.
+* 📌 **Perfect Full Show / Projector Centering**: Mathematical vertical & horizontal flexbox layout for `/show` feeds and native NDI frames.
+* ⚡ **Startup Active NDI Feeds**: Native NDI sources for both Lower Third and Full Show start active immediately upon program startup.
+* ☀️ **Keep Device Awake**: Integrated `FLAG_KEEP_SCREEN_ON` toggle prevents phone/tablet sleep, dimming, or CPU throttling during continuous live broadcasts.
+* 👉 **Gesture-Based Chapter Navigation**: Horizontal swipe gestures on the main scripture reader view allow seamless navigation between chapters (Swipe Left for Next Chapter, Swipe Right for Previous Chapter).
+* 📱 **Scrollable Scripture Selector**: Responsive hierarchy picker for Testament, Book, Chapter, and Verse picking on all mobile and tablet screen sizes.
 
 ---
 
-## 📺 Key Features
+## 📺 Core Features
 
 ### 📺 Dual NDI 6 Native Outputs
 * **Lower Third Feed**: Optimized for broadcast streaming (OBS/vMix) with automatic RTL Arabic support and LTR English alignment.
 * **Full Show Feed**: Dedicated full-screen output for projectors with vertical and horizontal centering.
 * **Zero Interference**: Uses independent native buffer pools to allow both feeds to run simultaneously without flashing.
-* **Discovery**: Automatically identified on the network by device model name (e.g., `SM-X238U (Bible-NDI-Lower)`).
+* **Discovery**: Automatically identified on the network by device model name (e.g., `SM-X238U - Bible-NDI-Lower`).
 
 ### 🌐 HTTP & Web Overlays
 * **HTML5 Overlays**: Transparent browser sources for OBS at `/ndi` and projector views at `/show`.
@@ -36,6 +41,7 @@ Professional Arabic/English Bible broadcast controller for Android. Transform yo
 
 ### 🎨 Design & Customization
 * **Total Typography Control**: Independent font families, sizes, colors, and styles (Bold/Italic) for both languages.
+* **Color Grade Spectrum**: 31 Preset Broadcast Color Grades + Hue Spectrum Cycle + Custom Hex Input + Recent Colors bar with deletion `x` buttons.
 * **Visual Styles**: Glassmorphism, classic banners, liturgical gold, and 100% pure transparent alpha modes.
 * **Bilingual Spacing**: Fine-tune the vertical gap between languages for maximum readability.
 * **Dark Mode Ready**: Optimized UI with high-contrast verse highlighting.

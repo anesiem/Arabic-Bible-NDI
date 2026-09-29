@@ -1,4 +1,4 @@
-# Technical Guide for Developers - Bible NDI v1.2
+# Technical Guide for Developers - Bible NDI v1.3
 
 This document explains the internal architecture and NDI 6 implementation details for developers wishing to extend or modify the application.
 
@@ -9,13 +9,13 @@ The app follows a modern Clean Architecture pattern with a focus on real-time ne
 1.  **UI Layer (Jetpack Compose)**:
     *   `BibleNdiViewModel`: The central state machine. Manages dual NDI source states, Keep Screen Awake flags, HTTP server lifecycle, and Bible navigation.
     *   `BibleReaderScreen`: Implements gesture-based horizontal chapter swiping (`pointerInput`), scrollable scripture selection, and verse cued state management.
-    *   `TemplateEditorScreen`: Handles the complex logic for independent Lower Third and Full Show customization.
+    *   `TemplateEditorScreen`: Handles the complex logic for independent Lower Third and Full Show customization, 16:9 preview viewport, and Color Grade Spectrum with recent colors management.
 2.  **Data Layer (SQLite & Repository)**:
     *   `BibleRepository`: Queries local `.db` files using raw SQL for maximum query performance.
     *   `TemplateRepository`: Persists JSON-serialized design templates in `SharedPreferences`.
 3.  **Networking Layer (NDI & HTTP)**:
     *   `NdiBroadcastServer`: Multi-threaded socket server generating dynamic HTML/CSS/JS overlays and persistent SSE event streams. Features zero-allocation bitmap caching (`cachedLowerBitmap`/`cachedShowBitmap`) and `TCP_NODELAY` socket optimizations.
-    *   `NdiDiscoveryBeacon`: Handles mDNS/DNS-SD registration using NDI 6 specifications.
+    *   `NdiDiscoveryBeacon`: Handles mDNS/DNS-SD registration using NDI 6 specifications (`$deviceModel - Bible-NDI-Lower` and `$deviceModel - Bible-NDI-Full`).
 
 ## 🔌 NDI 6 Implementation & Latency Optimizations
 

@@ -137,12 +137,22 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     @Volatile
     private var isCacheDirtyShow = true
 
+    /**
+     * Monotonically increasing frame version, bumped on every state change that
+     * affects rendered output. NDI senders use it for dirty-frame detection so
+     * static verses don't burn CPU/network re-sending identical frames.
+     */
+    @Volatile
+    private var _frameVersion = 0L
+    val frameVersion: Long get() = _frameVersion
+
     private var cachedLowerBitmap: Bitmap? = null
     private var cachedShowBitmap: Bitmap? = null
 
     fun invalidateBitmapCache() {
         isCacheDirtyLower = true
         isCacheDirtyShow = true
+        _frameVersion++
     }
 
     fun updateVerse(verse: BibleVerse, live: Boolean = true) {
@@ -938,11 +948,26 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     }
 
     fun renderCurrentFrame(width: Int = 1920, height: Int = 1080, isForStream: Boolean = false, overrideTemplate: LowerThirdTemplate? = null): Bitmap {
+        return renderFrame(width, height, isForStream, overrideTemplate, allowSharedCache = true)
+    }
+
+    /**
+     * Renders a frame into a FRESH bitmap that the caller owns and must recycle.
+     * Never returns the shared NDI cache bitmaps, so it is safe to recycle the
+     * result even while NDI sender threads are reading the cached frames.
+     * (This replaces the old pattern of recycling whatever renderCurrentFrame
+     * returned, which could recycle the live shared bitmap mid-send.)
+     */
+    fun renderFrameOwned(width: Int = 1920, height: Int = 1080, isForStream: Boolean = false, overrideTemplate: LowerThirdTemplate? = null): Bitmap {
+        return renderFrame(width, height, isForStream, overrideTemplate, allowSharedCache = false)
+    }
+
+    private fun renderFrame(width: Int = 1920, height: Int = 1080, isForStream: Boolean = false, overrideTemplate: LowerThirdTemplate? = null, allowSharedCache: Boolean): Bitmap {
         val tpl = overrideTemplate ?: currentTemplate
         val isFull = tpl.isFullScreen
 
         // Fast Path: Return cached Bitmap if state hasn't changed (0ms allocation-free)
-        if (!isForStream && overrideTemplate == null && width == 1920 && height == 1080) {
+        if (allowSharedCache && !isForStream && overrideTemplate == null && width == 1920 && height == 1080) {
             if (isFull && !isCacheDirtyShow && cachedShowBitmap != null && !cachedShowBitmap!!.isRecycled) {
                 return cachedShowBitmap!!
             }
@@ -951,7 +976,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             }
         }
 
-        val bitmap = if (!isForStream && overrideTemplate == null && width == 1920 && height == 1080) {
+        val bitmap = if (allowSharedCache && !isForStream && overrideTemplate == null && width == 1920 && height == 1080) {
             val target = if (isFull) cachedShowBitmap else cachedLowerBitmap
             if (target != null && !target.isRecycled) {
                 target
@@ -1334,7 +1359,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             canvas.drawText("وضع الاستعداد • STANDBY (اضغط على الهواء للبث)", width / 2f, 35f * scale + (badgeH * 0.65f), standbyTextPaint)
         }
 
-        if (!isForStream && overrideTemplate == null && width == 1920 && height == 1080) {
+        if (allowSharedCache && !isForStream && overrideTemplate == null && width == 1920 && height == 1080) {
             if (isFull) isCacheDirtyShow = false else isCacheDirtyLower = false
         }
 
@@ -1382,7 +1407,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     }
 
     private fun serveTransparentPngOverlay(out: OutputStream) {
-        val bitmap = renderCurrentFrame(1920, 1080, isForStream = false)
+        // Owned bitmap: safe to recycle (never the shared NDI cache bitmap).
+        val bitmap = renderFrameOwned(1920, 1080, isForStream = false)
         val stream = ByteArrayOutputStream()
         bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
         bitmap.recycle()
@@ -1607,7 +1633,14 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
     private fun pushFrameToStream(out: OutputStream, boundary: String, useJpeg: Boolean): Boolean {
         return try {
-            val bitmap = renderCurrentFrame(1920, 1080, isForStream = useJpeg)
+            // JPEG path already allocates a fresh bitmap (isForStream=true bypasses the
+            // shared cache). PNG path uses an owned render so recycle() can never hit
+            // the live NDI cache bitmaps. Either way, recycle() is safe here.
+            val bitmap = if (useJpeg) {
+                renderCurrentFrame(1920, 1080, isForStream = true)
+            } else {
+                renderFrameOwned(1920, 1080, isForStream = false)
+            }
             val stream = ByteArrayOutputStream()
             val format = if (useJpeg) Bitmap.CompressFormat.JPEG else Bitmap.CompressFormat.PNG
             val quality = if (useJpeg) 85 else 100
@@ -1660,11 +1693,16 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         return NetworkHelper.getPrimaryIpAddress()
     }
 
+    /** True when the device has a real LAN address (never loopback/localhost). */
+    fun hasLanAddress(): Boolean = !getLocalIpAddress().startsWith("127.")
+
     fun getServerUrl(): String {
+        if (!hasLanAddress()) return ""
         return "http://${getLocalIpAddress()}:$port/ndi"
     }
 
     fun getStreamUrl(): String {
+        if (!hasLanAddress()) return ""
         return "http://${getLocalIpAddress()}:$port/ndi/stream"
     }
 }

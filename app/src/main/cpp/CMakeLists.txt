@@ -14,9 +14,10 @@ include_directories(${CMAKE_SOURCE_DIR}/include)
 # Build our JNI wrapper
 add_library(ndi_wrapper SHARED ndi_wrapper.cpp)
 
-# Link log library and NDI library
+# Link log library, jnigraphics (AndroidBitmap_*), and NDI library
 find_library(log-lib log)
-target_link_libraries(ndi_wrapper ${log-lib} ndi)
+find_library(jnigraphics-lib jnigraphics)
+target_link_libraries(ndi_wrapper ${log-lib} ${jnigraphics-lib} ndi)
 
 # Ensure 16 KB page alignment for Android 15+
 set_target_properties(ndi_wrapper PROPERTIES LINK_FLAGS "-Wl,-z,max-page-size=16384")

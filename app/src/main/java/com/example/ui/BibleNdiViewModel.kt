@@ -13,7 +13,9 @@ import com.example.model.LowerThirdTemplate
 import com.example.model.Testament
 import com.example.server.NdiBroadcastServer
 import com.example.server.NdiDiscoveryBeacon
+import com.example.server.NdiErrorEvent
 import com.example.server.NdiNativeSender
+import com.example.server.NdiSourceSpec
 import com.example.server.NetworkHelper
 import com.example.server.NetworkInterfaceInfo
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -43,8 +45,23 @@ data class BibleNdiUiState(
     val isNdiProtocolEnabled: Boolean = true,
     val isNativeNdiActive: Boolean = false,
     val isNativeShowActive: Boolean = false,
-    val ndiLowerThirdEnabled: Boolean = true,
-    val ndiFullShowEnabled: Boolean = true,
+    val isNativeLowerHxActive: Boolean = false,
+    val isNativeFullHxActive: Boolean = false,
+    // Independent per-tier source switches (Full NDI + HX bandwidth-saver, per feed)
+    val ndiLowerFullEnabled: Boolean = true,
+    val ndiLowerHxEnabled: Boolean = false,
+    val ndiFullShowFullEnabled: Boolean = true,
+    val ndiFullShowHxEnabled: Boolean = false,
+    // User-customizable per-source resolution + frame rate (dropdowns in NDI tab)
+    val ndiSourceSpecs: Map<String, NdiSourceSpec> = mapOf(
+        NdiNativeSender.FEED_LOWER to NdiNativeSender.defaultSpec(NdiNativeSender.FEED_LOWER),
+        NdiNativeSender.FEED_LOWER_HX to NdiNativeSender.defaultSpec(NdiNativeSender.FEED_LOWER_HX),
+        NdiNativeSender.FEED_FULL to NdiNativeSender.defaultSpec(NdiNativeSender.FEED_FULL),
+        NdiNativeSender.FEED_FULL_HX to NdiNativeSender.defaultSpec(NdiNativeSender.FEED_FULL_HX)
+    ),
+    // Advanced diagnostics (last tab): when on, NDI errors are shown to the user
+    val showAdvancedNdi: Boolean = false,
+    val ndiErrorEvents: List<NdiErrorEvent> = emptyList(),
     val templates: List<LowerThirdTemplate> = emptyList(),
     val activeTemplate: LowerThirdTemplate = TemplateRepository.DEFAULT_TEMPLATES[0],
     val activeShowTemplate: LowerThirdTemplate = TemplateRepository.DEFAULT_TEMPLATES[0].copy(
@@ -87,6 +104,8 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
                 broadcastServer.renderCurrentFrame(1920, 1080, isForStream = false)
             }
         }
+        // Dirty-frame detection: NDI senders only push when the version changes.
+        nativeSender.setFrameVersionProvider { broadcastServer.frameVersion }
         loadInitialData()
         refreshNetworkInterfaces()
         // startBroadcastServer() // DO NOT auto-start as per request 8? 
@@ -139,7 +158,8 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
 
         // Restart mDNS beacon with updated IP if NDI protocol is enabled
         if (_uiState.value.isNdiProtocolEnabled) {
-            discoveryBeacon.start(serviceUrl = url, ip = info.ip, port = _uiState.value.serverPort)
+            discoveryBeacon.start(serviceUrl = url, ip = info.ip, port = _uiState.value.serverPort,
+                specs = NdiNativeSender.ALL_FEEDS.map { _uiState.value.ndiSourceSpecs.getValue(it) })
         }
     }
 
@@ -153,12 +173,18 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             val ip = broadcastServer.getLocalIpAddress()
             val url = broadcastServer.getServerUrl()
             syncNativeSources()
-            discoveryBeacon.start(serviceUrl = url, ip = ip, port = _uiState.value.serverPort)
+            discoveryBeacon.start(serviceUrl = url, ip = ip, port = _uiState.value.serverPort,
+            specs = NdiNativeSender.ALL_FEEDS.map { _uiState.value.ndiSourceSpecs.getValue(it) })
             triggerAllFrames()
         } else {
             nativeSender.stopAll()
             discoveryBeacon.stop()
-            _uiState.value = _uiState.value.copy(isNativeNdiActive = false, isNativeShowActive = false)
+            _uiState.value = _uiState.value.copy(
+                isNativeNdiActive = false,
+                isNativeShowActive = false,
+                isNativeLowerHxActive = false,
+                isNativeFullHxActive = false
+            )
         }
     }
 
@@ -211,7 +237,8 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
                     statusMessage = "Broadcast Server Active"
                 )
 
-                discoveryBeacon.start(serviceUrl = url, ip = ip, port = port)
+                discoveryBeacon.start(serviceUrl = url, ip = ip, port = port,
+                    specs = NdiNativeSender.ALL_FEEDS.map { _uiState.value.ndiSourceSpecs.getValue(it) })
             }
         ) { err ->
             _uiState.value = _uiState.value.copy(
@@ -223,59 +250,138 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
 
     fun startNdiFeeds() {
         _uiState.value = _uiState.value.copy(
-            ndiLowerThirdEnabled = true,
-            ndiFullShowEnabled = true
+            ndiLowerFullEnabled = true,
+            ndiLowerHxEnabled = true,
+            ndiFullShowFullEnabled = true,
+            ndiFullShowHxEnabled = true
         )
         syncNativeSources()
         triggerAllFrames()
-        _uiState.value = _uiState.value.copy(statusMessage = "All NDI Sources (Lower & Full) Started")
+        _uiState.value = _uiState.value.copy(statusMessage = "All NDI Sources (Lower/Full x Full/HX) Started")
     }
 
     fun stopNdiFeeds() {
         _uiState.value = _uiState.value.copy(
-            ndiLowerThirdEnabled = false,
-            ndiFullShowEnabled = false
+            ndiLowerFullEnabled = false,
+            ndiLowerHxEnabled = false,
+            ndiFullShowFullEnabled = false,
+            ndiFullShowHxEnabled = false
         )
         nativeSender.stopAll()
         _uiState.value = _uiState.value.copy(
             isNativeNdiActive = false,
             isNativeShowActive = false,
+            isNativeLowerHxActive = false,
+            isNativeFullHxActive = false,
             statusMessage = "All NDI Sources Stopped"
         )
     }
 
+    private fun applyNdiSource(spec: NdiSourceSpec, enabled: Boolean, isFullScreen: Boolean): Boolean {
+        return if (enabled) {
+            nativeSender.startSource(spec.feedKey, isFullScreen, spec)
+        } else {
+            nativeSender.stopSource(spec.feedKey)
+            false
+        }
+    }
+
     private fun syncNativeSources() {
         val state = _uiState.value
-        if (state.ndiLowerThirdEnabled) {
-            nativeSender.startSource("Bible-NDI-Lower", false)
-        } else {
-            nativeSender.stopSource("Bible-NDI-Lower")
-        }
+        val specs = state.ndiSourceSpecs
+        val lowerFull = applyNdiSource(
+            specs.getValue(NdiNativeSender.FEED_LOWER), state.ndiLowerFullEnabled, false
+        )
+        val lowerHx = applyNdiSource(
+            specs.getValue(NdiNativeSender.FEED_LOWER_HX), state.ndiLowerHxEnabled, false
+        )
+        val fullFull = applyNdiSource(
+            specs.getValue(NdiNativeSender.FEED_FULL), state.ndiFullShowFullEnabled, true
+        )
+        val fullHx = applyNdiSource(
+            specs.getValue(NdiNativeSender.FEED_FULL_HX), state.ndiFullShowHxEnabled, true
+        )
 
-        if (state.ndiFullShowEnabled) {
-            nativeSender.startSource("Bible-NDI-Full", true)
-        } else {
-            nativeSender.stopSource("Bible-NDI-Full")
-        }
-        
         _uiState.value = _uiState.value.copy(
-            isNativeNdiActive = state.ndiLowerThirdEnabled,
-            isNativeShowActive = state.ndiFullShowEnabled
+            isNativeNdiActive = lowerFull,
+            isNativeLowerHxActive = lowerHx,
+            isNativeShowActive = fullFull,
+            isNativeFullHxActive = fullHx
+        )
+        refreshNdiDiagnostics()
+    }
+
+    /** User changed a source's resolution/fps in the dropdowns: apply + restart if active. */
+    fun updateNdiSourceSpec(feedKey: String, width: Int, height: Int, fps: Int) {
+        val spec = NdiSourceSpec(feedKey, width, height, fps)
+        _uiState.value = _uiState.value.copy(
+            ndiSourceSpecs = _uiState.value.ndiSourceSpecs + (feedKey to spec)
+        )
+        val s = _uiState.value
+        val enabled = when (feedKey) {
+            NdiNativeSender.FEED_LOWER -> s.ndiLowerFullEnabled
+            NdiNativeSender.FEED_LOWER_HX -> s.ndiLowerHxEnabled
+            NdiNativeSender.FEED_FULL -> s.ndiFullShowFullEnabled
+            else -> s.ndiFullShowHxEnabled
+        }
+        if (enabled && s.isNdiProtocolEnabled) {
+            // Restart the source so the new resolution/fps takes effect immediately.
+            nativeSender.stopSource(feedKey)
+            syncNativeSources()
+            triggerAllFrames()
+            restartBeacon()
+        } else {
+            refreshNdiDiagnostics()
+        }
+    }
+
+    fun toggleAdvancedNdi() {
+        _uiState.value = _uiState.value.copy(showAdvancedNdi = !_uiState.value.showAdvancedNdi)
+        refreshNdiDiagnostics()
+    }
+
+    fun refreshNdiDiagnostics() {
+        _uiState.value = _uiState.value.copy(ndiErrorEvents = nativeSender.getErrorEvents())
+    }
+
+    fun clearNdiDiagnostics() {
+        nativeSender.clearErrorEvents()
+        _uiState.value = _uiState.value.copy(ndiErrorEvents = emptyList())
+    }
+
+    /** (Re)start the discovery beacon, advertising the current per-source specs. */
+    private fun restartBeacon() {
+        if (!_uiState.value.isNdiProtocolEnabled || !_uiState.value.isServerRunning) return
+        val ip = broadcastServer.getLocalIpAddress()
+        val url = broadcastServer.getServerUrl()
+        discoveryBeacon.start(
+            serviceUrl = url,
+            ip = ip,
+            port = _uiState.value.serverPort,
+            specs = NdiNativeSender.ALL_FEEDS.map { _uiState.value.ndiSourceSpecs.getValue(it) }
         )
     }
 
     fun toggleNdiSource(source: String) {
-        when(source) {
-            "lower" -> _uiState.value = _uiState.value.copy(ndiLowerThirdEnabled = !_uiState.value.ndiLowerThirdEnabled)
-            "full" -> _uiState.value = _uiState.value.copy(ndiFullShowEnabled = !_uiState.value.ndiFullShowEnabled)
+        _uiState.value = when (source) {
+            "lower_full" -> _uiState.value.copy(ndiLowerFullEnabled = !_uiState.value.ndiLowerFullEnabled)
+            "lower_hx" -> _uiState.value.copy(ndiLowerHxEnabled = !_uiState.value.ndiLowerHxEnabled)
+            "full_full" -> _uiState.value.copy(ndiFullShowFullEnabled = !_uiState.value.ndiFullShowFullEnabled)
+            "full_hx" -> _uiState.value.copy(ndiFullShowHxEnabled = !_uiState.value.ndiFullShowHxEnabled)
+            // Legacy keys from v1.3 (mapped to the Full tiers)
+            "lower" -> _uiState.value.copy(ndiLowerFullEnabled = !_uiState.value.ndiLowerFullEnabled)
+            "full" -> _uiState.value.copy(ndiFullShowFullEnabled = !_uiState.value.ndiFullShowFullEnabled)
+            else -> _uiState.value
         }
         syncNativeSources()
         triggerAllFrames()
     }
 
     private fun triggerAllFrames() {
-        nativeSender.triggerFrame("Bible-NDI-Lower", false)
-        nativeSender.triggerFrame("Bible-NDI-Full", true)
+        nativeSender.triggerFrame(NdiNativeSender.FEED_LOWER, false)
+        nativeSender.triggerFrame(NdiNativeSender.FEED_LOWER_HX, false)
+        nativeSender.triggerFrame(NdiNativeSender.FEED_FULL, true)
+        nativeSender.triggerFrame(NdiNativeSender.FEED_FULL_HX, true)
     }
 
     fun stopBroadcastServer() {

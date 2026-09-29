@@ -297,8 +297,10 @@ class MainActivity : ComponentActivity() {
                                 onSaveAsNew = { name, base -> viewModel.saveAsNewTemplate(name, base) },
                                 onResetDefaults = { viewModel.resetTemplatesToDefault() },
                                 onToggleNdiSource = { viewModel.toggleNdiSource(it) },
-                                ndiLowerThirdActive = uiState.ndiLowerThirdEnabled,
-                                ndiFullShowActive = uiState.ndiFullShowEnabled
+                                ndiLowerFullActive = uiState.ndiLowerFullEnabled,
+                                ndiLowerHxActive = uiState.ndiLowerHxEnabled,
+                                ndiFullShowFullActive = uiState.ndiFullShowFullEnabled,
+                                ndiFullShowHxActive = uiState.ndiFullShowHxEnabled
                             )
                             2 -> BroadcastControlScreen(
                                 uiState = uiState,
@@ -313,7 +315,12 @@ class MainActivity : ComponentActivity() {
                                 onSelectInterface = { viewModel.selectNetworkInterface(it) },
                                 onRefreshInterfaces = { viewModel.refreshNetworkInterfaces() },
                                 onSetNdiProtocolEnabled = { viewModel.setNdiProtocolEnabled(it) },
-                                onToggleKeepScreenOn = { viewModel.toggleKeepScreenOn() }
+                                onToggleKeepScreenOn = { viewModel.toggleKeepScreenOn() },
+                                onToggleNdiSource = { viewModel.toggleNdiSource(it) },
+                                onUpdateNdiSourceSpec = { feedKey, w, h, fps -> viewModel.updateNdiSourceSpec(feedKey, w, h, fps) },
+                                onToggleAdvancedNdi = { viewModel.toggleAdvancedNdi() },
+                                onRefreshNdiDiagnostics = { viewModel.refreshNdiDiagnostics() },
+                                onClearNdiDiagnostics = { viewModel.clearNdiDiagnostics() }
                             )
                         }
                     }

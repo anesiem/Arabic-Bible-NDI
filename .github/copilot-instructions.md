@@ -1,0 +1,1 @@
+Whenever working on any task, feature update, or bug fix in this project, you MUST first read and strictly follow the engineering guidelines, design principles, performance rules, color grade systems, LTR/RTL localization, and quality checklist defined in `AI_DEVELOPMENT_PREFERENCES.md`.

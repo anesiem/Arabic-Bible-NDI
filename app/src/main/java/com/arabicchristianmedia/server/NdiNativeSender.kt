@@ -2,6 +2,8 @@ package com.arabicchristianmedia.server
 
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.PorterDuff
 import android.graphics.Rect
 import android.os.Build
 import android.os.SystemClock
@@ -287,6 +289,7 @@ class NdiNativeSender {
                     session.scaledBitmap = scaled
                 }
                 val canvas = Canvas(scaled)
+                canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
                 canvas.drawBitmap(
                     bitmap, null,
                     Rect(0, 0, spec.width, spec.height), null

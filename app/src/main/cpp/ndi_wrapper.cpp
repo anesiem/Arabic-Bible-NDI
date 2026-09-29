@@ -16,9 +16,11 @@ struct NdiSenderContext {
     NDIlib_send_instance_t p_send;
     uint8_t* p_buffer;
     size_t buffer_size;
+    int fps_n;
+    int fps_d;
     std::mutex send_mutex;
 
-    NdiSenderContext() : p_send(nullptr), p_buffer(nullptr), buffer_size(0) {}
+    NdiSenderContext() : p_send(nullptr), p_buffer(nullptr), buffer_size(0), fps_n(30), fps_d(1) {}
 };
 
 extern "C" JNIEXPORT jboolean JNICALL
@@ -32,7 +34,7 @@ Java_com_example_server_NdiNativeSender_nativeInitialize(JNIEnv* env, jobject /*
 }
 
 extern "C" JNIEXPORT jlong JNICALL
-Java_com_example_server_NdiNativeSender_nativeCreateSender(JNIEnv* env, jobject /* this */, jstring name) {
+Java_com_example_server_NdiNativeSender_nativeCreateSender(JNIEnv* env, jobject /* this */, jstring name, jint fps) {
     const char* native_name = env->GetStringUTFChars(name, nullptr);
 
     NDIlib_send_create_t create_settings;
@@ -51,8 +53,12 @@ Java_com_example_server_NdiNativeSender_nativeCreateSender(JNIEnv* env, jobject 
 
     NdiSenderContext* context = new NdiSenderContext();
     context->p_send = p_send;
+    // User-selected frame rate (from the app's dropdown). Receivers use this as
+    // the stream's nominal rate; actual pushes are dirty-frame driven.
+    context->fps_n = fps > 0 ? fps : 30;
+    context->fps_d = 1;
 
-    LOGI("NDI sender created and wrapped in context.");
+    LOGI("NDI sender created and wrapped in context (fps=%d).", context->fps_n);
     return reinterpret_cast<jlong>(context);
 }
 
@@ -131,8 +137,8 @@ Java_com_example_server_NdiNativeSender_nativeSendVideoBitmap(JNIEnv* env, jobje
             video_frame.xres = width;
             video_frame.yres = height;
             video_frame.FourCC = NDIlib_FourCC_type_BGRA;
-            video_frame.frame_rate_N = 30000;
-            video_frame.frame_rate_D = 1001;
+            video_frame.frame_rate_N = context->fps_n;
+            video_frame.frame_rate_D = context->fps_d;
             video_frame.picture_aspect_ratio = (float)width / (float)height;
             video_frame.frame_format_type = NDIlib_frame_format_type_progressive;
             video_frame.timecode = NDIlib_send_timecode_synthesize;

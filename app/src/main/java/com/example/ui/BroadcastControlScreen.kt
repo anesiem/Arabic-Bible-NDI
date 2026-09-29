@@ -53,11 +53,17 @@ import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -70,12 +76,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.server.InterfaceType
 import com.example.server.NdiNativeSender
+import com.example.server.NdiSourceSpec
 import com.example.server.NetworkInterfaceInfo
 import com.example.ui.theme.*
 
@@ -92,10 +100,19 @@ fun BroadcastControlScreen(
     onSetNdiProtocolEnabled: (Boolean) -> Unit = {},
     onToggleKeepScreenOn: () -> Unit = {},
     onToggleNdiSource: (String) -> Unit = {},
+    onUpdateNdiSourceSpec: (String, Int, Int, Int) -> Unit = { _, _, _, _ -> },
+    onToggleAdvancedNdi: () -> Unit = {},
+    onRefreshNdiDiagnostics: () -> Unit = {},
+    onClearNdiDiagnostics: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val bento = LocalBentoColors.current
+    /** Tier label showing the source's *current* configured resolution, e.g. "Full NDI • 1280×720 • شفاف". */
+    val specLabel = { feedKey: String, tier: String ->
+        val sp = uiState.ndiSourceSpecs[feedKey] ?: NdiNativeSender.defaultSpec(feedKey)
+        "$tier • ${sp.width}×${sp.height}"
+    }
     val BentoBg = bento.bg
     val BentoCardWhite = bento.card
     val BentoSurfaceContainer = bento.surfaceContainer
@@ -564,7 +581,7 @@ fun BroadcastControlScreen(
                                         NdiSourceRow(
                                             feedKey = NdiNativeSender.FEED_LOWER,
                                             toggleKey = "lower_full",
-                                            tierLabel = "Full NDI • 1080p • شفاف",
+                                            tierLabel = specLabel(NdiNativeSender.FEED_LOWER, "Full NDI • شفاف"),
                                             enabled = uiState.ndiLowerFullEnabled,
                                             active = uiState.isNativeNdiActive,
                                             tint = BentoPrimary,
@@ -574,7 +591,7 @@ fun BroadcastControlScreen(
                                         NdiSourceRow(
                                             feedKey = NdiNativeSender.FEED_LOWER_HX,
                                             toggleKey = "lower_hx",
-                                            tierLabel = "HX • 540p • للشبكات البطيئة",
+                                            tierLabel = specLabel(NdiNativeSender.FEED_LOWER_HX, "HX • للشبكات البطيئة"),
                                             enabled = uiState.ndiLowerHxEnabled,
                                             active = uiState.isNativeLowerHxActive,
                                             tint = BentoPrimary,
@@ -584,7 +601,7 @@ fun BroadcastControlScreen(
                                         NdiSourceRow(
                                             feedKey = NdiNativeSender.FEED_FULL,
                                             toggleKey = "full_full",
-                                            tierLabel = "Full NDI • 1080p • شفاف",
+                                            tierLabel = specLabel(NdiNativeSender.FEED_FULL, "Full NDI • شفاف"),
                                             enabled = uiState.ndiFullShowFullEnabled,
                                             active = uiState.isNativeShowActive,
                                             tint = Color(0xFF10B981),
@@ -594,13 +611,168 @@ fun BroadcastControlScreen(
                                         NdiSourceRow(
                                             feedKey = NdiNativeSender.FEED_FULL_HX,
                                             toggleKey = "full_hx",
-                                            tierLabel = "HX • 540p • للشبكات البطيئة",
+                                            tierLabel = specLabel(NdiNativeSender.FEED_FULL_HX, "HX • للشبكات البطيئة"),
                                             enabled = uiState.ndiFullShowHxEnabled,
                                             active = uiState.isNativeFullHxActive,
                                             tint = Color(0xFF10B981),
                                             textSecondary = BentoTextSecondary,
                                             onToggle = onToggleNdiSource
                                         )
+                                    }
+                                }
+
+                                // Error banner: visible even when Advanced is off, so the user always knows
+                                if (!uiState.showAdvancedNdi && uiState.ndiErrorEvents.isNotEmpty()) {
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = Color(0xFFFEF2F2),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFCA5A5)),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text(
+                                            text = "⚠ تم تسجيل ${uiState.ndiErrorEvents.size} من أخطاء NDI — فعّل «الخيارات المتقدمة» بالأسفل لعرض التفاصيل",
+                                            fontSize = 10.sp,
+                                            color = Color(0xFFB91C1C),
+                                            modifier = Modifier.padding(10.dp)
+                                        )
+                                    }
+                                }
+
+                                // NDI Source Settings: per-source resolution + frame rate dropdowns
+                                Text(
+                                    text = "٤. إعدادات مصادر NDI (الدقة ومعدل الإطارات):",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = BentoTextPrimary
+                                )
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = BentoCardWhite,
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, BentoBorder),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(modifier = Modifier.padding(10.dp)) {
+                                        Text(
+                                            "اختر الدقة ومعدل الإطارات لكل مصدر. التغيير يُعاد تشغيل المصدر فوراً.",
+                                            fontSize = 10.sp,
+                                            color = BentoTextSecondary
+                                        )
+                                        val specOf = { feed: String -> uiState.ndiSourceSpecs[feed] ?: NdiNativeSender.defaultSpec(feed) }
+                                        NdiSourceSettingsRow(
+                                            feedKey = NdiNativeSender.FEED_LOWER,
+                                            spec = specOf(NdiNativeSender.FEED_LOWER),
+                                            tint = BentoPrimary,
+                                            onUpdate = onUpdateNdiSourceSpec
+                                        )
+                                        NdiSourceSettingsRow(
+                                            feedKey = NdiNativeSender.FEED_LOWER_HX,
+                                            spec = specOf(NdiNativeSender.FEED_LOWER_HX),
+                                            tint = BentoPrimary,
+                                            onUpdate = onUpdateNdiSourceSpec
+                                        )
+                                        NdiSourceSettingsRow(
+                                            feedKey = NdiNativeSender.FEED_FULL,
+                                            spec = specOf(NdiNativeSender.FEED_FULL),
+                                            tint = Color(0xFF10B981),
+                                            onUpdate = onUpdateNdiSourceSpec
+                                        )
+                                        NdiSourceSettingsRow(
+                                            feedKey = NdiNativeSender.FEED_FULL_HX,
+                                            spec = specOf(NdiNativeSender.FEED_FULL_HX),
+                                            tint = Color(0xFF10B981),
+                                            onUpdate = onUpdateNdiSourceSpec
+                                        )
+                                    }
+                                }
+
+                                // Advanced diagnostics toggle
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = BentoCardWhite,
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, BentoBorder),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(modifier = Modifier.padding(10.dp)) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    "خيارات متقدمة (Advanced)",
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = BentoTextPrimary
+                                                )
+                                                Text(
+                                                    "عرض أخطاء NDI التشخيصية وحالة المصادر",
+                                                    fontSize = 10.sp,
+                                                    color = BentoTextSecondary
+                                                )
+                                            }
+                                            Switch(
+                                                checked = uiState.showAdvancedNdi,
+                                                onCheckedChange = { onToggleAdvancedNdi() }
+                                            )
+                                        }
+                                        if (uiState.showAdvancedNdi) {
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            androidx.compose.foundation.layout.HorizontalDivider(color = BentoBorder)
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            val activeOf = mapOf(
+                                                NdiNativeSender.FEED_LOWER to uiState.isNativeNdiActive,
+                                                NdiNativeSender.FEED_LOWER_HX to uiState.isNativeLowerHxActive,
+                                                NdiNativeSender.FEED_FULL to uiState.isNativeShowActive,
+                                                NdiNativeSender.FEED_FULL_HX to uiState.isNativeFullHxActive
+                                            )
+                                            NdiNativeSender.ALL_FEEDS.forEach { feed ->
+                                                val spec = uiState.ndiSourceSpecs[feed] ?: NdiNativeSender.defaultSpec(feed)
+                                                val running = activeOf[feed] == true
+                                                Text(
+                                                    text = "${NdiNativeSender.displayName(feed)}: ${spec.width}×${spec.height} @ ${spec.fps}fps — " +
+                                                        if (running) "يعمل ✓" else "متوقف",
+                                                    fontSize = 10.sp,
+                                                    fontFamily = FontFamily.Monospace,
+                                                    color = if (running) Color(0xFF047857) else BentoTextSecondary
+                                                )
+                                                Spacer(modifier = Modifier.height(2.dp))
+                                            }
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            Text(
+                                                "سجل الأخطاء (${uiState.ndiErrorEvents.size}):",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = BentoTextPrimary
+                                            )
+                                            if (uiState.ndiErrorEvents.isEmpty()) {
+                                                Text(
+                                                    "لا توجد أخطاء مسجلة — جميع المصادر تعمل بشكل طبيعي.",
+                                                    fontSize = 10.sp,
+                                                    color = Color(0xFF047857)
+                                                )
+                                            } else {
+                                                uiState.ndiErrorEvents.takeLast(20).reversed().forEach { e ->
+                                                    Text(
+                                                        "${e.time} • ${e.source}: ${e.message}",
+                                                        fontSize = 9.sp,
+                                                        fontFamily = FontFamily.Monospace,
+                                                        color = Color(0xFFB91C1C)
+                                                    )
+                                                    Spacer(modifier = Modifier.height(2.dp))
+                                                }
+                                            }
+                                            Spacer(modifier = Modifier.height(6.dp))
+                                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                androidx.compose.material3.TextButton(onClick = { onRefreshNdiDiagnostics() }) {
+                                                    Text("تحديث", fontSize = 10.sp)
+                                                }
+                                                androidx.compose.material3.TextButton(onClick = { onClearNdiDiagnostics() }) {
+                                                    Text("مسح السجل", fontSize = 10.sp)
+                                                }
+                                            }
+                                        }
                                     }
                                 }
 
@@ -678,6 +850,19 @@ fun BroadcastControlScreen(
                 }
             }
         }
+
+        // Card: All available URLs
+        AllUrlsCard(
+            baseUrl = uiState.serverUrl,
+            textPrimary = BentoTextPrimary,
+            textSecondary = BentoTextSecondary,
+            cardColor = BentoCardWhite,
+            borderColor = BentoBorder,
+            onCopy = { label, url ->
+                clipboard.setText(AnnotatedString(url))
+                Toast.makeText(context, "تم نسخ: $label", Toast.LENGTH_SHORT).show()
+            }
+        )
 
         // Card: Keep Screen Awake
         Surface(
@@ -1150,6 +1335,151 @@ private fun NdiSourceRow(
             checked = enabled,
             onCheckedChange = { onToggle(toggleKey) }
         )
+    }
+}
+
+/**
+ * Per-source NDI settings: resolution + frame-rate dropdowns.
+ * Changing either restarts the source immediately with the new spec.
+ */
+@Composable
+private fun NdiSourceSettingsRow(
+    feedKey: String,
+    spec: NdiSourceSpec,
+    tint: Color,
+    onUpdate: (String, Int, Int, Int) -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+        Text(
+            text = NdiNativeSender.displayName(feedKey),
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            color = tint
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            val resOptions = NdiNativeSender.RESOLUTION_OPTIONS.map { "${it.first}×${it.second}" }
+            val selectedRes = "${spec.width}×${spec.height}"
+            NdiDropdown(
+                label = "الدقة",
+                options = resOptions,
+                selected = if (resOptions.contains(selectedRes)) selectedRes else resOptions.first(),
+                onSelect = { sel ->
+                    val (w, h) = NdiNativeSender.RESOLUTION_OPTIONS[resOptions.indexOf(sel)]
+                    onUpdate(feedKey, w, h, spec.fps)
+                }
+            )
+            val fpsOptions = NdiNativeSender.FPS_OPTIONS.map { "$it fps" }
+            val selectedFps = "${spec.fps} fps"
+            NdiDropdown(
+                label = "الإطارات/ثا",
+                options = fpsOptions,
+                selected = if (fpsOptions.contains(selectedFps)) selectedFps else fpsOptions.first(),
+                onSelect = { sel ->
+                    onUpdate(feedKey, spec.width, spec.height, sel.substringBefore(" ").toInt())
+                }
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun NdiDropdown(
+    label: String,
+    options: List<String>,
+    selected: String,
+    onSelect: (String) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = !expanded }
+    ) {
+        TextField(
+            value = selected,
+            onValueChange = {},
+            readOnly = true,
+            label = { Text(label, fontSize = 9.sp) },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            modifier = Modifier.menuAnchor().width(150.dp),
+            textStyle = TextStyle(fontSize = 11.sp),
+            singleLine = true
+        )
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            options.forEach { opt ->
+                DropdownMenuItem(
+                    text = { Text(opt, fontSize = 11.sp) },
+                    onClick = { onSelect(opt); expanded = false }
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Lists every HTTP endpoint the tablet serves, so the user knows all the URLs
+ * they can use (browser sources, MJPEG, snapshots, events, status, API).
+ */
+@Composable
+private fun AllUrlsCard(
+    baseUrl: String,
+    textPrimary: Color,
+    textSecondary: Color,
+    cardColor: Color,
+    borderColor: Color,
+    onCopy: (String, String) -> Unit
+) {
+    val urls = listOf(
+        "Overlay شفاف (Browser Source)" to "/ndi",
+        "العرض الكامل (Full Show)" to "/show",
+        "بث MJPEG" to "/ndi/stream",
+        "لقطة PNG" to "/ndi/stream.png",
+        "أحداث SSE (الآيات)" to "/ndi/events",
+        "الحالة (JSON)" to "/ndi/status",
+        "واجهة الآيات (API)" to "/ndi/api/verse"
+    )
+    Text(
+        text = "٥. جميع الروابط المتاحة:",
+        fontSize = 11.sp,
+        fontWeight = FontWeight.SemiBold,
+        color = textPrimary
+    )
+    Surface(
+        shape = RoundedCornerShape(10.dp),
+        color = cardColor,
+        border = androidx.compose.foundation.BorderStroke(1.dp, borderColor),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(10.dp)) {
+            if (baseUrl.isBlank()) {
+                Text(
+                    "لا يوجد اتصال شبكة محلية (Wi-Fi) — الروابط تظهر بعد الاتصال.",
+                    fontSize = 10.sp,
+                    color = textSecondary
+                )
+            } else {
+                urls.forEach { (label, path) ->
+                    val full = baseUrl + path
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(label, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = textPrimary)
+                            Text(full, fontSize = 9.sp, fontFamily = FontFamily.Monospace, color = textSecondary)
+                        }
+                        androidx.compose.material3.IconButton(onClick = { onCopy(label, full) }) {
+                            Icon(Icons.Default.ContentCopy, contentDescription = "Copy $label", tint = textSecondary, modifier = Modifier.size(16.dp))
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

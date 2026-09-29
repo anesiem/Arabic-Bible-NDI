@@ -316,7 +316,11 @@ class MainActivity : ComponentActivity() {
                                 onRefreshInterfaces = { viewModel.refreshNetworkInterfaces() },
                                 onSetNdiProtocolEnabled = { viewModel.setNdiProtocolEnabled(it) },
                                 onToggleKeepScreenOn = { viewModel.toggleKeepScreenOn() },
-                                onToggleNdiSource = { viewModel.toggleNdiSource(it) }
+                                onToggleNdiSource = { viewModel.toggleNdiSource(it) },
+                                onUpdateNdiSourceSpec = { feedKey, w, h, fps -> viewModel.updateNdiSourceSpec(feedKey, w, h, fps) },
+                                onToggleAdvancedNdi = { viewModel.toggleAdvancedNdi() },
+                                onRefreshNdiDiagnostics = { viewModel.refreshNdiDiagnostics() },
+                                onClearNdiDiagnostics = { viewModel.clearNdiDiagnostics() }
                             )
                         }
                     }

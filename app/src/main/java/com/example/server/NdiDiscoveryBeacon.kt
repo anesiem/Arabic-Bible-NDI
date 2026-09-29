@@ -44,12 +44,17 @@ class NdiDiscoveryBeacon(private val context: Context) {
     private var ndiVideoRegistrationListener: NsdManager.RegistrationListener? = null
     /** mDNS listeners for the 4 native NDI feeds (Lower/Full x Full/HX tiers). */
     private val feedMdnsListeners = mutableListOf<NsdManager.RegistrationListener>()
+    /** Latest user-configured per-source specs, advertised in directory/mDNS. */
+    private var currentSpecs: List<NdiSourceSpec> =
+        NdiNativeSender.ALL_FEEDS.map { NdiNativeSender.defaultSpec(it) }
     var isRunning = false
         private set
 
-    fun start(serviceUrl: String, ip: String = "", port: Int = 8080, udpPort: Int = 5960) {
+    fun start(serviceUrl: String, ip: String = "", port: Int = 8080, udpPort: Int = 5960,
+              specs: List<NdiSourceSpec> = NdiNativeSender.ALL_FEEDS.map { NdiNativeSender.defaultSpec(it) }) {
         stop()
         isRunning = true
+        currentSpecs = specs
 
         // 1. Acquire Wi-Fi Multicast Lock to allow mDNS and UDP broadcasts
         try {
@@ -161,7 +166,7 @@ class NdiDiscoveryBeacon(private val context: Context) {
                     try {
                         val client = server.accept()
                         launch {
-                            handleNdiDirectoryQuery(client, ip, port, serviceUrl)
+                            handleNdiDirectoryQuery(client, ip, port, serviceUrl, currentSpecs)
                         }
                     } catch (e: Exception) {
                         if (!isRunning) break
@@ -186,7 +191,7 @@ class NdiDiscoveryBeacon(private val context: Context) {
                     try {
                         val client = server.accept()
                         launch {
-                            handleNdi6DiscoveryServerQuery(client, ip, port, serviceUrl)
+                            handleNdi6DiscoveryServerQuery(client, ip, port, serviceUrl, currentSpecs)
                         }
                     } catch (e: Exception) {
                         if (!isRunning) break
@@ -200,7 +205,7 @@ class NdiDiscoveryBeacon(private val context: Context) {
         }
     }
 
-    private fun handleNdiDirectoryQuery(socket: Socket, ip: String, port: Int, serviceUrl: String) {
+    private fun handleNdiDirectoryQuery(socket: Socket, ip: String, port: Int, serviceUrl: String, specs: List<NdiSourceSpec>) {
         try {
             socket.soTimeout = 3000
             val reader = BufferedReader(InputStreamReader(socket.getInputStream()))
@@ -210,7 +215,12 @@ class NdiDiscoveryBeacon(private val context: Context) {
             val writer = PrintWriter(out)
             val deviceModel = Build.MODEL
 
-            val json = """{"version":"6.0","sources":[{"name":"$deviceModel - Bible-NDI-Lower","address":"$ip","port":$port,"url":"http://$ip:$port/ndi","stream":"http://$ip:$port/ndi/stream","format":"BGRA","alpha":true,"width":1920,"height":1080,"fps":30,"tier":"full"},{"name":"$deviceModel - Bible-NDI-Lower-HX","address":"$ip","port":$port,"url":"http://$ip:$port/ndi","stream":"http://$ip:$port/ndi/stream","format":"BGRA","alpha":true,"width":960,"height":540,"fps":15,"tier":"hx"},{"name":"$deviceModel - Bible-NDI-Full","address":"$ip","port":$port,"url":"http://$ip:$port/show","stream":"http://$ip:$port/show","format":"BGRA","alpha":true,"width":1920,"height":1080,"fps":30,"tier":"full"},{"name":"$deviceModel - Bible-NDI-Full-HX","address":"$ip","port":$port,"url":"http://$ip:$port/show","stream":"http://$ip:$port/show","format":"BGRA","alpha":true,"width":960,"height":540,"fps":15,"tier":"hx"}]}"""
+            val sourcesJson = specs.joinToString(",") { spec ->
+                val name = NdiNativeSender.displayName(spec.feedKey)
+                val tier = if (spec.feedKey.endsWith("-HX")) "hx" else "full"
+                """{"name":"$name","address":"$ip","port":$port,"url":"http://$ip:$port/ndi","stream":"http://$ip:$port/ndi/stream","format":"BGRA","alpha":true,"width":${spec.width},"height":${spec.height},"fps":${spec.fps},"tier":"$tier"}"""
+            }
+            val json = """{"version":"6.0","sources":[$sourcesJson]}"""
 
             if (firstLine != null && (firstLine.startsWith("GET") || firstLine.startsWith("POST") || firstLine.startsWith("HEAD"))) {
                 val httpHeader = "HTTP/1.1 200 OK\r\n" +
@@ -225,6 +235,9 @@ class NdiDiscoveryBeacon(private val context: Context) {
                 writer.print(json)
                 writer.flush()
             } else {
+                val sourceList = specs.mapIndexed { i, spec ->
+                    "${i + 1}: ${NdiNativeSender.displayName(spec.feedKey)}|http://$ip:$port/ndi/stream|BGRA"
+                }.joinToString("\n")
                 val ndiResponse = """
 NDI/6.0 200 OK
 Server: Bible-NDI-v6
@@ -233,16 +246,11 @@ Port: $port
 Stream-Url: http://$ip:$port/ndi/stream
 Overlay-Url: http://$ip:$port/ndi
 Format: BGRA
-Resolution: 1920x1080
-Framerate: 30
 Alpha-Channel: true
 Connection: close
 
 NDI_SOURCE_LIST:
-1: $deviceModel - Bible-NDI-Lower|http://$ip:$port/ndi/stream|BGRA
-2: $deviceModel - Bible-NDI-Lower-HX|http://$ip:$port/ndi/stream|BGRA
-3: $deviceModel - Bible-NDI-Full|http://$ip:$port/show|BGRA
-4: $deviceModel - Bible-NDI-Full-HX|http://$ip:$port/show|BGRA
+$sourceList
 """.trimIndent() + "\r\n\r\n"
 
                 writer.print(ndiResponse)
@@ -255,28 +263,34 @@ NDI_SOURCE_LIST:
         }
     }
 
-    private fun handleNdi6DiscoveryServerQuery(socket: Socket, ip: String, port: Int, serviceUrl: String) {
+    private fun handleNdi6DiscoveryServerQuery(socket: Socket, ip: String, port: Int, serviceUrl: String, specs: List<NdiSourceSpec>) {
         try {
             socket.soTimeout = 3000
             val out = socket.getOutputStream()
             val writer = PrintWriter(out)
 
+            val sourcesJson = specs.joinToString(",\n") { spec ->
+                val name = NdiNativeSender.displayName(spec.feedKey)
+                """
+    {
+      "name": "$name",
+      "address": "$ip",
+      "port": $port,
+      "url": "http://$ip:$port/ndi",
+      "stream": "http://$ip:$port/ndi/stream",
+      "format": "BGRA",
+      "alpha": true,
+      "width": ${spec.width},
+      "height": ${spec.height},
+      "fps": ${spec.fps}
+    }""".trimIndent()
+            }
             val json = """
 {
   "version": "6.0",
   "status": "ok",
   "sources": [
-    {
-      "name": "Bible-NDI",
-      "address": "$ip",
-      "port": $port,
-      "url": "http://$ip:$port/ndi",
-      "stream": "http://$ip:$port/ndi/stream.mjpg?raw=1",
-      "format": "BGRA",
-      "alpha": true,
-      "width": 1920,
-      "height": 1080
-    }
+$sourcesJson
   ]
 }
 """.trimIndent()
@@ -298,6 +312,8 @@ NDI_SOURCE_LIST:
         try {
             val deviceModel = Build.MODEL
             // 1. Web Broadcast Overlay Service: _http._tcp
+            val lowerSpec = currentSpecs.firstOrNull { it.feedKey == NdiNativeSender.FEED_LOWER }
+                ?: NdiNativeSender.defaultSpec(NdiNativeSender.FEED_LOWER)
             val serviceInfo = NsdServiceInfo().apply {
                 serviceName = "$deviceModel - Bible-NDI-Lower"
                 serviceType = "_http._tcp"
@@ -308,8 +324,8 @@ NDI_SOURCE_LIST:
                     setAttribute("stream", "/ndi/stream")
                     setAttribute("url", "http://$ip:$port/ndi")
                     setAttribute("format", "BGRA_ALPHA")
-                    setAttribute("width", "1920")
-                    setAttribute("height", "1080")
+                    setAttribute("width", lowerSpec.width.toString())
+                    setAttribute("height", lowerSpec.height.toString())
                 }
             }
 
@@ -353,13 +369,8 @@ NDI_SOURCE_LIST:
 
             // 3. Native NDI feeds (Lower/Full x Full/HX tiers) as _ndi._tcp services so the
             //    exact on-air names ("<TabletModel> - <FeedName>") are discoverable via mDNS.
-            val feeds = listOf(
-                Triple(NdiNativeSender.FEED_LOWER, "1920", "1080"),
-                Triple(NdiNativeSender.FEED_LOWER_HX, "960", "540"),
-                Triple(NdiNativeSender.FEED_FULL, "1920", "1080"),
-                Triple(NdiNativeSender.FEED_FULL_HX, "960", "540")
-            )
-            for ((feedKey, w, h) in feeds) {
+            for (spec in currentSpecs) {
+                val feedKey = spec.feedKey
                 try {
                     val feedName = NdiNativeSender.displayName(feedKey)
                     val feedInfo = NsdServiceInfo().apply {
@@ -370,8 +381,9 @@ NDI_SOURCE_LIST:
                             setAttribute("name", feedName)
                             setAttribute("ndi_version", "6.0.0")
                             setAttribute("format", "BGRA")
-                            setAttribute("width", w)
-                            setAttribute("height", h)
+                            setAttribute("width", spec.width.toString())
+                            setAttribute("height", spec.height.toString())
+                            setAttribute("fps", spec.fps.toString())
                             setAttribute("tier", if (feedKey.endsWith("-HX")) "hx" else "full")
                         }
                     }

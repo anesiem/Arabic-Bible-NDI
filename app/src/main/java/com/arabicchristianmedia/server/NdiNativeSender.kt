@@ -245,18 +245,24 @@ class NdiNativeSender {
         }
     }
 
+    private val triggerJobs = mutableMapOf<String, Job>()
+
     /** Push one frame immediately (e.g. right after a verse/template change). */
     fun triggerFrame(feedKey: String, isFullScreen: Boolean) {
-        scope.launch {
-            val session = synchronized(activeSenders) { activeSenders[feedKey] } ?: return@launch
-            try {
-                val bmp = frameProvider?.invoke(isFullScreen) ?: return@launch
-                if (sendBitmapToPtr(session, bmp)) {
-                    session.lastSentVersion = frameVersionProvider?.invoke() ?: session.lastSentVersion
-                    session.lastSentAtMs = SystemClock.elapsedRealtime()
+        synchronized(triggerJobs) {
+            triggerJobs[feedKey]?.cancel()
+            triggerJobs[feedKey] = scope.launch {
+                delay(120) // debounce rapid font size / slider adjustments by 120ms
+                val session = synchronized(activeSenders) { activeSenders[feedKey] } ?: return@launch
+                try {
+                    val bmp = frameProvider?.invoke(isFullScreen) ?: return@launch
+                    if (sendBitmapToPtr(session, bmp)) {
+                        session.lastSentVersion = frameVersionProvider?.invoke() ?: session.lastSentVersion
+                        session.lastSentAtMs = SystemClock.elapsedRealtime()
+                    }
+                } catch (e: Exception) {
+                    reportError(feedKey, "triggerFrame error: ${e.message}", throttleMs = 10_000L)
                 }
-            } catch (e: Exception) {
-                reportError(feedKey, "triggerFrame error: ${e.message}", throttleMs = 10_000L)
             }
         }
     }

@@ -13,6 +13,7 @@ import android.graphics.Shader
 import android.graphics.Typeface
 import android.net.Uri
 import android.os.Build
+import android.os.SystemClock
 import android.text.Layout
 import android.text.SpannableString
 import android.text.Spanned
@@ -162,10 +163,16 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         broadcastStateToClients()
     }
 
+    private var lastTemplateUpdateMs = 0L
+
     fun updateTemplate(template: LowerThirdTemplate) {
         currentTemplate = template
         invalidateBitmapCache()
-        broadcastStateToClients()
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastTemplateUpdateMs >= 100) {
+            lastTemplateUpdateMs = now
+            broadcastStateToClients()
+        }
     }
 
     fun setLiveState(live: Boolean) {

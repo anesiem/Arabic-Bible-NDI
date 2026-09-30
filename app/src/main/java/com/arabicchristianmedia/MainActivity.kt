@@ -290,17 +290,21 @@ class MainActivity : ComponentActivity() {
                                 currentTemplate = uiState.activeTemplate,
                                 activeShowTemplate = uiState.activeShowTemplate,
                                 templates = uiState.templates,
+                                highlightedLowerStyleId = uiState.highlightedLowerStyleId,
+                                highlightedShowStyleId = uiState.highlightedShowStyleId,
+                                lowerWorkingDirty = uiState.lowerWorkingDirty,
+                                showWorkingDirty = uiState.showWorkingDirty,
                                 activeVerse = uiState.activeVerse,
                                 onSelectTemplate = { viewModel.selectTemplate(it) },
+                                onSelectShowTemplate = { viewModel.selectShowTemplate(it) },
                                 onUpdateTemplate = { viewModel.updateActiveTemplate(it) },
                                 onUpdateShowTemplate = { viewModel.updateActiveShowTemplate(it) },
-                                onSaveAsNew = { name, base -> viewModel.saveAsNewTemplate(name, base) },
-                                onResetDefaults = { viewModel.resetTemplatesToDefault() },
-                                onToggleNdiSource = { viewModel.toggleNdiSource(it) },
-                                ndiLowerFullActive = uiState.ndiLowerFullEnabled,
-                                ndiLowerHxActive = uiState.ndiLowerHxEnabled,
-                                ndiFullShowFullActive = uiState.ndiFullShowFullEnabled,
-                                ndiFullShowHxActive = uiState.ndiFullShowHxEnabled
+                                onSaveAsNew = { name, base, isFull -> viewModel.saveAsNewTemplate(name, base, isFull) },
+                                onResetDefaults = { isFull -> viewModel.resetTemplate(isFull) },
+                                onDeleteTemplate = { id, isFull -> viewModel.deleteTemplate(id, isFull) },
+                                onExportTemplate = { id -> viewModel.exportTemplateJson(id) },
+                                onUpdateTemplateFromJson = { id, json, isFull -> viewModel.updateTemplateFromJson(id, json, isFull) },
+                                onImportNewTemplate = { json, isFull -> viewModel.importNewTemplate(json, isFull) }
                             )
                             2 -> BroadcastControlScreen(
                                 uiState = uiState,
@@ -318,6 +322,7 @@ class MainActivity : ComponentActivity() {
                                 onToggleKeepScreenOn = { viewModel.toggleKeepScreenOn() },
                                 onToggleNdiSource = { viewModel.toggleNdiSource(it) },
                                 onUpdateNdiSourceSpec = { feedKey, w, h, fps -> viewModel.updateNdiSourceSpec(feedKey, w, h, fps) },
+                                onToggleNdiMotion = { viewModel.toggleNdiMotion(it) },
                                 onToggleAdvancedNdi = { viewModel.toggleAdvancedNdi() },
                                 onRefreshNdiDiagnostics = { viewModel.refreshNdiDiagnostics() },
                                 onClearNdiDiagnostics = { viewModel.clearNdiDiagnostics() }

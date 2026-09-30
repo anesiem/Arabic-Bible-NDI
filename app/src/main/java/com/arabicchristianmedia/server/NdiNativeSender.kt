@@ -13,13 +13,15 @@ import java.text.SimpleDateFormat
 import java.util.Collections
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 
-/** User-configurable spec for one NDI source: resolution + frame rate. */
+/** User-configurable spec for one NDI source: resolution, frame rate, and motion rendering. */
 data class NdiSourceSpec(
     val feedKey: String,
     val width: Int,
     val height: Int,
-    val fps: Int
+    val fps: Int,
+    val motionEnabled: Boolean = false
 )
 
 /** One NDI error event, shown to the user in the Advanced diagnostics panel. */
@@ -32,18 +34,21 @@ data class NdiErrorEvent(
 /**
  * NdiNativeSender implements direct integration with the NDI 6 SDK for Android.
  *
- * Dual-tier design (per feed: Lower Third / Full Show):
- * - FULL tier: BGRA with alpha, for overlaying verses (transparency keying in OBS/vMix).
- * - HX tier ("bandwidth saver"): reduced resolution for slow networks.
+ * Two independent sources (Lower Third / Full Show), each a standard full NDI
+ * sender with BGRA + alpha so verses can be keyed as overlays in OBS/vMix.
+ * (This app has no NDI Advanced license, so genuine NDI|HX encoding is not
+ * available; lower resolutions on these standard senders cover slow networks.)
  *
- * Every source is user-configurable: resolution and frame rate are chosen from
- * dropdown lists in the app (see [RESOLUTION_OPTIONS] / [FPS_OPTIONS]) — nothing
- * is hardcoded. Frames are only pushed when content changes (dirty-frame
- * detection) plus a low-rate heartbeat, so static verses cost ~zero bandwidth.
+ * Every source is user-configurable: resolution, frame rate, and motion
+ * rendering are chosen in the app's NDI tab (see [RESOLUTION_OPTIONS] /
+ * [FPS_OPTIONS]) — nothing is hardcoded. In static mode frames are only pushed
+ * when content changes (dirty-frame detection) plus a low-rate heartbeat, so
+ * static verses cost ~zero bandwidth. In motion mode (user toggle) animated
+ * template backgrounds are re-rendered at a capped rate.
  */
 class NdiNativeSender {
 
-    /** Per-source session. Mutable fields are only touched from the session's own coroutine. */
+    /** Per-source session. Mutable fields are guarded by the feed's [feedLock]. */
     private class SenderSession(
         val ptr: Long,
         val spec: NdiSourceSpec,
@@ -56,12 +61,31 @@ class NdiNativeSender {
         @Volatile var lastSentAtMs: Long = 0L
     }
 
+    /**
+     * Per-feed locks serializing render+send for one source. The frame providers
+     * redraw reused bitmaps in place (motion bitmaps, the static cache, and the
+     * downscale buffer), and a feed's send loop and its triggerFrame() run on
+     * different coroutines — without this they could draw and send the same
+     * bitmap concurrently (torn frames, or drawing into a bitmap the other side
+     * just recycled). One lock per feed: Lower and Full never block each other.
+     */
+    private val feedLocks = ConcurrentHashMap<String, Any>()
+    private fun feedLock(feedKey: String): Any = feedLocks.getOrPut(feedKey) { Any() }
+
     private val activeSenders = mutableMapOf<String, SenderSession>()
     private var isInitialized = false
     private val scope = CoroutineScope(Dispatchers.Default)
 
     private var frameProvider: ((Boolean) -> Bitmap)? = null
     private var frameVersionProvider: (() -> Long)? = null
+    /**
+     * Motion-mode providers. [motionFrameProvider] force-renders a fresh frame
+     * (time-based animation phase) into a sender-reused bitmap; [motionContentProvider]
+     * reports whether the feed's current template actually has animated content,
+     * so motion ticks are skipped when there is nothing to animate.
+     */
+    private var motionFrameProvider: ((Boolean) -> Bitmap)? = null
+    private var motionContentProvider: ((Boolean) -> Boolean)? = null
 
     /** Recent NDI error events for the Advanced diagnostics panel (capped, oldest dropped). */
     private val errorEvents = Collections.synchronizedList(mutableListOf<NdiErrorEvent>())
@@ -80,25 +104,35 @@ class NdiNativeSender {
     /** Idle poll cadence while waiting for content changes. */
     var idlePollMs: Long = 120L
 
+    /**
+     * Re-render cadence for motion mode (~15fps). Slow ambient gradients move an
+     * imperceptible distance per frame, so 15fps looks identical to 30/60fps
+     * while costing far less tablet CPU/battery during long sessions.
+     * Exposed (not hardcoded) per project AI preferences.
+     */
+    var motionIntervalMs: Long = 66L
+
+    /** Loop poll cadence while a motion feed is active (must be < [motionIntervalMs]). */
+    var motionPollMs: Long = 33L
+
     companion object {
         const val FRAME_WIDTH = 1920
         const val FRAME_HEIGHT = 1080
 
-        /** HX (bandwidth-saver) tier default resolution: quarter pixels of full HD. */
-        const val HX_WIDTH = 960
-        const val HX_HEIGHT = 540
-
         const val FEED_LOWER = "Bible-NDI-Lower"
-        const val FEED_LOWER_HX = "Bible-NDI-Lower-HX"
         const val FEED_FULL = "Bible-NDI-Full"
-        const val FEED_FULL_HX = "Bible-NDI-Full-HX"
 
-        /** All four feed keys, in display order. */
-        val ALL_FEEDS = listOf(FEED_LOWER, FEED_LOWER_HX, FEED_FULL, FEED_FULL_HX)
+        /** Both feed keys, in display order. */
+        val ALL_FEEDS = listOf(FEED_LOWER, FEED_FULL)
 
-        /** User-selectable resolutions (width to height), shown in dropdown lists. */
+        /**
+         * User-selectable resolutions (width to height), shown in dropdown lists.
+         * All are 16:9 for correct display/projector aspect ratio, up to 1080p.
+         */
         val RESOLUTION_OPTIONS = listOf(
             1920 to 1080,
+            1600 to 900,
+            1360 to 768,
             1280 to 720,
             960 to 540,
             854 to 480,
@@ -106,12 +140,10 @@ class NdiNativeSender {
         )
 
         /** User-selectable frame rates (fps), shown in dropdown lists. */
-        val FPS_OPTIONS = listOf(30, 25, 24, 15, 10, 5)
+        val FPS_OPTIONS = listOf(60, 50, 30, 25, 24, 15, 10, 5)
 
-        fun defaultSpec(feedKey: String): NdiSourceSpec = when (feedKey) {
-            FEED_LOWER_HX, FEED_FULL_HX -> NdiSourceSpec(feedKey, HX_WIDTH, HX_HEIGHT, 15)
-            else -> NdiSourceSpec(feedKey, FRAME_WIDTH, FRAME_HEIGHT, 30)
-        }
+        fun defaultSpec(feedKey: String): NdiSourceSpec =
+            NdiSourceSpec(feedKey, FRAME_WIDTH, FRAME_HEIGHT, 30, motionEnabled = false)
 
         /** Canonical on-air source name: "<TabletModel> - <FeedName>", e.g. "SM-X238U - Bible-NDI-Lower". */
         fun displayName(feedKey: String): String = "${Build.MODEL} - $feedKey"
@@ -159,6 +191,29 @@ class NdiNativeSender {
         frameVersionProvider = provider
     }
 
+    /**
+     * Supplies a forced re-render for motion mode. Called on the session's send
+     * loop at most every [motionIntervalMs]; must reuse its bitmap (no per-tick
+     * allocation) — the native send copies pixels synchronously before returning.
+     */
+    fun setMotionFrameProvider(provider: (Boolean) -> Bitmap) {
+        motionFrameProvider = provider
+    }
+
+    /**
+     * Reports whether the feed's current template has animated content. When
+     * false, motion mode falls back to static dirty-frame behavior so no CPU
+     * is spent re-rendering an unchanging frame.
+     */
+    fun setMotionContentProvider(provider: (Boolean) -> Boolean) {
+        motionContentProvider = provider
+    }
+
+    /** True when this session should render motion ticks right now. */
+    private fun isMotionActive(session: SenderSession): Boolean =
+        session.spec.motionEnabled &&
+            (motionContentProvider?.invoke(session.isFullScreen) == true)
+
     fun isSourceActive(feedKey: String): Boolean =
         synchronized(activeSenders) { activeSenders.containsKey(feedKey) }
 
@@ -202,14 +257,27 @@ class NdiNativeSender {
             val session = SenderSession(ptr, spec, isFullScreen)
             session.job = scope.launch {
                 while (isActive) {
+                    var motion = false
                     try {
                         val version = frameVersionProvider?.invoke() ?: 0L
                         val now = SystemClock.elapsedRealtime()
                         val dirty = version != session.lastSentVersion
                         val heartbeatDue = now - session.lastSentAtMs >= heartbeatIntervalMs
-                        if (dirty || heartbeatDue) {
-                            val bmp = frameProvider?.invoke(isFullScreen)
-                            if (bmp != null && sendBitmapToPtr(session, bmp)) {
+                        motion = isMotionActive(session)
+                        val motionDue = motion && now - session.lastSentAtMs >= motionIntervalMs
+                        if (dirty || heartbeatDue || motionDue) {
+                            // Motion ticks (and verse changes while motion is on) force a
+                            // fresh render with the current animation phase; static mode
+                            // reuses the cached bitmap via the regular frame provider.
+                            // Render+send are atomic per feed: triggerFrame() runs on a
+                            // different coroutine and must not touch this feed's reused
+                            // bitmaps mid-draw or mid-send.
+                            val sent = synchronized(feedLock(feedKey)) {
+                                val bmp = if (motion) motionFrameProvider?.invoke(isFullScreen)
+                                          else frameProvider?.invoke(isFullScreen)
+                                bmp != null && sendBitmapToPtr(session, bmp)
+                            }
+                            if (sent) {
                                 session.lastSentVersion = version
                                 session.lastSentAtMs = now
                             }
@@ -217,7 +285,8 @@ class NdiNativeSender {
                     } catch (e: Exception) {
                         reportError(feedKey, "Send loop error: ${e.message}", throttleMs = 10_000L)
                     }
-                    delay(idlePollMs)
+                    // Poll faster while motion is active so the 15fps cap is actually met.
+                    delay(if (motion) motionPollMs else idlePollMs)
                 }
             }
             activeSenders[feedKey] = session
@@ -234,13 +303,18 @@ class NdiNativeSender {
     fun stopSource(feedKey: String) {
         synchronized(activeSenders) {
             val session = activeSenders.remove(feedKey) ?: return
-            try {
-                session.job?.cancel()
-                try { session.scaledBitmap?.recycle() } catch (e: Exception) {}
-                session.scaledBitmap = null
-                nativeDestroySender(session.ptr)
-            } catch (e: Exception) {
-                reportError(feedKey, "Error stopping source: ${e.message}")
+            // Hold the feed lock while tearing down: a send may be in flight on the
+            // session coroutine, and its downscale bitmap must not be recycled mid-send.
+            // Lock order is always activeSenders -> feedLock (never the reverse).
+            synchronized(feedLock(feedKey)) {
+                try {
+                    session.job?.cancel()
+                    try { session.scaledBitmap?.recycle() } catch (e: Exception) {}
+                    session.scaledBitmap = null
+                    nativeDestroySender(session.ptr)
+                } catch (e: Exception) {
+                    reportError(feedKey, "Error stopping source: ${e.message}")
+                }
             }
             if (activeSenders.isEmpty()) isRunning = false
             Log.i("NdiNativeSender", "NDI Source stopped: ${displayName(feedKey)}")
@@ -257,8 +331,15 @@ class NdiNativeSender {
                 delay(120) // debounce rapid font size / slider adjustments by 120ms
                 val session = synchronized(activeSenders) { activeSenders[feedKey] } ?: return@launch
                 try {
-                    val bmp = frameProvider?.invoke(isFullScreen) ?: return@launch
-                    if (sendBitmapToPtr(session, bmp)) {
+                    // In motion mode render a fresh frame (current animation phase +
+                    // the new verse); in static mode reuse the cached bitmap.
+                    // Same per-feed lock as the send loop: render+send are atomic.
+                    val sent = synchronized(feedLock(feedKey)) {
+                        val bmp = if (isMotionActive(session)) motionFrameProvider?.invoke(isFullScreen)
+                                  else frameProvider?.invoke(isFullScreen)
+                        bmp != null && sendBitmapToPtr(session, bmp)
+                    }
+                    if (sent) {
                         session.lastSentVersion = frameVersionProvider?.invoke() ?: session.lastSentVersion
                         session.lastSentAtMs = SystemClock.elapsedRealtime()
                     }
@@ -312,13 +393,17 @@ class NdiNativeSender {
             activeSenders.clear()
             isRunning = false
             sessions.forEach { session ->
-                try {
-                    session.job?.cancel()
-                    try { session.scaledBitmap?.recycle() } catch (e: Exception) {}
-                    session.scaledBitmap = null
-                    nativeDestroySender(session.ptr)
-                } catch (e: Exception) {
-                    reportError(session.spec.feedKey, "Error stopping source: ${e.message}")
+                // Same per-feed teardown lock as stopSource: never recycle a
+                // downscale bitmap while its feed might be mid-send.
+                synchronized(feedLock(session.spec.feedKey)) {
+                    try {
+                        session.job?.cancel()
+                        try { session.scaledBitmap?.recycle() } catch (e: Exception) {}
+                        session.scaledBitmap = null
+                        nativeDestroySender(session.ptr)
+                    } catch (e: Exception) {
+                        reportError(session.spec.feedKey, "Error stopping source: ${e.message}")
+                    }
                 }
             }
         }

@@ -76,7 +76,17 @@ data class LowerThirdTemplate(
     val transition: TransitionType = TransitionType.SLIDE_UP,
     val transitionDurationMs: Int = 400,
     val showAccentBorder: Boolean = false,
+    /**
+     * Legacy single shadow switch, kept only for one-time JSON migration.
+     * New code must use [textShadowEnabled]/[cardGlowEnabled] instead.
+     */
     val showDropShadow: Boolean = true,
+    /** Independent text shadow on verse/citation text. */
+    val textShadowEnabled: Boolean = true,
+    val textShadowColorHex: String = "#000000",
+    /** Independent glow on the lower-third card/container (where a card exists). */
+    val cardGlowEnabled: Boolean = true,
+    val cardGlowColorHex: String = "#000000",
     val showCrossEmblem: Boolean = true,
     val bilingualMode: Boolean = false,
     val isPureTransparentBackground: Boolean = true,

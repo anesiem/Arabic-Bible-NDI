@@ -1,5 +1,7 @@
 package com.arabicchristianmedia.ui
 
+import android.content.Context
+import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.*
@@ -17,13 +19,19 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -37,6 +45,7 @@ import com.arabicchristianmedia.data.ArabicTextFormatter
 import com.arabicchristianmedia.data.TemplateRepository
 import com.arabicchristianmedia.model.*
 import com.arabicchristianmedia.ui.theme.*
+import java.util.concurrent.ConcurrentHashMap
 
 enum class PreviewBackground(val displayNameAr: String) {
     CHECKERBOARD_TRANSPARENT("شفاف مفرغ (100% Transparent Alpha)"),
@@ -50,23 +59,32 @@ fun TemplateEditorScreen(
     currentTemplate: LowerThirdTemplate,
     activeShowTemplate: LowerThirdTemplate,
     templates: List<LowerThirdTemplate>,
+    highlightedLowerStyleId: String?,
+    highlightedShowStyleId: String?,
+    lowerWorkingDirty: Boolean,
+    showWorkingDirty: Boolean,
     activeVerse: BibleVerse?,
     onSelectTemplate: (LowerThirdTemplate) -> Unit,
+    onSelectShowTemplate: (LowerThirdTemplate) -> Unit,
     onUpdateTemplate: (LowerThirdTemplate) -> Unit,
     onUpdateShowTemplate: (LowerThirdTemplate) -> Unit,
-    onSaveAsNew: (String, LowerThirdTemplate) -> Unit,
-    onResetDefaults: () -> Unit,
-    onToggleNdiSource: (String) -> Unit,
-    ndiLowerFullActive: Boolean,
-    ndiLowerHxActive: Boolean,
-    ndiFullShowFullActive: Boolean,
-    ndiFullShowHxActive: Boolean,
+    onSaveAsNew: (String, LowerThirdTemplate, Boolean) -> Unit,
+    onResetDefaults: (Boolean) -> Unit,
+    onDeleteTemplate: (String, Boolean) -> Unit,
+    onExportTemplate: (String) -> String?,
+    onUpdateTemplateFromJson: (String, String, Boolean) -> Boolean,
+    onImportNewTemplate: (String, Boolean) -> Boolean,
     modifier: Modifier = Modifier
 ) {
     var editorTab by remember { mutableIntStateOf(0) } // 0: Lower Third, 1: Full Show
     var showSaveDialog by remember { mutableStateOf(false) }
+    var templateToDelete by remember { mutableStateOf<LowerThirdTemplate?>(null) }
+    var styleMenuTpl by remember { mutableStateOf<LowerThirdTemplate?>(null) } // long-press actions menu
+    var importTargetTpl by remember { mutableStateOf<LowerThirdTemplate?>(null) } // null = import as new
+    var showImportDialog by remember { mutableStateOf(false) }
     var newTemplateName by remember { mutableStateOf("") }
     var previewBg by remember { mutableStateOf(PreviewBackground.SIMULATED_STUDIO_CAMERA) }
+    val context = LocalContext.current
 
     // Dynamic Recent Colors with delete (x) button
     var recentColors by remember {
@@ -105,7 +123,7 @@ fun TemplateEditorScreen(
                 Text("تخصيص كامل وشامل لطبقات البث والعرض المباشر", fontSize = 12.sp, color = bento.textSecondary)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                IconButton(onClick = onResetDefaults) { Icon(Icons.Default.Refresh, "إعادة تعيين", tint = bento.primary) }
+                IconButton(onClick = { onResetDefaults(editorTab == 1) }) { Icon(Icons.Default.Refresh, "إعادة تعيين", tint = bento.primary) }
                 Button(onClick = { newTemplateName = "${editingTemplate.name} النسخة"; showSaveDialog = true }, colors = ButtonDefaults.buttonColors(containerColor = bento.primary)) {
                     Icon(Icons.Default.Add, null, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(6.dp)); Text("حفظ كقالب جديد", fontSize = 12.sp)
                 }
@@ -118,6 +136,29 @@ fun TemplateEditorScreen(
         Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(bento.surfaceVariant).padding(4.dp)) {
             EditorTabItem("طبقة البث السفلى (Lower Third)", editorTab == 0, { editorTab = 0 }, Modifier.weight(1f))
             EditorTabItem("العرض الكامل (Full Show Projector)", editorTab == 1, { editorTab = 1 }, Modifier.weight(1f))
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        // 2b. Workflow tips: how the style system works (each tab is independent).
+        Card(shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = bento.primaryContainer), modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("كيف يعمل المحرر (How it works)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = bento.onPrimaryContainer)
+                val tips = listOf(
+                    "اختر نمطاً من القائمة لتطبيقه فوراً على المعاينة والبث.",
+                    "أي تعديل يظهر مباشرة ويُحفظ تلقائياً — لا يوجد زر حفظ.",
+                    "التعديل بدون حفظ يمسح التمييز عن النمط ويظهر شارة «معدّل».",
+                    "«حفظ كقالب جديد» ينشئ نمطاً جديداً في قائمة هذا التبويب فقط.",
+                    "«إعادة التعيين» يرجع لآخر نمط محدد، أو للوضع الافتراضي.",
+                    "اضغط مطولاً على أي نمط لحذفه."
+                )
+                tips.forEach { tip ->
+                    Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("•", fontSize = 11.sp, color = bento.onPrimaryContainer, fontWeight = FontWeight.Bold)
+                        Text(tip, fontSize = 11.sp, color = bento.onPrimaryContainer)
+                    }
+                }
+            }
         }
 
         Spacer(Modifier.height(12.dp))
@@ -157,24 +198,56 @@ fun TemplateEditorScreen(
 
         Spacer(Modifier.height(16.dp))
 
-        // 4. Base Template Selector (Effecting ONLY current tab mode)
-        Text("اختر نمط القالب المبدئي (Select Base Style)", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = bento.textPrimary)
+        // 4. Style Selector (per-tab collection; highlight = selected style id, NOT the working template id)
+        val highlightedId = if (editorTab == 0) highlightedLowerStyleId else highlightedShowStyleId
+        val tabIsDirty = if (editorTab == 0) lowerWorkingDirty else showWorkingDirty
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text("اختر النمط (Select Style)", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = bento.textPrimary)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (tabIsDirty) {
+                    Surface(shape = RoundedCornerShape(10.dp), color = bento.primaryContainer) {
+                        Text("معدّل (Modified)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.onPrimaryContainer, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
+                    }
+                }
+                TextButton(onClick = { importTargetTpl = null; showImportDialog = true }) {
+                    Text("استيراد (Import)", fontSize = 11.sp)
+                }
+            }
+        }
+        Text("اضغط مطولاً على أي نمط للتصدير / التحديث بالاستيراد / الحذف • التعديل بدون حفظ يمسح التمييز", fontSize = 10.sp, color = bento.textSecondary, modifier = Modifier.padding(top = 2.dp))
         LazyRow(modifier = Modifier.padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            // Strict partition: each tab shows ONLY its own collection. An empty tab
+            // shows an empty-state hint — never the other tab's styles.
             val filteredTemplates = if (editorTab == 1) templates.filter { it.isFullScreen } else templates.filter { !it.isFullScreen }
-            val listToShow = if (filteredTemplates.isEmpty()) templates else filteredTemplates
-            items(listToShow) { tpl ->
+            if (filteredTemplates.isEmpty()) {
+                item {
+                    Text(
+                        if (editorTab == 1)
+                            "لا توجد أنماط للعرض الكامل بعد — عدّل ثم «حفظ كقالب جديد» لإنشاء أول نمط."
+                        else
+                            "لا توجد أنماط للطبقة السفلى بعد — عدّل ثم «حفظ كقالب جديد» لإنشاء أول نمط.",
+                        fontSize = 11.sp,
+                        color = bento.textSecondary,
+                        modifier = Modifier.padding(vertical = 16.dp, horizontal = 4.dp)
+                    )
+                }
+            }
+            items(filteredTemplates, key = { it.id }) { tpl ->
+                val isHighlighted = tpl.id == highlightedId
                 Card(
-                    onClick = {
-                        if (editorTab == 0) {
-                            onSelectTemplate(tpl.copy(isFullScreen = false))
-                        } else {
-                            onUpdateShowTemplate(tpl.copy(isFullScreen = true))
-                        }
-                    },
                     shape = RoundedCornerShape(14.dp),
-                    colors = CardDefaults.cardColors(containerColor = if (tpl.id == editingTemplate.id) bento.primaryContainer else bento.card),
-                    border = if (tpl.id == editingTemplate.id) BorderStroke(2.dp, bento.primary) else BorderStroke(1.dp, bento.borderSubtle),
-                    modifier = Modifier.width(130.dp)
+                    colors = CardDefaults.cardColors(containerColor = if (isHighlighted) bento.primaryContainer else bento.card),
+                    border = if (isHighlighted) BorderStroke(2.dp, bento.primary) else BorderStroke(1.dp, bento.borderSubtle),
+                    modifier = Modifier.width(130.dp).combinedClickable(
+                        onClick = {
+                            if (editorTab == 0) {
+                                onSelectTemplate(tpl.copy(isFullScreen = false))
+                            } else {
+                                onSelectShowTemplate(tpl.copy(isFullScreen = true))
+                            }
+                        },
+                        onLongClick = { styleMenuTpl = tpl }
+                    )
                 ) {
                     Column(Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Box(Modifier.fillMaxWidth().height(42.dp).clip(RoundedCornerShape(8.dp)).background(try { Color(android.graphics.Color.parseColor(tpl.bgColorHex)) } catch (e: Exception) { Color.Black }).border(1.dp, bento.border, RoundedCornerShape(8.dp)))
@@ -203,7 +276,7 @@ fun TemplateEditorScreen(
                     }
                 }
 
-                // Alignment & NDI Feed Toggle
+                // Alignment
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     Column(Modifier.weight(1f)) {
                         Text("محاذاة النص (Alignment)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
@@ -214,31 +287,16 @@ fun TemplateEditorScreen(
                             }
                         }
                     }
-                    Column(Modifier.weight(0.6f)) {
-                        // Independent Full NDI + HX (bandwidth-saver) toggles per feed
-                        val feedLabel = if (editorTab == 0) "Lower Third" else "Full Show"
-                        val fullKey = if (editorTab == 0) "lower_full" else "full_full"
-                        val hxKey = if (editorTab == 0) "lower_hx" else "full_hx"
-                        val fullActive = if (editorTab == 0) ndiLowerFullActive else ndiFullShowFullActive
-                        val hxActive = if (editorTab == 0) ndiLowerHxActive else ndiFullShowHxActive
-                        Text("مصادر NDI المباشرة", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
-                        Spacer(Modifier.height(4.dp))
-                        SourceToggleChip("$feedLabel • Full NDI", fullActive, { onToggleNdiSource(fullKey) })
-                        Spacer(Modifier.height(4.dp))
-                        SourceToggleChip("$feedLabel • HX", hxActive, { onToggleNdiSource(hxKey) })
-                    }
                 }
 
                 HorizontalDivider(color = bento.borderSubtle)
 
                 // Primary Typography (Arabic Verse & Citation)
                 Text("تنسيق الخط العربي (Arabic Typography)", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary)
-                val arabicFonts = listOf("Amiri", "Cairo", "Noto Naskh Arabic", "System")
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(arabicFonts) { font ->
-                        FilterChip(selected = editingTemplate.fontFamily == font, onClick = { onUpdate(editingTemplate.copy(fontFamily = font)) }, label = { Text(font, fontSize = 11.sp) })
-                    }
-                }
+                FontDropdown(
+                    selected = editingTemplate.fontFamily,
+                    onSelect = { onUpdate(editingTemplate.copy(fontFamily = it)) }
+                )
                 
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("الآية:", fontSize = 11.sp, color = bento.textSecondary)
@@ -302,8 +360,18 @@ fun TemplateEditorScreen(
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     FeatureToggleRow("إظهار الحدود الملونة", editingTemplate.showAccentBorder) { onUpdate(editingTemplate.copy(showAccentBorder = it)) }
                 }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    FeatureToggleRow("إظهار ظلال النصوص (Drop Shadow)", editingTemplate.showDropShadow) { onUpdate(editingTemplate.copy(showDropShadow = it)) }
+                // Independent text shadow and card glow (v1.6). Card glow only
+                // applies where a card exists — not on full-bleed Full Show.
+                Text("الظل والتوهج (Shadow & Glow)", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary)
+                FeatureToggleRow("ظل النص (Text Shadow)", editingTemplate.textShadowEnabled) { onUpdate(editingTemplate.copy(textShadowEnabled = it)) }
+                if (editingTemplate.textShadowEnabled) {
+                    ColorGradePickerRow("لون ظل النص (Text Shadow Color)", editingTemplate.textShadowColorHex, { onUpdate(editingTemplate.copy(textShadowColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
+                }
+                if (!editingTemplate.isFullScreen) {
+                    FeatureToggleRow("توهج الكارت (Card Glow)", editingTemplate.cardGlowEnabled) { onUpdate(editingTemplate.copy(cardGlowEnabled = it)) }
+                    if (editingTemplate.cardGlowEnabled) {
+                        ColorGradePickerRow("لون توهج الكارت (Card Glow Color)", editingTemplate.cardGlowColorHex, { onUpdate(editingTemplate.copy(cardGlowColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
+                    }
                 }
 
                 // Animated Motion Backgrounds
@@ -330,15 +398,194 @@ fun TemplateEditorScreen(
             onDismissRequest = { showSaveDialog = false },
             title = { Text("حفظ القالب") },
             text = { OutlinedTextField(value = newTemplateName, onValueChange = { newTemplateName = it }, label = { Text("اسم القالب") }, singleLine = true) },
-            confirmButton = { Button(onClick = { if (newTemplateName.isNotBlank()) { onSaveAsNew(newTemplateName, editingTemplate); showSaveDialog = false } }) { Text("حفظ") } },
+            confirmButton = { Button(onClick = { if (newTemplateName.isNotBlank()) { onSaveAsNew(newTemplateName, editingTemplate, editorTab == 1); showSaveDialog = false } }) { Text("حفظ") } },
             dismissButton = { TextButton(onClick = { showSaveDialog = false }) { Text("إلغاء") } }
+        )
+    }
+
+    // Long-press style menu: export / update-from-import / delete (full user control).
+    styleMenuTpl?.let { tpl ->
+        AlertDialog(
+            onDismissRequest = { styleMenuTpl = null },
+            title = { Text("\"${tpl.name}\"", fontSize = 15.sp, fontWeight = FontWeight.Bold) },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    TextButton(
+                        onClick = {
+                            onExportTemplate(tpl.id)?.let { json ->
+                                val intent = Intent(Intent.ACTION_SEND).apply {
+                                    type = "text/plain"
+                                    putExtra(Intent.EXTRA_SUBJECT, "Bible NDI style: ${tpl.name}")
+                                    putExtra(Intent.EXTRA_TEXT, json)
+                                }
+                                context.startActivity(Intent.createChooser(intent, "تصدير القالب (Export style)"))
+                            }
+                            styleMenuTpl = null
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("تصدير / مشاركة (Export / Share)", fontSize = 13.sp) }
+                    TextButton(
+                        onClick = { importTargetTpl = tpl; showImportDialog = true; styleMenuTpl = null },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("تحديث باستيراد JSON (Update from import)", fontSize = 13.sp) }
+                    TextButton(
+                        onClick = { templateToDelete = tpl; styleMenuTpl = null },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("حذف (Delete)", fontSize = 13.sp, color = bento.liveRed) }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { styleMenuTpl = null }) { Text("إلغاء") } }
+        )
+    }
+
+    // Import dialog: paste JSON or pick a .json file. Target null = new style,
+    // otherwise the target style is updated in place (id preserved).
+    if (showImportDialog) {
+        var importText by remember { mutableStateOf("") }
+        var importError by remember { mutableStateOf<String?>(null) }
+        val jsonPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            if (uri != null) {
+                try {
+                    context.contentResolver.openInputStream(uri)?.bufferedReader()?.readText()?.let { text ->
+                        importText = text
+                        importError = null
+                    } ?: run { importError = "تعذر قراءة الملف (could not read file)" }
+                } catch (e: Exception) {
+                    importError = "تعذر قراءة الملف (could not read file)"
+                }
+            }
+        }
+        val targetName = importTargetTpl?.name
+        AlertDialog(
+            onDismissRequest = { showImportDialog = false; importTargetTpl = null },
+            title = {
+                Text(
+                    if (targetName == null) "استيراد قالب جديد (Import new style)" else "تحديث \"$targetName\" بالاستيراد",
+                    fontSize = 15.sp, fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        "الصق JSON القالب أدناه أو اختر ملف .json:",
+                        fontSize = 12.sp, color = bento.textSecondary
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    TextField(
+                        value = importText,
+                        onValueChange = { importText = it; importError = null },
+                        modifier = Modifier.fillMaxWidth().height(150.dp),
+                        placeholder = { Text("{\"name\": ...}", fontSize = 11.sp) },
+                        textStyle = TextStyle(fontSize = 11.sp)
+                    )
+                    if (importError != null) {
+                        Text(importError!!, fontSize = 12.sp, color = bento.liveRed, modifier = Modifier.padding(top = 4.dp))
+                    }
+                    TextButton(onClick = { jsonPicker.launch(arrayOf("application/json", "text/plain")) }) {
+                        Text("اختر ملف JSON (Choose file)", fontSize = 12.sp)
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    val target = importTargetTpl
+                    val ok = if (target != null) {
+                        onUpdateTemplateFromJson(target.id, importText, editorTab == 1)
+                    } else {
+                        onImportNewTemplate(importText, editorTab == 1)
+                    }
+                    if (ok) {
+                        showImportDialog = false
+                        importTargetTpl = null
+                    } else {
+                        importError = "JSON غير صالح — تحقق من النص وحاول مجدداً (invalid style JSON)"
+                    }
+                }) { Text("استيراد (Import)") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showImportDialog = false; importTargetTpl = null }) { Text("إلغاء") }
+            }
+        )
+    }
+
+    // Long-press delete confirmation (deletes from the style's own tab collection).
+    templateToDelete?.let { tpl ->
+        AlertDialog(
+            onDismissRequest = { templateToDelete = null },
+            title = { Text("حذف القالب") },
+            text = { Text("هل تريد حذف القالب \"${tpl.name}\"؟ لا يمكن التراجع عن الحذف.") },
+            confirmButton = {
+                Button(
+                    onClick = { onDeleteTemplate(tpl.id, tpl.isFullScreen); templateToDelete = null },
+                    colors = ButtonDefaults.buttonColors(containerColor = bento.liveRed)
+                ) { Text("حذف") }
+            },
+            dismissButton = { TextButton(onClick = { templateToDelete = null }) { Text("إلغاء") } }
         )
     }
 }
 
+/** Cache of Compose FontFamilies built from bundled asset fonts (editor + preview). */
+private val editorFontFamilyCache = ConcurrentHashMap<String, FontFamily>()
+
+/**
+ * Compose [FontFamily] for a bundled Arabic font. Returns [FontFamily.Default]
+ * for "System" or unknown families.
+ */
+private fun bundledFontFamily(context: Context, family: String): FontFamily {
+    if (family == ArabicFonts.SYSTEM) return FontFamily.Default
+    return editorFontFamilyCache.getOrPut(family) {
+        val bundled = ArabicFonts.find(family) ?: return FontFamily.Default
+        try {
+            FontFamily(android.graphics.Typeface.createFromAsset(context.assets, bundled.asset400))
+        } catch (_: Exception) {
+            FontFamily.Default
+        }
+    }
+}
+
+/**
+ * Dropdown listing every bundled Arabic font (plus System), each item rendered
+ * in its own typeface so the user can see the actual look before choosing.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun StyleToggle(label: String, active: Boolean, onToggle: (Boolean) -> Unit) {
-    val bento = LocalBentoColors.current
+private fun FontDropdown(selected: String, onSelect: (String) -> Unit) {
+    val context = LocalContext.current
+    var expanded by remember { mutableStateOf(false) }
+    val selectedFamily = remember(selected) { bundledFontFamily(context, selected) }
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = !expanded }
+    ) {
+        TextField(
+            value = selected,
+            onValueChange = {},
+            readOnly = true,
+            label = { Text("الخط (Font)", fontSize = 10.sp) },
+            textStyle = TextStyle(fontFamily = selectedFamily, fontSize = 14.sp),
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            modifier = Modifier.menuAnchor().fillMaxWidth(),
+            singleLine = true
+        )
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            ArabicFonts.displayNames.forEach { name ->
+                val itemFamily = remember(name) { bundledFontFamily(context, name) }
+                DropdownMenuItem(
+                    text = { Text(name, fontFamily = itemFamily, fontSize = 14.sp) },
+                    onClick = { onSelect(name); expanded = false }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun StyleToggle(label: String, active: Boolean, onToggle: (Boolean) -> Unit) {    val bento = LocalBentoColors.current
     Box(
         modifier = Modifier
             .size(34.dp)
@@ -368,18 +615,6 @@ fun EditorTabItem(label: String, selected: Boolean, onClick: () -> Unit, modifie
     val bento = LocalBentoColors.current
     Box(modifier = modifier.clip(RoundedCornerShape(10.dp)).background(if (selected) bento.primary else Color.Transparent).clickable { onClick() }.padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
         Text(label, color = if (selected) Color.White else bento.textSecondary, fontSize = 11.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
-    }
-}
-
-@Composable
-fun SourceToggleChip(label: String, active: Boolean, onClick: () -> Unit) {
-    val bento = LocalBentoColors.current
-    Surface(onClick = onClick, shape = RoundedCornerShape(10.dp), color = if (active) bento.primary else bento.card, border = BorderStroke(1.dp, if (active) bento.primary else bento.border)) {
-        Row(Modifier.padding(vertical = 6.dp, horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(if (active) Icons.Default.Check else Icons.Default.Videocam, null, tint = if (active) Color.White else bento.textSecondary, modifier = Modifier.size(13.dp))
-            Spacer(Modifier.width(4.dp))
-            Text(label, color = if (active) Color.White else bento.textPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-        }
     }
 }
 
@@ -629,12 +864,14 @@ fun FeatureToggleRow(label: String, checked: Boolean, onCheckedChange: (Boolean)
 
 @Composable
 fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, previewBg: PreviewBackground) {
+    val bento = LocalBentoColors.current
+    val context = LocalContext.current
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .aspectRatio(16f / 9f)
             .clip(RoundedCornerShape(14.dp))
-            .border(1.5.dp, Color(0xFF334155), RoundedCornerShape(14.dp))
+            .border(1.5.dp, bento.border, RoundedCornerShape(14.dp))
     ) {
         // Background Simulation
         if (previewBg == PreviewBackground.CHECKERBOARD_TRANSPARENT) {
@@ -674,6 +911,34 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
         val refCol = try { Color(android.graphics.Color.parseColor(template.referenceColorHex)) } catch (e: Exception) { Color.Yellow }
         val secTextCol = try { Color(android.graphics.Color.parseColor(template.secondaryTextColorHex)) } catch (e: Exception) { Color.Gray }
         val secRefCol = try { Color(android.graphics.Color.parseColor(template.secondaryReferenceColorHex)) } catch (e: Exception) { Color.Gray }
+        // Independent text shadow (v1.6): mirrors the NDI canvas + HTML overlay rendering.
+        val shadowCol = try { Color(android.graphics.Color.parseColor(template.textShadowColorHex)) } catch (e: Exception) { Color.Black }
+        val previewShadow = if (template.textShadowEnabled) Shadow(color = shadowCol, offset = Offset(2f, 3f), blurRadius = 7f) else null
+        // Bundled Arabic font for a true WYSIWYG preview (same TTFs the NDI canvas uses).
+        val previewFontFamily = remember(template.fontFamily) { bundledFontFamily(context, template.fontFamily) }
+        // Independent card glow (v1.6): colored halo behind the card, only where a card exists.
+        // Skipped for transparent styles and full-bleed Full Show — mirrors the
+        // NDI canvas renderer and the HTML overlay (which force no glow there).
+        val glowCol = try { Color(android.graphics.Color.parseColor(template.cardGlowColorHex)) } catch (e: Exception) { Color.Black }
+        val hasVisibleCard = !template.isPureTransparentBackground &&
+                template.style != com.arabicchristianmedia.model.TemplateStyle.TRANSPARENT_OUTLINE
+        val cardGlowModifier = if (template.cardGlowEnabled && !isFS && hasVisibleCard) {
+            Modifier.drawBehind {
+                // Soft layered halo in the user's glow color (drawn outside the card bounds).
+                drawRoundRect(
+                    color = glowCol.copy(alpha = 0.30f),
+                    topLeft = Offset(-22f, -22f),
+                    size = Size(size.width + 44f, size.height + 44f),
+                    cornerRadius = CornerRadius(28f, 28f)
+                )
+                drawRoundRect(
+                    color = glowCol.copy(alpha = 0.15f),
+                    topLeft = Offset(-40f, -40f),
+                    size = Size(size.width + 80f, size.height + 80f),
+                    cornerRadius = CornerRadius(40f, 40f)
+                )
+            }
+        } else Modifier
 
         Box(
             modifier = Modifier
@@ -694,7 +959,8 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
                 shape = RoundedCornerShape(if (isFS) 0.dp else (template.cornerRadiusDp * 0.6f).dp),
                 color = cardBg,
                 border = if (template.showAccentBorder) BorderStroke(1.5.dp, try { Color(android.graphics.Color.parseColor(template.accentColorHex)) } catch (e: Exception) { Color.Yellow }) else BorderStroke(1.dp, Color.White.copy(alpha = 0.25f)),
-                modifier = if (isFS) Modifier.fillMaxSize() else Modifier.fillMaxWidth().padding(horizontal = 8.dp)
+                shadowElevation = if (template.cardGlowEnabled && !isFS && hasVisibleCard) 12.dp else 0.dp,
+                modifier = cardGlowModifier.then(if (isFS) Modifier.fillMaxSize() else Modifier.fillMaxWidth().padding(horizontal = 8.dp))
             ) {
                 Column(
                     modifier = if (isFS) Modifier.fillMaxSize().padding(14.dp) else Modifier.padding(10.dp),
@@ -723,7 +989,9 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
                             fontSize = (template.referenceFontSize * 0.42f).sp,
                             fontWeight = if (template.referenceIsBold) FontWeight.Bold else FontWeight.Normal,
                             fontStyle = if (template.referenceIsItalic) FontStyle.Italic else FontStyle.Normal,
-                            color = refCol
+                            fontFamily = previewFontFamily,
+                            color = refCol,
+                            style = TextStyle(shadow = previewShadow)
                         )
                     }
 
@@ -734,7 +1002,9 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
                         lineHeight = (template.verseFontSize * 0.55f).sp,
                         fontWeight = if (template.verseIsBold) FontWeight.Bold else FontWeight.Normal,
                         fontStyle = if (template.verseIsItalic) FontStyle.Italic else FontStyle.Normal,
+                        fontFamily = previewFontFamily,
                         color = textCol,
+                        style = TextStyle(shadow = previewShadow),
                         textAlign = when (template.alignment) {
                             BroadcastTextAlignment.CENTER -> TextAlign.Center
                             BroadcastTextAlignment.LEFT -> TextAlign.Left
@@ -765,6 +1035,7 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
                                 fontWeight = if (template.secondaryVerseIsBold) FontWeight.Bold else FontWeight.Normal,
                                 fontStyle = if (template.secondaryVerseIsItalic) FontStyle.Italic else FontStyle.Normal,
                                 color = secTextCol,
+                                style = TextStyle(shadow = previewShadow),
                                 textAlign = when (template.alignment) {
                                     BroadcastTextAlignment.CENTER -> TextAlign.Center
                                     BroadcastTextAlignment.LEFT -> TextAlign.Left

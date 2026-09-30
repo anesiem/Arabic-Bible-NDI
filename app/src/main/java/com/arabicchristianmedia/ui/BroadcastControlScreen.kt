@@ -80,6 +80,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import com.arabicchristianmedia.BuildConfig
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.arabicchristianmedia.server.InterfaceType
@@ -102,6 +104,7 @@ fun BroadcastControlScreen(
     onToggleKeepScreenOn: () -> Unit = {},
     onToggleNdiSource: (String) -> Unit = {},
     onUpdateNdiSourceSpec: (String, Int, Int, Int) -> Unit = { _, _, _, _ -> },
+    onToggleNdiMotion: (String) -> Unit = {},
     onToggleAdvancedNdi: () -> Unit = {},
     onRefreshNdiDiagnostics: () -> Unit = {},
     onClearNdiDiagnostics: () -> Unit = {},
@@ -109,10 +112,10 @@ fun BroadcastControlScreen(
 ) {
     val context = LocalContext.current
     val bento = LocalBentoColors.current
-    /** Tier label showing the source's *current* configured resolution, e.g. "Full NDI • 1280×720 • شفاف". */
+    /** Label showing the source's *current* configured spec, e.g. "Lower Third • 1280×720 @ 30fps". */
     val specLabel = { feedKey: String, tier: String ->
         val sp = uiState.ndiSourceSpecs[feedKey] ?: NdiNativeSender.defaultSpec(feedKey)
-        "$tier • ${sp.width}×${sp.height}"
+        "$tier • ${sp.width}×${sp.height} @ ${sp.fps}fps"
     }
     val BentoBg = bento.bg
     val BentoCardWhite = bento.card
@@ -217,7 +220,8 @@ fun BroadcastControlScreen(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // NDI Protocol Badge (Native Full NDI / mDNS / NDI 6 Discovery)
+                // NDI Protocol Badge (native NDI 6 senders; the OS-level NDI discovery
+                // is handled by the NDI runtime itself — no in-app beacon)
                 Surface(
                     shape = RoundedCornerShape(12.dp),
                     color = if (uiState.isServerRunning) Color(0xFFF0FDF4) else Color(0xFFF8FAFC),
@@ -579,42 +583,23 @@ fun BroadcastControlScreen(
                                         Text("ابحث في برامج vMix/OBS عن المصادر التالية:", fontSize = 10.sp, color = BentoTextSecondary)
                                         Spacer(modifier = Modifier.height(6.dp))
                                         // Exact on-air names: "<TabletModel> - <FeedName>" (never localhost/IP)
+                                        // Exactly two genuine NDI senders: Lower Third and Full Show.
                                         NdiSourceRow(
                                             feedKey = NdiNativeSender.FEED_LOWER,
-                                            toggleKey = "lower_full",
-                                            tierLabel = specLabel(NdiNativeSender.FEED_LOWER, "Full NDI • شفاف"),
-                                            enabled = uiState.ndiLowerFullEnabled,
+                                            toggleKey = "lower",
+                                            tierLabel = specLabel(NdiNativeSender.FEED_LOWER, "Lower Third • شفاف"),
+                                            enabled = uiState.ndiLowerEnabled,
                                             active = uiState.isNativeNdiActive,
                                             tint = BentoPrimary,
                                             textSecondary = BentoTextSecondary,
                                             onToggle = onToggleNdiSource
                                         )
                                         NdiSourceRow(
-                                            feedKey = NdiNativeSender.FEED_LOWER_HX,
-                                            toggleKey = "lower_hx",
-                                            tierLabel = specLabel(NdiNativeSender.FEED_LOWER_HX, "HX • للشبكات البطيئة"),
-                                            enabled = uiState.ndiLowerHxEnabled,
-                                            active = uiState.isNativeLowerHxActive,
-                                            tint = BentoPrimary,
-                                            textSecondary = BentoTextSecondary,
-                                            onToggle = onToggleNdiSource
-                                        )
-                                        NdiSourceRow(
                                             feedKey = NdiNativeSender.FEED_FULL,
-                                            toggleKey = "full_full",
-                                            tierLabel = specLabel(NdiNativeSender.FEED_FULL, "Full NDI • شفاف"),
-                                            enabled = uiState.ndiFullShowFullEnabled,
+                                            toggleKey = "full",
+                                            tierLabel = specLabel(NdiNativeSender.FEED_FULL, "Full Show • شفاف"),
+                                            enabled = uiState.ndiFullShowEnabled,
                                             active = uiState.isNativeShowActive,
-                                            tint = Color(0xFF10B981),
-                                            textSecondary = BentoTextSecondary,
-                                            onToggle = onToggleNdiSource
-                                        )
-                                        NdiSourceRow(
-                                            feedKey = NdiNativeSender.FEED_FULL_HX,
-                                            toggleKey = "full_hx",
-                                            tierLabel = specLabel(NdiNativeSender.FEED_FULL_HX, "HX • للشبكات البطيئة"),
-                                            enabled = uiState.ndiFullShowHxEnabled,
-                                            active = uiState.isNativeFullHxActive,
                                             tint = Color(0xFF10B981),
                                             textSecondary = BentoTextSecondary,
                                             onToggle = onToggleNdiSource
@@ -664,25 +649,17 @@ fun BroadcastControlScreen(
                                             feedKey = NdiNativeSender.FEED_LOWER,
                                             spec = specOf(NdiNativeSender.FEED_LOWER),
                                             tint = BentoPrimary,
-                                            onUpdate = onUpdateNdiSourceSpec
-                                        )
-                                        NdiSourceSettingsRow(
-                                            feedKey = NdiNativeSender.FEED_LOWER_HX,
-                                            spec = specOf(NdiNativeSender.FEED_LOWER_HX),
-                                            tint = BentoPrimary,
-                                            onUpdate = onUpdateNdiSourceSpec
+                                            textSecondary = BentoTextSecondary,
+                                            onUpdate = onUpdateNdiSourceSpec,
+                                            onToggleMotion = onToggleNdiMotion
                                         )
                                         NdiSourceSettingsRow(
                                             feedKey = NdiNativeSender.FEED_FULL,
                                             spec = specOf(NdiNativeSender.FEED_FULL),
                                             tint = Color(0xFF10B981),
-                                            onUpdate = onUpdateNdiSourceSpec
-                                        )
-                                        NdiSourceSettingsRow(
-                                            feedKey = NdiNativeSender.FEED_FULL_HX,
-                                            spec = specOf(NdiNativeSender.FEED_FULL_HX),
-                                            tint = Color(0xFF10B981),
-                                            onUpdate = onUpdateNdiSourceSpec
+                                            textSecondary = BentoTextSecondary,
+                                            onUpdate = onUpdateNdiSourceSpec,
+                                            onToggleMotion = onToggleNdiMotion
                                         )
                                     }
                                 }
@@ -724,9 +701,7 @@ fun BroadcastControlScreen(
                                             Spacer(modifier = Modifier.height(8.dp))
                                             val activeOf = mapOf(
                                                 NdiNativeSender.FEED_LOWER to uiState.isNativeNdiActive,
-                                                NdiNativeSender.FEED_LOWER_HX to uiState.isNativeLowerHxActive,
-                                                NdiNativeSender.FEED_FULL to uiState.isNativeShowActive,
-                                                NdiNativeSender.FEED_FULL_HX to uiState.isNativeFullHxActive
+                                                NdiNativeSender.FEED_FULL to uiState.isNativeShowActive
                                             )
                                             NdiNativeSender.ALL_FEEDS.forEach { feed ->
                                                 val spec = uiState.ndiSourceSpecs[feed] ?: NdiNativeSender.defaultSpec(feed)
@@ -1290,6 +1265,15 @@ fun BroadcastControlScreen(
                 }
             }
         }
+
+        // App version footer: confirms which build is installed on this tablet.
+        Text(
+            text = "Arabic Bible NDI v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE}) • ${BuildConfig.BUILD_DATE}",
+            fontSize = 11.sp,
+            color = BentoTextSecondary,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)
+        )
     }
 }
 
@@ -1342,15 +1326,17 @@ private fun NdiSourceRow(
 }
 
 /**
- * Per-source NDI settings: resolution + frame-rate dropdowns.
- * Changing either restarts the source immediately with the new spec.
+ * Per-source NDI settings: resolution + frame-rate dropdowns + motion toggle.
+ * Changing any of them restarts the source immediately with the new spec.
  */
 @Composable
 private fun NdiSourceSettingsRow(
     feedKey: String,
     spec: NdiSourceSpec,
     tint: Color,
-    onUpdate: (String, Int, Int, Int) -> Unit
+    textSecondary: Color,
+    onUpdate: (String, Int, Int, Int) -> Unit,
+    onToggleMotion: (String) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
         Text(
@@ -1361,8 +1347,8 @@ private fun NdiSourceSettingsRow(
         )
         Spacer(modifier = Modifier.height(4.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            val resOptions = NdiNativeSender.RESOLUTION_OPTIONS.map { "${it.first}×${it.second}" }
-            val selectedRes = "${spec.width}×${spec.height}"
+            val resOptions = NdiNativeSender.RESOLUTION_OPTIONS.map { (w, h) -> "${w}×${h} • 16:9" }
+            val selectedRes = "${spec.width}×${spec.height} • 16:9"
             NdiDropdown(
                 label = "الدقة",
                 options = resOptions,
@@ -1381,6 +1367,25 @@ private fun NdiSourceSettingsRow(
                 onSelect = { sel ->
                     onUpdate(feedKey, spec.width, spec.height, sel.substringBefore(" ").toInt())
                 }
+            )
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("الحركة (Motion)", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = tint)
+                Text(
+                    "إعادة رسم الخلفيات المتحركة باستمرار (بحد أقصى 15 إطار/ثا)",
+                    fontSize = 9.sp,
+                    color = textSecondary
+                )
+            }
+            Switch(
+                checked = spec.motionEnabled,
+                onCheckedChange = { onToggleMotion(feedKey) }
             )
         }
     }

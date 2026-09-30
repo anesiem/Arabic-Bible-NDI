@@ -157,7 +157,7 @@ fun FullscreenOverlayContent(
                     border = if (template.showAccentBorder && template.style != TemplateStyle.TRANSPARENT_OUTLINE && !template.isFullScreen) {
                         BorderStroke(2.dp, accentCol)
                     } else null,
-                    shadowElevation = if (template.showDropShadow && !template.isFullScreen) 16.dp else 0.dp,
+                    shadowElevation = if (template.cardGlowEnabled && !template.isFullScreen) 16.dp else 0.dp,
                     modifier = if (template.isFullScreen) Modifier.fillMaxSize() else Modifier.fillMaxWidth()
                 ) {
                     Column(

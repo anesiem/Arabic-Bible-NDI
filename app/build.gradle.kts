@@ -18,8 +18,10 @@ android {
     applicationId = "com.arabicchristianmedia"
     minSdk = 24
     targetSdk = 36
-    versionCode = 5
-    versionName = "1.4"
+    versionCode = 6
+    versionName = "1.6"
+    // Build date (UTC) shown in the NDI tab version footer.
+    buildConfigField("String", "BUILD_DATE", "\"${java.time.LocalDate.now(java.time.ZoneId.of("UTC"))}\"")
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     ndk {

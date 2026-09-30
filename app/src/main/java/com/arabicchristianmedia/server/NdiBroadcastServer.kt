@@ -2,6 +2,7 @@ package com.arabicchristianmedia.server
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.LinearGradient
@@ -22,17 +23,17 @@ import android.text.TextPaint
 import android.text.style.AbsoluteSizeSpan
 import android.text.style.ForegroundColorSpan
 import com.arabicchristianmedia.data.ArabicTextFormatter
-import com.arabicchristianmedia.data.BibleRepository
 import com.arabicchristianmedia.model.AnimatedBackgroundType
+import com.arabicchristianmedia.model.ArabicFonts
 import com.arabicchristianmedia.model.BibleVerse
 import com.arabicchristianmedia.model.BroadcastTextAlignment
 import com.arabicchristianmedia.model.LowerThirdTemplate
 import com.arabicchristianmedia.model.StreamBackgroundMode
 import com.arabicchristianmedia.model.TemplateStyle
-import com.arabicchristianmedia.model.TransitionType
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.json.JSONObject
@@ -45,6 +46,7 @@ import java.io.OutputStream
 import java.io.PrintWriter
 import java.net.ServerSocket
 import java.net.Socket
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.math.sin
 
@@ -164,14 +166,45 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     }
 
     private var lastTemplateUpdateMs = 0L
+    private var trailingBroadcastJob: Job? = null
 
     fun updateTemplate(template: LowerThirdTemplate) {
         currentTemplate = template
         invalidateBitmapCache()
+        broadcastStateThrottled()
+    }
+
+    /**
+     * Full Show template update. Goes through the same state-update pipeline as
+     * the Lower Third (cache invalidation, frame-version bump, throttled +
+     * trailing SSE broadcast) so HTTP /show clients update live — previously
+     * only the NDI feed was refreshed.
+     */
+    fun updateShowTemplate(template: LowerThirdTemplate) {
+        currentShowTemplate = template
+        invalidateBitmapCache()
+        broadcastStateThrottled()
+    }
+
+    /**
+     * Leading-edge throttled broadcast with a trailing edge: rapid slider drags
+     * broadcast immediately, and the final state is always delivered ~100ms
+     * after the last change, so overlays never show a stale value.
+     */
+    private fun broadcastStateThrottled() {
         val now = SystemClock.elapsedRealtime()
         if (now - lastTemplateUpdateMs >= 100) {
             lastTemplateUpdateMs = now
+            trailingBroadcastJob?.cancel()
+            trailingBroadcastJob = null
             broadcastStateToClients()
+        } else if (trailingBroadcastJob == null) {
+            trailingBroadcastJob = scope.launch {
+                delay(100)
+                lastTemplateUpdateMs = SystemClock.elapsedRealtime()
+                trailingBroadcastJob = null
+                broadcastStateToClients()
+            }
         }
     }
 
@@ -283,6 +316,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 cleanPath == "/ndi/status" || cleanPath == "/status" -> {
                     serveStatus(out)
                 }
+                cleanPath.startsWith("/fonts/") -> {
+                    serveFontFile(out, cleanPath.removePrefix("/fonts/"))
+                }
                 cleanPath == "/ndi/video_file" -> {
                     serveLocalVideo(out, fullPath)
                 }
@@ -346,6 +382,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         } else ""
 
         val root = JSONObject().apply {
+            // Monotonic state version: browser sources re-sync on SSE reconnect
+            // by comparing against the last version they applied.
+            put("stateVersion", frameVersion)
             put("isLive", isLive && verse != null)
             put("arabicText", formattedVerseText)
             put("arabicCitation", formattedCitation)
@@ -374,6 +413,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             put("transitionDurationMs", tpl.transitionDurationMs)
             put("showAccentBorder", tpl.showAccentBorder)
             put("showDropShadow", tpl.showDropShadow)
+            put("textShadowEnabled", tpl.textShadowEnabled)
+            put("textShadowColorHex", tpl.textShadowColorHex)
+            put("cardGlowEnabled", tpl.cardGlowEnabled)
+            put("cardGlowColorHex", tpl.cardGlowColorHex)
             put("showCrossEmblem", tpl.showCrossEmblem)
             put("isPureTransparentBackground", tpl.isPureTransparentBackground)
             put("isFullScreen", tpl.isFullScreen)
@@ -418,9 +461,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>NDI Bible Live Overlay</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Amiri:ital,wght@0,400;0,700;1,400&family=Cairo:wght@400;600;700;800&family=Noto+Naskh+Arabic:wght@400;700&display=swap" rel="stylesheet">
+  <!-- Bundled Arabic fonts, served from this tablet: the overlay works fully offline. -->
+  <style>${buildFontFaceCss()}</style>
   <style>
     /* ==========================================================================
        1. Global Reset & Base Setup (100% Transparent Background for OBS/vMix)
@@ -700,7 +742,16 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     /**
      * Main Renderer: Applies state data to the DOM elements
      */
+    // Last applied SSE state version (-1 = none yet). See applyData guard.
+    let lastStateVersion = -1;
+
     function applyData(data) {
+      // State-version guard: drop stale/out-of-order deliveries and let a fresh
+      // reconnect re-sync (the server bumps stateVersion on every change).
+      if (data.stateVersion !== undefined && data.stateVersion !== null) {
+        if (data.stateVersion <= lastStateVersion) return;
+        lastStateVersion = data.stateVersion;
+      }
       if (!data.isLive || !data.arabicText) {
         container.classList.remove('visible');
         return;
@@ -814,11 +865,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         }
       }
 
-      // 5. Typography & Font Styling
-      const font = data.fontFamily === 'Cairo' ? "'Cairo', sans-serif" :
-                   data.fontFamily === 'Amiri' ? "'Amiri', serif" :
-                   data.fontFamily === 'Noto Naskh Arabic' ? "'Noto Naskh Arabic', serif" :
-                   data.fontFamily || "'Amiri', serif";
+      // 5. Typography & Font Styling (bundled webfonts served from the tablet; fully offline)
+      const rawFont = String(data.fontFamily || 'Amiri').replace(/['"\\]/g, '');
+      const font = rawFont === 'System' ? 'system-ui, sans-serif' : "'" + rawFont + "', 'Amiri', serif";
       cardBox.style.fontFamily = font;
       verseText.style.fontWeight = data.verseIsBold ? 'bold' : 'normal';
       verseText.style.fontStyle = data.verseIsItalic ? 'italic' : 'normal';
@@ -848,29 +897,54 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       cardBox.style.borderRadius = radius;
       if (!isFull) cardBox.style.padding = '18px 26px';
 
-      if (data.style === 'TRANSPARENT_OUTLINE') {
+      // Independent card glow + text shadow (v1.6): each flag works on its own,
+      // in both Lower Third and Full Show.
+      function hexToRgb(hex) {
+        var h = (hex || '#000000').replace('#', '');
+        if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+        var n = parseInt(h, 16);
+        if (isNaN(n)) return null;
+        return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+      }
+      function cardGlowShadow(shape, alpha) {
+        // Card glow only where a real card exists (not full-bleed fullscreen).
+        if (isFull || !data.cardGlowEnabled) return 'none';
+        var c = hexToRgb(data.cardGlowColorHex);
+        if (!c) return 'none';
+        return shape + ' rgba(' + c.r + ',' + c.g + ',' + c.b + ',' + alpha + ')';
+      }
+      function textShadowCss(blurSet) {
+        if (!data.textShadowEnabled) return 'none';
+        var col = data.textShadowColorHex || '#000000';
+        return blurSet.map(function(b) { return b + ' ' + col; }).join(', ');
+      }
+
+      // 100% transparent toggle behaves like the transparent style (mirrors the NDI canvas).
+      if (data.style === 'TRANSPARENT_OUTLINE' || data.isPureTransparentBackground) {
         cardBox.style.backgroundColor = 'transparent';
         cardBox.style.backdropFilter = 'none';
         cardBox.style.border = 'none';
         cardBox.style.boxShadow = 'none';
-        verseText.style.textShadow = '0 0 5px #000, 0 0 12px #000, 2px 2px 8px #000';
-        citationRow.style.textShadow = '0 0 4px #000, 0 0 8px #000';
       } else if (data.style === 'CLASSIC_BANNER') {
         cardBox.style.backgroundColor = 'rgba(' + r + ',' + g + ',' + b + ',' + opacity + ')';
         cardBox.style.borderRight = data.showAccentBorder ? '6px solid ' + accent : 'none';
         cardBox.style.borderLeft = 'none';
         cardBox.style.borderRadius = isFull ? '0' : '4px';
-        cardBox.style.boxShadow = data.showDropShadow ? '0 12px 36px rgba(0,0,0,0.6)' : 'none';
+        cardBox.style.boxShadow = cardGlowShadow('0 12px 36px', 0.6);
       } else if (data.style === 'ROYAL_LITURGICAL') {
         cardBox.style.background = 'linear-gradient(135deg, rgba(' + r + ',' + g + ',' + b + ',' + opacity + ') 0%, rgba(20,20,35,' + opacity + ') 100%)';
         cardBox.style.border = data.showAccentBorder ? '2px solid ' + accent : 'none';
-        cardBox.style.boxShadow = data.showDropShadow ? '0 10px 40px rgba(0,0,0,0.7)' : 'none';
+        cardBox.style.boxShadow = cardGlowShadow('0 10px 40px', 0.7);
       } else {
         cardBox.style.backgroundColor = 'rgba(' + r + ',' + g + ',' + b + ',' + opacity + ')';
         cardBox.style.backdropFilter = 'blur(16px)';
         cardBox.style.border = data.showAccentBorder ? '1.5px solid ' + accent + '77' : 'none';
-        cardBox.style.boxShadow = data.showDropShadow ? '0 16px 40px rgba(0, 0, 0, 0.55)' : 'none';
+        cardBox.style.boxShadow = cardGlowShadow('0 16px 40px', 0.55);
       }
+
+      // Text shadow on verse + citation (independent flag, both feeds).
+      verseText.style.textShadow = textShadowCss(['0 0 5px', '0 0 12px', '2px 2px 8px']);
+      citationRow.style.textShadow = textShadowCss(['0 0 4px', '0 0 8px']);
 
       // 7. Motion Background Layer
       const animType = data.animatedBackground || 'none';
@@ -969,6 +1043,31 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         return renderFrame(width, height, isForStream, overrideTemplate, allowSharedCache = false)
     }
 
+    // Dedicated reusable bitmaps for motion rendering (one per feed). Never the
+    // shared static cache: motion ticks redraw in place at ~15fps, and a shared
+    // bitmap would let static readers (preview, MJPEG) see half-drawn frames.
+    private var motionLowerBitmap: Bitmap? = null
+    private var motionShowBitmap: Bitmap? = null
+
+    /**
+     * Force-renders a fresh frame for motion mode (current animation phase) into
+     * the feed's dedicated bitmap, reused across ticks — zero per-tick allocation.
+     * The caller must not recycle the returned bitmap; it is reused on the next tick.
+     * The native send copies pixels synchronously, so reuse is race-free.
+     */
+    fun renderMotionFrame(width: Int = 1920, height: Int = 1080, overrideTemplate: LowerThirdTemplate? = null): Bitmap {
+        val tpl = overrideTemplate ?: currentTemplate
+        val isFull = tpl.isFullScreen
+        var bmp = if (isFull) motionShowBitmap else motionLowerBitmap
+        if (bmp == null || bmp.isRecycled || bmp.width != width || bmp.height != height) {
+            try { bmp?.recycle() } catch (_: Exception) { /* ignore */ }
+            bmp = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            if (isFull) motionShowBitmap = bmp else motionLowerBitmap = bmp
+        }
+        drawFrameInto(bmp, width, height, isForStream = false, tpl, isFull)
+        return bmp
+    }
+
     private fun renderFrame(width: Int = 1920, height: Int = 1080, isForStream: Boolean = false, overrideTemplate: LowerThirdTemplate? = null, allowSharedCache: Boolean): Bitmap {
         val tpl = overrideTemplate ?: currentTemplate
         val isFull = tpl.isFullScreen
@@ -996,6 +1095,23 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         }
 
+        drawFrameInto(bitmap, width, height, isForStream, tpl, isFull)
+
+        if (allowSharedCache && !isForStream && overrideTemplate == null && width == 1920 && height == 1080) {
+            if (isFull) isCacheDirtyShow = false else isCacheDirtyLower = false
+        }
+
+        return bitmap
+    }
+
+    /**
+     * Draws the complete frame into [bitmap].
+     *
+     * Shared by the static dirty-frame path and motion rendering. Motion uses
+     * dedicated reused bitmaps (see [renderMotionFrame]) so the static cache is
+     * never redrawn in place — static readers can never observe a half-drawn frame.
+     */
+    private fun drawFrameInto(bitmap: Bitmap, width: Int, height: Int, isForStream: Boolean, tpl: LowerThirdTemplate, isFull: Boolean) {
         val canvas = Canvas(bitmap)
 
         val fallbackVerse = BibleVerse(
@@ -1029,7 +1145,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // Special Case: Full Show (Projector) should typically NOT be blanked even if not 'Live' for broadcast,
         // as the projector usually remains active with a background or current verse.
         if (!isLive && !isForStream && !tpl.isFullScreen) {
-            return bitmap
+            return
         }
 
         val scale = width / 1920f
@@ -1055,8 +1171,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             else if (tpl.verseIsItalic) textStyle = Typeface.ITALIC
             
             typeface = getBestTypeface(tpl.fontFamily, textStyle)
-            if (tpl.showDropShadow || tpl.isPureTransparentBackground) {
-                setShadowLayer(8f * scale, 0f, 4f * scale, Color.BLACK)
+            if (tpl.textShadowEnabled) {
+                val shadowCol = try { Color.parseColor(tpl.textShadowColorHex) } catch (e: Exception) { Color.BLACK }
+                setShadowLayer(8f * scale, 0f, 4f * scale, shadowCol)
             }
             isFakeBoldText = tpl.verseIsBold
         }
@@ -1106,8 +1223,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 else if (tpl.secondaryVerseIsItalic) secStyle = Typeface.ITALIC
 
                 typeface = getBestTypeface(tpl.secondaryFontFamily, secStyle)
-                if (tpl.showDropShadow || tpl.isPureTransparentBackground) {
-                    setShadowLayer(4f * scale, 0f, 2f * scale, Color.BLACK)
+                if (tpl.textShadowEnabled) {
+                    val shadowCol = try { Color.parseColor(tpl.textShadowColorHex) } catch (e: Exception) { Color.BLACK }
+                    setShadowLayer(4f * scale, 0f, 2f * scale, shadowCol)
                 }
                 isFakeBoldText = tpl.secondaryVerseIsBold
                 if (tpl.secondaryVerseIsItalic) textSkewX = -0.25f
@@ -1173,6 +1291,17 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         val radius = if (tpl.isFullScreen) 0f else (tpl.cornerRadiusDp * scale * 2f)
 
         if (!tpl.isPureTransparentBackground && tpl.style != TemplateStyle.TRANSPARENT_OUTLINE) {
+            // Independent card glow (v1.6): soft halo behind the card in the user's
+            // glow color. Only where a real card exists — skipped for fullscreen
+            // full-bleed and transparent styles, mirroring the HTML overlay.
+            if (tpl.cardGlowEnabled && !tpl.isFullScreen) {
+                val glowCol = try { Color.parseColor(tpl.cardGlowColorHex) } catch (e: Exception) { Color.BLACK }
+                val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = glowCol
+                    maskFilter = BlurMaskFilter(28f * scale, BlurMaskFilter.Blur.OUTER)
+                }
+                canvas.drawRoundRect(rect, radius, radius, glowPaint)
+            }
             val bgAlpha = (tpl.bgOpacity * 255).toInt().coerceIn(0, 255)
             val baseBgCol = try { Color.parseColor(tpl.bgColorHex) } catch (e: Exception) { Color.DKGRAY }
 
@@ -1284,8 +1413,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             else if (tpl.referenceIsItalic) refStyle = Typeface.ITALIC
 
             typeface = getBestTypeface(tpl.fontFamily, refStyle)
-            if (tpl.showDropShadow || tpl.isPureTransparentBackground) {
-                setShadowLayer(6f * scale, 0f, 3f * scale, Color.BLACK)
+            if (tpl.textShadowEnabled) {
+                val shadowCol = try { Color.parseColor(tpl.textShadowColorHex) } catch (e: Exception) { Color.BLACK }
+                setShadowLayer(6f * scale, 0f, 3f * scale, shadowCol)
             }
             isFakeBoldText = tpl.referenceIsBold
             if (tpl.referenceIsItalic) textSkewX = -0.25f
@@ -1366,11 +1496,6 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             canvas.drawText("وضع الاستعداد • STANDBY (اضغط على الهواء للبث)", width / 2f, 35f * scale + (badgeH * 0.65f), standbyTextPaint)
         }
 
-        if (allowSharedCache && !isForStream && overrideTemplate == null && width == 1920 && height == 1080) {
-            if (isFull) isCacheDirtyShow = false else isCacheDirtyLower = false
-        }
-
-        return bitmap
     }
 
     private fun serveLocalVideo(out: OutputStream, fullPath: String) {
@@ -1400,16 +1525,92 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     }
 
     private fun getBestTypeface(family: String, textStyle: Int): Typeface {
-        return try {
-            when (family) {
-                "Cairo" -> Typeface.create("sans-serif-condensed", textStyle)
-                "Amiri" -> Typeface.create("serif", textStyle)
-                "Noto Naskh Arabic" -> Typeface.create("sans-serif", textStyle)
-                "System" -> Typeface.create(Typeface.DEFAULT, textStyle)
-                else -> Typeface.create(family, textStyle)
+        val cacheKey = "$family|$textStyle"
+        typefaceCache[cacheKey]?.let { return it }
+        val result = try {
+            val bundled = ArabicFonts.find(family)
+            if (bundled != null) {
+                // Bundled Google Font (assets/fonts, fully offline). Prefer the true
+                // bold file when bold was requested; synthesize italic (Arabic has no
+                // true italics) or a missing bold via Typeface.create().
+                val wantBold = textStyle == Typeface.BOLD || textStyle == Typeface.BOLD_ITALIC
+                val assetPath =
+                    if (wantBold && bundled.asset700 != null) bundled.asset700 else bundled.asset400
+                val base = Typeface.createFromAsset(context.assets, assetPath)
+                val remainingStyle =
+                    if (assetPath == bundled.asset700) textStyle and Typeface.BOLD.inv() else textStyle
+                if (remainingStyle == Typeface.NORMAL) base else Typeface.create(base, remainingStyle)
+            } else {
+                // "System" or unknown family: Android system default.
+                Typeface.create(Typeface.DEFAULT, textStyle)
             }
         } catch (e: Exception) {
-            Typeface.create(Typeface.DEFAULT, textStyle)
+            try {
+                Typeface.create(Typeface.DEFAULT, textStyle)
+            } catch (_: Exception) {
+                Typeface.DEFAULT
+            }
+        }
+        typefaceCache[cacheKey] = result
+        return result
+    }
+
+    /** Cache of asset-loaded typefaces, keyed by "family|style". Thread-safe: render paths run under per-feed locks. */
+    private val typefaceCache = ConcurrentHashMap<String, Typeface>()
+
+    /** @font-face rules for every bundled Arabic font, served from this tablet (fully offline). */
+    private fun buildFontFaceCss(): String {
+        val sb = StringBuilder(8192)
+        for (f in ArabicFonts.all) {
+            val f400 = f.asset400.substringAfterLast('/')
+            sb.append("@font-face{font-family:'").append(f.family)
+                .append("';font-style:normal;font-weight:400;font-display:swap;src:url('/fonts/")
+                .append(f400).append("') format('truetype');}")
+            val a700 = f.asset700
+            if (a700 != null) {
+                val f700 = a700.substringAfterLast('/')
+                sb.append("@font-face{font-family:'").append(f.family)
+                    .append("';font-style:normal;font-weight:700;font-display:swap;src:url('/fonts/")
+                    .append(f700).append("') format('truetype');}")
+            }
+        }
+        return sb.toString()
+    }
+
+    /** Exact allowlist of servable font files, derived from the registry (no path traversal). */
+    private val fontAssetFiles: Set<String> by lazy {
+        ArabicFonts.all.flatMap {
+            listOfNotNull(it.asset400.substringAfterLast('/'), it.asset700?.substringAfterLast('/'))
+        }.toSet()
+    }
+
+    /** Serves a bundled font TTF from assets so HTTP overlays work fully offline. */
+    private fun serveFontFile(out: OutputStream, requested: String) {
+        val writer = PrintWriter(out)
+        val name = requested.substringAfterLast('/').trim()
+        if (!name.endsWith(".ttf") || name !in fontAssetFiles) {
+            writer.print("HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n")
+            writer.flush()
+            return
+        }
+        try {
+            context.assets.open("fonts/$name").use { ins ->
+                val bytes = ins.readBytes()
+                writer.print("HTTP/1.1 200 OK\r\n")
+                writer.print("Content-Type: font/ttf\r\n")
+                writer.print("Content-Length: ${bytes.size}\r\n")
+                writer.print("Cache-Control: public, max-age=31536000, immutable\r\n")
+                writer.print("Access-Control-Allow-Origin: *\r\n")
+                writer.print("Connection: close\r\n\r\n")
+                writer.flush()
+                out.write(bytes)
+                out.flush()
+            }
+        } catch (e: Exception) {
+            try {
+                writer.print("HTTP/1.1 500 Internal Server Error\r\nConnection: close\r\n\r\n")
+                writer.flush()
+            } catch (_: Exception) { /* ignore */ }
         }
     }
 

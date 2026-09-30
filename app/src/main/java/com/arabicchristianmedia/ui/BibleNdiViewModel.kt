@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import com.arabicchristianmedia.data.BibleRepository
 import com.arabicchristianmedia.data.TemplateRepository
 import com.arabicchristianmedia.model.AppThemeMode
+import com.arabicchristianmedia.model.AnimatedBackgroundType
 import com.arabicchristianmedia.model.BibleBook
 import com.arabicchristianmedia.model.BibleVerse
 import com.arabicchristianmedia.model.BibleVersion
@@ -12,7 +13,6 @@ import com.arabicchristianmedia.model.BroadcastTextAlignment
 import com.arabicchristianmedia.model.LowerThirdTemplate
 import com.arabicchristianmedia.model.Testament
 import com.arabicchristianmedia.server.NdiBroadcastServer
-import com.arabicchristianmedia.server.NdiDiscoveryBeacon
 import com.arabicchristianmedia.server.NdiErrorEvent
 import com.arabicchristianmedia.server.NdiNativeSender
 import com.arabicchristianmedia.server.NdiSourceSpec
@@ -21,7 +21,6 @@ import com.arabicchristianmedia.server.NetworkInterfaceInfo
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
 
 data class BibleNdiUiState(
     val selectedTestament: Testament = Testament.NEW_TESTAMENT,
@@ -41,40 +40,31 @@ data class BibleNdiUiState(
     val availableInterfaces: List<NetworkInterfaceInfo> = emptyList(),
     val selectedInterface: NetworkInterfaceInfo? = null,
     val activeIpAddress: String = "",
-    val isMdnsActive: Boolean = true,
     val isNdiProtocolEnabled: Boolean = true,
     val isNativeNdiActive: Boolean = false,
     val isNativeShowActive: Boolean = false,
-    val isNativeLowerHxActive: Boolean = false,
-    val isNativeFullHxActive: Boolean = false,
-    // Independent per-tier source switches (Full NDI + HX bandwidth-saver, per feed)
-    val ndiLowerFullEnabled: Boolean = true,
-    val ndiLowerHxEnabled: Boolean = false,
-    val ndiFullShowFullEnabled: Boolean = true,
-    val ndiFullShowHxEnabled: Boolean = false,
-    // User-customizable per-source resolution + frame rate (dropdowns in NDI tab)
+    // Independent per-feed source switches (Lower Third / Full Show)
+    val ndiLowerEnabled: Boolean = true,
+    val ndiFullShowEnabled: Boolean = true,
+    // User-customizable per-source resolution + frame rate + motion (dropdowns in NDI tab).
+    // Persisted across restarts (see ViewModel NDI prefs).
     val ndiSourceSpecs: Map<String, NdiSourceSpec> = mapOf(
         NdiNativeSender.FEED_LOWER to NdiNativeSender.defaultSpec(NdiNativeSender.FEED_LOWER),
-        NdiNativeSender.FEED_LOWER_HX to NdiNativeSender.defaultSpec(NdiNativeSender.FEED_LOWER_HX),
-        NdiNativeSender.FEED_FULL to NdiNativeSender.defaultSpec(NdiNativeSender.FEED_FULL),
-        NdiNativeSender.FEED_FULL_HX to NdiNativeSender.defaultSpec(NdiNativeSender.FEED_FULL_HX)
+        NdiNativeSender.FEED_FULL to NdiNativeSender.defaultSpec(NdiNativeSender.FEED_FULL)
     ),
     // Advanced diagnostics (last tab): when on, NDI errors are shown to the user
     val showAdvancedNdi: Boolean = false,
     val ndiErrorEvents: List<NdiErrorEvent> = emptyList(),
     val templates: List<LowerThirdTemplate> = emptyList(),
     val activeTemplate: LowerThirdTemplate = TemplateRepository.DEFAULT_TEMPLATES[0],
-    val activeShowTemplate: LowerThirdTemplate = TemplateRepository.DEFAULT_TEMPLATES[0].copy(
-        id = "default_show",
-        name = "Full Screen Projector",
-        isFullScreen = true,
-        bgOpacity = 1.0f,
-        bgColorHex = "#0A1128",
-        verseFontSize = 65,
-        referenceFontSize = 40,
-        alignment = BroadcastTextAlignment.CENTER,
-        isPureTransparentBackground = false
-    ),
+    val activeShowTemplate: LowerThirdTemplate = BibleNdiViewModel.defaultShowTemplate(),
+    // Style system: highlighted (selected) style id per tab, null = none highlighted
+    // (user edited without saving). Persisted across restarts.
+    val highlightedLowerStyleId: String? = null,
+    val highlightedShowStyleId: String? = null,
+    // True when the working template has unsaved edits (drives the "modified" badge).
+    val lowerWorkingDirty: Boolean = false,
+    val showWorkingDirty: Boolean = false,
     val statusMessage: String? = null,
     val appThemeMode: AppThemeMode = AppThemeMode.SYSTEM,
     val readerFontSize: Int = 18,
@@ -83,9 +73,24 @@ data class BibleNdiUiState(
 
 class BibleNdiViewModel(application: Application) : AndroidViewModel(application) {
 
+    companion object {
+        /** Factory default for the Full Show tab (not a saved style). */
+        fun defaultShowTemplate(): LowerThirdTemplate =
+            TemplateRepository.DEFAULT_TEMPLATES[0].copy(
+                id = "default_show",
+                name = "Full Screen Projector",
+                isFullScreen = true,
+                bgOpacity = 1.0f,
+                bgColorHex = "#0A1128",
+                verseFontSize = 65,
+                referenceFontSize = 40,
+                alignment = BroadcastTextAlignment.CENTER,
+                isPureTransparentBackground = false
+            )
+    }
+
     private val templateRepo = TemplateRepository(application)
     private val broadcastServer = NdiBroadcastServer(application, 8080)
-    private val discoveryBeacon = NdiDiscoveryBeacon(application)
     private val nativeSender = NdiNativeSender()
 
     private val _uiState = MutableStateFlow(BibleNdiUiState())
@@ -106,6 +111,20 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         }
         // Dirty-frame detection: NDI senders only push when the version changes.
         nativeSender.setFrameVersionProvider { broadcastServer.frameVersion }
+        // Motion mode: force-rerender animated backgrounds on a capped tick, reusing
+        // dedicated bitmaps (no per-tick allocation). Only ticks when the current
+        // template actually has animated content.
+        nativeSender.setMotionFrameProvider { isFullScreen ->
+            if (isFullScreen) {
+                broadcastServer.renderMotionFrame(overrideTemplate = _uiState.value.activeShowTemplate)
+            } else {
+                broadcastServer.renderMotionFrame()
+            }
+        }
+        nativeSender.setMotionContentProvider { isFullScreen ->
+            val tpl = if (isFullScreen) _uiState.value.activeShowTemplate else _uiState.value.activeTemplate
+            tpl.animatedBackground != AnimatedBackgroundType.NONE
+        }
         loadInitialData()
         refreshNetworkInterfaces()
         // startBroadcastServer() // DO NOT auto-start as per request 8? 
@@ -155,43 +174,47 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             streamUrl = streamUrl,
             statusMessage = "تم تعيين العنوان: ${info.ip}"
         )
-
-        // Restart mDNS beacon with updated IP if NDI protocol is enabled
-        if (_uiState.value.isNdiProtocolEnabled) {
-            discoveryBeacon.start(serviceUrl = url, ip = info.ip, port = _uiState.value.serverPort,
-                specs = NdiNativeSender.ALL_FEEDS.map { _uiState.value.ndiSourceSpecs.getValue(it) })
-        }
     }
 
     fun setNdiProtocolEnabled(enabled: Boolean) {
         _uiState.value = _uiState.value.copy(
             isNdiProtocolEnabled = enabled,
-            isMdnsActive = enabled,
             statusMessage = if (enabled) "تم تفعيل بث بروتوكول Full NDI الشفاف" else "تم إيقاف بث NDI لتوفير استهلاك شبكة الواي فاي (Bandwidth Saver)"
         )
         if (enabled && _uiState.value.isServerRunning) {
-            val ip = broadcastServer.getLocalIpAddress()
-            val url = broadcastServer.getServerUrl()
             syncNativeSources()
-            discoveryBeacon.start(serviceUrl = url, ip = ip, port = _uiState.value.serverPort,
-            specs = NdiNativeSender.ALL_FEEDS.map { _uiState.value.ndiSourceSpecs.getValue(it) })
             triggerAllFrames()
         } else {
             nativeSender.stopAll()
-            discoveryBeacon.stop()
             _uiState.value = _uiState.value.copy(
                 isNativeNdiActive = false,
-                isNativeShowActive = false,
-                isNativeLowerHxActive = false,
-                isNativeFullHxActive = false
+                isNativeShowActive = false
             )
         }
     }
 
     private fun loadInitialData() {
         val allTpls = templateRepo.getAllTemplates()
-        val activeTplId = templateRepo.getActiveTemplateId()
-        val activeTpl = allTpls.firstOrNull { it.id == activeTplId } ?: allTpls.first()
+
+        // Lower Third tab: restore working values + highlighted style.
+        // A stored null highlight stays null (dirty edits clear it); only a true
+        // fresh install (no working template ever saved) falls back to the default.
+        val hasLowerWorking = templateRepo.getWorkingTemplate(false) != null
+        val lowerHighlightId = templateRepo.getActiveTemplateId()
+            ?: if (!hasLowerWorking) "tpl_transparent_alpha" else null
+        val lowerStyle = allTpls.firstOrNull { it.id == lowerHighlightId && !it.isFullScreen }
+        val lowerWorking = (templateRepo.getWorkingTemplate(false)
+            ?: lowerStyle
+            ?: allTpls.firstOrNull { !it.isFullScreen }
+            ?: TemplateRepository.DEFAULT_TEMPLATES[0]).copy(isFullScreen = false)
+
+        // Full Show tab: restore working values + highlighted style (independent of Lower).
+        val showHighlightId = templateRepo.getActiveShowTemplateId()
+        val showStyle = allTpls.firstOrNull { it.id == showHighlightId && it.isFullScreen }
+        val showWorking = (templateRepo.getWorkingTemplate(true)
+            ?: showStyle
+            ?: allTpls.firstOrNull { it.isFullScreen }
+            ?: defaultShowTemplate()).copy(isFullScreen = true)
 
         val initialBook = BibleRepository.getBookById("jhn") ?: BibleRepository.allBooks.first()
         val initialChapter = 3
@@ -203,17 +226,24 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             selectedChapter = initialChapter,
             displayedVerses = verses,
             templates = allTpls,
-            activeTemplate = activeTpl,
+            activeTemplate = lowerWorking,
+            activeShowTemplate = showWorking,
+            highlightedLowerStyleId = lowerStyle?.id,
+            highlightedShowStyleId = showStyle?.id,
+            lowerWorkingDirty = templateRepo.isWorkingDirty(false),
+            showWorkingDirty = templateRepo.isWorkingDirty(true),
             activeVerse = defaultActiveVerse,
             isLiveOnAir = false, // Start OFF AIR as per request 8
             statusMessage = "Ready. Tap a verse to go LIVE."
         )
+        loadPersistedNdiSpecs()
 
         if (defaultActiveVerse != null) {
             broadcastServer.currentVerse = defaultActiveVerse
             broadcastServer.isLive = false // Ensure server starts off-air
         }
-        broadcastServer.currentTemplate = activeTpl
+        broadcastServer.currentTemplate = lowerWorking
+        broadcastServer.currentShowTemplate = showWorking
     }
 
     fun startBroadcastServer(port: Int = 8080) {
@@ -236,9 +266,6 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
                     serverPort = port,
                     statusMessage = "Broadcast Server Active"
                 )
-
-                discoveryBeacon.start(serviceUrl = url, ip = ip, port = port,
-                    specs = NdiNativeSender.ALL_FEEDS.map { _uiState.value.ndiSourceSpecs.getValue(it) })
             }
         ) { err ->
             _uiState.value = _uiState.value.copy(
@@ -250,29 +277,27 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
 
     fun startNdiFeeds() {
         _uiState.value = _uiState.value.copy(
-            ndiLowerFullEnabled = true,
-            ndiLowerHxEnabled = true,
-            ndiFullShowFullEnabled = true,
-            ndiFullShowHxEnabled = true
+            ndiLowerEnabled = true,
+            ndiFullShowEnabled = true
         )
+        persistNdiEnabled(NdiNativeSender.FEED_LOWER, true)
+        persistNdiEnabled(NdiNativeSender.FEED_FULL, true)
         syncNativeSources()
         triggerAllFrames()
-        _uiState.value = _uiState.value.copy(statusMessage = "All NDI Sources (Lower/Full x Full/HX) Started")
+        _uiState.value = _uiState.value.copy(statusMessage = "NDI Sources (Lower Third + Full Show) Started")
     }
 
     fun stopNdiFeeds() {
         _uiState.value = _uiState.value.copy(
-            ndiLowerFullEnabled = false,
-            ndiLowerHxEnabled = false,
-            ndiFullShowFullEnabled = false,
-            ndiFullShowHxEnabled = false
+            ndiLowerEnabled = false,
+            ndiFullShowEnabled = false
         )
+        persistNdiEnabled(NdiNativeSender.FEED_LOWER, false)
+        persistNdiEnabled(NdiNativeSender.FEED_FULL, false)
         nativeSender.stopAll()
         _uiState.value = _uiState.value.copy(
             isNativeNdiActive = false,
             isNativeShowActive = false,
-            isNativeLowerHxActive = false,
-            isNativeFullHxActive = false,
             statusMessage = "All NDI Sources Stopped"
         )
     }
@@ -289,50 +314,62 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
     private fun syncNativeSources() {
         val state = _uiState.value
         val specs = state.ndiSourceSpecs
-        val lowerFull = applyNdiSource(
-            specs.getValue(NdiNativeSender.FEED_LOWER), state.ndiLowerFullEnabled, false
+        val lower = applyNdiSource(
+            specs[NdiNativeSender.FEED_LOWER]
+                ?: NdiNativeSender.defaultSpec(NdiNativeSender.FEED_LOWER),
+            state.ndiLowerEnabled, false
         )
-        val lowerHx = applyNdiSource(
-            specs.getValue(NdiNativeSender.FEED_LOWER_HX), state.ndiLowerHxEnabled, false
-        )
-        val fullFull = applyNdiSource(
-            specs.getValue(NdiNativeSender.FEED_FULL), state.ndiFullShowFullEnabled, true
-        )
-        val fullHx = applyNdiSource(
-            specs.getValue(NdiNativeSender.FEED_FULL_HX), state.ndiFullShowHxEnabled, true
+        val full = applyNdiSource(
+            specs[NdiNativeSender.FEED_FULL]
+                ?: NdiNativeSender.defaultSpec(NdiNativeSender.FEED_FULL),
+            state.ndiFullShowEnabled, true
         )
 
         _uiState.value = _uiState.value.copy(
-            isNativeNdiActive = lowerFull,
-            isNativeLowerHxActive = lowerHx,
-            isNativeShowActive = fullFull,
-            isNativeFullHxActive = fullHx
+            isNativeNdiActive = lower,
+            isNativeShowActive = full
         )
         refreshNdiDiagnostics()
     }
 
     /** User changed a source's resolution/fps in the dropdowns: apply + restart if active. */
     fun updateNdiSourceSpec(feedKey: String, width: Int, height: Int, fps: Int) {
-        val spec = NdiSourceSpec(feedKey, width, height, fps)
+        val current = _uiState.value.ndiSourceSpecs[feedKey]
+            ?: NdiNativeSender.defaultSpec(feedKey)
+        // Preserve the motion toggle; only resolution/fps change here.
+        updateNdiSourceSpec(feedKey, width, height, fps, current.motionEnabled)
+    }
+
+    /**
+     * Full spec update (resolution, fps, motion). Persists across restarts and
+     * restarts the live source so the change takes effect immediately.
+     */
+    fun updateNdiSourceSpec(feedKey: String, width: Int, height: Int, fps: Int, motionEnabled: Boolean) {
+        val spec = NdiSourceSpec(feedKey, width, height, fps, motionEnabled)
         _uiState.value = _uiState.value.copy(
             ndiSourceSpecs = _uiState.value.ndiSourceSpecs + (feedKey to spec)
         )
+        persistNdiSpec(spec)
         val s = _uiState.value
         val enabled = when (feedKey) {
-            NdiNativeSender.FEED_LOWER -> s.ndiLowerFullEnabled
-            NdiNativeSender.FEED_LOWER_HX -> s.ndiLowerHxEnabled
-            NdiNativeSender.FEED_FULL -> s.ndiFullShowFullEnabled
-            else -> s.ndiFullShowHxEnabled
+            NdiNativeSender.FEED_LOWER -> s.ndiLowerEnabled
+            else -> s.ndiFullShowEnabled
         }
         if (enabled && s.isNdiProtocolEnabled) {
-            // Restart the source so the new resolution/fps takes effect immediately.
+            // Restart the source so the new spec takes effect immediately.
             nativeSender.stopSource(feedKey)
             syncNativeSources()
             triggerAllFrames()
-            restartBeacon()
         } else {
             refreshNdiDiagnostics()
         }
+    }
+
+    /** Flip the per-feed motion toggle (persisted; applies on next tick or restart). */
+    fun toggleNdiMotion(feedKey: String) {
+        val current = _uiState.value.ndiSourceSpecs[feedKey]
+            ?: NdiNativeSender.defaultSpec(feedKey)
+        updateNdiSourceSpec(feedKey, current.width, current.height, current.fps, !current.motionEnabled)
     }
 
     fun toggleAdvancedNdi() {
@@ -349,45 +386,70 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         _uiState.value = _uiState.value.copy(ndiErrorEvents = emptyList())
     }
 
-    /** (Re)start the discovery beacon, advertising the current per-source specs. */
-    private fun restartBeacon() {
-        if (!_uiState.value.isNdiProtocolEnabled || !_uiState.value.isServerRunning) return
-        val ip = broadcastServer.getLocalIpAddress()
-        val url = broadcastServer.getServerUrl()
-        discoveryBeacon.start(
-            serviceUrl = url,
-            ip = ip,
-            port = _uiState.value.serverPort,
-            specs = NdiNativeSender.ALL_FEEDS.map { _uiState.value.ndiSourceSpecs.getValue(it) }
+    // ---- NDI spec persistence (resolution / fps / motion / enabled per feed) ----
+
+    private val ndiPrefs by lazy {
+        getApplication<Application>().getSharedPreferences("bible_ndi_source_specs", Application.MODE_PRIVATE)
+    }
+
+    /** Load persisted NDI specs into state. Called once from [loadInitialData]. */
+    private fun loadPersistedNdiSpecs() {
+        val specs = NdiNativeSender.ALL_FEEDS.associateWith { feedKey ->
+            val d = NdiNativeSender.defaultSpec(feedKey)
+            val w = ndiPrefs.getInt("${feedKey}_w", d.width)
+            val h = ndiPrefs.getInt("${feedKey}_h", d.height)
+            val fps = ndiPrefs.getInt("${feedKey}_fps", d.fps)
+            val motion = ndiPrefs.getBoolean("${feedKey}_motion", d.motionEnabled)
+            // Validate against the allowed option lists; stale values fall back to defaults.
+            val res = NdiNativeSender.RESOLUTION_OPTIONS.firstOrNull { it.first == w && it.second == h }
+                ?: (d.width to d.height)
+            val validFps = if (NdiNativeSender.FPS_OPTIONS.contains(fps)) fps else d.fps
+            NdiSourceSpec(feedKey, res.first, res.second, validFps, motion)
+        }
+        _uiState.value = _uiState.value.copy(
+            ndiSourceSpecs = specs,
+            ndiLowerEnabled = ndiPrefs.getBoolean("${NdiNativeSender.FEED_LOWER}_enabled", true),
+            ndiFullShowEnabled = ndiPrefs.getBoolean("${NdiNativeSender.FEED_FULL}_enabled", true)
         )
+    }
+
+    private fun persistNdiSpec(spec: NdiSourceSpec) {
+        ndiPrefs.edit()
+            .putInt("${spec.feedKey}_w", spec.width)
+            .putInt("${spec.feedKey}_h", spec.height)
+            .putInt("${spec.feedKey}_fps", spec.fps)
+            .putBoolean("${spec.feedKey}_motion", spec.motionEnabled)
+            .apply()
+    }
+
+    private fun persistNdiEnabled(feedKey: String, enabled: Boolean) {
+        ndiPrefs.edit().putBoolean("${feedKey}_enabled", enabled).apply()
     }
 
     fun toggleNdiSource(source: String) {
         _uiState.value = when (source) {
-            "lower_full" -> _uiState.value.copy(ndiLowerFullEnabled = !_uiState.value.ndiLowerFullEnabled)
-            "lower_hx" -> _uiState.value.copy(ndiLowerHxEnabled = !_uiState.value.ndiLowerHxEnabled)
-            "full_full" -> _uiState.value.copy(ndiFullShowFullEnabled = !_uiState.value.ndiFullShowFullEnabled)
-            "full_hx" -> _uiState.value.copy(ndiFullShowHxEnabled = !_uiState.value.ndiFullShowHxEnabled)
-            // Legacy keys from v1.3 (mapped to the Full tiers)
-            "lower" -> _uiState.value.copy(ndiLowerFullEnabled = !_uiState.value.ndiLowerFullEnabled)
-            "full" -> _uiState.value.copy(ndiFullShowFullEnabled = !_uiState.value.ndiFullShowFullEnabled)
+            "lower" -> _uiState.value.copy(ndiLowerEnabled = !_uiState.value.ndiLowerEnabled)
+            "full" -> _uiState.value.copy(ndiFullShowEnabled = !_uiState.value.ndiFullShowEnabled)
+            // Legacy keys from earlier versions
+            "lower_full" -> _uiState.value.copy(ndiLowerEnabled = !_uiState.value.ndiLowerEnabled)
+            "full_full" -> _uiState.value.copy(ndiFullShowEnabled = !_uiState.value.ndiFullShowEnabled)
             else -> _uiState.value
         }
+        val s = _uiState.value
+        persistNdiEnabled(NdiNativeSender.FEED_LOWER, s.ndiLowerEnabled)
+        persistNdiEnabled(NdiNativeSender.FEED_FULL, s.ndiFullShowEnabled)
         syncNativeSources()
         triggerAllFrames()
     }
 
     private fun triggerAllFrames() {
         nativeSender.triggerFrame(NdiNativeSender.FEED_LOWER, false)
-        nativeSender.triggerFrame(NdiNativeSender.FEED_LOWER_HX, false)
         nativeSender.triggerFrame(NdiNativeSender.FEED_FULL, true)
-        nativeSender.triggerFrame(NdiNativeSender.FEED_FULL_HX, true)
     }
 
     fun stopBroadcastServer() {
         nativeSender.stopAll()
         broadcastServer.stop()
-        discoveryBeacon.stop()
         _uiState.value = _uiState.value.copy(
             isServerRunning = false,
             isNativeNdiActive = false,
@@ -551,59 +613,250 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    /**
+     * User selected a saved Lower Third style: the working template becomes the
+     * style's full saved values (every flag, font, color, size, motion,
+     * transparency and spacing), the style highlights, and the choice persists.
+     */
     fun selectTemplate(template: LowerThirdTemplate) {
-        _uiState.value = _uiState.value.copy(activeTemplate = template)
+        val working = template.copy(isFullScreen = false)
+        _uiState.value = _uiState.value.copy(
+            activeTemplate = working,
+            highlightedLowerStyleId = template.id,
+            lowerWorkingDirty = false
+        )
+        templateRepo.saveWorkingTemplate(working)
         templateRepo.setActiveTemplateId(template.id)
-        broadcastServer.updateTemplate(template)
+        templateRepo.setWorkingDirty(false, false)
+        broadcastServer.updateTemplate(working)
         triggerAllFrames()
     }
 
+    /**
+     * User selected a saved Full Show style. Independent of the Lower Third tab:
+     * its own style list, highlight and working values.
+     */
+    fun selectShowTemplate(template: LowerThirdTemplate) {
+        val working = template.copy(isFullScreen = true)
+        _uiState.value = _uiState.value.copy(
+            activeShowTemplate = working,
+            highlightedShowStyleId = template.id,
+            showWorkingDirty = false
+        )
+        templateRepo.saveWorkingTemplate(working)
+        templateRepo.setActiveShowTemplateId(template.id)
+        templateRepo.setWorkingDirty(true, false)
+        broadcastServer.updateShowTemplate(working)
+        nativeSender.triggerFrame(NdiNativeSender.FEED_FULL, true)
+    }
+
+    /**
+     * User edited a Lower Third control. The edit goes live immediately
+     * (preview + HTTP + NDI) and is remembered, but the saved style is NOT
+     * modified. If the working values no longer match the highlighted style's
+     * saved values, the highlight clears (dirty state).
+     */
     fun updateActiveTemplate(template: LowerThirdTemplate) {
-        val updatedList = _uiState.value.templates.map {
-            if (it.id == template.id) template else it
-        }
+        val working = template.copy(isFullScreen = false)
+        val highlightId = _uiState.value.highlightedLowerStyleId
+        val savedStyle = _uiState.value.templates.firstOrNull { it.id == highlightId && !it.isFullScreen }
+        val stillMatches = savedStyle != null && savedStyle == working
+        val newHighlight = if (stillMatches) highlightId else null
+        // Dirty when there is no highlight (either it just cleared, or the user
+        // is editing freestyle without any selected style).
+        val dirty = newHighlight == null
         _uiState.value = _uiState.value.copy(
-            activeTemplate = template,
-            templates = updatedList
+            activeTemplate = working,
+            highlightedLowerStyleId = newHighlight,
+            lowerWorkingDirty = dirty
         )
-        templateRepo.saveTemplates(updatedList)
-        templateRepo.setActiveTemplateId(template.id)
-        broadcastServer.updateTemplate(template)
+        templateRepo.saveWorkingTemplate(working)
+        templateRepo.setActiveTemplateId(newHighlight)
+        templateRepo.setWorkingDirty(false, dirty)
+        broadcastServer.updateTemplate(working)
         triggerAllFrames()
     }
 
+    /**
+     * User edited a Full Show control. Same dirty/highlight semantics as
+     * [updateActiveTemplate], plus the SSE broadcast fix: Full Show edits now
+     * reach HTTP /show clients live, not just NDI.
+     */
     fun updateActiveShowTemplate(template: LowerThirdTemplate) {
+        val working = template.copy(isFullScreen = true)
+        val highlightId = _uiState.value.highlightedShowStyleId
+        val savedStyle = _uiState.value.templates.firstOrNull { it.id == highlightId && it.isFullScreen }
+        val stillMatches = savedStyle != null && savedStyle == working
+        val newHighlight = if (stillMatches) highlightId else null
+        val dirty = newHighlight == null
         _uiState.value = _uiState.value.copy(
-            activeShowTemplate = template
+            activeShowTemplate = working,
+            highlightedShowStyleId = newHighlight,
+            showWorkingDirty = dirty
         )
-        broadcastServer.currentShowTemplate = template
-        triggerAllFrames()
+        templateRepo.saveWorkingTemplate(working)
+        templateRepo.setActiveShowTemplateId(newHighlight)
+        templateRepo.setWorkingDirty(true, dirty)
+        broadcastServer.updateShowTemplate(working)
+        nativeSender.triggerFrame(NdiNativeSender.FEED_FULL, true)
     }
 
-    fun saveAsNewTemplate(name: String, base: LowerThirdTemplate) {
+    /**
+     * "Save as": create a NEW style in the current tab's collection from the
+     * working values. Saved styles are never updated in place. The new style
+     * is highlighted and used immediately.
+     */
+    fun saveAsNewTemplate(name: String, base: LowerThirdTemplate, isFullScreen: Boolean) {
         val newTemplate = base.copy(
             id = "tpl_${System.currentTimeMillis()}",
-            name = name
+            name = name,
+            isFullScreen = isFullScreen
         )
         val newList = _uiState.value.templates + newTemplate
-        _uiState.value = _uiState.value.copy(
-            templates = newList,
-            activeTemplate = newTemplate
-        )
         templateRepo.saveTemplates(newList)
-        templateRepo.setActiveTemplateId(newTemplate.id)
-        broadcastServer.updateTemplate(newTemplate)
+        templateRepo.saveWorkingTemplate(newTemplate)
+        if (isFullScreen) {
+            _uiState.value = _uiState.value.copy(
+                templates = newList,
+                activeShowTemplate = newTemplate,
+                highlightedShowStyleId = newTemplate.id,
+                showWorkingDirty = false
+            )
+            templateRepo.setActiveShowTemplateId(newTemplate.id)
+            templateRepo.setWorkingDirty(true, false)
+            broadcastServer.updateShowTemplate(newTemplate)
+            nativeSender.triggerFrame(NdiNativeSender.FEED_FULL, true)
+        } else {
+            _uiState.value = _uiState.value.copy(
+                templates = newList,
+                activeTemplate = newTemplate,
+                highlightedLowerStyleId = newTemplate.id,
+                lowerWorkingDirty = false
+            )
+            templateRepo.setActiveTemplateId(newTemplate.id)
+            templateRepo.setWorkingDirty(false, false)
+            broadcastServer.updateTemplate(newTemplate)
+            triggerAllFrames()
+        }
     }
 
-    fun resetTemplatesToDefault() {
-        val defaults = TemplateRepository.DEFAULT_TEMPLATES
-        _uiState.value = _uiState.value.copy(
-            templates = defaults,
-            activeTemplate = defaults[0]
+    /**
+     * Export a saved style as shareable JSON. Null when the id is unknown.
+     */
+    fun exportTemplateJson(templateId: String): String? {
+        val tpl = _uiState.value.templates.firstOrNull { it.id == templateId } ?: return null
+        return templateRepo.templateToJsonString(tpl)
+    }
+
+    /**
+     * Update an existing style's values from imported JSON. The style id is
+     * preserved (highlight/selection references stay valid) and the tab's
+     * isFullScreen is enforced so collections stay partitioned. When the
+     * updated style was the active/highlighted one, the new values go live.
+     * Returns false when the JSON is invalid.
+     */
+    fun updateTemplateFromJson(templateId: String, json: String, isFullScreen: Boolean): Boolean {
+        val imported = templateRepo.templateFromJsonString(json) ?: return false
+        val current = _uiState.value.templates.firstOrNull { it.id == templateId } ?: return false
+        val updated = imported.copy(id = current.id, isFullScreen = isFullScreen)
+        val newList = _uiState.value.templates.map { if (it.id == templateId) updated else it }
+        templateRepo.saveTemplates(newList)
+        val wasHighlighted = if (isFullScreen) {
+            _uiState.value.highlightedShowStyleId == templateId
+        } else {
+            _uiState.value.highlightedLowerStyleId == templateId
+        }
+        if (wasHighlighted) {
+            // Go live with the imported values (same as selecting the style).
+            if (isFullScreen) selectShowTemplate(updated) else selectTemplate(updated)
+        } else {
+            _uiState.value = _uiState.value.copy(templates = newList)
+        }
+        return true
+    }
+
+    /**
+     * Import shared JSON as a brand-new style in the tab's collection.
+     * The new style is highlighted and activated, like Save As New.
+     * Returns false when the JSON is invalid.
+     */
+    fun importNewTemplate(json: String, isFullScreen: Boolean): Boolean {
+        val imported = templateRepo.templateFromJsonString(json) ?: return false
+        val newTemplate = imported.copy(
+            id = "tpl_${System.currentTimeMillis()}",
+            isFullScreen = isFullScreen
         )
-        templateRepo.saveTemplates(defaults)
-        templateRepo.setActiveTemplateId(defaults[0].id)
-        broadcastServer.updateTemplate(defaults[0])
+        val newList = _uiState.value.templates + newTemplate
+        templateRepo.saveTemplates(newList)
+        _uiState.value = _uiState.value.copy(templates = newList)
+        if (isFullScreen) selectShowTemplate(newTemplate) else selectTemplate(newTemplate)
+        return true
+    }
+
+    /**
+     * Delete a saved style. The working values are kept as-is (becoming dirty
+     * if the highlighted style was deleted) — nothing is reverted silently.
+     */
+    fun deleteTemplate(templateId: String, isFullScreen: Boolean) {
+        val newList = _uiState.value.templates.filterNot { it.id == templateId }
+        templateRepo.saveTemplates(newList)
+        if (isFullScreen) {
+            val wasHighlighted = _uiState.value.highlightedShowStyleId == templateId
+            _uiState.value = _uiState.value.copy(
+                templates = newList,
+                highlightedShowStyleId = if (wasHighlighted) null else _uiState.value.highlightedShowStyleId,
+                showWorkingDirty = if (wasHighlighted) true else _uiState.value.showWorkingDirty
+            )
+            if (wasHighlighted) {
+                templateRepo.setActiveShowTemplateId(null)
+                templateRepo.setWorkingDirty(true, true)
+            }
+        } else {
+            val wasHighlighted = _uiState.value.highlightedLowerStyleId == templateId
+            _uiState.value = _uiState.value.copy(
+                templates = newList,
+                highlightedLowerStyleId = if (wasHighlighted) null else _uiState.value.highlightedLowerStyleId,
+                lowerWorkingDirty = if (wasHighlighted) true else _uiState.value.lowerWorkingDirty
+            )
+            if (wasHighlighted) {
+                templateRepo.setActiveTemplateId(null)
+                templateRepo.setWorkingDirty(false, true)
+            }
+        }
+    }
+
+    /**
+     * Reset for the selected tab only. If a style is highlighted, the working
+     * values revert to that style's saved values (same as re-tapping the style)
+     * and the highlight stays. If no style is highlighted, the working values
+     * revert to the factory defaults for that tab.
+     */
+    fun resetTemplate(isFullScreen: Boolean) {
+        if (isFullScreen) {
+            val highlightId = _uiState.value.highlightedShowStyleId
+            val savedStyle = _uiState.value.templates.firstOrNull { it.id == highlightId && it.isFullScreen }
+            val working = (savedStyle ?: defaultShowTemplate()).copy(isFullScreen = true)
+            _uiState.value = _uiState.value.copy(
+                activeShowTemplate = working,
+                showWorkingDirty = false
+            )
+            templateRepo.saveWorkingTemplate(working)
+            templateRepo.setWorkingDirty(true, false)
+            broadcastServer.updateShowTemplate(working)
+            nativeSender.triggerFrame(NdiNativeSender.FEED_FULL, true)
+        } else {
+            val highlightId = _uiState.value.highlightedLowerStyleId
+            val savedStyle = _uiState.value.templates.firstOrNull { it.id == highlightId && !it.isFullScreen }
+            val working = (savedStyle ?: TemplateRepository.DEFAULT_TEMPLATES[0]).copy(isFullScreen = false)
+            _uiState.value = _uiState.value.copy(
+                activeTemplate = working,
+                lowerWorkingDirty = false
+            )
+            templateRepo.saveWorkingTemplate(working)
+            templateRepo.setWorkingDirty(false, false)
+            broadcastServer.updateTemplate(working)
+            triggerAllFrames()
+        }
     }
 
     fun increaseFontSize() {
@@ -640,6 +893,5 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         super.onCleared()
         nativeSender.stopAll()
         broadcastServer.stop()
-        discoveryBeacon.stop()
     }
 }

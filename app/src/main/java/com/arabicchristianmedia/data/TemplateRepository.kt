@@ -40,6 +40,10 @@ class TemplateRepository(context: Context) {
                 transitionDurationMs = 400,
                 showAccentBorder = false,
                 showDropShadow = true,
+                textShadowEnabled = true, // safe default: white text over video needs a shadow
+                textShadowColorHex = "#000000",
+                cardGlowEnabled = false, // safe default: no card on transparent styles
+                cardGlowColorHex = "#000000",
                 showCrossEmblem = true,
                 bilingualMode = false,
                 isPureTransparentBackground = true,
@@ -67,6 +71,10 @@ class TemplateRepository(context: Context) {
                 transitionDurationMs = 350,
                 showAccentBorder = true,
                 showDropShadow = true,
+                textShadowEnabled = true, // safe default: white text over video needs a shadow
+                textShadowColorHex = "#000000",
+                cardGlowEnabled = true, // safe default: matches legacy drop-shadow look
+                cardGlowColorHex = "#000000",
                 showCrossEmblem = true,
                 bilingualMode = false,
                 streamBackgroundMode = com.arabicchristianmedia.model.StreamBackgroundMode.TRANSPARENT_ALPHA
@@ -93,6 +101,10 @@ class TemplateRepository(context: Context) {
                 transitionDurationMs = 400,
                 showAccentBorder = false,
                 showDropShadow = true,
+                textShadowEnabled = true, // safe default: white text over video needs a shadow
+                textShadowColorHex = "#000000",
+                cardGlowEnabled = false, // safe default: no card on transparent styles
+                cardGlowColorHex = "#000000",
                 showCrossEmblem = true,
                 bilingualMode = false,
                 isPureTransparentBackground = true,
@@ -121,6 +133,10 @@ class TemplateRepository(context: Context) {
                 transitionDurationMs = 350,
                 showAccentBorder = true,
                 showDropShadow = true,
+                textShadowEnabled = true, // safe default: white text over video needs a shadow
+                textShadowColorHex = "#000000",
+                cardGlowEnabled = true, // safe default: matches legacy drop-shadow look
+                cardGlowColorHex = "#000000",
                 showCrossEmblem = true,
                 bilingualMode = false,
                 isPureTransparentBackground = false,
@@ -149,6 +165,10 @@ class TemplateRepository(context: Context) {
                 transitionDurationMs = 450,
                 showAccentBorder = true,
                 showDropShadow = true,
+                textShadowEnabled = true, // safe default: white text over video needs a shadow
+                textShadowColorHex = "#000000",
+                cardGlowEnabled = true, // safe default: matches legacy drop-shadow look
+                cardGlowColorHex = "#000000",
                 showCrossEmblem = false,
                 bilingualMode = false
             ),
@@ -174,6 +194,10 @@ class TemplateRepository(context: Context) {
                 transitionDurationMs = 500,
                 showAccentBorder = true,
                 showDropShadow = true,
+                textShadowEnabled = true, // safe default: white text over video needs a shadow
+                textShadowColorHex = "#000000",
+                cardGlowEnabled = true, // safe default: matches legacy drop-shadow look
+                cardGlowColorHex = "#000000",
                 showCrossEmblem = true,
                 bilingualMode = false
             ),
@@ -199,6 +223,10 @@ class TemplateRepository(context: Context) {
                 transitionDurationMs = 350,
                 showAccentBorder = true,
                 showDropShadow = true,
+                textShadowEnabled = true, // safe default: white text over video needs a shadow
+                textShadowColorHex = "#000000",
+                cardGlowEnabled = true, // safe default: matches legacy drop-shadow look
+                cardGlowColorHex = "#000000",
                 showCrossEmblem = true,
                 bilingualMode = true
             )
@@ -226,20 +254,86 @@ class TemplateRepository(context: Context) {
         prefs.edit { putString("custom_templates", arr.toString()) }
     }
 
-    fun getActiveTemplateId(): String {
+    /**
+     * Highlighted (selected) style id for the Lower Third tab. Null = no style
+     * highlighted (user edited without saving, or nothing selected yet).
+     * Legacy installs that referenced the deleted "tpl_modern_glass" fall back
+     * to the transparent default; a stored null is preserved so a cleared
+     * highlight is never resurrected after restart.
+     */
+    fun getActiveTemplateId(): String? {
         val id = prefs.getString("active_template_id", null)
-        if ((id == null) || (id == "tpl_modern_glass")) {
+        if (id == "tpl_modern_glass") {
             return "tpl_transparent_alpha"
         }
         return id
     }
 
-    fun setActiveTemplateId(id: String) {
+    fun setActiveTemplateId(id: String?) {
         prefs.edit().putString("active_template_id", id).apply()
     }
 
-    private fun toJson(t: LowerThirdTemplate): JSONObject {
-        return JSONObject().apply {
+    /**
+     * Highlighted (selected) style id for the Full Show tab. Null = no style
+     * highlighted (user edited without saving, or nothing selected yet).
+     */
+    fun getActiveShowTemplateId(): String? =
+        prefs.getString("active_show_template_id", null)
+
+    fun setActiveShowTemplateId(id: String?) {
+        prefs.edit().putString("active_show_template_id", id).apply()
+    }
+
+    /**
+     * Working (live) template per tab: the exact values driving HTTP + NDI right
+     * now. Saved styles in [getAllTemplates] are never modified by editing;
+     * only explicit "save as" writes into the style list.
+     */
+    fun getWorkingTemplate(isFullScreen: Boolean): LowerThirdTemplate? {
+        val key = if (isFullScreen) "working_show_template" else "working_lower_template"
+        val json = prefs.getString(key, null) ?: return null
+        return try { fromJson(JSONObject(json)) } catch (e: Exception) { null }
+    }
+
+    fun saveWorkingTemplate(template: LowerThirdTemplate) {
+        val key = if (template.isFullScreen) "working_show_template" else "working_lower_template"
+        prefs.edit().putString(key, toJson(template).toString()).apply()
+    }
+
+    /** True when the working template has unsaved edits (highlight cleared). */
+    fun isWorkingDirty(isFullScreen: Boolean): Boolean {
+        val key = if (isFullScreen) "working_show_dirty" else "working_lower_dirty"
+        return prefs.getBoolean(key, false)
+    }
+
+    fun setWorkingDirty(isFullScreen: Boolean, dirty: Boolean) {
+        val key = if (isFullScreen) "working_show_dirty" else "working_lower_dirty"
+        prefs.edit().putBoolean(key, dirty).apply()
+    }
+
+    /**
+     * Serializes one style to shareable JSON (pretty-printed) for export.
+     */
+    fun templateToJsonString(t: LowerThirdTemplate): String = toJson(t).toString(2)
+
+    /**
+     * Parses a style from shared/imported JSON. Returns null when the payload
+     * is not a recognizable style (defensive: never throws).
+     */
+    fun templateFromJsonString(json: String): LowerThirdTemplate? {
+        return try {
+            val obj = JSONObject(json)
+            if (obj.optString("name", "").trim().isEmpty()) return null
+            // Sanity: a real style carries several known keys.
+            val knownKeys = listOf("fontFamily", "bgColorHex", "textColorHex", "verseFontSize", "style")
+            if (knownKeys.none { obj.has(it) }) return null
+            fromJson(obj)
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun toJson(t: LowerThirdTemplate): JSONObject {        return JSONObject().apply {
             put("id", t.id)
             put("name", t.name)
             put("style", t.style.name)
@@ -269,6 +363,10 @@ class TemplateRepository(context: Context) {
             put("transitionDurationMs", t.transitionDurationMs)
             put("showAccentBorder", t.showAccentBorder)
             put("showDropShadow", t.showDropShadow)
+            put("textShadowEnabled", t.textShadowEnabled)
+            put("textShadowColorHex", t.textShadowColorHex)
+            put("cardGlowEnabled", t.cardGlowEnabled)
+            put("cardGlowColorHex", t.cardGlowColorHex)
             put("showCrossEmblem", t.showCrossEmblem)
             put("bilingualMode", t.bilingualMode)
             put("isPureTransparentBackground", t.isPureTransparentBackground)
@@ -280,6 +378,15 @@ class TemplateRepository(context: Context) {
     }
 
     private fun fromJson(obj: JSONObject): LowerThirdTemplate {
+        // Safe per-style migration defaults: read style/transparency BEFORE the
+        // object build so a legacy single shadow switch migrates to the new
+        // flags correctly — transparent styles must NOT gain a card glow.
+        val legacyShadow = obj.optBoolean("showDropShadow", true)
+        val migratedStyle = try { TemplateStyle.valueOf(obj.optString("style")) }
+            catch (e: Exception) { TemplateStyle.MODERN_GLASS } // unknown style: assume a card, keep legacy look
+        val migratedTransparent = obj.optBoolean("isPureTransparentBackground", false) ||
+                migratedStyle == TemplateStyle.TRANSPARENT_OUTLINE
+        val safeGlowDefault = legacyShadow && !migratedTransparent
         return LowerThirdTemplate(
             id = obj.optString("id", "tpl_${System.currentTimeMillis()}"),
             name = obj.optString("name", "Custom Template"),
@@ -310,6 +417,15 @@ class TemplateRepository(context: Context) {
             transitionDurationMs = obj.optInt("transitionDurationMs", 350),
             showAccentBorder = obj.optBoolean("showAccentBorder", true),
             showDropShadow = obj.optBoolean("showDropShadow", true),
+            // One-time migration: the legacy single switch becomes both new flags (on, black).
+            // Transparent styles migrate glow to OFF (no card to glow); the rest keep the
+            // legacy drop-shadow look. New saves always carry the explicit keys below.
+            textShadowEnabled = if (obj.has("textShadowEnabled")) obj.optBoolean("textShadowEnabled", true)
+                                else legacyShadow,
+            textShadowColorHex = obj.optString("textShadowColorHex", "#000000"),
+            cardGlowEnabled = if (obj.has("cardGlowEnabled")) obj.optBoolean("cardGlowEnabled", true)
+                              else safeGlowDefault,
+            cardGlowColorHex = obj.optString("cardGlowColorHex", "#000000"),
             showCrossEmblem = obj.optBoolean("showCrossEmblem", true),
             bilingualMode = obj.optBoolean("bilingualMode", false),
             isPureTransparentBackground = obj.optBoolean("isPureTransparentBackground", false),

@@ -1,6 +1,8 @@
 package com.arabicchristianmedia.ui
 
 import android.app.Application
+import android.content.Context
+import android.content.SharedPreferences
 import androidx.lifecycle.AndroidViewModel
 import com.arabicchristianmedia.data.BibleRepository
 import com.arabicchristianmedia.data.TemplateRepository
@@ -388,18 +390,23 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
 
     // ---- NDI spec persistence (resolution / fps / motion / enabled per feed) ----
 
-    private val ndiPrefs by lazy {
-        getApplication<Application>().getSharedPreferences("bible_ndi_source_specs", Application.MODE_PRIVATE)
+    private fun getNdiPrefs(): SharedPreferences? {
+        return try {
+            getApplication<Application>()?.getSharedPreferences("bible_ndi_source_specs", Context.MODE_PRIVATE)
+        } catch (e: Exception) {
+            null
+        }
     }
 
     /** Load persisted NDI specs into state. Called once from [loadInitialData]. */
     private fun loadPersistedNdiSpecs() {
+        val prefs = getNdiPrefs()
         val specs = NdiNativeSender.ALL_FEEDS.associateWith { feedKey ->
             val d = NdiNativeSender.defaultSpec(feedKey)
-            val w = ndiPrefs.getInt("${feedKey}_w", d.width)
-            val h = ndiPrefs.getInt("${feedKey}_h", d.height)
-            val fps = ndiPrefs.getInt("${feedKey}_fps", d.fps)
-            val motion = ndiPrefs.getBoolean("${feedKey}_motion", d.motionEnabled)
+            val w = prefs?.getInt("${feedKey}_w", d.width) ?: d.width
+            val h = prefs?.getInt("${feedKey}_h", d.height) ?: d.height
+            val fps = prefs?.getInt("${feedKey}_fps", d.fps) ?: d.fps
+            val motion = prefs?.getBoolean("${feedKey}_motion", d.motionEnabled) ?: d.motionEnabled
             // Validate against the allowed option lists; stale values fall back to defaults.
             val res = NdiNativeSender.RESOLUTION_OPTIONS.firstOrNull { it.first == w && it.second == h }
                 ?: (d.width to d.height)
@@ -408,22 +415,22 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         }
         _uiState.value = _uiState.value.copy(
             ndiSourceSpecs = specs,
-            ndiLowerEnabled = ndiPrefs.getBoolean("${NdiNativeSender.FEED_LOWER}_enabled", true),
-            ndiFullShowEnabled = ndiPrefs.getBoolean("${NdiNativeSender.FEED_FULL}_enabled", true)
+            ndiLowerEnabled = prefs?.getBoolean("${NdiNativeSender.FEED_LOWER}_enabled", true) ?: true,
+            ndiFullShowEnabled = prefs?.getBoolean("${NdiNativeSender.FEED_FULL}_enabled", true) ?: true
         )
     }
 
     private fun persistNdiSpec(spec: NdiSourceSpec) {
-        ndiPrefs.edit()
-            .putInt("${spec.feedKey}_w", spec.width)
-            .putInt("${spec.feedKey}_h", spec.height)
-            .putInt("${spec.feedKey}_fps", spec.fps)
-            .putBoolean("${spec.feedKey}_motion", spec.motionEnabled)
-            .apply()
+        getNdiPrefs()?.edit()
+            ?.putInt("${spec.feedKey}_w", spec.width)
+            ?.putInt("${spec.feedKey}_h", spec.height)
+            ?.putInt("${spec.feedKey}_fps", spec.fps)
+            ?.putBoolean("${spec.feedKey}_motion", spec.motionEnabled)
+            ?.apply()
     }
 
     private fun persistNdiEnabled(feedKey: String, enabled: Boolean) {
-        ndiPrefs.edit().putBoolean("${feedKey}_enabled", enabled).apply()
+        getNdiPrefs()?.edit()?.putBoolean("${feedKey}_enabled", enabled)?.apply()
     }
 
     fun toggleNdiSource(source: String) {

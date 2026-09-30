@@ -1,4 +1,6 @@
 import com.google.gms.googleservices.GoogleServicesPlugin.MissingGoogleServicesStrategy
+import java.time.LocalDate
+import java.time.ZoneId
 
 plugins {
   alias(libs.plugins.android.application)
@@ -21,7 +23,7 @@ android {
     versionCode = 6
     versionName = "1.6"
     // Build date (UTC) shown in the NDI tab version footer.
-    buildConfigField("String", "BUILD_DATE", "\"${java.time.LocalDate.now(java.time.ZoneId.of("UTC"))}\"")
+    buildConfigField("String", "BUILD_DATE", "\"${LocalDate.now(ZoneId.of("UTC"))}\"")
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     ndk {
@@ -97,7 +99,7 @@ android {
 
     sourceSets {
       getByName("main") {
-        jniLibs.srcDirs("src/main/jniLibs")
+        jniLibs.srcDir("src/main/jniLibs")
       }
     }
 

@@ -13,8 +13,10 @@ import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.Typeface
 import android.net.Uri
+import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.SystemClock
+import android.util.Log
 import android.text.Layout
 import android.text.SpannableString
 import android.text.Spanned
@@ -57,6 +59,42 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     private var serverJob: Job? = null
     private var ssePingJob: Job? = null
     private val scope = CoroutineScope(Dispatchers.IO)
+
+    /**
+     * Held while broadcasting. The high-perf WifiLock keeps the Wi-Fi radio
+     * from throttling mid-service; the MulticastLock lets NDI discovery
+     * (multicast) through on devices with aggressive Wi-Fi power saving.
+     * Best-effort only — real background guarantees await the foreground
+     * service migration (deferred, needs a UX decision on the notification).
+     */
+    private var wifiLock: WifiManager.WifiLock? = null
+    private var multicastLock: WifiManager.MulticastLock? = null
+
+    private fun acquireBroadcastLocks() {
+        try {
+            val wifi = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+                ?: return
+            if (wifiLock == null) {
+                wifiLock = wifi.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "ArabicBibleNDI::broadcast")
+            }
+            if (wifiLock?.isHeld == false) wifiLock?.acquire()
+            if (multicastLock == null) {
+                multicastLock = wifi.createMulticastLock("ArabicBibleNDI::discovery").apply {
+                    setReferenceCounted(true)
+                }
+            }
+            if (multicastLock?.isHeld == false) multicastLock?.acquire()
+        } catch (e: Exception) {
+            Log.w("NdiBroadcastServer", "Could not acquire broadcast locks: ${e.message}")
+        }
+    }
+
+    private fun releaseBroadcastLocks() {
+        try { if (wifiLock?.isHeld == true) wifiLock?.release() } catch (e: Exception) {}
+        try { if (multicastLock?.isHeld == true) multicastLock?.release() } catch (e: Exception) {}
+        wifiLock = null
+        multicastLock = null
+    }
 
     @Volatile
     var isRunning = false
@@ -101,6 +139,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             val ip = getLocalIpAddress()
             val url = "http://$ip:$port/ndi"
             onStarted(url)
+            acquireBroadcastLocks()
 
             serverJob = scope.launch {
                 while (isActive && isRunning) {
@@ -147,6 +186,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
     fun stop() {
         isRunning = false
+        releaseBroadcastLocks()
         try {
             serverSocket?.close()
         } catch (e: Exception) {

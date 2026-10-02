@@ -1046,6 +1046,9 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
                     }
                 ) {
                     // Arabic Citation & user Emblem (v1.7: free emoji/symbol)
+                    // RTL row: the emblem sits before (right of) the Arabic citation,
+                    // matching NDI and HTTP.
+                    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -1066,6 +1069,7 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
                             color = refCol,
                             style = TextStyle(shadow = previewShadow)
                         )
+                    }
                     }
 
                     // Arabic Verse Text
@@ -1112,7 +1116,7 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
                                 textAlign = when (template.alignment) {
                                     BroadcastTextAlignment.CENTER -> TextAlign.Center
                                     BroadcastTextAlignment.LEFT -> TextAlign.Left
-                                    else -> TextAlign.Left
+                                    else -> TextAlign.Right
                                 },
                                 modifier = Modifier.fillMaxWidth()
                             )

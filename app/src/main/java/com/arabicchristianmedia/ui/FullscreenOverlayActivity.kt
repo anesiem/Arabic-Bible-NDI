@@ -171,6 +171,8 @@ fun FullscreenOverlayContent(
                             }
                         } else Alignment.Start
                     ) {
+                        // RTL row (inherited): emblem sits before (right of) the
+                        // Arabic citation, matching NDI and HTTP.
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             if (template.emblem.isNotEmpty()) {
                                 Text(

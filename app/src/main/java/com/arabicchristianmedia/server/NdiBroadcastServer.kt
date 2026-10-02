@@ -907,26 +907,31 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         cardBox.style.display = 'flex';
         cardBox.style.flexDirection = 'column';
         cardBox.style.justifyContent = 'center';
-        cardBox.style.alignItems = 'center';
         cardBox.style.margin = '0 auto';
         cardBox.style.padding = '6vh 6vw';
         cardBox.style.width = '100vw';
         cardBox.style.maxWidth = '100vw';
-        cardBox.style.textAlign = 'center';
+        // v1.7: Full Show obeys the user's alignment — no forced centering.
+        // Bidi-aware: LEFT/RIGHT mean visual left/right for both scripts.
+        const align = data.alignment || 'RIGHT';
+        const alignCss = align === 'CENTER' ? 'center' : (align === 'LEFT' ? 'left' : 'right');
+        container.style.direction = align === 'LEFT' ? 'ltr' : 'rtl';
+        cardBox.style.alignItems = align === 'CENTER' ? 'center' : (align === 'LEFT' ? 'flex-start' : 'flex-end');
+        cardBox.style.textAlign = alignCss;
 
         citationRow.style.display = 'flex';
         citationRow.style.width = '100%';
-        citationRow.style.justifyContent = 'center';
+        citationRow.style.justifyContent = align === 'CENTER' ? 'center' : 'flex-start';
 
         verseText.style.width = '100%';
-        verseText.style.textAlign = 'center';
+        verseText.style.textAlign = alignCss;
         verseText.style.margin = '0 auto';
 
         englishSection.style.width = '100%';
-        englishSection.style.textAlign = 'center';
+        englishSection.style.textAlign = alignCss;
         englishSection.style.margin = '10px auto 0 auto';
         englishText.style.width = '100%';
-        englishText.style.textAlign = 'center';
+        englishText.style.textAlign = alignCss;
       } else {
         const botMargin = (data.positionBottomPercent || 6) + 'vh';
         const hMargin = (data.horizontalMarginPercent || 6) + 'vw';
@@ -1388,12 +1393,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
             )
             
-            // For Bilingual mode: English should usually be Left aligned (NORMAL for LTR)
-            // unless the user chose Center.
-            val secAlignment = if (tpl.alignment == BroadcastTextAlignment.CENTER) {
-                Layout.Alignment.ALIGN_CENTER
-            } else {
-                Layout.Alignment.ALIGN_NORMAL // Always Left for LTR English
+            // Bidi-aware: the user's LEFT/RIGHT choice means visual left/right
+            // regardless of script. For LTR English that's NORMAL (left) /
+            // OPPOSITE (right) — previously both mapped to left.
+            val secAlignment = when (tpl.alignment) {
+                BroadcastTextAlignment.CENTER -> Layout.Alignment.ALIGN_CENTER
+                BroadcastTextAlignment.LEFT -> Layout.Alignment.ALIGN_NORMAL
+                BroadcastTextAlignment.RIGHT -> Layout.Alignment.ALIGN_OPPOSITE
             }
             
             secondaryLayout = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -1623,14 +1629,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 canvas.drawText(emblemText, x, citationY, emblemPaint)
             }
 
-            if (tpl.isFullScreen) {
-                // Centered citation: emblem sits just before it (right side, RTL).
-                val startX = (width - totalW) / 2f
-                refPaint.textAlign = Paint.Align.LEFT
-                canvas.drawText(citation, startX, citationY, refPaint)
-                drawEmblemAt(startX + citeW + emblemGap, Paint.Align.LEFT)
-            } else {
-                when (tpl.alignment) {
+            // v1.7: no forced centering — Full Show obeys the user's alignment
+            // exactly like Lower Third and every other surface.
+            when (tpl.alignment) {
                     BroadcastTextAlignment.CENTER -> {
                         val startX = (width - totalW) / 2f
                         refPaint.textAlign = Paint.Align.LEFT
@@ -1647,12 +1648,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                         canvas.drawText(citation, boxRight - paddingH - emblemW - emblemGap, citationY, refPaint)
                         drawEmblemAt(boxRight - paddingH, Paint.Align.RIGHT)
                     }
-                }
             }
-        } else if (tpl.isFullScreen) {
-            refPaint.textAlign = Paint.Align.CENTER
-            canvas.drawText(citation, width / 2f, citationY, refPaint)
         } else {
+            // v1.7: no forced centering here either.
             when (tpl.alignment) {
                 BroadcastTextAlignment.CENTER -> {
                     refPaint.textAlign = Paint.Align.CENTER
@@ -1669,7 +1667,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             }
         }
 
-        val translateX = if (tpl.isFullScreen || tpl.alignment == BroadcastTextAlignment.CENTER) {
+        // v1.7: the verse block obeys the user's alignment on Full Show too.
+        val translateX = if (tpl.alignment == BroadcastTextAlignment.CENTER) {
             (width - contentWidth) / 2f
         } else {
             boxLeft + paddingH

@@ -3,6 +3,7 @@ package com.arabicchristianmedia.server
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
 import android.graphics.PorterDuff
 import android.graphics.Rect
 import android.os.Build
@@ -57,6 +58,17 @@ class NdiNativeSender {
         var job: Job? = null
         /** Reused downscale target for reduced resolutions: zero allocation in the hot loop. */
         var scaledBitmap: Bitmap? = null
+        /**
+         * Reused filtering paint for the downscale path (smooth output below
+         * 1080p). Allocated once per session, never in the hot loop.
+         */
+        val downscalePaint = Paint().apply { isFilterBitmap = true }
+        /**
+         * Set to true inside [feedLock] before the native sender is destroyed.
+         * The send loop and triggerFrame() check it inside the same lock, so a
+         * torn-down session can never send through a freed native pointer.
+         */
+        @Volatile var closed = false
         @Volatile var lastSentVersion: Long = -1L
         @Volatile var lastSentAtMs: Long = 0L
     }
@@ -73,8 +85,12 @@ class NdiNativeSender {
     private fun feedLock(feedKey: String): Any = feedLocks.getOrPut(feedKey) { Any() }
 
     private val activeSenders = mutableMapOf<String, SenderSession>()
-    private var isInitialized = false
-    private val scope = CoroutineScope(Dispatchers.Default)
+    @Volatile private var isInitialized = false
+    /**
+     * SupervisorJob: one child's uncaught Throwable (e.g. an Error from bitmap
+     * allocation) must never silently kill the other feed's send loop.
+     */
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     private var frameProvider: ((Boolean) -> Bitmap)? = null
     private var frameVersionProvider: (() -> Long)? = null
@@ -105,15 +121,14 @@ class NdiNativeSender {
     var idlePollMs: Long = 120L
 
     /**
-     * Re-render cadence for motion mode (~15fps). Slow ambient gradients move an
-     * imperceptible distance per frame, so 15fps looks identical to 30/60fps
-     * while costing far less tablet CPU/battery during long sessions.
-     * Exposed (not hardcoded) per project AI preferences.
+     * Re-render cadence for motion mode (~30fps). Kept user-configurable per
+     * project AI preferences; the Motion toggle stays fully in the user's
+     * hands (slow tablets can turn it off entirely).
      */
-    var motionIntervalMs: Long = 66L
+    var motionIntervalMs: Long = 33L
 
     /** Loop poll cadence while a motion feed is active (must be < [motionIntervalMs]). */
-    var motionPollMs: Long = 33L
+    var motionPollMs: Long = 16L
 
     companion object {
         const val FRAME_WIDTH = 1920
@@ -271,21 +286,31 @@ class NdiNativeSender {
                             // reuses the cached bitmap via the regular frame provider.
                             // Render+send are atomic per feed: triggerFrame() runs on a
                             // different coroutine and must not touch this feed's reused
-                            // bitmaps mid-draw or mid-send.
+                            // bitmaps mid-draw or mid-send. The closed flag is checked
+                            // inside the same lock that teardown holds, so a session
+                            // being stopped can never send through a freed pointer.
                             val sent = synchronized(feedLock(feedKey)) {
-                                val bmp = if (motion) motionFrameProvider?.invoke(isFullScreen)
-                                          else frameProvider?.invoke(isFullScreen)
-                                bmp != null && sendBitmapToPtr(session, bmp)
+                                if (session.closed) {
+                                    false
+                                } else {
+                                    val bmp = if (motion) motionFrameProvider?.invoke(isFullScreen)
+                                              else frameProvider?.invoke(isFullScreen)
+                                    bmp != null && sendBitmapToPtr(session, bmp)
+                                }
                             }
                             if (sent) {
                                 session.lastSentVersion = version
                                 session.lastSentAtMs = now
                             }
                         }
-                    } catch (e: Exception) {
-                        reportError(feedKey, "Send loop error: ${e.message}", throttleMs = 10_000L)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (t: Throwable) {
+                        // Throwable (not just Exception): an Error must not kill the
+                        // scope silently — SupervisorJob isolates it to this child.
+                        reportError(feedKey, "Send loop error: ${t.message}", throttleMs = 10_000L)
                     }
-                    // Poll faster while motion is active so the 15fps cap is actually met.
+                    // Poll faster while motion is active so the 30fps cap is actually met.
                     delay(if (motion) motionPollMs else idlePollMs)
                 }
             }
@@ -308,6 +333,9 @@ class NdiNativeSender {
             // Lock order is always activeSenders -> feedLock (never the reverse).
             synchronized(feedLock(feedKey)) {
                 try {
+                    // Mark closed BEFORE destroying: any in-flight triggerFrame()
+                    // or send-loop iteration checks this inside the same lock.
+                    session.closed = true
                     session.job?.cancel()
                     try { session.scaledBitmap?.recycle() } catch (e: Exception) {}
                     session.scaledBitmap = null
@@ -334,10 +362,16 @@ class NdiNativeSender {
                     // In motion mode render a fresh frame (current animation phase +
                     // the new verse); in static mode reuse the cached bitmap.
                     // Same per-feed lock as the send loop: render+send are atomic.
+                    // The closed flag guards the stop/restart race: the session may
+                    // have been torn down during the debounce delay above.
                     val sent = synchronized(feedLock(feedKey)) {
-                        val bmp = if (isMotionActive(session)) motionFrameProvider?.invoke(isFullScreen)
-                                  else frameProvider?.invoke(isFullScreen)
-                        bmp != null && sendBitmapToPtr(session, bmp)
+                        if (session.closed) {
+                            false
+                        } else {
+                            val bmp = if (isMotionActive(session)) motionFrameProvider?.invoke(isFullScreen)
+                                      else frameProvider?.invoke(isFullScreen)
+                            bmp != null && sendBitmapToPtr(session, bmp)
+                        }
                     }
                     if (sent) {
                         session.lastSentVersion = frameVersionProvider?.invoke() ?: session.lastSentVersion
@@ -371,9 +405,11 @@ class NdiNativeSender {
                 }
                 val canvas = Canvas(scaled)
                 canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
+                // Filtered downscale: smooth output on sub-1080p feed
+                // resolutions (null paint here produced visible pixelation).
                 canvas.drawBitmap(
                     bitmap, null,
-                    Rect(0, 0, spec.width, spec.height), null
+                    Rect(0, 0, spec.width, spec.height), session.downscalePaint
                 )
                 scaled
             }
@@ -397,6 +433,7 @@ class NdiNativeSender {
                 // downscale bitmap while its feed might be mid-send.
                 synchronized(feedLock(session.spec.feedKey)) {
                     try {
+                        session.closed = true
                         session.job?.cancel()
                         try { session.scaledBitmap?.recycle() } catch (e: Exception) {}
                         session.scaledBitmap = null

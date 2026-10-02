@@ -1,10 +1,24 @@
-# Arabic Bible NDI (Version 1.6 - Latest Release)
+# Arabic Bible NDI (Version 1.7 - Latest Release)
 
 Professional Arabic/English Bible broadcast controller for Android. Transform your tablet or phone into a high-quality NDI 6 source and HTTP overlay server optimized for church presentations, live streaming, and OBS/vMix broadcast integration.
 
+**Fully offline** — no internet needed at the venue. Fonts, Bible data, and all resources are bundled; your media comes from the device.
+
 ---
 
-## 🚀 What's New in Version 1.6 (Latest Release)
+## 🚀 What's New in Version 1.7 (Latest Release)
+
+* 😊 **Custom emoji/symbol emblem**: the old cross toggle is now a free text field — type any emoji or symbol (empty = none). Saved per style, in style exports, rendered on NDI, HTTP, preview, and fullscreen.
+* 🎬 **Real animated video backgrounds on NDI**: pick a local MP4 and it loops *behind* the card and text on the NDI canvas — fully animated, per-feed decoders. Motion ON animates (up to 30fps); Motion OFF freezes the frame. Videos are stored privately and served to browsers by secure ID (the old `?path=` file endpoint is removed).
+* ⚡ **Motion cap raised to 30fps** (was 15).
+* ↔️ **Direction-aware alignment**: Full Show no longer force-centers — LEFT/CENTER/RIGHT is obeyed everywhere, and English text is now bidi-correct.
+* 🎨 **Better color chips** (larger swatch + hex on the chip) and **compact-phone / large-font layout fixes** across the editor and top bar.
+* 🔍 **Filtered sub-1080p NDI** downscaling — no more blocky 720p/480p feeds.
+* 🛡 **Under the hood**: race-free NDI teardown, truly persistent SSE overlays, atomic Bible DB install with background loading, Wi-Fi/multicast locks while broadcasting.
+
+See [RELEASE_NOTES_v1.7.md](RELEASE_NOTES_v1.7.md) for the full list.
+
+## 🚀 What's New in Version 1.6
 
 * 📺 **Two genuine NDI sources**: exactly `… - Bible-NDI-Lower` (Lower Third) and `… - Bible-NDI-Full` (Full Show). The previous "HX" tiers were **not** genuine NDI|HX encoding (that requires the paid NDI Advanced SDK, which this project does not use) — they were smaller plain-NDI streams with a misleading name, so they were removed.
 * 🛰 **Fake discovery removed**: the in-app mDNS/UDP/TCP "discovery beacon" never spoke the real NDI discovery protocol. Genuine NDI discovery is handled by the NDI 6 runtime itself — the fake beacon is deleted, and the two real senders appear in NDI Studio Monitor by device model name (e.g. `SM-X238U - Bible-NDI-Lower`).
@@ -31,14 +45,14 @@ Professional Arabic/English Bible broadcast controller for Android. Transform yo
 
 ### ⚙️ Per-Source Customization (Broadcast tab)
 Each NDI source is independently configurable from dropdown lists:
-* **Enabled** on/off, **Resolution** (7 options up to 1080p, all 16:9), **Frame rate** (8 integer rates), **Motion** on/off.
+* **Enabled** on/off, **Resolution** (7 options up to 1080p, all 16:9, filtered downscaling below 1080p), **Frame rate** (8 integer rates), **Motion** on/off (up to 30fps).
 * Changing any setting restarts that source immediately; settings persist across restarts.
 
 ### 🎨 Template Editor
 * Separate Lower Third / Full Show tabs, each with its own style collection and working values.
 * Live preview (16:9), workflow tips, modified badge, Save As New, long-press delete, per-tab reset.
 * **Style sharing:** long-press any style for Export (share sheet), Update from import (paste JSON or pick a .json file), or Delete; an Import button in the style header imports shared JSON as a brand-new style. Full control, device-to-device.
-* Independent text shadow and card glow controls with full color pickers; bilingual Arabic/English typography; animated motion backgrounds; custom video backgrounds.
+* Independent text shadow and card glow controls with full color pickers; custom emoji/symbol emblem; bilingual Arabic/English typography with direction-aware alignment; animated motion backgrounds; custom looping video backgrounds with opacity control.
 * **57 bundled Arabic Google Fonts** (SIL Open Font License) in a dropdown — the same TTFs render on the NDI canvas, the HTTP overlays, and the editor preview, fully offline. No internet needed at the venue.
 
 ---
@@ -47,4 +61,10 @@ Each NDI source is independently configurable from dropdown lists:
 
 Requires Android 7.0+. Download the APK from the [Releases page](https://github.com/anesiem/Arabic-Bible-NDI/releases) and install.
 
-> **Note:** v1.5 changed the application ID to `com.arabicchristianmedia`, so it installs as a separate app from v1.4 and earlier (templates do not migrate automatically). v1.6 (versionCode 6) installs cleanly over v1.5.
+> **Note:** v1.5 changed the application ID to `com.arabicchristianmedia`, so it installs as a separate app from v1.4 and earlier (templates do not migrate automatically). v1.7 (versionCode 7) installs cleanly over v1.5/v1.6.
+
+---
+
+## ❤️ Sponsor
+
+Arabic Bible NDI is built for churches and ministries. If it serves your congregation, consider sponsoring its continued development — sponsor links will appear here.

@@ -292,6 +292,23 @@ fun BibleReaderScreen(
 
                 // Verse List
                 val versesToShow = if (uiState.isSearching) uiState.searchResults else uiState.displayedVerses
+                if (uiState.isLoadingBible && versesToShow.isEmpty()) {
+                    // First-launch database copy: show progress instead of a blank list.
+                    Box(
+                        modifier = Modifier.fillMaxWidth().weight(1f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            CircularProgressIndicator(color = bento.primary)
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                "جاري تحميل الكتاب المقدس...",
+                                fontSize = 13.sp,
+                                color = bento.textSecondary
+                            )
+                        }
+                    }
+                } else
                 LazyColumn(
                     state = lazyListState,
                     modifier = Modifier

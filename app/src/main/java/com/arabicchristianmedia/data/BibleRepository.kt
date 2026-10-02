@@ -101,50 +101,45 @@ object BibleRepository {
 
         val verses = mutableListOf<BibleVerse>()
 
-        try {
-            val enMap = mutableMapOf<Int, String>()
-            enDb?.let { db ->
-                val cursor = db.rawQuery(
-                    "SELECT verseNum, word FROM words WHERE bookNum = ? AND chNum = ? ORDER BY verseNum",
-                    arrayOf(bookNum.toString(), chapter.toString())
-                )
-                if (cursor.moveToFirst()) {
-                    do {
-                        enMap[cursor.getInt(0)] = cursor.getString(1)
-                    } while (cursor.moveToNext())
-                }
-                cursor.close()
+        val enMap = mutableMapOf<Int, String>()
+        enDb?.let { db ->
+            val cursor = db.rawQuery(
+                "SELECT verseNum, word FROM words WHERE bookNum = ? AND chNum = ? ORDER BY verseNum",
+                arrayOf(bookNum.toString(), chapter.toString())
+            )
+            if (cursor.moveToFirst()) {
+                do {
+                    enMap[cursor.getInt(0)] = cursor.getString(1)
+                } while (cursor.moveToNext())
             }
+            cursor.close()
+        }
 
-            arDb?.let { db ->
-                val cursor = db.rawQuery(
-                    "SELECT verseNum, word FROM words WHERE bookNum = ? AND chNum = ? ORDER BY verseNum",
-                    arrayOf(bookNum.toString(), chapter.toString())
-                )
-                if (cursor.moveToFirst()) {
-                    do {
-                        val verseNum = cursor.getInt(0)
-                        val arText = cursor.getString(1)
-                        val enText = enMap[verseNum] ?: ""
-                        verses.add(
-                            BibleVerse(
-                                id = "${bookId}_${chapter}_$verseNum",
-                                bookId = bookId,
-                                bookArabicName = book.arabicName,
-                                bookEnglishName = book.englishName,
-                                chapter = chapter,
-                                verse = verseNum,
-                                arabicText = arText,
-                                englishText = enText
-                            )
+        arDb?.let { db ->
+            val cursor = db.rawQuery(
+                "SELECT verseNum, word FROM words WHERE bookNum = ? AND chNum = ? ORDER BY verseNum",
+                arrayOf(bookNum.toString(), chapter.toString())
+            )
+            if (cursor.moveToFirst()) {
+                do {
+                    val verseNum = cursor.getInt(0)
+                    val arText = cursor.getString(1)
+                    val enText = enMap[verseNum] ?: ""
+                    verses.add(
+                        BibleVerse(
+                            id = "${bookId}_${chapter}_$verseNum",
+                            bookId = bookId,
+                            bookArabicName = book.arabicName,
+                            bookEnglishName = book.englishName,
+                            chapter = chapter,
+                            verse = verseNum,
+                            arabicText = arText,
+                            englishText = enText
                         )
-                    } while (cursor.moveToNext())
-                }
-                cursor.close()
+                    )
+                } while (cursor.moveToNext())
             }
-        } finally {
-            arDb?.close()
-            enDb?.close()
+            cursor.close()
         }
 
         if (verses.isEmpty()) {
@@ -198,37 +193,33 @@ object BibleRepository {
         val arDb = helper.openDatabase(BibleDatabaseHelper.ARABIC_DB)
         val results = mutableListOf<BibleVerse>()
 
-        try {
-            arDb?.let { db ->
-                val cursor = db.rawQuery(
-                    "SELECT bookNum, chNum, verseNum, word FROM words WHERE word LIKE ? LIMIT 100",
-                    arrayOf("%$q%")
-                )
-                if (cursor.moveToFirst()) {
-                    do {
-                        val bNum = cursor.getInt(0)
-                        val cNum = cursor.getInt(1)
-                        val vNum = cursor.getInt(2)
-                        val arText = cursor.getString(3)
-                        val book = allBooks.getOrNull(bNum - 1) ?: continue
-                        results.add(
-                            BibleVerse(
-                                id = "${book.id}_${cNum}_$vNum",
-                                bookId = book.id,
-                                bookArabicName = book.arabicName,
-                                bookEnglishName = book.englishName,
-                                chapter = cNum,
-                                verse = vNum,
-                                arabicText = arText,
-                                englishText = "" 
-                            )
+        arDb?.let { db ->
+            val cursor = db.rawQuery(
+                "SELECT bookNum, chNum, verseNum, word FROM words WHERE word LIKE ? LIMIT 100",
+                arrayOf("%$q%")
+            )
+            if (cursor.moveToFirst()) {
+                do {
+                    val bNum = cursor.getInt(0)
+                    val cNum = cursor.getInt(1)
+                    val vNum = cursor.getInt(2)
+                    val arText = cursor.getString(3)
+                    val book = allBooks.getOrNull(bNum - 1) ?: continue
+                    results.add(
+                        BibleVerse(
+                            id = "${book.id}_${cNum}_$vNum",
+                            bookId = book.id,
+                            bookArabicName = book.arabicName,
+                            bookEnglishName = book.englishName,
+                            chapter = cNum,
+                            verse = vNum,
+                            arabicText = arText,
+                            englishText = ""
                         )
-                    } while (cursor.moveToNext())
-                }
-                cursor.close()
+                    )
+                } while (cursor.moveToNext())
             }
-        } finally {
-            arDb?.close()
+            cursor.close()
         }
         return results
     }

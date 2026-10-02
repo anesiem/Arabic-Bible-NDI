@@ -1044,7 +1044,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     }
 
     // Dedicated reusable bitmaps for motion rendering (one per feed). Never the
-    // shared static cache: motion ticks redraw in place at ~15fps, and a shared
+    // shared static cache: motion ticks redraw in place at up to ~30fps, and a shared
     // bitmap would let static readers (preview, MJPEG) see half-drawn frames.
     private var motionLowerBitmap: Bitmap? = null
     private var motionShowBitmap: Bitmap? = null

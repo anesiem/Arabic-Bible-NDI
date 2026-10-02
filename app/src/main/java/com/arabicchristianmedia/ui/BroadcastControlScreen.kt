@@ -1378,7 +1378,7 @@ private fun NdiSourceSettingsRow(
             Column(modifier = Modifier.weight(1f)) {
                 Text("الحركة (Motion)", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = tint)
                 Text(
-                    "إعادة رسم الخلفيات المتحركة باستمرار (بحد أقصى 15 إطار/ثا)",
+                    "إعادة رسم الخلفيات المتحركة باستمرار (بحد أقصى 30 إطار/ثا)",
                     fontSize = 9.sp,
                     color = textSecondary
                 )

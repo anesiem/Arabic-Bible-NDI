@@ -140,16 +140,26 @@ fun TemplateEditorScreen(
     )
 
     Column(modifier = modifier.fillMaxSize().background(bento.bg).padding(14.dp).verticalScroll(rememberScrollState())) {
-        // 1. Header & Quick Actions
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Column {
-                Text("محرر القوالب والتصاميم (Template Editor)", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary)
-                Text("تخصيص كامل وشامل لطبقات البث والعرض المباشر", fontSize = 12.sp, color = bento.textSecondary)
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                IconButton(onClick = { onResetDefaults(editorTab == 1) }) { Icon(Icons.Default.Refresh, "إعادة تعيين", tint = bento.primary) }
-                Button(onClick = { newTemplateName = "${editingTemplate.name} النسخة"; showSaveDialog = true }, colors = ButtonDefaults.buttonColors(containerColor = bento.primary)) {
-                    Icon(Icons.Default.Add, null, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(6.dp)); Text("حفظ كقالب جديد", fontSize = 12.sp)
+        // 1. Header & Quick Actions (responsive: compact icon actions on narrow
+        // screens so the title never crushes the buttons under large fonts)
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+            val compactHeader = maxWidth < 420.dp
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("محرر القوالب والتصاميم (Template Editor)", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("تخصيص كامل وشامل لطبقات البث والعرض المباشر", fontSize = 12.sp, color = bento.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { onResetDefaults(editorTab == 1) }) { Icon(Icons.Default.Refresh, "إعادة تعيين", tint = bento.primary) }
+                    if (compactHeader) {
+                        IconButton(onClick = { newTemplateName = "${editingTemplate.name} النسخة"; showSaveDialog = true }) {
+                            Icon(Icons.Default.Add, "حفظ كقالب جديد", tint = bento.primary)
+                        }
+                    } else {
+                        Button(onClick = { newTemplateName = "${editingTemplate.name} النسخة"; showSaveDialog = true }, colors = ButtonDefaults.buttonColors(containerColor = bento.primary)) {
+                            Icon(Icons.Default.Add, null, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(6.dp)); Text("حفظ كقالب جديد", fontSize = 12.sp, maxLines = 1)
+                        }
+                    }
                 }
             }
         }
@@ -706,40 +716,64 @@ fun ColorGradePickerRow(
     var showGradeDialog by remember { mutableStateOf(false) }
 
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(label, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = bento.textSecondary)
-            
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Box(
-                    modifier = Modifier
-                        .size(18.dp)
-                        .clip(CircleShape)
-                        .background(try { Color(android.graphics.Color.parseColor(selectedHex)) } catch (e: Exception) { Color.White })
-                        .border(1.dp, bento.border, CircleShape)
-                )
+        // v1.7: the label flexes (weight) and ellipsizes; the Color Grade
+        // action collapses to an icon on narrow widths so the bilingual label
+        // can never be crushed into a letter-by-letter strip under large fonts.
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+            val compactAction = maxWidth < 360.dp
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Text(
-                    text = selectedHex.uppercase(),
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = bento.primary
+                    label,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = bento.textSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
                 )
-                
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = bento.primaryContainer,
-                    modifier = Modifier.clickable { showGradeDialog = true }
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Icon(Icons.Default.Palette, contentDescription = null, tint = bento.onPrimaryContainer, modifier = Modifier.size(12.dp))
-                        Text("درجات الألوان (Color Grade)", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = bento.onPrimaryContainer)
+
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Box(
+                        modifier = Modifier
+                            .size(18.dp)
+                            .clip(CircleShape)
+                            .background(try { Color(android.graphics.Color.parseColor(selectedHex)) } catch (e: Exception) { Color.White })
+                            .border(1.dp, bento.border, CircleShape)
+                    )
+                    Text(
+                        text = selectedHex.uppercase(),
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = bento.primary,
+                        maxLines = 1
+                    )
+
+                    if (compactAction) {
+                        IconButton(
+                            onClick = { showGradeDialog = true },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(Icons.Default.Palette, contentDescription = "درجات الألوان (Color Grade)", tint = bento.primary, modifier = Modifier.size(18.dp))
+                        }
+                    } else {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = bento.primaryContainer,
+                            modifier = Modifier.clickable { showGradeDialog = true }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(Icons.Default.Palette, contentDescription = null, tint = bento.onPrimaryContainer, modifier = Modifier.size(12.dp))
+                                Text("درجات الألوان (Color Grade)", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = bento.onPrimaryContainer, maxLines = 1)
+                            }
+                        }
                     }
                 }
             }
@@ -758,23 +792,32 @@ fun ColorGradePickerRow(
                     border = BorderStroke(if (isSelected) 2.dp else 1.dp, if (isSelected) bento.primary else bento.border),
                     modifier = Modifier.clickable { onColorSelected(hex) }
                 ) {
+                    // v1.7: wider chip, larger swatch, hex readout. The whole
+                    // body applies the color; the X is a separate hit target.
                     Row(
-                        modifier = Modifier.padding(start = 6.dp, end = 2.dp, top = 2.dp, bottom = 2.dp),
+                        modifier = Modifier.padding(start = 8.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(2.dp)
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(18.dp)
+                                .size(22.dp)
                                 .clip(CircleShape)
                                 .background(try { Color(android.graphics.Color.parseColor(hex)) } catch (e: Exception) { Color.Gray })
                                 .border(1.dp, Color.Black.copy(alpha = 0.2f), CircleShape)
                         )
+                        Text(
+                            text = hex.uppercase().removePrefix("#"),
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = bento.textSecondary,
+                            maxLines = 1
+                        )
                         IconButton(
                             onClick = { onRemoveRecentColor(hex) },
-                            modifier = Modifier.size(16.dp)
+                            modifier = Modifier.size(20.dp)
                         ) {
-                            Icon(Icons.Default.Close, contentDescription = "حذف", tint = bento.textSecondary, modifier = Modifier.size(10.dp))
+                            Icon(Icons.Default.Close, contentDescription = "حذف", tint = bento.textSecondary, modifier = Modifier.size(12.dp))
                         }
                     }
                 }
@@ -931,7 +974,7 @@ fun ColorGradeSpectrumModal(
 fun FeatureToggleRow(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
     val bento = LocalBentoColors.current
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-        Text(label, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = bento.textPrimary)
+        Text(label, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = bento.textPrimary, modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
         Switch(checked = checked, onCheckedChange = onCheckedChange, colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = bento.primary))
     }
 }

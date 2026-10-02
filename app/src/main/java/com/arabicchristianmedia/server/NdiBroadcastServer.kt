@@ -48,12 +48,14 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.sin
 
 class NdiBroadcastServer(private val context: Context, private var port: Int = 8080) {
 
     private var serverSocket: ServerSocket? = null
     private var serverJob: Job? = null
+    private var ssePingJob: Job? = null
     private val scope = CoroutineScope(Dispatchers.IO)
 
     @Volatile
@@ -112,6 +114,31 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                     }
                 }
             }
+            // SSE keep-alive: a comment ping every 15s keeps NATs/proxies from
+            // silently dropping idle overlay connections between verse changes.
+            ssePingJob = scope.launch {
+                while (isActive && isRunning) {
+                    delay(15_000)
+                    val dead = mutableListOf<Pair<PrintWriter, Boolean>>()
+                    for ((writer, _) in sseClients) {
+                        try {
+                            synchronized(writer) {
+                                writer.print(": ping\n\n")
+                                writer.flush()
+                            }
+                            if (writer.checkError()) dead.add(writer to false)
+                        } catch (e: Exception) {
+                            dead.add(writer to false)
+                        }
+                    }
+                    if (dead.isNotEmpty()) {
+                        // Remove by writer identity; the isShow flag is irrelevant here.
+                        val deadWriters = dead.map { it.first }.toSet()
+                        sseClients.removeAll { deadWriters.contains(it.first) }
+                        deadWriters.forEach { try { it.close() } catch (e: Exception) {} }
+                    }
+                }
+            }
         } catch (e: Exception) {
             isRunning = false
             onError(e.message ?: "Failed to start NDI server on port $port")
@@ -128,6 +155,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         serverJob?.cancel()
         serverJob = null
         serverSocket = null
+        ssePingJob?.cancel()
+        ssePingJob = null
 
         sseClients.forEach { (writer, _) ->
             try { writer.close() } catch (e: Exception) {}
@@ -144,10 +173,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
      * Monotonically increasing frame version, bumped on every state change that
      * affects rendered output. NDI senders use it for dirty-frame detection so
      * static verses don't burn CPU/network re-sending identical frames.
+     * AtomicLong: incrementing a @Volatile Long is not atomic, and this is
+     * bumped from several threads (UI, SSE throttle, verse updates).
      */
-    @Volatile
-    private var _frameVersion = 0L
-    val frameVersion: Long get() = _frameVersion
+    private val _frameVersion = AtomicLong(0L)
+    val frameVersion: Long get() = _frameVersion.get()
 
     private var cachedLowerBitmap: Bitmap? = null
     private var cachedShowBitmap: Bitmap? = null
@@ -155,7 +185,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     fun invalidateBitmapCache() {
         isCacheDirtyLower = true
         isCacheDirtyShow = true
-        _frameVersion++
+        _frameVersion.incrementAndGet()
     }
 
     fun updateVerse(verse: BibleVerse, live: Boolean = true) {
@@ -217,7 +247,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     private fun broadcastStateToClients() {
         val lowerPayload = buildJsonState(false)
         val showPayload = buildJsonState(true)
-        
+
         val lowerData = "data: $lowerPayload\n\n"
         val showData = "data: $showPayload\n\n"
 
@@ -225,8 +255,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         for (pair in sseClients) {
             val (writer, isShow) = pair
             try {
-                writer.print(if (isShow) showData else lowerData)
-                writer.flush()
+                // Serialized per client: broadcasts come from several threads
+                // (UI, throttle job, verse updates) and must not interleave.
+                synchronized(writer) {
+                    writer.print(if (isShow) showData else lowerData)
+                    writer.flush()
+                }
                 if (writer.checkError()) {
                     deadClients.add(pair)
                 }
@@ -234,10 +268,18 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 deadClients.add(pair)
             }
         }
-        sseClients.removeAll(deadClients.toSet())
+        if (deadClients.isNotEmpty()) {
+            sseClients.removeAll(deadClients.toSet())
+            deadClients.forEach { (writer, _) -> try { writer.close() } catch (e: Exception) {} }
+        }
     }
 
     private fun handleClient(socket: Socket) {
+        // Set when this connection must survive handleClient() (SSE event
+        // stream, MJPEG loop): the finally block must NOT close it, otherwise
+        // the registered client dies immediately and overlays only update on
+        // browser reconnect (~3s lag instead of instant pushes).
+        var keepOpen = false
         try {
             socket.soTimeout = 15000
             socket.tcpNoDelay = true
@@ -297,7 +339,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 }
                 cleanPath == "/ndi/events" -> {
                     serveSseEvents(socket, out, fullPath.contains("show=1"))
-                    return // Keep socket open for persistent SSE push
+                    keepOpen = true
+                    return // Persistent SSE stream: socket stays open for pushes
                 }
                 cleanPath == "/ndi/stream.png" || cleanPath == "/ndi/stream.mjpg" || cleanPath == "/ndi/stream" || cleanPath == "/stream" || cleanPath == "/video" || cleanPath == "/live" -> {
                     if (isBrowserNavigation && !fullPath.contains("raw=1")) {
@@ -329,7 +372,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         } catch (e: Exception) {
             // Connection closed or timed out
         } finally {
-            try { socket.close() } catch (e: Exception) {}
+            // SSE streams opted out via keepOpen: their socket is closed only
+            // when a broadcast write fails (see broadcastStateToClients) or on
+            // server stop(). Everything else is one-shot: close it here.
+            if (!keepOpen) {
+                try { socket.close() } catch (e: Exception) {}
+            }
         }
     }
 

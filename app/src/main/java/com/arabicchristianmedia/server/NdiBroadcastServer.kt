@@ -7,8 +7,10 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.LinearGradient
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.PorterDuff
 import android.graphics.RadialGradient
+import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.Typeface
@@ -202,6 +204,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             try { writer.close() } catch (e: Exception) {}
         }
         sseClients.clear()
+        // v1.7: release video decoders (recreated lazily on next start).
+        synchronized(videoRenderers) {
+            videoRenderers.values.forEach { try { it.release() } catch (e: Exception) {} }
+            videoRenderers.clear()
+        }
     }
 
     @Volatile
@@ -359,12 +366,16 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
             // Parse request headers
             var isBrowserNavigation = false
+            var rangeHeader: String? = null
             var headerLine: String?
             while (reader.readLine().also { headerLine = it } != null) {
                 if (headerLine.isNullOrEmpty()) break
                 val lower = headerLine?.lowercase() ?: ""
                 if (lower.startsWith("accept:") && lower.contains("text/html")) {
                     isBrowserNavigation = true
+                }
+                if (lower.startsWith("range:")) {
+                    rangeHeader = headerLine!!.substringAfter(":").trim()
                 }
             }
 
@@ -402,8 +413,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 cleanPath.startsWith("/fonts/") -> {
                     serveFontFile(out, cleanPath.removePrefix("/fonts/"))
                 }
+                cleanPath == "/ndi/video" -> {
+                    serveVideoById(out, fullPath, rangeHeader)
+                }
                 cleanPath == "/ndi/video_file" -> {
-                    serveLocalVideo(out, fullPath)
+                    // v1.7: removed — arbitrary path reads were a LAN security
+                    // hole. Videos are served by ID via /ndi/video.
+                    send404(out)
                 }
                 else -> {
                     serveNdiHtmlOverlay(out)
@@ -521,6 +537,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             put("animatedBackground", tpl.animatedBackground.id)
             put("animatedBackgroundOpacity", tpl.animatedBackgroundOpacity)
             put("customVideoUrl", tpl.customVideoUrl)
+            put("customVideoId", tpl.customVideoId)
         }
         return root.toString()
     }
@@ -1059,10 +1076,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       } else if (animType === 'particles') {
         animBgLayer.classList.add('anim-particles');
         animBgLayer.style.opacity = animOpacity;
-      } else if (animType === 'custom_video' && data.customVideoUrl) {
-        const videoUrl = (data.customVideoUrl.startsWith('http') || data.customVideoUrl.startsWith('blob:')) 
-           ? data.customVideoUrl 
-           : '/ndi/video_file?path=' + encodeURIComponent(data.customVideoUrl);
+      } else if (animType === 'custom_video' && data.customVideoId) {
+        // v1.7: videos are served by opaque ID from private storage (never by path).
+        const videoUrl = '/ndi/video?id=' + encodeURIComponent(data.customVideoId);
         if (customVideoBg.src !== videoUrl) customVideoBg.src = videoUrl;
         customVideoBg.style.display = 'block';
         customVideoBg.style.opacity = animOpacity;
@@ -1141,6 +1157,38 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     private var motionShowBitmap: Bitmap? = null
 
     /**
+     * v1.7 custom video backgrounds: one decoder per feed (Lower/Full are
+     * independent). Created lazily, released on server stop().
+     */
+    private val videoStore by lazy { VideoStore(context) }
+    private val videoRenderers = mutableMapOf<Boolean, VideoBackgroundRenderer>()
+    private fun getVideoRenderer(isFull: Boolean): VideoBackgroundRenderer =
+        synchronized(videoRenderers) {
+            videoRenderers.getOrPut(isFull) { VideoBackgroundRenderer() }
+        }
+
+    /**
+     * Resolves the template's custom video to a private-storage file.
+     * Null = no video (feature off or file missing); callers fall back to the
+     * normal background. Legacy raw URLs are migrated by TemplateRepository.
+     * Resolution is cached per feed (file I/O must not run on every frame).
+     */
+    private val resolvedVideoCache = mutableMapOf<Boolean, Pair<String, java.io.File?>>()
+    private fun resolveCustomVideoFile(tpl: LowerThirdTemplate, isFull: Boolean): java.io.File? {
+        if (tpl.animatedBackground != AnimatedBackgroundType.CUSTOM_VIDEO || tpl.customVideoId.isEmpty()) {
+            synchronized(resolvedVideoCache) { resolvedVideoCache.remove(isFull) }
+            return null
+        }
+        synchronized(resolvedVideoCache) {
+            val cached = resolvedVideoCache[isFull]
+            if (cached != null && cached.first == tpl.customVideoId) return cached.second
+        }
+        val file = videoStore.fileFor(tpl.customVideoId)
+        synchronized(resolvedVideoCache) { resolvedVideoCache[isFull] = tpl.customVideoId to file }
+        return file
+    }
+
+    /**
      * Force-renders a fresh frame for motion mode (current animation phase) into
      * the feed's dedicated bitmap, reused across ticks — zero per-tick allocation.
      * The caller must not recycle the returned bitmap; it is reused on the next tick.
@@ -1155,7 +1203,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             bmp = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
             if (isFull) motionShowBitmap = bmp else motionLowerBitmap = bmp
         }
-        drawFrameInto(bmp, width, height, isForStream = false, tpl, isFull)
+        drawFrameInto(bmp, width, height, isForStream = false, tpl, isFull, isMotionTick = true)
         return bmp
     }
 
@@ -1202,7 +1250,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
      * dedicated reused bitmaps (see [renderMotionFrame]) so the static cache is
      * never redrawn in place — static readers can never observe a half-drawn frame.
      */
-    private fun drawFrameInto(bitmap: Bitmap, width: Int, height: Int, isForStream: Boolean, tpl: LowerThirdTemplate, isFull: Boolean) {
+    private fun drawFrameInto(bitmap: Bitmap, width: Int, height: Int, isForStream: Boolean, tpl: LowerThirdTemplate, isFull: Boolean, isMotionTick: Boolean = false) {
         val canvas = Canvas(bitmap)
 
         val fallbackVerse = BibleVerse(
@@ -1377,6 +1425,32 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
         val paint = Paint(Paint.ANTI_ALIAS_FLAG)
 
+        // v1.7 custom video background (per feed). The video is the background
+        // layer: drawn behind card/effects/text/emblem with the user's opacity.
+        // Motion ticks pull fresh decoded frames; static renders freeze on the
+        // last frame (the first static render kick-starts decoding).
+        val customVideoFile = resolveCustomVideoFile(tpl, isFull)
+        val videoRenderer = if (customVideoFile != null) getVideoRenderer(isFull) else null
+        if (videoRenderer != null && customVideoFile != null) {
+            videoRenderer.setSource(customVideoFile)
+            videoRenderer.setAlpha(tpl.animatedBackgroundOpacity)
+            if (isMotionTick || !videoRenderer.hasFrame()) videoRenderer.requestFrame()
+            val videoRect = Rect(boxLeft.toInt(), boxTop.toInt(), boxRight.toInt(), boxBottom.toInt())
+            if (radius > 0f) {
+                canvas.save()
+                canvas.clipPath(Path().apply {
+                    addRoundRect(RectF(boxLeft, boxTop, boxRight, boxBottom), radius, radius, Path.Direction.CW)
+                })
+                videoRenderer.drawOnto(canvas, videoRect)
+                canvas.restore()
+            } else {
+                videoRenderer.drawOnto(canvas, videoRect)
+            }
+        } else {
+            // Not a video template: park this feed's decoder (no-op if none).
+            synchronized(videoRenderers) { videoRenderers[isFull]?.pause() }
+        }
+
         // Card background and Animated Motion Video Layer
         val rect = RectF(boxLeft, boxTop, boxRight, boxBottom)
         val radius = if (tpl.isFullScreen) 0f else (tpl.cornerRadiusDp * scale * 2f)
@@ -1396,7 +1470,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             val bgAlpha = (tpl.bgOpacity * 255).toInt().coerceIn(0, 255)
             val baseBgCol = try { Color.parseColor(tpl.bgColorHex) } catch (e: Exception) { Color.DKGRAY }
 
-            if (tpl.animatedBackground != AnimatedBackgroundType.NONE) {
+            if (videoRenderer != null) {
+                // v1.7: the custom video IS the card background (already drawn
+                // above) — skip the normal fill so it stays visible.
+            } else if (tpl.animatedBackground != AnimatedBackgroundType.NONE) {
                 val timeSec = (System.currentTimeMillis() % 12000L) / 1000f
                 val phase = (sin(timeSec.toDouble() * 1.5).toFloat() + 1f) / 2f
                 val shader: Shader? = when (tpl.animatedBackground) {
@@ -1469,7 +1546,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 canvas.drawRoundRect(rect, radius, radius, paint)
                 paint.style = Paint.Style.FILL
             }
-        } else if (tpl.animatedBackground != AnimatedBackgroundType.NONE) {
+        } else if (tpl.animatedBackground != AnimatedBackgroundType.NONE && tpl.animatedBackground != AnimatedBackgroundType.CUSTOM_VIDEO) {
             // If Pure Transparent background with animated motion background is selected:
             // Draw a delicate, ethereal luminous motion glow directly behind the verse while maintaining 100% alpha transparency elsewhere!
             val animAlpha = (tpl.animatedBackgroundOpacity * 75).toInt().coerceIn(15, 120)
@@ -1641,29 +1718,72 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
     }
 
-    private fun serveLocalVideo(out: OutputStream, fullPath: String) {
+    /**
+     * v1.7: serves a user background video by opaque ID from private storage.
+     * - ID allowlist only (VideoStore validates the pattern + canonical path):
+     *   a LAN client can never request arbitrary files.
+     * - Streams in chunks (no whole-file readBytes into RAM).
+     * - Supports HTTP Range / 206 so browsers can seek.
+     */
+    private fun serveVideoById(out: OutputStream, fullPath: String, rangeHeader: String?) {
         try {
-            val uriStr = Uri.parse(fullPath).getQueryParameter("path") ?: return send404(out)
-            val uri = Uri.parse(uriStr)
-            
-            val inputStream = if (uriStr.startsWith("content://")) {
-                context.contentResolver.openInputStream(uri)
-            } else {
-                FileInputStream(File(uriStr))
-            } ?: return send404(out)
+            val id = Uri.parse(fullPath).getQueryParameter("id") ?: return send404(out)
+            val file = videoStore.fileFor(id) ?: return send404(out)
+            val total = file.length()
+            if (total <= 0) return send404(out)
 
-            val bytes = inputStream.use { it.readBytes() }
+            var start = 0L
+            var end = total - 1
+            var partial = false
+            if (rangeHeader != null) {
+                // Single range: "bytes=start-end".
+                val m = Regex("bytes=(\\d*)-(\\d*)").find(rangeHeader.trim())
+                if (m != null) {
+                    val s = m.groupValues[1]
+                    val e = m.groupValues[2]
+                    try {
+                        start = if (s.isNotEmpty()) s.toLong() else maxOf(0L, total - e.toLong())
+                        end = if (e.isNotEmpty() && s.isNotEmpty()) e.toLong().coerceAtMost(total - 1) else total - 1
+                        if (start in 0 until total && end >= start) partial = true
+                    } catch (nfe: NumberFormatException) { /* fall through to full */ }
+                }
+            }
+            val length = end - start + 1
             val writer = PrintWriter(out)
-            writer.print("HTTP/1.1 200 OK\r\n")
+            if (partial) {
+                writer.print("HTTP/1.1 206 Partial Content\r\n")
+            } else {
+                writer.print("HTTP/1.1 200 OK\r\n")
+            }
             writer.print("Content-Type: video/mp4\r\n")
-            writer.print("Content-Length: ${bytes.size}\r\n")
+            writer.print("Accept-Ranges: bytes\r\n")
+            writer.print("Content-Length: $length\r\n")
+            if (partial) {
+                writer.print("Content-Range: bytes $start-$end/$total\r\n")
+            }
             writer.print("Access-Control-Allow-Origin: *\r\n")
             writer.print("Connection: close\r\n\r\n")
             writer.flush()
-            out.write(bytes)
-            out.flush()
+
+            file.inputStream().use { input ->
+                var skipped = 0L
+                while (skipped < start) {
+                    val n = input.skip(start - skipped)
+                    if (n <= 0) break
+                    skipped += n
+                }
+                val buf = ByteArray(64 * 1024)
+                var remaining = length
+                while (remaining > 0) {
+                    val n = input.read(buf, 0, minOf(buf.size.toLong(), remaining).toInt())
+                    if (n <= 0) break
+                    out.write(buf, 0, n)
+                    remaining -= n
+                }
+                out.flush()
+            }
         } catch (e: Exception) {
-            send404(out)
+            // Headers may already be sent; nothing more we can do.
         }
     }
 

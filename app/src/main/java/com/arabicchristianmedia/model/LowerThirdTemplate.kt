@@ -98,5 +98,11 @@ data class LowerThirdTemplate(
     val animatedBackground: AnimatedBackgroundType = AnimatedBackgroundType.NONE,
     val animatedBackgroundOpacity: Float = 0.65f,
     val customVideoUrl: String = "",
+    /**
+     * v1.7: opaque ID of the user-picked background video in private storage
+     * (VideoStore). Replaces the legacy raw [customVideoUrl]; old templates
+     * migrate best-effort on load.
+     */
+    val customVideoId: String = "",
     val streamBackgroundMode: StreamBackgroundMode = StreamBackgroundMode.TRANSPARENT_ALPHA,
 )

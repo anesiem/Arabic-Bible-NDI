@@ -45,7 +45,11 @@ import androidx.compose.ui.unit.sp
 import com.arabicchristianmedia.data.ArabicTextFormatter
 import com.arabicchristianmedia.data.TemplateRepository
 import com.arabicchristianmedia.model.*
+import com.arabicchristianmedia.server.VideoStore
 import com.arabicchristianmedia.ui.theme.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
 
 enum class PreviewBackground(val displayNameAr: String) {
@@ -106,9 +110,27 @@ fun TemplateEditorScreen(
     val bento = LocalBentoColors.current
     val editingTemplate = if (editorTab == 0) currentTemplate else activeShowTemplate
     val onUpdate = if (editorTab == 0) onUpdateTemplate else onUpdateShowTemplate
+    // Fresh template reference for async callbacks (avoids stale captures).
+    val currentEditingTemplate = rememberUpdatedState(editingTemplate)
+    val scope = rememberCoroutineScope()
+    var isImportingVideo by remember { mutableStateOf(false) }
 
     val launcher = rememberLauncherForActivityResult(contract = ActivityResultContracts.GetContent()) { uri ->
-        uri?.let { onUpdate(editingTemplate.copy(customVideoUrl = it.toString(), animatedBackground = AnimatedBackgroundType.CUSTOM_VIDEO)) }
+        uri?.let {
+            // v1.7: copy the picked video into private storage (never keep the
+            // raw URI: no persistable permission, and raw paths are not served).
+            isImportingVideo = true
+            scope.launch(Dispatchers.IO) {
+                val id = VideoStore(context).importFromUri(it)
+                withContext(Dispatchers.Main) {
+                    isImportingVideo = false
+                    val current = currentEditingTemplate.value
+                    if (id != null) {
+                        onUpdate(current.copy(customVideoId = id, customVideoUrl = "", animatedBackground = AnimatedBackgroundType.CUSTOM_VIDEO))
+                    }
+                }
+            }
+        }
     }
 
     val displayVerse = activeVerse ?: BibleVerse(
@@ -394,11 +416,49 @@ fun TemplateEditorScreen(
                     }
                 }
                 if (editingTemplate.animatedBackground == AnimatedBackgroundType.CUSTOM_VIDEO) {
-                   Button(onClick = { launcher.launch("video/*") }, colors = ButtonDefaults.buttonColors(containerColor = bento.primary)) {
-                       Icon(Icons.Default.VideoLibrary, null, modifier = Modifier.size(16.dp))
-                       Spacer(Modifier.width(6.dp))
-                       Text("اختيار ملف فيديو مخصص (MP4)")
-                   }
+                    // v1.7: opacity slider works ONLY when the custom-video flag is ON.
+                    SliderWithLabel(
+                        label = "شفافية الفيديو (Video Opacity)",
+                        value = editingTemplate.animatedBackgroundOpacity,
+                        range = 0f..1f,
+                        onValueChange = { onUpdate(editingTemplate.copy(animatedBackgroundOpacity = it)) }
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    if (editingTemplate.customVideoId.isNotEmpty()) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                "✓ فيديو مخصص محدد (Custom video set)",
+                                fontSize = 11.sp,
+                                color = bento.textSecondary,
+                                modifier = Modifier.weight(1f)
+                            )
+                            TextButton(onClick = {
+                                onUpdate(editingTemplate.copy(customVideoId = "", animatedBackground = AnimatedBackgroundType.NONE))
+                            }) {
+                                Text("إزالة (Remove)", fontSize = 11.sp, color = bento.primary)
+                            }
+                        }
+                    } else if (editingTemplate.customVideoUrl.isNotEmpty()) {
+                        Text(
+                            "⚠ تعذر العثور على الفيديو المحفوظ — اختر ملفاً جديداً",
+                            fontSize = 11.sp,
+                            color = bento.primary
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                    }
+                    Button(
+                        onClick = { launcher.launch("video/*") },
+                        enabled = !isImportingVideo,
+                        colors = ButtonDefaults.buttonColors(containerColor = bento.primary)
+                    ) {
+                        Icon(Icons.Default.VideoLibrary, null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(if (isImportingVideo) "جاري الاستيراد..." else "اختيار ملف فيديو مخصص (MP4)", fontSize = 12.sp)
+                    }
                 }
             }
         }
@@ -616,7 +676,9 @@ fun SliderWithLabel(label: String, value: Float, range: ClosedFloatingPointRange
     Column {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(label, fontSize = 11.sp, color = bento.textSecondary)
-            Text("${value.toInt()}", fontSize = 11.sp, color = bento.primary, fontWeight = FontWeight.Bold)
+            // Opacity-style 0..1 ranges read better as a percentage.
+            val readout = if (range.endInclusive <= 1f) "${(value * 100).toInt()}%" else "${value.toInt()}"
+            Text(readout, fontSize = 11.sp, color = bento.primary, fontWeight = FontWeight.Bold)
         }
         Slider(value = value, onValueChange = onValueChange, valueRange = range, colors = SliderDefaults.colors(thumbColor = bento.primary, activeTrackColor = bento.primary))
     }

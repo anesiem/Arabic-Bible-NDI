@@ -13,8 +13,12 @@ import org.json.JSONObject
 
 class TemplateRepository(context: Context) {
 
+    private val appContext = context.applicationContext
     private val prefs: SharedPreferences =
         context.getSharedPreferences("bible_ndi_templates_prefs", Context.MODE_PRIVATE)
+
+    /** Template IDs whose legacy video URL migration was already attempted this process. */
+    private val videoMigrationAttempted = mutableSetOf<String>()
 
     companion object {
         val DEFAULT_TEMPLATES = listOf(
@@ -237,12 +241,22 @@ class TemplateRepository(context: Context) {
         val savedJson = prefs.getString("custom_templates", null) ?: return DEFAULT_TEMPLATES
         return try {
             val list = mutableListOf<LowerThirdTemplate>()
+            var migratedAny = false
             val arr = JSONArray(savedJson)
             for (i in 0 until arr.length()) {
                 val obj = arr.getJSONObject(i)
-                list.add(fromJson(obj))
+                val hadId = obj.optString("customVideoId", "").isNotEmpty()
+                val tpl = fromJson(obj)
+                // A one-time legacy migration produced a new video ID: persist
+                // so it is not re-attempted on every launch.
+                if (!hadId && tpl.customVideoId.isNotEmpty()) migratedAny = true
+                list.add(tpl)
             }
-            if (list.isEmpty()) DEFAULT_TEMPLATES else list
+            if (list.isEmpty()) return DEFAULT_TEMPLATES
+            if (migratedAny) {
+                try { saveTemplates(list) } catch (e: Exception) {}
+            }
+            list
         } catch (e: Exception) {
             DEFAULT_TEMPLATES
         }
@@ -373,6 +387,7 @@ class TemplateRepository(context: Context) {
             put("animatedBackground", t.animatedBackground.name)
             put("animatedBackgroundOpacity", t.animatedBackgroundOpacity.toDouble())
             put("customVideoUrl", t.customVideoUrl)
+            put("customVideoId", t.customVideoId)
             put("streamBackgroundMode", t.streamBackgroundMode.name)
         }
     }
@@ -436,7 +451,27 @@ class TemplateRepository(context: Context) {
             animatedBackground = try { com.arabicchristianmedia.model.AnimatedBackgroundType.valueOf(obj.optString("animatedBackground")) } catch (e: Exception) { com.arabicchristianmedia.model.AnimatedBackgroundType.NONE },
             animatedBackgroundOpacity = obj.optDouble("animatedBackgroundOpacity", 0.65).toFloat(),
             customVideoUrl = obj.optString("customVideoUrl", ""),
+            customVideoId = obj.optString("customVideoId", ""),
             streamBackgroundMode = try { com.arabicchristianmedia.model.StreamBackgroundMode.valueOf(obj.optString("streamBackgroundMode")) } catch (e: Exception) { com.arabicchristianmedia.model.StreamBackgroundMode.TRANSPARENT_ALPHA }
-        )
+        ).let { migrateLegacyVideo(it) }
+    }
+
+    /**
+     * v1.7 one-time migration: a legacy customVideoUrl (raw content:// URI or
+     * file path, pre-private-storage) is imported into VideoStore; the
+     * template keeps the new ID and drops the raw URL. Best-effort:
+     * unresolvable URLs simply lose the video (the editor prompts to re-pick).
+     */
+    private fun migrateLegacyVideo(tpl: LowerThirdTemplate): LowerThirdTemplate {
+        if (tpl.customVideoId.isNotEmpty() || tpl.customVideoUrl.isBlank()) return tpl
+        synchronized(videoMigrationAttempted) {
+            if (!videoMigrationAttempted.add(tpl.id)) return tpl
+        }
+        return try {
+            val id = com.arabicchristianmedia.server.VideoStore(appContext).importLegacyUrl(tpl.customVideoUrl)
+            if (id != null) tpl.copy(customVideoId = id, customVideoUrl = "") else tpl
+        } catch (e: Exception) {
+            tpl
+        }
     }
 }

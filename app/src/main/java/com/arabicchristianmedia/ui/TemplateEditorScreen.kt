@@ -357,7 +357,17 @@ fun TemplateEditorScreen(
                 ColorGradePickerRow("لون إطار التمييز (Accent Color)", editingTemplate.accentColorHex, { onUpdate(editingTemplate.copy(accentColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
 
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    FeatureToggleRow("إظهار رمز الصليب", editingTemplate.showCrossEmblem) { onUpdate(editingTemplate.copy(showCrossEmblem = it)) }
+                    // v1.7: free emblem — the user types any emoji/symbol with the
+                    // system keyboard. Empty = no emblem.
+                    OutlinedTextField(
+                        value = editingTemplate.emblem,
+                        onValueChange = { onUpdate(editingTemplate.copy(emblem = it)) },
+                        label = { Text("رمز / إيموجي (Emblem) — اتركه فارغاً للإخفاء", fontSize = 10.sp) },
+                        placeholder = { Text("✝", fontSize = 14.sp) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(8.dp)
+                    )
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     FeatureToggleRow("إظهار الحدود الملونة", editingTemplate.showAccentBorder) { onUpdate(editingTemplate.copy(showAccentBorder = it)) }
@@ -973,17 +983,16 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
                         else -> Alignment.End
                     }
                 ) {
-                    // Arabic Citation & Cross Emblem
+                    // Arabic Citation & user Emblem (v1.7: free emoji/symbol)
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        if (template.showCrossEmblem) {
-                            Box(
-                                modifier = Modifier
-                                    .size(6.dp)
-                                    .clip(CircleShape)
-                                    .background(try { Color(android.graphics.Color.parseColor(template.accentColorHex)) } catch (e: Exception) { Color.Yellow })
+                        if (template.emblem.isNotEmpty()) {
+                            Text(
+                                text = template.emblem,
+                                fontSize = 14.sp,
+                                color = try { Color(android.graphics.Color.parseColor(template.accentColorHex)) } catch (e: Exception) { Color.Yellow }
                             )
                         }
                         Text(

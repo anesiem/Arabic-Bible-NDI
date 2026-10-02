@@ -87,7 +87,12 @@ data class LowerThirdTemplate(
     /** Independent glow on the lower-third card/container (where a card exists). */
     val cardGlowEnabled: Boolean = true,
     val cardGlowColorHex: String = "#000000",
-    val showCrossEmblem: Boolean = true,
+    /**
+     * User emblem: any emoji/symbol typed via the system keyboard (empty = none).
+     * Rendered next to the citation on every surface (NDI, HTTP, preview).
+     * Replaces the legacy [showCrossEmblem] boolean; old styles migrate to "✝".
+     */
+    val emblem: String = "",
     val bilingualMode: Boolean = false,
     val isPureTransparentBackground: Boolean = true,
     val animatedBackground: AnimatedBackgroundType = AnimatedBackgroundType.NONE,

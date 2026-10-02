@@ -44,7 +44,7 @@ class TemplateRepository(context: Context) {
                 textShadowColorHex = "#000000",
                 cardGlowEnabled = false, // safe default: no card on transparent styles
                 cardGlowColorHex = "#000000",
-                showCrossEmblem = true,
+                emblem = "✝",
                 bilingualMode = false,
                 isPureTransparentBackground = true,
                 streamBackgroundMode = StreamBackgroundMode.TRANSPARENT_ALPHA,
@@ -75,7 +75,7 @@ class TemplateRepository(context: Context) {
                 textShadowColorHex = "#000000",
                 cardGlowEnabled = true, // safe default: matches legacy drop-shadow look
                 cardGlowColorHex = "#000000",
-                showCrossEmblem = true,
+                emblem = "✝",
                 bilingualMode = false,
                 streamBackgroundMode = com.arabicchristianmedia.model.StreamBackgroundMode.TRANSPARENT_ALPHA
             ),
@@ -105,7 +105,7 @@ class TemplateRepository(context: Context) {
                 textShadowColorHex = "#000000",
                 cardGlowEnabled = false, // safe default: no card on transparent styles
                 cardGlowColorHex = "#000000",
-                showCrossEmblem = true,
+                emblem = "✝",
                 bilingualMode = false,
                 isPureTransparentBackground = true,
                 animatedBackground = com.arabicchristianmedia.model.AnimatedBackgroundType.GOLDEN_DIVINE_RAYS,
@@ -137,7 +137,7 @@ class TemplateRepository(context: Context) {
                 textShadowColorHex = "#000000",
                 cardGlowEnabled = true, // safe default: matches legacy drop-shadow look
                 cardGlowColorHex = "#000000",
-                showCrossEmblem = true,
+                emblem = "✝",
                 bilingualMode = false,
                 isPureTransparentBackground = false,
                 animatedBackground = com.arabicchristianmedia.model.AnimatedBackgroundType.GOLDEN_DIVINE_RAYS,
@@ -169,7 +169,7 @@ class TemplateRepository(context: Context) {
                 textShadowColorHex = "#000000",
                 cardGlowEnabled = true, // safe default: matches legacy drop-shadow look
                 cardGlowColorHex = "#000000",
-                showCrossEmblem = false,
+                emblem = "",
                 bilingualMode = false
             ),
             LowerThirdTemplate(
@@ -198,7 +198,7 @@ class TemplateRepository(context: Context) {
                 textShadowColorHex = "#000000",
                 cardGlowEnabled = true, // safe default: matches legacy drop-shadow look
                 cardGlowColorHex = "#000000",
-                showCrossEmblem = true,
+                emblem = "✝",
                 bilingualMode = false
             ),
             LowerThirdTemplate(
@@ -227,7 +227,7 @@ class TemplateRepository(context: Context) {
                 textShadowColorHex = "#000000",
                 cardGlowEnabled = true, // safe default: matches legacy drop-shadow look
                 cardGlowColorHex = "#000000",
-                showCrossEmblem = true,
+                emblem = "✝",
                 bilingualMode = true
             )
         )
@@ -367,7 +367,7 @@ class TemplateRepository(context: Context) {
             put("textShadowColorHex", t.textShadowColorHex)
             put("cardGlowEnabled", t.cardGlowEnabled)
             put("cardGlowColorHex", t.cardGlowColorHex)
-            put("showCrossEmblem", t.showCrossEmblem)
+            put("emblem", t.emblem)
             put("bilingualMode", t.bilingualMode)
             put("isPureTransparentBackground", t.isPureTransparentBackground)
             put("animatedBackground", t.animatedBackground.name)
@@ -426,7 +426,11 @@ class TemplateRepository(context: Context) {
             cardGlowEnabled = if (obj.has("cardGlowEnabled")) obj.optBoolean("cardGlowEnabled", true)
                               else safeGlowDefault,
             cardGlowColorHex = obj.optString("cardGlowColorHex", "#000000"),
-            showCrossEmblem = obj.optBoolean("showCrossEmblem", true),
+            // v1.7 migration: the legacy showCrossEmblem boolean becomes a
+            // free emblem string; old "true" styles get the cross glyph.
+            emblem = obj.optString("emblem", "").ifEmpty {
+                if (obj.optBoolean("showCrossEmblem", true)) "✝" else ""
+            },
             bilingualMode = obj.optBoolean("bilingualMode", false),
             isPureTransparentBackground = obj.optBoolean("isPureTransparentBackground", false),
             animatedBackground = try { com.arabicchristianmedia.model.AnimatedBackgroundType.valueOf(obj.optString("animatedBackground")) } catch (e: Exception) { com.arabicchristianmedia.model.AnimatedBackgroundType.NONE },

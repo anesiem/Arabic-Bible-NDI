@@ -172,12 +172,11 @@ fun FullscreenOverlayContent(
                         } else Alignment.Start
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            if (template.showCrossEmblem) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(12.dp)
-                                        .clip(CircleShape)
-                                        .background(accentCol)
+                            if (template.emblem.isNotEmpty()) {
+                                Text(
+                                    text = template.emblem,
+                                    fontSize = 22.sp,
+                                    color = accentCol
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                             }

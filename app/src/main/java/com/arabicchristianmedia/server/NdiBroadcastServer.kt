@@ -505,7 +505,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             put("textShadowColorHex", tpl.textShadowColorHex)
             put("cardGlowEnabled", tpl.cardGlowEnabled)
             put("cardGlowColorHex", tpl.cardGlowColorHex)
-            put("showCrossEmblem", tpl.showCrossEmblem)
+            put("emblem", tpl.emblem)
             put("isPureTransparentBackground", tpl.isPureTransparentBackground)
             put("isFullScreen", tpl.isFullScreen)
             put("bilingualSpacing", tpl.bilingualSpacing)
@@ -754,11 +754,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
     .cross-icon {
       display: inline-block;
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      background: currentColor;
-      box-shadow: 0 0 10px currentColor;
+      font-size: 1.15em;
+      line-height: 1;
     }
 
     .verse-text {
@@ -979,7 +976,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       citationRow.style.color = refColor;
       crossEmblem.style.backgroundColor = accent;
       crossEmblem.style.color = accent;
-      crossEmblem.style.display = data.showCrossEmblem ? 'inline-block' : 'none';
+      // v1.7: free user emblem (emoji/symbol); empty = hidden.
+      if (data.emblem) {
+        crossEmblem.textContent = data.emblem;
+        crossEmblem.style.display = 'inline-block';
+      } else {
+        crossEmblem.style.display = 'none';
+      }
 
       const radius = isFull ? '0' : (data.cornerRadiusDp || 16) + 'px';
       cardBox.style.borderRadius = radius;
@@ -1517,7 +1520,59 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         }
 
         val citationY = startY + (refPaint.textSize * 0.9f)
-        if (tpl.isFullScreen) {
+
+        // User emblem (emoji/symbol) drawn adjacent to the citation on the
+        // reading-start side, in the accent color like the HTTP overlay.
+        // Empty emblem = nothing drawn.
+        val emblemText = tpl.emblem
+        if (emblemText.isNotEmpty()) {
+            val emblemPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = try { Color.parseColor(tpl.accentColorHex) } catch (e: Exception) { refPaint.color }
+                textSize = refPaint.textSize
+                // System default typeface: reliable emoji/symbol fallback.
+                typeface = Typeface.DEFAULT
+                if (tpl.textShadowEnabled) {
+                    val shadowCol = try { Color.parseColor(tpl.textShadowColorHex) } catch (e: Exception) { Color.BLACK }
+                    setShadowLayer(6f * scale, 0f, 3f * scale, shadowCol)
+                }
+            }
+            val emblemW = emblemPaint.measureText(emblemText)
+            val citeW = refPaint.measureText(citation)
+            val emblemGap = 16f * scale
+            val totalW = emblemW + emblemGap + citeW
+
+            fun drawEmblemAt(x: Float, align: Paint.Align) {
+                emblemPaint.textAlign = align
+                canvas.drawText(emblemText, x, citationY, emblemPaint)
+            }
+
+            if (tpl.isFullScreen) {
+                // Centered citation: emblem sits just before it (right side, RTL).
+                val startX = (width - totalW) / 2f
+                refPaint.textAlign = Paint.Align.LEFT
+                canvas.drawText(citation, startX, citationY, refPaint)
+                drawEmblemAt(startX + citeW + emblemGap, Paint.Align.LEFT)
+            } else {
+                when (tpl.alignment) {
+                    BroadcastTextAlignment.CENTER -> {
+                        val startX = (width - totalW) / 2f
+                        refPaint.textAlign = Paint.Align.LEFT
+                        canvas.drawText(citation, startX, citationY, refPaint)
+                        drawEmblemAt(startX + citeW + emblemGap, Paint.Align.LEFT)
+                    }
+                    BroadcastTextAlignment.LEFT -> {
+                        refPaint.textAlign = Paint.Align.LEFT
+                        canvas.drawText(citation, boxLeft + paddingH + emblemW + emblemGap, citationY, refPaint)
+                        drawEmblemAt(boxLeft + paddingH, Paint.Align.LEFT)
+                    }
+                    BroadcastTextAlignment.RIGHT -> {
+                        refPaint.textAlign = Paint.Align.RIGHT
+                        canvas.drawText(citation, boxRight - paddingH - emblemW - emblemGap, citationY, refPaint)
+                        drawEmblemAt(boxRight - paddingH, Paint.Align.RIGHT)
+                    }
+                }
+            }
+        } else if (tpl.isFullScreen) {
             refPaint.textAlign = Paint.Align.CENTER
             canvas.drawText(citation, width / 2f, citationY, refPaint)
         } else {

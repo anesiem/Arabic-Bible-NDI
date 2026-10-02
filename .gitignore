@@ -16,3 +16,9 @@
 local.properties
 .env
 debug.keystore
+# v1.7: never commit build outputs or signing keys
+*.apk
+*.aab
+*.keystore
+*.jks
+*.p12

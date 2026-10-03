@@ -118,10 +118,11 @@ Java_com_arabicchristianmedia_server_NdiNativeSender_nativeSendVideoBitmap(JNIEn
         }
 
         if (context->p_buffer) {
-            // On Android (little-endian), ARGB_8888 bitmap memory is already in BGRA
-            // byte order, which is exactly what NDIlib_FourCC_type_BGRA expects.
-            // The buffer must stay valid until the NEXT frame, hence the copy into
-            // the sender-owned buffer (NDI sends asynchronously).
+            // v1.8: Android ARGB_8888 lockPixels memory is RGBA-ordered
+            // (proven by device test: #FF0000 rendered BLUE when declared
+            // BGRA; corroborated by the NDI SDK spec's FourCC byte orders and
+            // a shipping Android NDI viewer's docs). Declare RGBA so the
+            // receiver interprets the bytes correctly. No per-pixel cost.
             const size_t row_bytes = (size_t)width * 4;
             if (info.stride == row_bytes) {
                 memcpy(context->p_buffer, pixels, required_size);
@@ -136,7 +137,7 @@ Java_com_arabicchristianmedia_server_NdiNativeSender_nativeSendVideoBitmap(JNIEn
             NDIlib_video_frame_v2_t video_frame;
             video_frame.xres = width;
             video_frame.yres = height;
-            video_frame.FourCC = NDIlib_FourCC_type_BGRA;
+            video_frame.FourCC = NDIlib_FourCC_type_RGBA;
             video_frame.frame_rate_N = context->fps_n;
             video_frame.frame_rate_D = context->fps_d;
             video_frame.picture_aspect_ratio = (float)width / (float)height;

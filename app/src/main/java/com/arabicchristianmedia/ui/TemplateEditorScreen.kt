@@ -167,7 +167,15 @@ fun TemplateEditorScreen(
 
         Spacer(Modifier.height(12.dp))
 
-        // 2. Tab Switcher: Lower Third vs Full Show (Projector)
+        // 2. Tab Switcher: Lower Third vs Full Show (v1.8: segmented, unmistakable active target).
+        Text(
+            if (editorTab == 0) "أنت تحرر: طبقة البث السفلى (You are editing: Lower Third)"
+            else "أنت تحرر: العرض الكامل (You are editing: Full Show)",
+            fontWeight = FontWeight.Bold,
+            fontSize = 14.sp,
+            color = bento.primary,
+            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+        )
         Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(bento.surfaceVariant).padding(4.dp)) {
             EditorTabItem("طبقة البث السفلى (Lower Third)", editorTab == 0, { editorTab = 0 }, Modifier.weight(1f))
             EditorTabItem("العرض الكامل (Full Show Projector)", editorTab == 1, { editorTab = 1 }, Modifier.weight(1f))
@@ -349,10 +357,35 @@ fun TemplateEditorScreen(
                 ColorGradePickerRow("لون الشاهد العربي (Citation Color)", editingTemplate.referenceColorHex, { onUpdate(editingTemplate.copy(referenceColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
                 SliderWithLabel("حجم الشاهد العربي", editingTemplate.referenceFontSize.toFloat(), 10f..120f) { onUpdate(editingTemplate.copy(referenceFontSize = it.toInt())) }
 
-                // Bilingual Typography & English Citation Options
+                // v1.8: Three-way language mode (replaces the bilingual toggle).
                 HorizontalDivider(color = bento.borderSubtle)
-                FeatureToggleRow("تفعيل النص الإنجليزي (Bilingual Mode)", editingTemplate.bilingualMode) { onUpdate(editingTemplate.copy(bilingualMode = it)) }
-                if (editingTemplate.bilingualMode) {
+                Text("لغة العرض (Language)", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary)
+                Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(bento.surfaceVariant).padding(4.dp)) {
+                    val modes = listOf(
+                        com.arabicchristianmedia.model.LanguageMode.ARABIC_ONLY to "العربية",
+                        com.arabicchristianmedia.model.LanguageMode.ENGLISH_ONLY to "English",
+                        com.arabicchristianmedia.model.LanguageMode.BOTH to "الاثنان (Both)"
+                    )
+                    modes.forEach { (mode, label) ->
+                        val selected = editingTemplate.languageMode == mode
+                        Box(
+                            modifier = Modifier.weight(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (selected) bento.primary else androidx.compose.ui.graphics.Color.Transparent)
+                                .clickable { onUpdate(editingTemplate.copy(languageMode = mode)) }
+                                .padding(vertical = 10.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                label,
+                                fontSize = 13.sp,
+                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                                color = if (selected) bento.onPrimary else bento.textSecondary
+                            )
+                        }
+                    }
+                }
+                if (editingTemplate.languageMode != com.arabicchristianmedia.model.LanguageMode.ARABIC_ONLY) {
                     Text("تنسيق الخط الإنجليزي (English Typography)", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary)
                     
                     // English Verse Controls
@@ -411,6 +444,50 @@ fun TemplateEditorScreen(
                 FeatureToggleRow("ظل النص (Text Shadow)", editingTemplate.textShadowEnabled) { onUpdate(editingTemplate.copy(textShadowEnabled = it)) }
                 if (editingTemplate.textShadowEnabled) {
                     ColorGradePickerRow("لون ظل النص (Text Shadow Color)", editingTemplate.textShadowColorHex, { onUpdate(editingTemplate.copy(textShadowColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
+                    // v1.8: shadow thickness (blur), distance (offset), and 8-direction compass.
+                    SliderWithLabel("سماكة الظل (Thickness)", editingTemplate.textShadowBlurDp, 0f..32f) {
+                        onUpdate(editingTemplate.copy(textShadowBlurDp = it))
+                    }
+                    SliderWithLabel("مسافة الظل (Distance)", editingTemplate.textShadowOffsetDp, 0f..32f) {
+                        onUpdate(editingTemplate.copy(textShadowOffsetDp = it))
+                    }
+                    Text("اتجاه الظل (Direction)", fontSize = 11.sp, color = bento.textSecondary)
+                    // 8-direction compass: 0°=→, 45°=↘, 90°=↓, 135°=↙, 180°=←, 225°=↖, 270°=↑, 315°=↗
+                    val directions = listOf(
+                        315 to "↗", 0 to "→", 45 to "↘",
+                        270 to "↑", null to "•", 90 to "↓",
+                        225 to "↖", 180 to "←", 135 to "↙"
+                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        for (row in 0..2) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                for (col in 0..2) {
+                                    val (angle, symbol) = directions[row * 3 + col]
+                                    val selected = if (angle == null) false else editingTemplate.textShadowAngleDeg == angle
+                                    // Center button clears to default (90° down).
+                                    Box(
+                                        modifier = Modifier.weight(1f)
+                                            .aspectRatio(1f)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(if (selected) bento.primary else bento.surfaceVariant)
+                                            .clickable {
+                                                if (angle != null) onUpdate(editingTemplate.copy(textShadowAngleDeg = angle))
+                                            },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            symbol,
+                                            fontSize = 20.sp,
+                                            color = if (selected) bento.onPrimary else bento.textPrimary
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
                 if (!editingTemplate.isFullScreen) {
                     FeatureToggleRow("توهج الكارت (Card Glow)", editingTemplate.cardGlowEnabled) { onUpdate(editingTemplate.copy(cardGlowEnabled = it)) }
@@ -441,12 +518,25 @@ fun TemplateEditorScreen(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Text(
-                                "✓ فيديو مخصص محدد (Custom video set)",
-                                fontSize = 11.sp,
-                                color = bento.textSecondary,
-                                modifier = Modifier.weight(1f)
-                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    "✓ فيديو مخصص محدد (Custom video set)",
+                                    fontSize = 11.sp,
+                                    color = bento.textSecondary
+                                )
+                                // v1.8: show the opaque video ID and its local URL.
+                                Text(
+                                    "ID: ${editingTemplate.customVideoId}",
+                                    fontSize = 10.sp,
+                                    color = bento.textSecondary,
+                                    modifier = Modifier.padding(top = 2.dp)
+                                )
+                                Text(
+                                    "URL: /video?id=${editingTemplate.customVideoId}",
+                                    fontSize = 10.sp,
+                                    color = bento.textSecondary
+                                )
+                            }
                             TextButton(onClick = {
                                 onUpdate(editingTemplate.copy(customVideoId = "", animatedBackground = AnimatedBackgroundType.NONE))
                             }) {

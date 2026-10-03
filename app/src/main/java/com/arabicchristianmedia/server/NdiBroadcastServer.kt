@@ -73,6 +73,22 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     private var wifiLock: WifiManager.WifiLock? = null
     private var multicastLock: WifiManager.MulticastLock? = null
 
+    /**
+     * v1.8 remote API hooks, wired by the ViewModel.
+     * onTriggerVerse(bookId, chapter, verse, target) — target is
+     * "lower", "show"/"full", or "both".
+     */
+    var onTriggerVerse: ((bookId: String, chapter: Int, verse: Int, target: String) -> Boolean)? = null
+    var onClearVerse: (() -> Unit)? = null
+    var onListVideos: (() -> List<VideoInfo>)? = null
+
+    /** Opaque video ID + display info for /api/videos. */
+    data class VideoInfo(
+        val id: String,
+        val displayName: String,
+        val sizeBytes: Long
+    )
+
     private fun acquireBroadcastLocks() {
         try {
             val wifi = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
@@ -2193,13 +2209,419 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
     private fun serveStatus(out: OutputStream) {
         val ip = getLocalIpAddress()
-        val msg = "OK - Bible NDI Server Online\nIP: $ip\nPort: $port\nStream: http://$ip:$port/ndi/stream\nOverlay: http://$ip:$port/ndi\n"
+        val msg = "OK - Bible NDI Server Online\nIP: $ip\nPort: $port\nStream: http://$ip:$port/stream\nOverlay: http://$ip:$port/overlay\n"
         val bytes = msg.toByteArray(Charsets.UTF_8)
         val writer = PrintWriter(out)
         writer.print("HTTP/1.1 200 OK\r\n")
         writer.print("Content-Type: text/plain; charset=utf-8\r\n")
         writer.print("Content-Length: ${bytes.size}\r\n")
         writer.print("Access-Control-Allow-Origin: *\r\n")
+        writer.print("Connection: close\r\n\r\n")
+        writer.flush()
+        out.write(bytes)
+        out.flush()
+    }
+
+    // ---- v1.8 remote API ----
+
+    /** Parse URL query string into a decoded map. */
+    private fun parseQueryParams(fullPath: String): Map<String, String> {
+        val qIndex = fullPath.indexOf('?')
+        if (qIndex < 0) return emptyMap()
+        val query = fullPath.substring(qIndex + 1)
+        val map = mutableMapOf<String, String>()
+        for (pair in query.split('&')) {
+            val eq = pair.indexOf('=')
+            if (eq < 0) continue
+            val key = pair.substring(0, eq)
+            val value = try {
+                java.net.URLDecoder.decode(pair.substring(eq + 1), "UTF-8")
+            } catch (e: Exception) {
+                pair.substring(eq + 1)
+            }
+            map[key] = value
+        }
+        return map
+    }
+
+    /** Send a JSON response with consistent {"ok": ...} shape. */
+    private fun sendJson(out: OutputStream, statusCode: Int, json: String) {
+        val bytes = json.toByteArray(Charsets.UTF_8)
+        val writer = PrintWriter(out)
+        val statusText = when (statusCode) {
+            200 -> "OK"
+            400 -> "Bad Request"
+            404 -> "Not Found"
+            else -> "OK"
+        }
+        writer.print("HTTP/1.1 $statusCode $statusText\r\n")
+        writer.print("Content-Type: application/json; charset=utf-8\r\n")
+        writer.print("Content-Length: ${bytes.size}\r\n")
+        writer.print("Access-Control-Allow-Origin: *\r\n")
+        writer.print("Connection: close\r\n\r\n")
+        writer.flush()
+        out.write(bytes)
+        out.flush()
+    }
+
+    private fun jsonEscape(s: String): String {
+        return s.replace("\\", "\\\\")
+            .replace("\"", "\\\"")
+            .replace("\n", "\\n")
+            .replace("\r", "\\r")
+            .replace("\t", "\\t")
+    }
+
+    /**
+     * GET /api/trigger?ref=John+3:16[&target=lower|show|both]
+     * GET /api/trigger?book=43&chapter=3&verse=16[&target=...]
+     * Triggers a verse on the broadcast outputs.
+     */
+    private fun serveApiTrigger(out: OutputStream, fullPath: String) {
+        val params = parseQueryParams(fullPath)
+        val target = (params["target"] ?: "both").lowercase().let {
+            when (it) {
+                "lower", "lowerthird", "lower-third" -> "lower"
+                "show", "full", "fullscreen", "fullshow" -> "show"
+                else -> "both"
+            }
+        }
+
+        val ref = params["ref"]
+        var bookId: String? = null
+        var chapter: Int? = null
+        var verseNum: Int? = null
+
+        if (ref != null) {
+            // Free-form reference: English/Arabic name or abbreviation.
+            val books = try {
+                com.arabicchristianmedia.data.BibleRepository.allBooks
+            } catch (e: Exception) { emptyList() }
+            val parsed = com.arabicchristianmedia.model.ReferenceParser.parse(ref, books)
+            if (parsed == null) {
+                sendJson(out, 400, """{"ok":false,"error":"Could not understand reference: ${jsonEscape(ref)}"}""")
+                return
+            }
+            bookId = parsed.book.id
+            chapter = parsed.chapter
+            verseNum = parsed.verse
+        } else {
+            // Numeric fallback: ?book=43&chapter=3&verse=16 (1-indexed book).
+            val bookNum = params["book"]?.toIntOrNull()
+            chapter = params["chapter"]?.toIntOrNull()
+            verseNum = params["verse"]?.toIntOrNull()
+            if (bookNum == null || chapter == null || verseNum == null ||
+                bookNum < 1 || chapter < 1 || verseNum < 1) {
+                sendJson(out, 400, """{"ok":false,"error":"Provide ?ref=John+3:16 or ?book=43&chapter=3&verse=16"}""")
+                return
+            }
+            val books = try {
+                com.arabicchristianmedia.data.BibleRepository.allBooks
+            } catch (e: Exception) { emptyList() }
+            val book = books.getOrNull(bookNum - 1)
+            if (book == null) {
+                sendJson(out, 400, """{"ok":false,"error":"Book number out of range: $bookNum"}""")
+                return
+            }
+            bookId = book.id
+        }
+
+        val ok = try {
+            onTriggerVerse?.invoke(bookId!!, chapter!!, verseNum!!, target) ?: false
+        } catch (e: Exception) { false }
+
+        if (ok) {
+            sendJson(out, 200, """{"ok":true,"bookId":"${jsonEscape(bookId!!)}","chapter":$chapter,"verse":$verseNum,"target":"$target"}""")
+        } else {
+            sendJson(out, 400, """{"ok":false,"error":"Verse not found: bookId=$bookId $chapter:$verseNum"}""")
+        }
+    }
+
+    /** GET /api/clear — clear the active verse (take outputs off-air). */
+    private fun serveApiClear(out: OutputStream) {
+        try { onClearVerse?.invoke() } catch (e: Exception) { }
+        sendJson(out, 200, """{"ok":true,"cleared":true}""")
+    }
+
+    /** GET /api/videos — list background videos by opaque ID. */
+    private fun serveApiVideos(out: OutputStream) {
+        val videos = try { onListVideos?.invoke() ?: emptyList() } catch (e: Exception) { emptyList() }
+        val sb = StringBuilder()
+        sb.append("""{"ok":true,"videos":[""")
+        videos.forEachIndexed { i, v ->
+            if (i > 0) sb.append(",")
+            sb.append("""{"id":"${jsonEscape(v.id)}","name":"${jsonEscape(v.displayName)}","sizeBytes":${v.sizeBytes},"url":"/video?id=${jsonEscape(v.id)}"}""")
+        }
+        sb.append("]}")
+        sendJson(out, 200, sb.toString())
+    }
+
+    /**
+     * GET /bibleshow.xml — vMix BibleShow-compatible text feed (v1.8).
+     * Text/data only; vMix controls all formatting. TimeCode is .NET ticks.
+     */
+    private fun serveBibleShowXml(out: OutputStream) {
+        val verse = currentVerse
+        val tpl = currentTemplate
+
+        fun xmlEscape(s: String): String {
+            return s.replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;")
+                .replace("'", "&apos;")
+        }
+
+        // .NET ticks: 100ns intervals since 0001-01-01 UTC.
+        val dotNetTicks = System.currentTimeMillis() * 10000L + 621355968000000000L
+
+        val arabicVerse = if (verse != null) {
+            ArabicTextFormatter.prepareForBroadcast(
+                verse.arabicText, tpl.useEasternArabicNumerals, tpl.useArabicPunctuation
+            )
+        } else ""
+        val arabicCitation = verse?.getFormattedArabicCitation(tpl.useEasternArabicNumerals) ?: ""
+        val englishVerse = verse?.englishText ?: ""
+        val englishCitation = verse?.getFormattedEnglishCitation() ?: ""
+
+        // Scripture: Arabic verse/citation, blank line, English verse/citation.
+        val scripture = buildString {
+            if (arabicVerse.isNotEmpty()) {
+                append(arabicVerse)
+                append("\n")
+                append(arabicCitation)
+            }
+            if (englishVerse.isNotEmpty()) {
+                if (arabicVerse.isNotEmpty()) append("\n\n")
+                append(englishVerse)
+                append("\n")
+                append(englishCitation)
+            }
+        }
+
+        val bookName = verse?.bookEnglishName ?: ""
+        val chapterNum = verse?.chapter?.toString() ?: ""
+        val verseNum = verse?.verse?.toString() ?: ""
+
+        val xml = buildString {
+            append("""<?xml version="1.0" encoding="utf-8"?>""")
+            append("\n<BibleShowData>\n")
+            append("  <TimeCode>$dotNetTicks</TimeCode>\n")
+            append("  <Reference />\n")
+            append("  <Scripture>${xmlEscape(scripture)}</Scripture>\n")
+            append("  <ImagePath />\n")
+            append("  <BibleVersion></BibleVersion>\n")
+            append("  <BibleCopyright></BibleCopyright>\n")
+            append("  <BibleLanguage>Arabic</BibleLanguage>\n")
+            append("  <BookName>${xmlEscape(bookName)}</BookName>\n")
+            append("  <BookTitle>${xmlEscape(bookName)}</BookTitle>\n")
+            append("  <BookAbbreviation></BookAbbreviation>\n")
+            append("  <ChapterNumber>${xmlEscape(chapterNum)}</ChapterNumber>\n")
+            append("  <VerseNumber>${xmlEscape(verseNum)}</VerseNumber>\n")
+            append("  <BackgroundPath />\n")
+            append("</BibleShowData>\n")
+        }
+
+        val bytes = xml.toByteArray(Charsets.UTF_8)
+        val writer = PrintWriter(out)
+        writer.print("HTTP/1.1 200 OK\r\n")
+        writer.print("Content-Type: application/xml; charset=utf-8\r\n")
+        writer.print("Content-Length: ${bytes.size}\r\n")
+        writer.print("Access-Control-Allow-Origin: *\r\n")
+        writer.print("Connection: close\r\n\r\n")
+        writer.flush()
+        out.write(bytes)
+        out.flush()
+    }
+
+    /**
+     * GET /remote — phone-friendly remote control page (v1.8).
+     * One-handed operation, follows the device's light/dark theme,
+     * fully offline (served by the tablet, no external resources).
+     */
+    private fun serveRemotePage(out: OutputStream) {
+        val html = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="color-scheme" content="light dark">
+<title>Bible Remote</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0; padding: 0;
+    font-family: system-ui, -apple-system, sans-serif;
+    background: Canvas; color: CanvasText;
+    min-height: 100vh; min-height: 100dvh;
+    display: flex; flex-direction: column;
+  }
+  @media (prefers-color-scheme: light) {
+    body { background: #f1f5f9; color: #0f172a; }
+    .card { background: #ffffff; border-color: #e2e8f0; }
+    input { background: #f8fafc; border-color: #cbd5e1; color: #0f172a; }
+    .seg button { color: #475569; }
+    .seg button.active { background: #0f172a; color: #fff; }
+    .hint { color: #64748b; }
+  }
+  @media (prefers-color-scheme: dark) {
+    body { background: #0f172a; color: #f1f5f9; }
+    .card { background: #1e293b; border-color: #334155; }
+    input { background: #0f172a; border-color: #475569; color: #f1f5f9; }
+    .seg button { color: #94a3b8; }
+    .seg button.active { background: #f1f5f9; color: #0f172a; }
+    .hint { color: #94a3b8; }
+  }
+  header {
+    padding: 16px 20px 8px;
+    font-size: 20px; font-weight: 700;
+  }
+  header .sub { font-size: 13px; font-weight: 400; opacity: 0.7; margin-top: 2px; }
+  main { flex: 1; padding: 8px 16px 16px; display: flex; flex-direction: column; gap: 12px; max-width: 560px; width: 100%; margin: 0 auto; }
+  .card {
+    border: 1px solid; border-radius: 16px;
+    padding: 16px;
+  }
+  label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 8px; opacity: 0.8; }
+  input {
+    width: 100%; font-size: 20px; padding: 14px 16px;
+    border: 1px solid; border-radius: 12px;
+    outline: none;
+  }
+  input:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.25); }
+  .seg { display: flex; gap: 8px; }
+  .seg button {
+    flex: 1; padding: 12px 8px; font-size: 15px; font-weight: 600;
+    border: 1px solid; border-radius: 12px; background: transparent;
+    cursor: pointer;
+  }
+  .seg button.active { border-color: transparent; }
+  .btn {
+    width: 100%; padding: 18px; font-size: 20px; font-weight: 700;
+    border: none; border-radius: 16px; cursor: pointer;
+    background: #16a34a; color: #fff;
+    min-height: 64px;
+  }
+  .btn:active { transform: scale(0.98); opacity: 0.9; }
+  .btn-clear {
+    background: transparent; color: inherit;
+    border: 2px solid; font-size: 17px; padding: 14px;
+  }
+  .status {
+    text-align: center; font-size: 14px; min-height: 22px;
+    font-weight: 600;
+  }
+  .status.ok { color: #16a34a; }
+  .status.err { color: #dc2626; }
+  .hint { font-size: 12px; margin-top: 8px; line-height: 1.5; }
+  .now { font-size: 15px; text-align: center; padding: 4px 0; opacity: 0.85; }
+</style>
+</head>
+<body>
+<header>
+  📖 Bible Remote
+  <div class="sub">Arabic Bible NDI — live verse trigger</div>
+</header>
+<main>
+  <div class="now" id="now">—</div>
+  <div class="card">
+    <label for="ref">Bible reference</label>
+    <input id="ref" type="text" inputmode="text" autocomplete="off"
+           placeholder="John 3:16  •  يوحنا 3:16  •  Jn 3:16"
+           enterkeyhint="go">
+    <div class="hint">English, Arabic, or abbreviation. Examples: <b>Rom 8:28</b>, <b>مزمور 23:1</b>, <b>1Jn 1:9</b></div>
+  </div>
+  <div class="card">
+    <label>Target output</label>
+    <div class="seg" id="targetSeg">
+      <button data-t="lower">Lower Third</button>
+      <button data-t="show">Full Show</button>
+      <button data-t="both" class="active">Both</button>
+    </div>
+  </div>
+  <button class="btn" id="goBtn" onclick="trigger()">▶ Show Verse</button>
+  <button class="btn btn-clear" onclick="clearVerse()">Clear (off-air)</button>
+  <div class="status" id="status"></div>
+</main>
+<script>
+  let target = 'both';
+  const seg = document.getElementById('targetSeg');
+  seg.addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    target = b.dataset.t;
+    seg.querySelectorAll('button').forEach(x => x.classList.toggle('active', x === b));
+  });
+  const refInput = document.getElementById('ref');
+  refInput.addEventListener('keydown', e => { if (e.key === 'Enter') trigger(); });
+  // Select-all on focus so re-typing replaces (v2.0 pattern, applied here too).
+  refInput.addEventListener('focus', () => refInput.select());
+
+  function setStatus(msg, cls) {
+    const el = document.getElementById('status');
+    el.textContent = msg;
+    el.className = 'status ' + (cls || '');
+  }
+
+  async function trigger() {
+    const ref = refInput.value.trim();
+    if (!ref) { setStatus('Type a reference first', 'err'); refInput.focus(); return; }
+    setStatus('Sending…', '');
+    try {
+      const r = await fetch('/api/trigger?ref=' + encodeURIComponent(ref) + '&target=' + target);
+      const j = await r.json();
+      if (j.ok) {
+        setStatus('✓ ' + ref + ' → ' + target, 'ok');
+        updateNow(ref);
+      } else {
+        setStatus('✗ ' + (j.error || 'failed'), 'err');
+      }
+    } catch (e) {
+      setStatus('✗ Network error', 'err');
+    }
+  }
+
+  async function clearVerse() {
+    setStatus('Clearing…', '');
+    try {
+      const r = await fetch('/api/clear');
+      const j = await r.json();
+      if (j.ok) { setStatus('✓ Cleared', 'ok'); updateNow('—'); }
+      else setStatus('✗ failed', 'err');
+    } catch (e) {
+      setStatus('✗ Network error', 'err');
+    }
+  }
+
+  function updateNow(t) { document.getElementById('now').textContent = 'Now: ' + t; }
+
+  // Poll current verse for the "Now" line.
+  async function pollNow() {
+    try {
+      const r = await fetch('/api/verse');
+      const j = await r.json();
+      if (j.isLive && (j.arabicCitation || j.englishCitation)) {
+        updateNow(j.arabicCitation || j.englishCitation);
+      } else {
+        updateNow('—');
+      }
+    } catch (e) {}
+  }
+  pollNow();
+  setInterval(pollNow, 5000);
+</script>
+</body>
+</html>
+        """.trimIndent()
+
+        val bytes = html.toByteArray(Charsets.UTF_8)
+        val writer = PrintWriter(out)
+        writer.print("HTTP/1.1 200 OK\r\n")
+        writer.print("Content-Type: text/html; charset=utf-8\r\n")
+        writer.print("Content-Length: ${bytes.size}\r\n")
+        writer.print("Cache-Control: no-cache\r\n")
         writer.print("Connection: close\r\n\r\n")
         writer.flush()
         out.write(bytes)

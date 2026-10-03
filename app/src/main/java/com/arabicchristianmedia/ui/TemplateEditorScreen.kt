@@ -1029,9 +1029,18 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
         val refCol = try { Color(android.graphics.Color.parseColor(template.referenceColorHex)) } catch (e: Exception) { Color.Yellow }
         val secTextCol = try { Color(android.graphics.Color.parseColor(template.secondaryTextColorHex)) } catch (e: Exception) { Color.Gray }
         val secRefCol = try { Color(android.graphics.Color.parseColor(template.secondaryReferenceColorHex)) } catch (e: Exception) { Color.Gray }
-        // Independent text shadow (v1.6): mirrors the NDI canvas + HTML overlay rendering.
+        // Independent text shadow (v1.8): user-controlled thickness (blur),
+        // distance (offset) and compass direction — mirrors NDI canvas + HTTP.
         val shadowCol = try { Color(android.graphics.Color.parseColor(template.textShadowColorHex)) } catch (e: Exception) { Color.Black }
-        val previewShadow = if (template.textShadowEnabled) Shadow(color = shadowCol, offset = Offset(2f, 3f), blurRadius = 7f) else null
+        val shadowAngleRad = Math.toRadians(template.textShadowAngleDeg.toDouble())
+        val previewShadow = if (template.textShadowEnabled) Shadow(
+            color = shadowCol,
+            offset = Offset(
+                (kotlin.math.cos(shadowAngleRad) * template.textShadowOffsetDp).toFloat(),
+                (kotlin.math.sin(shadowAngleRad) * template.textShadowOffsetDp).toFloat()
+            ),
+            blurRadius = template.textShadowBlurDp
+        ) else null
         // Bundled Arabic font for a true WYSIWYG preview (same TTFs the NDI canvas uses).
         val previewFontFamily = remember(template.fontFamily) { bundledFontFamily(context, template.fontFamily) }
         // Independent card glow (v1.6): colored halo behind the card, only where a card exists.
@@ -1105,7 +1114,9 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
                             )
                         }
                         Text(
-                            text = verse.getFormattedArabicCitation(template.useEasternArabicNumerals),
+                            text = if (template.languageMode != com.arabicchristianmedia.model.LanguageMode.ENGLISH_ONLY)
+                                verse.getFormattedArabicCitation(template.useEasternArabicNumerals)
+                            else verse.getFormattedEnglishCitation(),
                             fontSize = (template.referenceFontSize * 0.42f).sp,
                             fontWeight = if (template.referenceIsBold) FontWeight.Bold else FontWeight.Normal,
                             fontStyle = if (template.referenceIsItalic) FontStyle.Italic else FontStyle.Normal,
@@ -1116,6 +1127,8 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
                     }
                     }
 
+                    // v1.8: Arabic verse hidden in ENGLISH_ONLY mode.
+                    if (template.languageMode != com.arabicchristianmedia.model.LanguageMode.ENGLISH_ONLY) {
                     // Arabic Verse Text
                     Text(
                         text = verse.arabicText,
@@ -1133,9 +1146,10 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
                         },
                         modifier = Modifier.fillMaxWidth()
                     )
+                    }
                     
-                    // English Bilingual Verse & Citation
-                    if (template.bilingualMode) {
+                    // v1.8: three-way language mode; English left unless centered.
+                    if (template.languageMode != com.arabicchristianmedia.model.LanguageMode.ARABIC_ONLY) {
                         Spacer(Modifier.height((template.bilingualSpacing * 0.2f).dp))
                         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
                             Text(
@@ -1159,8 +1173,7 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
                                 style = TextStyle(shadow = previewShadow),
                                 textAlign = when (template.alignment) {
                                     BroadcastTextAlignment.CENTER -> TextAlign.Center
-                                    BroadcastTextAlignment.LEFT -> TextAlign.Left
-                                    else -> TextAlign.Right
+                                    else -> TextAlign.Left
                                 },
                                 modifier = Modifier.fillMaxWidth()
                             )
@@ -1185,7 +1198,7 @@ fun PreviewLowerThirdDesign() {
     MyApplicationTheme {
         Box(modifier = Modifier.fillMaxSize().background(Color(0xFF0F172A))) {
             BroadcastPreviewViewport(
-                template = sampleTemplate.copy(bilingualMode = true),
+                template = sampleTemplate.copy(languageMode = com.arabicchristianmedia.model.LanguageMode.BOTH),
                 verse = sampleVerse,
                 previewBg = PreviewBackground.SIMULATED_STUDIO_CAMERA
             )

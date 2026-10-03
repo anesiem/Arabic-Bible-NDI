@@ -13,6 +13,7 @@ import com.arabicchristianmedia.model.BibleBook
 import com.arabicchristianmedia.model.BibleVerse
 import com.arabicchristianmedia.model.BibleVersion
 import com.arabicchristianmedia.model.BroadcastTextAlignment
+import com.arabicchristianmedia.model.LanguageMode
 import com.arabicchristianmedia.model.LowerThirdTemplate
 import com.arabicchristianmedia.model.Testament
 import com.arabicchristianmedia.server.NdiBroadcastServer
@@ -245,7 +246,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         val initialBook = BibleRepository.getBookById("jhn") ?: BibleRepository.allBooks.first()
         val initialChapter = 3
         val verses = BibleRepository.getVerses(initialBook.id, initialChapter)
-        val defaultActiveVerse = verses.firstOrNull { it.verse == 16 } ?: verses.firstOrNull()
+        // v1.8: no verse selected on launch — the user picks one.
 
         _uiState.value = _uiState.value.copy(
             selectedBook = initialBook,
@@ -258,16 +259,14 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             highlightedShowStyleId = showStyle?.id,
             lowerWorkingDirty = templateRepo.isWorkingDirty(false),
             showWorkingDirty = templateRepo.isWorkingDirty(true),
-            activeVerse = defaultActiveVerse,
+            activeVerse = null,
             isLiveOnAir = false, // Start OFF AIR as per request 8
             statusMessage = "Ready. Tap a verse to go LIVE."
         )
         loadPersistedNdiSpecs()
 
-        if (defaultActiveVerse != null) {
-            broadcastServer.currentVerse = defaultActiveVerse
-            broadcastServer.isLive = false // Ensure server starts off-air
-        }
+        broadcastServer.currentVerse = null
+        broadcastServer.isLive = false // Ensure server starts off-air
         broadcastServer.currentTemplate = lowerWorking
         broadcastServer.currentShowTemplate = showWorking
     }
@@ -550,10 +549,14 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
 
     fun setBibleVersion(version: BibleVersion) {
         _uiState.value = _uiState.value.copy(bibleVersion = version)
-        // If template has bilingual toggle, sync if needed
-        val isDual = version == BibleVersion.DUAL_BILINGUAL
-        if (isDual != _uiState.value.activeTemplate.bilingualMode) {
-            updateActiveTemplate(_uiState.value.activeTemplate.copy(bilingualMode = isDual))
+        // v1.8: sync the three-way language mode with the reader's version picker.
+        val newMode = when (version) {
+            BibleVersion.DUAL_BILINGUAL -> LanguageMode.BOTH
+            BibleVersion.ENGLISH_KJV, BibleVersion.ENGLISH_WEB -> LanguageMode.ENGLISH_ONLY
+            else -> LanguageMode.ARABIC_ONLY
+        }
+        if (newMode != _uiState.value.activeTemplate.languageMode) {
+            updateActiveTemplate(_uiState.value.activeTemplate.copy(languageMode = newMode))
         }
     }
 

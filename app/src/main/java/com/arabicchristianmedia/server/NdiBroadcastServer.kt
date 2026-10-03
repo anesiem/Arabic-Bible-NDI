@@ -2,7 +2,6 @@ package com.arabicchristianmedia.server
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.LinearGradient
@@ -31,6 +30,7 @@ import com.arabicchristianmedia.model.AnimatedBackgroundType
 import com.arabicchristianmedia.model.ArabicFonts
 import com.arabicchristianmedia.model.BibleVerse
 import com.arabicchristianmedia.model.BroadcastTextAlignment
+import com.arabicchristianmedia.model.LanguageMode
 import com.arabicchristianmedia.model.LowerThirdTemplate
 import com.arabicchristianmedia.model.StreamBackgroundMode
 import com.arabicchristianmedia.model.TemplateStyle
@@ -54,6 +54,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.sin
+import kotlin.math.cos
 
 class NdiBroadcastServer(private val context: Context, private var port: Int = 8080) {
 
@@ -105,18 +106,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     @Volatile
     var isLive = true
 
-    // Pre-populate with default verse so NDI stream and overlay never open with a black screen
+    // v1.8: no verse selected on launch — the user picks one. Renderers
+    // handle null by producing a blank frame (card chrome only).
     @Volatile
-    var currentVerse: BibleVerse? = BibleVerse(
-        id = "jhn_3_16",
-        bookId = "jhn",
-        bookArabicName = "إنجيل يوحنا",
-        bookEnglishName = "John",
-        chapter = 3,
-        verse = 16,
-        arabicText = "لأَنَّهُ هكَذَا أَحَبَّ اللهُ الْعَالَمَ حَتَّى بَذَلَ ابْنَهُ الْوَحِيدَ، لِكَيْ لاَ يَهْلِكَ كُلُّ مَنْ يُؤْمِنُ بِهِ، بَلْ تَكُونُ لَهُ الْحَيَاةُ الأَبَدِيَّةُ.",
-        englishText = "For God so loved the world that He gave His only begotten Son, that whoever believes in Him should not perish but have everlasting life."
-    )
+    var currentVerse: BibleVerse? = null
 
     @Volatile
     var currentTemplate: LowerThirdTemplate = LowerThirdTemplate(id = "default", name = "Default")
@@ -494,7 +487,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             put("arabicCitation", formattedCitation)
             put("englishText", verse?.englishText ?: "")
             put("englishCitation", verse?.getFormattedEnglishCitation() ?: "")
-            put("bilingual", tpl.bilingualMode)
+            put("bilingual", tpl.languageMode == LanguageMode.BOTH)
+            put("languageMode", tpl.languageMode.name)
             put("style", tpl.style.name)
             put("bgColorHex", tpl.bgColorHex)
             put("bgOpacity", tpl.bgOpacity)
@@ -519,6 +513,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             put("showDropShadow", tpl.showDropShadow)
             put("textShadowEnabled", tpl.textShadowEnabled)
             put("textShadowColorHex", tpl.textShadowColorHex)
+            put("textShadowBlurDp", tpl.textShadowBlurDp)
+            put("textShadowOffsetDp", tpl.textShadowOffsetDp)
+            put("textShadowAngleDeg", tpl.textShadowAngleDeg)
             put("cardGlowEnabled", tpl.cardGlowEnabled)
             put("cardGlowColorHex", tpl.cardGlowColorHex)
             put("emblem", tpl.emblem)
@@ -1258,20 +1255,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     private fun drawFrameInto(bitmap: Bitmap, width: Int, height: Int, isForStream: Boolean, tpl: LowerThirdTemplate, isFull: Boolean, isMotionTick: Boolean = false) {
         val canvas = Canvas(bitmap)
 
-        val fallbackVerse = BibleVerse(
-            id = "jhn_3_16",
-            bookId = "jhn",
-            bookArabicName = "إنجيل يوحنا",
-            bookEnglishName = "John",
-            chapter = 3,
-            verse = 16,
-            arabicText = "لأَنَّهُ هكَذَا أَحَبَّ اللهُ الْعَالَمَ حَتَّى بَذَلَ ابْنَهُ الْوَحِيدَ، لِكَيْ لاَ يَهْلِكَ كُلُّ مَنْ يُؤْمِنُ بِهِ، بَلْ تَكُونُ لَهُ الْحَيَاةُ الأَبَدِيَّةُ.",
-            englishText = "For God so loved the world that He gave His only begotten Son, that whoever believes in Him should not perish but have everlasting life."
-        )
-        val activeVerse = currentVerse ?: fallbackVerse
-
         // 100% Pure transparent alpha canvas by default
         canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
+
+        // v1.8: no verse selected on launch — blank frame (cleared above; no text).
+        val activeVerse = currentVerse ?: return
 
         // Video Stream Background: Since JPEG encoders have no alpha channel,
         // provide keyable broadcast background (Chroma Green #00FF00, Luma Black, or Studio)
@@ -1293,16 +1281,28 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         }
 
         val scale = width / 1920f
+        // v1.8: user-controlled text shadow — thickness (blur radius), offset
+        // distance, compass direction (0°=right, 90°=down, 180°=left, 270°=up).
+        val shadowAngleRad = Math.toRadians(tpl.textShadowAngleDeg.toDouble())
+        val shadowDx = (cos(shadowAngleRad) * tpl.textShadowOffsetDp * scale).toFloat()
+        val shadowDy = (sin(shadowAngleRad) * tpl.textShadowOffsetDp * scale).toFloat()
+        val shadowBlur = tpl.textShadowBlurDp * scale
         val marginH = (width * (tpl.horizontalMarginPercent / 100f)).coerceAtLeast(40f * scale)
         val marginB = (height * (tpl.positionBottomPercent / 100f)).coerceAtLeast(30f * scale)
         val boxWidth = width - (2 * marginH)
+
+        // v1.8: three-way language control.
+        val showArabic = tpl.languageMode != LanguageMode.ENGLISH_ONLY
+        val showEnglish = tpl.languageMode != LanguageMode.ARABIC_ONLY &&
+                !activeVerse.englishText.isNullOrBlank()
 
         val verseText = ArabicTextFormatter.prepareForBroadcast(
             activeVerse.arabicText,
             tpl.useEasternArabicNumerals,
             tpl.useArabicPunctuation
         )
-        val citation = activeVerse.getFormattedArabicCitation(tpl.useEasternArabicNumerals)
+        val citation = if (showArabic) activeVerse.getFormattedArabicCitation(tpl.useEasternArabicNumerals)
+                       else activeVerse.getFormattedEnglishCitation()
 
         // Setup TextPaint for multi-line wrapped text
         val verseTextPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -1317,7 +1317,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             typeface = getBestTypeface(tpl.fontFamily, textStyle)
             if (tpl.textShadowEnabled) {
                 val shadowCol = try { Color.parseColor(tpl.textShadowColorHex) } catch (e: Exception) { Color.BLACK }
-                setShadowLayer(8f * scale, 0f, 4f * scale, shadowCol)
+                setShadowLayer(shadowBlur, shadowDx, shadowDy, shadowCol)
             }
             isFakeBoldText = tpl.verseIsBold
         }
@@ -1338,7 +1338,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             verseTextPaint.textSkewX = -0.25f
         }
 
-        val staticLayout = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+        val staticLayout: StaticLayout? = if (showArabic) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             StaticLayout.Builder.obtain(verseText, 0, verseText.length, verseTextPaint, contentWidth)
                 .setAlignment(alignment)
                 .setLineSpacing(6f * scale, 1.25f)
@@ -1348,12 +1349,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             @Suppress("DEPRECATION")
             StaticLayout(verseText, verseTextPaint, contentWidth, alignment, 1.25f, 6f * scale, true)
         }
+        } else null
 
         val citationHeight = 44f * scale
         
         // Calculate bilingual secondary text if needed
         var secondaryLayout: StaticLayout? = null
-        if (tpl.bilingualMode && !activeVerse.englishText.isNullOrBlank()) {
+        if (showEnglish) {
             val citationText = " (" + activeVerse.getFormattedEnglishCitation() + ")"
             val fullSecondaryText = activeVerse.englishText + citationText
             
@@ -1369,7 +1371,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 typeface = getBestTypeface(tpl.secondaryFontFamily, secStyle)
                 if (tpl.textShadowEnabled) {
                     val shadowCol = try { Color.parseColor(tpl.textShadowColorHex) } catch (e: Exception) { Color.BLACK }
-                    setShadowLayer(4f * scale, 0f, 2f * scale, shadowCol)
+                    setShadowLayer(shadowBlur, shadowDx, shadowDy, shadowCol)
                 }
                 isFakeBoldText = tpl.secondaryVerseIsBold
                 if (tpl.secondaryVerseIsItalic) textSkewX = -0.25f
@@ -1393,13 +1395,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
             )
             
-            // Bidi-aware: the user's LEFT/RIGHT choice means visual left/right
-            // regardless of script. For LTR English that's NORMAL (left) /
-            // OPPOSITE (right) — previously both mapped to left.
+            // v1.8: English stays visually left-aligned for LEFT and RIGHT;
+            // only CENTER centers it (matches HTTP overlay + Compose preview).
             val secAlignment = when (tpl.alignment) {
                 BroadcastTextAlignment.CENTER -> Layout.Alignment.ALIGN_CENTER
-                BroadcastTextAlignment.LEFT -> Layout.Alignment.ALIGN_NORMAL
-                BroadcastTextAlignment.RIGHT -> Layout.Alignment.ALIGN_OPPOSITE
+                else -> Layout.Alignment.ALIGN_NORMAL // LTR English: NORMAL = left
             }
             
             secondaryLayout = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -1415,13 +1415,18 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         }
 
         val bilSpacing = if (tpl.showBilingualSpacing) tpl.bilingualSpacing * scale else 0f
-        val secHeight = if (secondaryLayout != null) secondaryLayout.height + bilSpacing else 0f
+        // v1.8: primary content drives sizing/positioning — Arabic when shown,
+        // else English (ENGLISH_ONLY). The offset secondary block only exists
+        // when BOTH languages are shown.
+        val primaryLayout = staticLayout ?: secondaryLayout ?: return
+        val bilingualSecondary = if (staticLayout != null) secondaryLayout else null
+        val secHeight = if (bilingualSecondary != null) bilingualSecondary.height + bilSpacing else 0f
         
         // Full screen check for projector/full show mode
         val boxHeight = if (tpl.isFullScreen) {
             height.toFloat() 
         } else {
-            (staticLayout.height + citationHeight + secHeight + (paddingV * 2) + 16f * scale).coerceAtLeast(140f * scale)
+            (primaryLayout.height + citationHeight + secHeight + (paddingV * 2) + 16f * scale).coerceAtLeast(140f * scale)
         }
 
         val boxTop = if (tpl.isFullScreen) 0f else (height - marginB - boxHeight)
@@ -1460,16 +1465,29 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         }
 
         if (!tpl.isPureTransparentBackground && tpl.style != TemplateStyle.TRANSPARENT_OUTLINE) {
-            // Independent card glow (v1.6): soft halo behind the card in the user's
-            // glow color. Only where a real card exists — skipped for fullscreen
-            // full-bleed and transparent styles, mirroring the HTML overlay.
+            // Independent card glow (v1.8): deterministic layered outer halo in
+            // the user's glow color, drawn strictly OUTSIDE the card bounds.
+            // Replaces BlurMaskFilter.OUTER, whose blurred color bled through
+            // semi-transparent card fills. Only where a real card exists.
             if (tpl.cardGlowEnabled && !tpl.isFullScreen) {
                 val glowCol = try { Color.parseColor(tpl.cardGlowColorHex) } catch (e: Exception) { Color.BLACK }
-                val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                    color = glowCol
-                    maskFilter = BlurMaskFilter(28f * scale, BlurMaskFilter.Blur.OUTER)
+                val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+                // (expand beyond card, alpha, corner-radius bump)
+                val layers = listOf(
+                    Triple(14f * scale, 0.30f, 4f * scale),
+                    Triple(30f * scale, 0.15f, 8f * scale)
+                )
+                for ((expand, alpha, radiusBump) in layers) {
+                    glowPaint.color = Color.argb(
+                        (255 * alpha).toInt().coerceIn(0, 255),
+                        Color.red(glowCol), Color.green(glowCol), Color.blue(glowCol)
+                    )
+                    canvas.drawRoundRect(
+                        RectF(rect.left - expand, rect.top - expand,
+                              rect.right + expand, rect.bottom + expand),
+                        radius + radiusBump, radius + radiusBump, glowPaint
+                    )
                 }
-                canvas.drawRoundRect(rect, radius, radius, glowPaint)
             }
             val bgAlpha = (tpl.bgOpacity * 255).toInt().coerceIn(0, 255)
             val baseBgCol = try { Color.parseColor(tpl.bgColorHex) } catch (e: Exception) { Color.DKGRAY }
@@ -1587,13 +1605,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             typeface = getBestTypeface(tpl.fontFamily, refStyle)
             if (tpl.textShadowEnabled) {
                 val shadowCol = try { Color.parseColor(tpl.textShadowColorHex) } catch (e: Exception) { Color.BLACK }
-                setShadowLayer(6f * scale, 0f, 3f * scale, shadowCol)
+                setShadowLayer(shadowBlur, shadowDx, shadowDy, shadowCol)
             }
             isFakeBoldText = tpl.referenceIsBold
             if (tpl.referenceIsItalic) textSkewX = -0.25f
         }
 
-        val contentTotalHeight = staticLayout.height + citationHeight + secHeight
+        val contentTotalHeight = primaryLayout.height + citationHeight + secHeight
         val startY = if (tpl.isFullScreen) {
             (height - contentTotalHeight) / 2f
         } else {
@@ -1614,7 +1632,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 typeface = Typeface.DEFAULT
                 if (tpl.textShadowEnabled) {
                     val shadowCol = try { Color.parseColor(tpl.textShadowColorHex) } catch (e: Exception) { Color.BLACK }
-                    setShadowLayer(6f * scale, 0f, 3f * scale, shadowCol)
+                    setShadowLayer(shadowBlur, shadowDx, shadowDy, shadowCol)
                 }
             }
             val emblemW = emblemPaint.measureText(emblemText)
@@ -1676,16 +1694,16 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         val textY = citationY + (16f * scale)
         canvas.save()
         canvas.translate(translateX, textY)
-        staticLayout.draw(canvas)
+        primaryLayout.draw(canvas)
         canvas.restore()
 
-        // Draw Bilingual Section if active
-        if (secondaryLayout != null) {
+        // Draw Bilingual Section if active (BOTH mode only)
+        if (bilingualSecondary != null) {
             val bilSpacing = if (tpl.showBilingualSpacing) tpl.bilingualSpacing * scale else 0f
-            val secY = textY + staticLayout.height + bilSpacing
+            val secY = textY + primaryLayout.height + bilSpacing
             canvas.save()
             canvas.translate(translateX, secY)
-            secondaryLayout.draw(canvas)
+            bilingualSecondary.draw(canvas)
             canvas.restore()
         }
 

@@ -24,7 +24,6 @@ object ArabicFonts {
         BundledFont("Almarai", "fonts/almarai-400.ttf", "fonts/almarai-700.ttf"),
         BundledFont("Alyamama", "fonts/alyamama-400.ttf", "fonts/alyamama-700.ttf"),
         BundledFont("Amiri", "fonts/amiri-400.ttf", "fonts/amiri-700.ttf"),
-        BundledFont("Amiri Quran", "fonts/amiri-quran-400.ttf", null),
         BundledFont("Aref Ruqaa", "fonts/aref-ruqaa-400.ttf", "fonts/aref-ruqaa-700.ttf"),
         BundledFont("Aref Ruqaa Ink", "fonts/aref-ruqaa-ink-400.ttf", "fonts/aref-ruqaa-ink-700.ttf"),
         BundledFont("Badeen Display", "fonts/badeen-display-400.ttf", null),

@@ -148,7 +148,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             }
             isRunning = true
             val ip = getLocalIpAddress()
-            val url = "http://$ip:$port/overlay"
+            val url = "http://$ip:$port/lower"
             onStarted(url)
             acquireBroadcastLocks()
 
@@ -390,15 +390,15 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
             val out = socket.getOutputStream()
 
-            // v1.8: industry-standard URIs (clean break — no /ndi aliases).
+            // v1.8: simple user-facing URIs (/lower, /full).
             when {
-                cleanPath == "/overlay" || cleanPath == "" || cleanPath == "/" -> {
+                cleanPath == "/lower" || cleanPath == "" || cleanPath == "/" -> {
                     serveNdiHtmlOverlay(out, isFullScreen = false)
                 }
-                cleanPath == "/overlay/full" -> {
+                cleanPath == "/full" -> {
                     serveNdiHtmlOverlay(out, isFullScreen = true)
                 }
-                cleanPath == "/overlay/events" -> {
+                cleanPath == "/events" -> {
                     serveSseEvents(socket, out, fullPath.contains("show=1"))
                     keepOpen = true
                     return // Persistent SSE stream: socket stays open for pushes
@@ -423,7 +423,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 cleanPath == "/api/videos" -> {
                     serveApiVideos(out)
                 }
-                cleanPath == "/overlay.png" -> {
+                cleanPath == "/snapshot.png" -> {
                     serveTransparentPngOverlay(out)
                 }
                 cleanPath == "/api/status" -> {
@@ -1167,7 +1167,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     function connectSse() {
       const urlParams = new URLSearchParams(window.location.search);
       const isShow = urlParams.get('show') === '1' || window.location.pathname.includes('/show');
-      const sseUrl = '/overlay/events' + (isShow ? '?show=1' : '');
+      const sseUrl = '/events' + (isShow ? '?show=1' : '');
       
       const evtSource = new EventSource(sseUrl);
       evtSource.onmessage = function(e) {
@@ -2128,7 +2128,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     </div>
 
     <div class="btn-row">
-      <a class="btn btn-primary" href="/overlay" target="_blank">فتح طبقة البث الشفافة (Overlay)</a>
+      <a class="btn btn-primary" href="/lower" target="_blank">فتح طبقة البث الشفافة (Overlay)</a>
       <a class="btn btn-secondary" href="/stream?raw=1" target="_blank">عرض دفق الفيديو المباشر (Raw MJPEG)</a>
     </div>
   </div>
@@ -2209,7 +2209,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
     private fun serveStatus(out: OutputStream) {
         val ip = getLocalIpAddress()
-        val msg = "OK - Bible NDI Server Online\nIP: $ip\nPort: $port\nStream: http://$ip:$port/stream\nOverlay: http://$ip:$port/overlay\n"
+        val msg = "OK - Bible NDI Server Online\nIP: $ip\nPort: $port\nStream: http://$ip:$port/stream\nLower: http://$ip:$port/lower\nFull: http://$ip:$port/full\n"
         val bytes = msg.toByteArray(Charsets.UTF_8)
         val writer = PrintWriter(out)
         writer.print("HTTP/1.1 200 OK\r\n")

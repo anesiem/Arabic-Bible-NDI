@@ -40,7 +40,7 @@ See [RELEASE_NOTES_v1.7.md](RELEASE_NOTES_v1.7.md) for the full list.
 * **Discovery**: the NDI 6 runtime advertises both sources under your device model name — look for them directly in NDI Studio Monitor, OBS, or vMix.
 
 ### 🌐 HTTP Overlays (for OBS / vMix browser sources)
-* `/overlay` — Lower Third overlay, `/overlay/full` — Full Show overlay, plus MJPEG stream (`/stream`), snapshots, remote API, and vMix XML feed.
+* `/lower` — Lower Third overlay, `/full` — Full Show overlay, plus MJPEG stream (`/stream`), snapshots, remote API, and vMix XML feed.
 * Live updates over Server-Sent Events with reconnect-safe state versions.
 * **v1.8**: Remote trigger API (`/api/trigger?ref=John+3:16`), phone-friendly `/remote` control page, and `/bibleshow.xml` vMix feed.
 

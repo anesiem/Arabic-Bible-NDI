@@ -16,10 +16,10 @@ The HTTP server now uses clean, industry-standard URIs (no `/ndi` prefix):
 
 | Endpoint | Description |
 |----------|-------------|
-| `/overlay` | Lower third transparent overlay |
-| `/overlay/full` | Full show overlay |
-| `/overlay/events` | SSE verse events |
-| `/overlay.png` | PNG snapshot |
+| `/lower` | Lower third transparent overlay |
+| `/full` | Full show overlay |
+| `/events` | SSE verse events |
+| `/snapshot.png` | PNG snapshot |
 | `/stream` | MJPEG stream |
 | `/api/verse` | Current verse JSON |
 | `/api/trigger?ref=John+3:16` | Trigger a verse remotely |
@@ -87,7 +87,7 @@ Fixed the red/blue channel swap: `#FF0000` now appears correctly red on all NDI 
 
 ## Upgrade Notes
 - **Breaking**: HTTP URIs have changed (no `/ndi` aliases). Update your OBS/vMix browser sources:
-  - Old: `http://<IP>:8080/ndi` → New: `http://<IP>:8080/overlay`
-  - Old: `http://<IP>:8080/show` → New: `http://<IP>:8080/overlay/full`
+  - Old: `http://<IP>:8080/ndi` → New: `http://<IP>:8080/lower`
+  - Old: `http://<IP>:8080/show` → New: `http://<IP>:8080/full`
   - Old: `http://<IP>:8080/ndi/stream` → New: `http://<IP>:8080/stream`
 - Your custom styles migrate automatically; no action needed.

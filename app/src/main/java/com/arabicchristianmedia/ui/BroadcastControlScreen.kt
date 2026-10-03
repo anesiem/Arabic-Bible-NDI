@@ -401,7 +401,7 @@ fun BroadcastControlScreen(
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Text(
-                                            text = if (uiState.serverUrl.isNotBlank()) uiState.serverUrl else "http://192.168.x.x:${uiState.serverPort}/overlay",
+                                            text = if (uiState.serverUrl.isNotBlank()) uiState.serverUrl else "http://192.168.x.x:${uiState.serverPort}/lower",
                                             fontSize = 11.sp,
                                             fontFamily = FontFamily.Monospace,
                                             fontWeight = FontWeight.Bold,
@@ -490,7 +490,7 @@ fun BroadcastControlScreen(
                                     border = BorderStroke(1.dp, BentoBorder),
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
-                                    val showUrl = uiState.serverUrl.replace("/overlay", "/overlay/full")
+                                    val showUrl = uiState.serverUrl.replace("/lower", "/full")
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
@@ -1206,7 +1206,7 @@ fun BroadcastControlScreen(
 
                 val obsSteps = listOf(
                     "1. في برنامج OBS، اضغط على زر (+) في قسم Sources (المصادر) واختر Browser (متصفح).",
-                    "2. ضع في خانة URL الرابط أعلاه: ${if (uiState.serverUrl.isNotBlank()) uiState.serverUrl else "http://<IP>:8080/overlay"}.",
+                    "2. ضع في خانة URL الرابط أعلاه: ${if (uiState.serverUrl.isNotBlank()) uiState.serverUrl else "http://<IP>:8080/lower"}.",
                     "3. اضبط الأبعاد: Width = 1920 و Height = 1080.",
                     "4. تأكد من تحديد خيار (Shutdown source when not active).",
                     "5. بمجرد النقر على أي آية في التطبيق، ستظهر فوراً في البث المباشر مع خلفية شفافة 100% فوق الكاميرا!"
@@ -1451,11 +1451,11 @@ private fun AllUrlsCard(
     onCopy: (String, String) -> Unit
 ) {
     val urls = listOf(
-        "Overlay شفاف (Browser Source)" to "/overlay",
-        "العرض الكامل (Full Show)" to "/overlay/full",
+        "Lower Third (Browser Source)" to "/lower",
+        "العرض الكامل (Full Show)" to "/full",
         "بث MJPEG" to "/stream",
-        "لقطة PNG" to "/overlay.png",
-        "أحداث SSE (الآيات)" to "/overlay/events",
+        "لقطة PNG" to "/snapshot.png",
+        "أحداث SSE (الآيات)" to "/events",
         "الحالة" to "/api/status",
         "واجهة الآيات (API)" to "/api/verse",
         "تشغيل آية عن بُعد" to "/api/trigger?ref=John+3:16",

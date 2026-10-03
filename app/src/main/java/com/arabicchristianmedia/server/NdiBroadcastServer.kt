@@ -869,6 +869,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
       const isFull = data.isFullScreen || $forceFullScreen;
 
+      // v1.8: viewport-relative font sizing — the style's font sizes are
+      // designed for a 1920-wide canvas (like NDI); scale to the actual
+      // viewport so HTTP matches preview/NDI proportions at any size.
+      var vwScale = Math.max(0.2, (window.innerWidth || 1920) / 1920);
+      function scaledPx(base) { return (base * vwScale) + 'px'; }
+
       // 1. Set mode classes
       if (isFull) {
         stage.classList.add('mode-full-show');
@@ -902,8 +908,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         englishCitation.textContent = '(' + data.englishCitation + ')';
         englishText.style.color = data.secondaryTextColorHex || '#CBD5E1';
         englishCitation.style.color = data.secondaryReferenceColorHex || '#94A3B8';
-        englishText.style.fontSize = (data.secondaryVerseFontSize || 18) + 'px';
-        englishCitation.style.fontSize = (data.secondaryReferenceFontSize || 14) + 'px';
+        englishText.style.fontSize = scaledPx(data.secondaryVerseFontSize || 18);
+        englishCitation.style.fontSize = scaledPx(data.secondaryReferenceFontSize || 14);
         englishText.style.fontFamily = data.secondaryFontFamily || 'system-ui';
         englishText.style.fontWeight = data.secondaryVerseIsBold ? 'bold' : 'normal';
         englishText.style.fontStyle = data.secondaryVerseIsItalic ? 'italic' : 'normal';
@@ -1005,8 +1011,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       verseText.style.fontStyle = data.verseIsItalic ? 'italic' : 'normal';
       citationRow.style.fontWeight = data.referenceIsBold ? 'bold' : 'normal';
       citationRow.style.fontStyle = data.referenceIsItalic ? 'italic' : 'normal';
-      verseText.style.fontSize = (data.verseFontSize || 26) + 'px';
-      citationRow.style.fontSize = (data.referenceFontSize || 18) + 'px';
+      verseText.style.fontSize = scaledPx(data.verseFontSize || 26);
+      citationRow.style.fontSize = scaledPx(data.referenceFontSize || 18);
 
       // 6. Color Schemes & Container Styling
       const hex = data.bgColorHex || '#0A1128';
@@ -1053,10 +1059,18 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         if (!c) return 'none';
         return shape + ' rgba(' + c.r + ',' + c.g + ',' + c.b + ',' + alpha + ')';
       }
-      function textShadowCss(blurSet) {
+      function textShadowCss() {
+        // v1.8: directional shadow from the style's thickness (blur),
+        // distance (offset) and compass angle — mirrors NDI canvas.
         if (!data.textShadowEnabled) return 'none';
         var col = data.textShadowColorHex || '#000000';
-        return blurSet.map(function(b) { return b + ' ' + col; }).join(', ');
+        var blur = (data.textShadowBlurDp !== undefined) ? data.textShadowBlurDp : 8;
+        var dist = (data.textShadowOffsetDp !== undefined) ? data.textShadowOffsetDp : 4;
+        var angDeg = (data.textShadowAngleDeg !== undefined) ? data.textShadowAngleDeg : 90;
+        var ang = angDeg * Math.PI / 180;
+        var dx = (Math.cos(ang) * dist).toFixed(1);
+        var dy = (Math.sin(ang) * dist).toFixed(1);
+        return dx + 'px ' + dy + 'px ' + blur + 'px ' + col;
       }
 
       // 100% transparent toggle behaves like the transparent style (mirrors the NDI canvas).
@@ -1083,8 +1097,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       }
 
       // Text shadow on verse + citation (independent flag, both feeds).
-      verseText.style.textShadow = textShadowCss(['0 0 5px', '0 0 12px', '2px 2px 8px']);
-      citationRow.style.textShadow = textShadowCss(['0 0 4px', '0 0 8px']);
+      verseText.style.textShadow = textShadowCss();
+      citationRow.style.textShadow = textShadowCss();
 
       // 7. Motion Background Layer
       const animType = data.animatedBackground || 'none';
@@ -1110,7 +1124,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         animBgLayer.style.opacity = animOpacity;
       } else if (animType === 'custom_video' && data.customVideoId) {
         // v1.7: videos are served by opaque ID from private storage (never by path).
-        const videoUrl = '/ndi/video?id=' + encodeURIComponent(data.customVideoId);
+        const videoUrl = '/video?id=' + encodeURIComponent(data.customVideoId);
         if (customVideoBg.src !== videoUrl) customVideoBg.src = videoUrl;
         customVideoBg.style.display = 'block';
         customVideoBg.style.opacity = animOpacity;

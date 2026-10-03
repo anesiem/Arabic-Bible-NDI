@@ -339,7 +339,7 @@ class TemplateRepository(context: Context) {
             val obj = JSONObject(json)
             if (obj.optString("name", "").trim().isEmpty()) return null
             // Sanity: a real style carries several known keys.
-            val knownKeys = listOf("fontFamily", "bgColorHex", "textColorHex", "verseFontSize", "style")
+            val knownKeys = listOf("fontFamily", "bgColorHex", "textColorHex", "verseFontSize", "style", "showCrossEmblem", "emblem")
             if (knownKeys.none { obj.has(it) }) return null
             fromJson(obj)
         } catch (e: Exception) {
@@ -443,9 +443,8 @@ class TemplateRepository(context: Context) {
             cardGlowColorHex = obj.optString("cardGlowColorHex", "#000000"),
             // v1.7 migration: the legacy showCrossEmblem boolean becomes a
             // free emblem string; old "true" styles get the cross glyph.
-            emblem = obj.optString("emblem", "").ifEmpty {
-                if (obj.optBoolean("showCrossEmblem", true)) "✝" else ""
-            },
+            emblem = if (obj.has("emblem")) obj.optString("emblem", "")
+                     else if (obj.optBoolean("showCrossEmblem", true)) "✝" else "",
             bilingualMode = obj.optBoolean("bilingualMode", false),
             isPureTransparentBackground = obj.optBoolean("isPureTransparentBackground", false),
             animatedBackground = try { com.arabicchristianmedia.model.AnimatedBackgroundType.valueOf(obj.optString("animatedBackground")) } catch (e: Exception) { com.arabicchristianmedia.model.AnimatedBackgroundType.NONE },

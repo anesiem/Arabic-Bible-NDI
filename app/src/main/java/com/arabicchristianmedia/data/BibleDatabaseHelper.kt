@@ -12,7 +12,7 @@ class BibleDatabaseHelper(private val context: Context) {
         const val ARABIC_DB = "arabic.db"
         const val ENGLISH_DB = "english_asv.db"
         /**
-         * Bump when the bundled bible/*.db assets change: stale on-device
+         * Bump when the bundled database assets in assets/bible change: stale on-device
          * copies are recopied on the next launch.
          */
         const val DATA_VERSION = 1

@@ -1428,6 +1428,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         val boxBottom = if (tpl.isFullScreen) height.toFloat() else (height - marginB)
         val boxLeft = if (tpl.isFullScreen) 0f else marginH
         val boxRight = if (tpl.isFullScreen) width.toFloat() else (width - marginH)
+        val rect = RectF(boxLeft, boxTop, boxRight, boxBottom)
+        val radius = if (tpl.isFullScreen) 0f else (tpl.cornerRadiusDp * scale * 2f)
 
         val paint = Paint(Paint.ANTI_ALIAS_FLAG)
 
@@ -1456,10 +1458,6 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             // Not a video template: park this feed's decoder (no-op if none).
             synchronized(videoRenderers) { videoRenderers[isFull]?.pause() }
         }
-
-        // Card background and Animated Motion Video Layer
-        val rect = RectF(boxLeft, boxTop, boxRight, boxBottom)
-        val radius = if (tpl.isFullScreen) 0f else (tpl.cornerRadiusDp * scale * 2f)
 
         if (!tpl.isPureTransparentBackground && tpl.style != TemplateStyle.TRANSPARENT_OUTLINE) {
             // Independent card glow (v1.6): soft halo behind the card in the user's

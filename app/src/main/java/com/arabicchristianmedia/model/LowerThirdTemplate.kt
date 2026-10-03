@@ -22,6 +22,18 @@ enum class BroadcastTextAlignment(val displayName: String) {
     LEFT("Left (LTR)")
 }
 
+/**
+ * v1.8: three-way language control replacing the [LowerThirdTemplate.bilingualMode]
+ * boolean. ARABIC_ONLY shows Arabic verse+citation; ENGLISH_ONLY shows English;
+ * BOTH shows Arabic followed by English (with [LowerThirdTemplate.bilingualSpacing]
+ * between them when [LowerThirdTemplate.showBilingualSpacing] is on).
+ */
+enum class LanguageMode(val displayName: String) {
+    ARABIC_ONLY("Arabic only"),
+    ENGLISH_ONLY("English only"),
+    BOTH("Arabic + English")
+}
+
 enum class AnimatedBackgroundType(val id: String, val displayNameAr: String, val description: String) {
     NONE("none", "بدون فيديو (شفاف / عادي)", "No animated video"),
     GOLDEN_DIVINE_RAYS("golden_rays", "أشعة ذهبية سماوية (Golden Rays)", "Gentle moving golden celestial rays"),
@@ -84,6 +96,15 @@ data class LowerThirdTemplate(
     /** Independent text shadow on verse/citation text. */
     val textShadowEnabled: Boolean = true,
     val textShadowColorHex: String = "#000000",
+    /**
+     * v1.8: shadow thickness (blur radius, dp), offset distance (dp) and
+     * compass direction in degrees (0 = right, 90 = down, 180 = left,
+     * 270 = up). Defaults (8/4/90) reproduce the pre-v1.8 look
+     * (setShadowLayer(8, 0, 4)).
+     */
+    val textShadowBlurDp: Float = 8f,
+    val textShadowOffsetDp: Float = 4f,
+    val textShadowAngleDeg: Int = 90,
     /** Independent glow on the lower-third card/container (where a card exists). */
     val cardGlowEnabled: Boolean = true,
     val cardGlowColorHex: String = "#000000",
@@ -93,7 +114,13 @@ data class LowerThirdTemplate(
      * Replaces the legacy [showCrossEmblem] boolean; old styles migrate to "✝".
      */
     val emblem: String = "",
+    /**
+     * Legacy bilingual switch, kept only for one-time JSON migration.
+     * New code must use [languageMode] instead.
+     */
     val bilingualMode: Boolean = false,
+    /** v1.8: three-way language control (replaces [bilingualMode]). */
+    val languageMode: LanguageMode = LanguageMode.ARABIC_ONLY,
     val isPureTransparentBackground: Boolean = true,
     val animatedBackground: AnimatedBackgroundType = AnimatedBackgroundType.NONE,
     val animatedBackgroundOpacity: Float = 0.65f,

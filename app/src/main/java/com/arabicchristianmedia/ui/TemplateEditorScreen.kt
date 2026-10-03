@@ -16,6 +16,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.MenuAnchorType
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -648,7 +649,7 @@ private fun FontDropdown(selected: String, onSelect: (String) -> Unit) {
             label = { Text("الخط (Font)", fontSize = 10.sp) },
             textStyle = TextStyle(fontFamily = selectedFamily, fontSize = 14.sp),
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            modifier = Modifier.menuAnchor().fillMaxWidth(),
+            modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable).fillMaxWidth(),
             singleLine = true
         )
         ExposedDropdownMenu(

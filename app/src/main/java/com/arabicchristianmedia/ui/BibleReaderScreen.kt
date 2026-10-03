@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -164,7 +165,7 @@ fun BibleReaderScreen(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.MenuBook, null, tint = bento.primary, modifier = Modifier.size(18.dp))
+                            Icon(Icons.AutoMirrored.Filled.MenuBook, null, tint = bento.primary, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text = "${uiState.selectedBook.arabicName} ${ArabicTextFormatter.toEasternArabicDigits(uiState.selectedChapter)}",
@@ -472,8 +473,8 @@ fun BentoBroadcastControlsBar(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            IconButton(onClick = onPrev) { Icon(Icons.Default.ArrowBack, null, tint = bento.primary) }
-            IconButton(onClick = onNext) { Icon(Icons.Default.ArrowForward, null, tint = bento.primary) }
+            IconButton(onClick = onPrev) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = bento.primary) }
+            IconButton(onClick = onNext) { Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = bento.primary) }
             IconButton(onClick = onClear) { Icon(Icons.Default.LayersClear, null, tint = bento.liveRed) }
         }
 

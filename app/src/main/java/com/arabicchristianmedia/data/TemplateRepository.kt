@@ -2,6 +2,7 @@ package com.arabicchristianmedia.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.arabicchristianmedia.model.AnimatedBackgroundType
 import com.arabicchristianmedia.model.BroadcastTextAlignment
 import com.arabicchristianmedia.model.LanguageMode
 import com.arabicchristianmedia.model.LowerThirdTemplate
@@ -194,7 +195,7 @@ class TemplateRepository(context: Context) {
                 cardGlowEnabled = true, // safe default: matches legacy drop-shadow look
                 cardGlowColorHex = "#000000",
                 emblem = "",
-                bilingualMode = false
+                bilingualMode = false,
                 languageMode = LanguageMode.ARABIC_ONLY
             ),
             LowerThirdTemplate(
@@ -307,7 +308,7 @@ class TemplateRepository(context: Context) {
             LowerThirdTemplate(
                 id = "tpl_morning_mercy",
                 name = "Morning Mercy",
-                style = TemplateStyle.MODERN_CARD,
+                style = TemplateStyle.MODERN_GLASS,
                 bgColorHex = "#FFFBEB",
                 bgOpacity = 0.95f,
                 accentColorHex = "#B45309",

@@ -695,9 +695,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
     /** Find a friendly name for a video ID from templates that use it. */
     private fun findVideoDisplayName(videoId: String): String? {
         return try {
-            val all = _uiState.value.templates +
-                templateRepo.getLowerThirdTemplates() +
-                templateRepo.getShowTemplates()
+            val all = _uiState.value.templates + templateRepo.getAllTemplates()
             // Look for a template with this video; use its name.
             all.firstOrNull { it.customVideoId == videoId }?.let {
                 "Video for '${it.name}'"

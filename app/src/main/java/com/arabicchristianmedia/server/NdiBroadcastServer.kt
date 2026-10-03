@@ -7,14 +7,18 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.LinearGradient
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.PorterDuff
 import android.graphics.RadialGradient
+import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.Typeface
 import android.net.Uri
+import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.SystemClock
+import android.util.Log
 import android.text.Layout
 import android.text.SpannableString
 import android.text.Spanned
@@ -48,13 +52,51 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.sin
 
 class NdiBroadcastServer(private val context: Context, private var port: Int = 8080) {
 
     private var serverSocket: ServerSocket? = null
     private var serverJob: Job? = null
+    private var ssePingJob: Job? = null
     private val scope = CoroutineScope(Dispatchers.IO)
+
+    /**
+     * Held while broadcasting. The high-perf WifiLock keeps the Wi-Fi radio
+     * from throttling mid-service; the MulticastLock lets NDI discovery
+     * (multicast) through on devices with aggressive Wi-Fi power saving.
+     * Best-effort only — real background guarantees await the foreground
+     * service migration (deferred, needs a UX decision on the notification).
+     */
+    private var wifiLock: WifiManager.WifiLock? = null
+    private var multicastLock: WifiManager.MulticastLock? = null
+
+    private fun acquireBroadcastLocks() {
+        try {
+            val wifi = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+                ?: return
+            if (wifiLock == null) {
+                wifiLock = wifi.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "ArabicBibleNDI::broadcast")
+            }
+            if (wifiLock?.isHeld == false) wifiLock?.acquire()
+            if (multicastLock == null) {
+                multicastLock = wifi.createMulticastLock("ArabicBibleNDI::discovery").apply {
+                    setReferenceCounted(true)
+                }
+            }
+            if (multicastLock?.isHeld == false) multicastLock?.acquire()
+        } catch (e: Exception) {
+            Log.w("NdiBroadcastServer", "Could not acquire broadcast locks: ${e.message}")
+        }
+    }
+
+    private fun releaseBroadcastLocks() {
+        try { if (wifiLock?.isHeld == true) wifiLock?.release() } catch (e: Exception) {}
+        try { if (multicastLock?.isHeld == true) multicastLock?.release() } catch (e: Exception) {}
+        wifiLock = null
+        multicastLock = null
+    }
 
     @Volatile
     var isRunning = false
@@ -99,6 +141,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             val ip = getLocalIpAddress()
             val url = "http://$ip:$port/ndi"
             onStarted(url)
+            acquireBroadcastLocks()
 
             serverJob = scope.launch {
                 while (isActive && isRunning) {
@@ -112,6 +155,31 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                     }
                 }
             }
+            // SSE keep-alive: a comment ping every 15s keeps NATs/proxies from
+            // silently dropping idle overlay connections between verse changes.
+            ssePingJob = scope.launch {
+                while (isActive && isRunning) {
+                    delay(15_000)
+                    val dead = mutableListOf<Pair<PrintWriter, Boolean>>()
+                    for ((writer, _) in sseClients) {
+                        try {
+                            synchronized(writer) {
+                                writer.print(": ping\n\n")
+                                writer.flush()
+                            }
+                            if (writer.checkError()) dead.add(writer to false)
+                        } catch (e: Exception) {
+                            dead.add(writer to false)
+                        }
+                    }
+                    if (dead.isNotEmpty()) {
+                        // Remove by writer identity; the isShow flag is irrelevant here.
+                        val deadWriters = dead.map { it.first }.toSet()
+                        sseClients.removeAll { deadWriters.contains(it.first) }
+                        deadWriters.forEach { try { it.close() } catch (e: Exception) {} }
+                    }
+                }
+            }
         } catch (e: Exception) {
             isRunning = false
             onError(e.message ?: "Failed to start NDI server on port $port")
@@ -120,6 +188,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
     fun stop() {
         isRunning = false
+        releaseBroadcastLocks()
         try {
             serverSocket?.close()
         } catch (e: Exception) {
@@ -128,11 +197,18 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         serverJob?.cancel()
         serverJob = null
         serverSocket = null
+        ssePingJob?.cancel()
+        ssePingJob = null
 
         sseClients.forEach { (writer, _) ->
             try { writer.close() } catch (e: Exception) {}
         }
         sseClients.clear()
+        // v1.7: release video decoders (recreated lazily on next start).
+        synchronized(videoRenderers) {
+            videoRenderers.values.forEach { try { it.release() } catch (e: Exception) {} }
+            videoRenderers.clear()
+        }
     }
 
     @Volatile
@@ -144,10 +220,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
      * Monotonically increasing frame version, bumped on every state change that
      * affects rendered output. NDI senders use it for dirty-frame detection so
      * static verses don't burn CPU/network re-sending identical frames.
+     * AtomicLong: incrementing a @Volatile Long is not atomic, and this is
+     * bumped from several threads (UI, SSE throttle, verse updates).
      */
-    @Volatile
-    private var _frameVersion = 0L
-    val frameVersion: Long get() = _frameVersion
+    private val _frameVersion = AtomicLong(0L)
+    val frameVersion: Long get() = _frameVersion.get()
 
     private var cachedLowerBitmap: Bitmap? = null
     private var cachedShowBitmap: Bitmap? = null
@@ -155,7 +232,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     fun invalidateBitmapCache() {
         isCacheDirtyLower = true
         isCacheDirtyShow = true
-        _frameVersion++
+        _frameVersion.incrementAndGet()
     }
 
     fun updateVerse(verse: BibleVerse, live: Boolean = true) {
@@ -217,7 +294,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     private fun broadcastStateToClients() {
         val lowerPayload = buildJsonState(false)
         val showPayload = buildJsonState(true)
-        
+
         val lowerData = "data: $lowerPayload\n\n"
         val showData = "data: $showPayload\n\n"
 
@@ -225,8 +302,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         for (pair in sseClients) {
             val (writer, isShow) = pair
             try {
-                writer.print(if (isShow) showData else lowerData)
-                writer.flush()
+                // Serialized per client: broadcasts come from several threads
+                // (UI, throttle job, verse updates) and must not interleave.
+                synchronized(writer) {
+                    writer.print(if (isShow) showData else lowerData)
+                    writer.flush()
+                }
                 if (writer.checkError()) {
                     deadClients.add(pair)
                 }
@@ -234,10 +315,18 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 deadClients.add(pair)
             }
         }
-        sseClients.removeAll(deadClients.toSet())
+        if (deadClients.isNotEmpty()) {
+            sseClients.removeAll(deadClients.toSet())
+            deadClients.forEach { (writer, _) -> try { writer.close() } catch (e: Exception) {} }
+        }
     }
 
     private fun handleClient(socket: Socket) {
+        // Set when this connection must survive handleClient() (SSE event
+        // stream, MJPEG loop): the finally block must NOT close it, otherwise
+        // the registered client dies immediately and overlays only update on
+        // browser reconnect (~3s lag instead of instant pushes).
+        var keepOpen = false
         try {
             socket.soTimeout = 15000
             socket.tcpNoDelay = true
@@ -277,12 +366,16 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
             // Parse request headers
             var isBrowserNavigation = false
+            var rangeHeader: String? = null
             var headerLine: String?
             while (reader.readLine().also { headerLine = it } != null) {
                 if (headerLine.isNullOrEmpty()) break
                 val lower = headerLine?.lowercase() ?: ""
                 if (lower.startsWith("accept:") && lower.contains("text/html")) {
                     isBrowserNavigation = true
+                }
+                if (lower.startsWith("range:")) {
+                    rangeHeader = headerLine!!.substringAfter(":").trim()
                 }
             }
 
@@ -297,7 +390,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 }
                 cleanPath == "/ndi/events" -> {
                     serveSseEvents(socket, out, fullPath.contains("show=1"))
-                    return // Keep socket open for persistent SSE push
+                    keepOpen = true
+                    return // Persistent SSE stream: socket stays open for pushes
                 }
                 cleanPath == "/ndi/stream.png" || cleanPath == "/ndi/stream.mjpg" || cleanPath == "/ndi/stream" || cleanPath == "/stream" || cleanPath == "/video" || cleanPath == "/live" -> {
                     if (isBrowserNavigation && !fullPath.contains("raw=1")) {
@@ -319,8 +413,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 cleanPath.startsWith("/fonts/") -> {
                     serveFontFile(out, cleanPath.removePrefix("/fonts/"))
                 }
+                cleanPath == "/ndi/video" -> {
+                    serveVideoById(out, fullPath, rangeHeader)
+                }
                 cleanPath == "/ndi/video_file" -> {
-                    serveLocalVideo(out, fullPath)
+                    // v1.7: removed — arbitrary path reads were a LAN security
+                    // hole. Videos are served by ID via /ndi/video.
+                    send404(out)
                 }
                 else -> {
                     serveNdiHtmlOverlay(out)
@@ -329,7 +428,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         } catch (e: Exception) {
             // Connection closed or timed out
         } finally {
-            try { socket.close() } catch (e: Exception) {}
+            // SSE streams opted out via keepOpen: their socket is closed only
+            // when a broadcast write fails (see broadcastStateToClients) or on
+            // server stop(). Everything else is one-shot: close it here.
+            if (!keepOpen) {
+                try { socket.close() } catch (e: Exception) {}
+            }
         }
     }
 
@@ -417,7 +521,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             put("textShadowColorHex", tpl.textShadowColorHex)
             put("cardGlowEnabled", tpl.cardGlowEnabled)
             put("cardGlowColorHex", tpl.cardGlowColorHex)
-            put("showCrossEmblem", tpl.showCrossEmblem)
+            put("emblem", tpl.emblem)
             put("isPureTransparentBackground", tpl.isPureTransparentBackground)
             put("isFullScreen", tpl.isFullScreen)
             put("bilingualSpacing", tpl.bilingualSpacing)
@@ -433,6 +537,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             put("animatedBackground", tpl.animatedBackground.id)
             put("animatedBackgroundOpacity", tpl.animatedBackgroundOpacity)
             put("customVideoUrl", tpl.customVideoUrl)
+            put("customVideoId", tpl.customVideoId)
         }
         return root.toString()
     }
@@ -666,11 +771,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
     .cross-icon {
       display: inline-block;
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      background: currentColor;
-      box-shadow: 0 0 10px currentColor;
+      font-size: 1.15em;
+      line-height: 1;
     }
 
     .verse-text {
@@ -805,26 +907,31 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         cardBox.style.display = 'flex';
         cardBox.style.flexDirection = 'column';
         cardBox.style.justifyContent = 'center';
-        cardBox.style.alignItems = 'center';
         cardBox.style.margin = '0 auto';
         cardBox.style.padding = '6vh 6vw';
         cardBox.style.width = '100vw';
         cardBox.style.maxWidth = '100vw';
-        cardBox.style.textAlign = 'center';
+        // v1.7: Full Show obeys the user's alignment — no forced centering.
+        // Bidi-aware: LEFT/RIGHT mean visual left/right for both scripts.
+        const align = data.alignment || 'RIGHT';
+        const alignCss = align === 'CENTER' ? 'center' : (align === 'LEFT' ? 'left' : 'right');
+        container.style.direction = align === 'LEFT' ? 'ltr' : 'rtl';
+        cardBox.style.alignItems = align === 'CENTER' ? 'center' : (align === 'LEFT' ? 'flex-start' : 'flex-end');
+        cardBox.style.textAlign = alignCss;
 
         citationRow.style.display = 'flex';
         citationRow.style.width = '100%';
-        citationRow.style.justifyContent = 'center';
+        citationRow.style.justifyContent = align === 'CENTER' ? 'center' : 'flex-start';
 
         verseText.style.width = '100%';
-        verseText.style.textAlign = 'center';
+        verseText.style.textAlign = alignCss;
         verseText.style.margin = '0 auto';
 
         englishSection.style.width = '100%';
-        englishSection.style.textAlign = 'center';
+        englishSection.style.textAlign = alignCss;
         englishSection.style.margin = '10px auto 0 auto';
         englishText.style.width = '100%';
-        englishText.style.textAlign = 'center';
+        englishText.style.textAlign = alignCss;
       } else {
         const botMargin = (data.positionBottomPercent || 6) + 'vh';
         const hMargin = (data.horizontalMarginPercent || 6) + 'vw';
@@ -891,7 +998,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       citationRow.style.color = refColor;
       crossEmblem.style.backgroundColor = accent;
       crossEmblem.style.color = accent;
-      crossEmblem.style.display = data.showCrossEmblem ? 'inline-block' : 'none';
+      // v1.7: free user emblem (emoji/symbol); empty = hidden.
+      if (data.emblem) {
+        crossEmblem.textContent = data.emblem;
+        crossEmblem.style.display = 'inline-block';
+      } else {
+        crossEmblem.style.display = 'none';
+      }
 
       const radius = isFull ? '0' : (data.cornerRadiusDp || 16) + 'px';
       cardBox.style.borderRadius = radius;
@@ -968,10 +1081,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       } else if (animType === 'particles') {
         animBgLayer.classList.add('anim-particles');
         animBgLayer.style.opacity = animOpacity;
-      } else if (animType === 'custom_video' && data.customVideoUrl) {
-        const videoUrl = (data.customVideoUrl.startsWith('http') || data.customVideoUrl.startsWith('blob:')) 
-           ? data.customVideoUrl 
-           : '/ndi/video_file?path=' + encodeURIComponent(data.customVideoUrl);
+      } else if (animType === 'custom_video' && data.customVideoId) {
+        // v1.7: videos are served by opaque ID from private storage (never by path).
+        const videoUrl = '/ndi/video?id=' + encodeURIComponent(data.customVideoId);
         if (customVideoBg.src !== videoUrl) customVideoBg.src = videoUrl;
         customVideoBg.style.display = 'block';
         customVideoBg.style.opacity = animOpacity;
@@ -1044,10 +1156,42 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     }
 
     // Dedicated reusable bitmaps for motion rendering (one per feed). Never the
-    // shared static cache: motion ticks redraw in place at ~15fps, and a shared
+    // shared static cache: motion ticks redraw in place at up to ~30fps, and a shared
     // bitmap would let static readers (preview, MJPEG) see half-drawn frames.
     private var motionLowerBitmap: Bitmap? = null
     private var motionShowBitmap: Bitmap? = null
+
+    /**
+     * v1.7 custom video backgrounds: one decoder per feed (Lower/Full are
+     * independent). Created lazily, released on server stop().
+     */
+    private val videoStore by lazy { VideoStore(context) }
+    private val videoRenderers = mutableMapOf<Boolean, VideoBackgroundRenderer>()
+    private fun getVideoRenderer(isFull: Boolean): VideoBackgroundRenderer =
+        synchronized(videoRenderers) {
+            videoRenderers.getOrPut(isFull) { VideoBackgroundRenderer() }
+        }
+
+    /**
+     * Resolves the template's custom video to a private-storage file.
+     * Null = no video (feature off or file missing); callers fall back to the
+     * normal background. Legacy raw URLs are migrated by TemplateRepository.
+     * Resolution is cached per feed (file I/O must not run on every frame).
+     */
+    private val resolvedVideoCache = mutableMapOf<Boolean, Pair<String, java.io.File?>>()
+    private fun resolveCustomVideoFile(tpl: LowerThirdTemplate, isFull: Boolean): java.io.File? {
+        if (tpl.animatedBackground != AnimatedBackgroundType.CUSTOM_VIDEO || tpl.customVideoId.isEmpty()) {
+            synchronized(resolvedVideoCache) { resolvedVideoCache.remove(isFull) }
+            return null
+        }
+        synchronized(resolvedVideoCache) {
+            val cached = resolvedVideoCache[isFull]
+            if (cached != null && cached.first == tpl.customVideoId) return cached.second
+        }
+        val file = videoStore.fileFor(tpl.customVideoId)
+        synchronized(resolvedVideoCache) { resolvedVideoCache[isFull] = tpl.customVideoId to file }
+        return file
+    }
 
     /**
      * Force-renders a fresh frame for motion mode (current animation phase) into
@@ -1064,7 +1208,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             bmp = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
             if (isFull) motionShowBitmap = bmp else motionLowerBitmap = bmp
         }
-        drawFrameInto(bmp, width, height, isForStream = false, tpl, isFull)
+        drawFrameInto(bmp, width, height, isForStream = false, tpl, isFull, isMotionTick = true)
         return bmp
     }
 
@@ -1111,7 +1255,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
      * dedicated reused bitmaps (see [renderMotionFrame]) so the static cache is
      * never redrawn in place — static readers can never observe a half-drawn frame.
      */
-    private fun drawFrameInto(bitmap: Bitmap, width: Int, height: Int, isForStream: Boolean, tpl: LowerThirdTemplate, isFull: Boolean) {
+    private fun drawFrameInto(bitmap: Bitmap, width: Int, height: Int, isForStream: Boolean, tpl: LowerThirdTemplate, isFull: Boolean, isMotionTick: Boolean = false) {
         val canvas = Canvas(bitmap)
 
         val fallbackVerse = BibleVerse(
@@ -1249,12 +1393,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
             )
             
-            // For Bilingual mode: English should usually be Left aligned (NORMAL for LTR)
-            // unless the user chose Center.
-            val secAlignment = if (tpl.alignment == BroadcastTextAlignment.CENTER) {
-                Layout.Alignment.ALIGN_CENTER
-            } else {
-                Layout.Alignment.ALIGN_NORMAL // Always Left for LTR English
+            // Bidi-aware: the user's LEFT/RIGHT choice means visual left/right
+            // regardless of script. For LTR English that's NORMAL (left) /
+            // OPPOSITE (right) — previously both mapped to left.
+            val secAlignment = when (tpl.alignment) {
+                BroadcastTextAlignment.CENTER -> Layout.Alignment.ALIGN_CENTER
+                BroadcastTextAlignment.LEFT -> Layout.Alignment.ALIGN_NORMAL
+                BroadcastTextAlignment.RIGHT -> Layout.Alignment.ALIGN_OPPOSITE
             }
             
             secondaryLayout = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -1283,12 +1428,36 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         val boxBottom = if (tpl.isFullScreen) height.toFloat() else (height - marginB)
         val boxLeft = if (tpl.isFullScreen) 0f else marginH
         val boxRight = if (tpl.isFullScreen) width.toFloat() else (width - marginH)
+        val rect = RectF(boxLeft, boxTop, boxRight, boxBottom)
+        val radius = if (tpl.isFullScreen) 0f else (tpl.cornerRadiusDp * scale * 2f)
 
         val paint = Paint(Paint.ANTI_ALIAS_FLAG)
 
-        // Card background and Animated Motion Video Layer
-        val rect = RectF(boxLeft, boxTop, boxRight, boxBottom)
-        val radius = if (tpl.isFullScreen) 0f else (tpl.cornerRadiusDp * scale * 2f)
+        // v1.7 custom video background (per feed). The video is the background
+        // layer: drawn behind card/effects/text/emblem with the user's opacity.
+        // Motion ticks pull fresh decoded frames; static renders freeze on the
+        // last frame (the first static render kick-starts decoding).
+        val customVideoFile = resolveCustomVideoFile(tpl, isFull)
+        val videoRenderer = if (customVideoFile != null) getVideoRenderer(isFull) else null
+        if (videoRenderer != null && customVideoFile != null) {
+            videoRenderer.setSource(customVideoFile)
+            videoRenderer.setAlpha(tpl.animatedBackgroundOpacity)
+            if (isMotionTick || !videoRenderer.hasFrame()) videoRenderer.requestFrame()
+            val videoRect = Rect(boxLeft.toInt(), boxTop.toInt(), boxRight.toInt(), boxBottom.toInt())
+            if (radius > 0f) {
+                canvas.save()
+                canvas.clipPath(Path().apply {
+                    addRoundRect(RectF(boxLeft, boxTop, boxRight, boxBottom), radius, radius, Path.Direction.CW)
+                })
+                videoRenderer.drawOnto(canvas, videoRect)
+                canvas.restore()
+            } else {
+                videoRenderer.drawOnto(canvas, videoRect)
+            }
+        } else {
+            // Not a video template: park this feed's decoder (no-op if none).
+            synchronized(videoRenderers) { videoRenderers[isFull]?.pause() }
+        }
 
         if (!tpl.isPureTransparentBackground && tpl.style != TemplateStyle.TRANSPARENT_OUTLINE) {
             // Independent card glow (v1.6): soft halo behind the card in the user's
@@ -1305,7 +1474,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             val bgAlpha = (tpl.bgOpacity * 255).toInt().coerceIn(0, 255)
             val baseBgCol = try { Color.parseColor(tpl.bgColorHex) } catch (e: Exception) { Color.DKGRAY }
 
-            if (tpl.animatedBackground != AnimatedBackgroundType.NONE) {
+            if (videoRenderer != null) {
+                // v1.7: the custom video IS the card background (already drawn
+                // above) — skip the normal fill so it stays visible.
+            } else if (tpl.animatedBackground != AnimatedBackgroundType.NONE) {
                 val timeSec = (System.currentTimeMillis() % 12000L) / 1000f
                 val phase = (sin(timeSec.toDouble() * 1.5).toFloat() + 1f) / 2f
                 val shader: Shader? = when (tpl.animatedBackground) {
@@ -1378,7 +1550,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 canvas.drawRoundRect(rect, radius, radius, paint)
                 paint.style = Paint.Style.FILL
             }
-        } else if (tpl.animatedBackground != AnimatedBackgroundType.NONE) {
+        } else if (tpl.animatedBackground != AnimatedBackgroundType.NONE && tpl.animatedBackground != AnimatedBackgroundType.CUSTOM_VIDEO) {
             // If Pure Transparent background with animated motion background is selected:
             // Draw a delicate, ethereal luminous motion glow directly behind the verse while maintaining 100% alpha transparency elsewhere!
             val animAlpha = (tpl.animatedBackgroundOpacity * 75).toInt().coerceIn(15, 120)
@@ -1429,10 +1601,54 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         }
 
         val citationY = startY + (refPaint.textSize * 0.9f)
-        if (tpl.isFullScreen) {
-            refPaint.textAlign = Paint.Align.CENTER
-            canvas.drawText(citation, width / 2f, citationY, refPaint)
+
+        // User emblem (emoji/symbol) drawn adjacent to the citation on the
+        // reading-start side, in the accent color like the HTTP overlay.
+        // Empty emblem = nothing drawn.
+        val emblemText = tpl.emblem
+        if (emblemText.isNotEmpty()) {
+            val emblemPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = try { Color.parseColor(tpl.accentColorHex) } catch (e: Exception) { refPaint.color }
+                textSize = refPaint.textSize
+                // System default typeface: reliable emoji/symbol fallback.
+                typeface = Typeface.DEFAULT
+                if (tpl.textShadowEnabled) {
+                    val shadowCol = try { Color.parseColor(tpl.textShadowColorHex) } catch (e: Exception) { Color.BLACK }
+                    setShadowLayer(6f * scale, 0f, 3f * scale, shadowCol)
+                }
+            }
+            val emblemW = emblemPaint.measureText(emblemText)
+            val citeW = refPaint.measureText(citation)
+            val emblemGap = 16f * scale
+            val totalW = emblemW + emblemGap + citeW
+
+            fun drawEmblemAt(x: Float, align: Paint.Align) {
+                emblemPaint.textAlign = align
+                canvas.drawText(emblemText, x, citationY, emblemPaint)
+            }
+
+            // v1.7: no forced centering — Full Show obeys the user's alignment
+            // exactly like Lower Third and every other surface.
+            when (tpl.alignment) {
+                    BroadcastTextAlignment.CENTER -> {
+                        val startX = (width - totalW) / 2f
+                        refPaint.textAlign = Paint.Align.LEFT
+                        canvas.drawText(citation, startX, citationY, refPaint)
+                        drawEmblemAt(startX + citeW + emblemGap, Paint.Align.LEFT)
+                    }
+                    BroadcastTextAlignment.LEFT -> {
+                        refPaint.textAlign = Paint.Align.LEFT
+                        canvas.drawText(citation, boxLeft + paddingH + emblemW + emblemGap, citationY, refPaint)
+                        drawEmblemAt(boxLeft + paddingH, Paint.Align.LEFT)
+                    }
+                    BroadcastTextAlignment.RIGHT -> {
+                        refPaint.textAlign = Paint.Align.RIGHT
+                        canvas.drawText(citation, boxRight - paddingH - emblemW - emblemGap, citationY, refPaint)
+                        drawEmblemAt(boxRight - paddingH, Paint.Align.RIGHT)
+                    }
+            }
         } else {
+            // v1.7: no forced centering here either.
             when (tpl.alignment) {
                 BroadcastTextAlignment.CENTER -> {
                     refPaint.textAlign = Paint.Align.CENTER
@@ -1449,7 +1665,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             }
         }
 
-        val translateX = if (tpl.isFullScreen || tpl.alignment == BroadcastTextAlignment.CENTER) {
+        // v1.7: the verse block obeys the user's alignment on Full Show too.
+        val translateX = if (tpl.alignment == BroadcastTextAlignment.CENTER) {
             (width - contentWidth) / 2f
         } else {
             boxLeft + paddingH
@@ -1498,29 +1715,72 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
     }
 
-    private fun serveLocalVideo(out: OutputStream, fullPath: String) {
+    /**
+     * v1.7: serves a user background video by opaque ID from private storage.
+     * - ID allowlist only (VideoStore validates the pattern + canonical path):
+     *   a LAN client can never request arbitrary files.
+     * - Streams in chunks (no whole-file readBytes into RAM).
+     * - Supports HTTP Range / 206 so browsers can seek.
+     */
+    private fun serveVideoById(out: OutputStream, fullPath: String, rangeHeader: String?) {
         try {
-            val uriStr = Uri.parse(fullPath).getQueryParameter("path") ?: return send404(out)
-            val uri = Uri.parse(uriStr)
-            
-            val inputStream = if (uriStr.startsWith("content://")) {
-                context.contentResolver.openInputStream(uri)
-            } else {
-                FileInputStream(File(uriStr))
-            } ?: return send404(out)
+            val id = Uri.parse(fullPath).getQueryParameter("id") ?: return send404(out)
+            val file = videoStore.fileFor(id) ?: return send404(out)
+            val total = file.length()
+            if (total <= 0) return send404(out)
 
-            val bytes = inputStream.use { it.readBytes() }
+            var start = 0L
+            var end = total - 1
+            var partial = false
+            if (rangeHeader != null) {
+                // Single range: "bytes=start-end".
+                val m = Regex("bytes=(\\d*)-(\\d*)").find(rangeHeader.trim())
+                if (m != null) {
+                    val s = m.groupValues[1]
+                    val e = m.groupValues[2]
+                    try {
+                        start = if (s.isNotEmpty()) s.toLong() else maxOf(0L, total - e.toLong())
+                        end = if (e.isNotEmpty() && s.isNotEmpty()) e.toLong().coerceAtMost(total - 1) else total - 1
+                        if (start in 0 until total && end >= start) partial = true
+                    } catch (nfe: NumberFormatException) { /* fall through to full */ }
+                }
+            }
+            val length = end - start + 1
             val writer = PrintWriter(out)
-            writer.print("HTTP/1.1 200 OK\r\n")
+            if (partial) {
+                writer.print("HTTP/1.1 206 Partial Content\r\n")
+            } else {
+                writer.print("HTTP/1.1 200 OK\r\n")
+            }
             writer.print("Content-Type: video/mp4\r\n")
-            writer.print("Content-Length: ${bytes.size}\r\n")
+            writer.print("Accept-Ranges: bytes\r\n")
+            writer.print("Content-Length: $length\r\n")
+            if (partial) {
+                writer.print("Content-Range: bytes $start-$end/$total\r\n")
+            }
             writer.print("Access-Control-Allow-Origin: *\r\n")
             writer.print("Connection: close\r\n\r\n")
             writer.flush()
-            out.write(bytes)
-            out.flush()
+
+            file.inputStream().use { input ->
+                var skipped = 0L
+                while (skipped < start) {
+                    val n = input.skip(start - skipped)
+                    if (n <= 0) break
+                    skipped += n
+                }
+                val buf = ByteArray(64 * 1024)
+                var remaining = length
+                while (remaining > 0) {
+                    val n = input.read(buf, 0, minOf(buf.size.toLong(), remaining).toInt())
+                    if (n <= 0) break
+                    out.write(buf, 0, n)
+                    remaining -= n
+                }
+                out.flush()
+            }
         } catch (e: Exception) {
-            send404(out)
+            // Headers may already be sent; nothing more we can do.
         }
     }
 

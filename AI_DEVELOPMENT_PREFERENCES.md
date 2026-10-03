@@ -1,6 +1,6 @@
-# AI Development Guidelines & Core Preferences
+# AI Development Guidelines & Core Preferences (v2)
 
-> **Instructions for AI Assistants**: This document outlines my core engineering values, design principles, and quality standards. When working on my projects, strictly adhere to these principles to maintain consistency, reliability, and high standards across all developments.
+> **Instructions for AI Assistants**: This document outlines my core engineering values, design principles, and quality standards. When working on my projects, strictly adhere to these principles to maintain consistency, reliability, and high standards across all developments. A short entry file (`.ai_instructions.md`) points here — this file is authoritative.
 
 ---
 
@@ -36,7 +36,7 @@
 
 ### 5. 🌐 Language, Localization & RTL/LTR Formatting
 * **Native Language Direction**: Respect native text directions (`RTL` for Arabic/Hebrew, `LTR` for English/European languages).
-* **Bilingual Alignment**: Ensure bilingual layouts position primary language text correctly (RTL) while formatting secondary language text correctly (LTR).
+* **Bilingual Alignment**: Ensure bilingual layouts position primary language text correctly (RTL) while formatting secondary language text correctly (LTR). A user's LEFT/RIGHT alignment choice means *visual* left/right for both scripts — never map both choices to one side for the secondary language.
 * **Language-Specific Numerals & Punctuation**: Respect language-specific digit formatting (e.g., Eastern Arabic numerals `١٢٣` vs. Western digits `123`) and localized punctuation (Arabic commas `،` and semicolons `؛`).
 * **Dedicated Per-Language Typography**: Provide independent font family and font size controls for each language in bilingual displays.
 
@@ -63,13 +63,49 @@
 
 ---
 
+### 9. 📴 Offline-First Operation
+* **No runtime downloads**: fonts, Bible data, and all required resources must be bundled in the app. The app must work fully offline (airplane mode) — user media comes from device storage only.
+* **LAN is fine, WAN is not**: local HTTP/SSE/NDI communication on the LAN is expected; nothing may require the public internet at runtime.
+* **No fake capabilities**: never label a stream with a protocol tier it doesn't genuinely implement (e.g., no "NDI|HX" unless it is true HX encoding), and never advertise a discovery service that isn't genuine. No paid-SDK features or references without an explicit license.
+
+---
+
+### 10. 📦 Small, Shippable Releases
+* **Prefer small releases**: ship independently testable increments; never bundle a big-bang rewrite.
+* **Record deferred work**: anything cut from the release becomes a GitHub issue for an upcoming release — never silently dropped.
+* **One concern per commit**: small commits with clear "what + why" messages on a release branch; no pushing until the work is complete and separately approved.
+
+---
+
+### 11. 🔍 Verify Before Changing
+* **Audit first**: inspect the actual code path before diagnosing or fixing. Never guess a fix for a device-only report you cannot reproduce statically.
+* **Ask for evidence**: when a bug can't be reproduced, hand over the exact isolating checks (expected vs. observed, which surface, which build) instead of changing code blindly.
+* **Defensive networking, I/O, database, JNI, and lifecycle handling**; reuse hot-loop buffers; keep per-feed state independent.
+
+---
+
+### 12. 📱 Compact-Screen & Large-Font Accessibility
+* **Layouts must survive 1.3–1.5× system font scale** on compact phones (this is a mandatory test condition, not an edge case).
+* **Responsive breakpoints**: weighted/bounded titles with ellipsis, compact icon actions on narrow widths, no letter-by-letter text crushing, status-bar inset ownership, intrinsic-width badges.
+* **Tablets stay first-class**: phone fixes must not regress the tablet layout — verify both.
+
+---
+
+### 13. 🤝 Plan-First Collaboration & Approval Gates
+* **Plan before implementing**: for anything beyond a trivial fix, present the plan (scope, defaults for open questions, what stays out) and wait for explicit approval.
+* **Approval gates**: ask before any code change once scope is locked, and before every GitHub operation — commit, push, issue, PR, tag, release, or publication. A "go ahead" for implementation is not a "go ahead" for GitHub.
+* **Surface open questions with recommendations**: when the user delegates ("I trust your recommendation"), give a direct call with a one-line reason and record the default in the plan.
+
+---
+
 ## 📋 AI Assistant Workflow Checklist
 
 When assigned a task in any project, the AI assistant should follow this sequence:
 
 1. **Understand Intent & Scope**: Clarify requirements and verify existing code architecture before modifying files.
-2. **Implement Cleanly**: Apply targeted edits following the 8 pillars above.
-3. **Eliminate Warnings & Errors**: Verify code compiles cleanly with zero warnings or errors.
-4. **Run Tests**: Execute unit tests and build tasks to verify stability.
-5. **Update Documentation**: Update `README.md` and technical guides to reflect version changes and new features.
-6. **Deploy & Ask Before Publishing**: Deploy and verify on connected devices/tablets, then ask for explicit user approval before publishing releases to GitHub or remote repositories.
+2. **Plan & Get Approval**: Present the plan (scope, open questions with recommended defaults, explicit non-goals) and wait for the user's go-ahead.
+3. **Implement Cleanly**: Apply targeted edits following the 13 pillars above, one concern per commit.
+4. **Eliminate Warnings & Errors**: Verify code compiles cleanly with zero warnings or errors.
+5. **Run Tests**: Execute unit tests and build tasks to verify stability.
+6. **Update Documentation**: Update `README.md` and technical guides to reflect version changes and new features.
+7. **Ask Before GitHub**: Never commit, push, open issues/PRs, tag, or publish releases without explicit approval for that specific operation.

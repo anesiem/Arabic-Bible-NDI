@@ -1,19 +1,12 @@
-<?xml version="1.0" encoding="utf-8"?><!--
-   Sample data extraction rules file; uncomment and customize as necessary.
-   See https://developer.android.com/about/versions/12/backup-restore#xml-changes
-   for details.
--->
+<?xml version="1.0" encoding="utf-8"?>
 <data-extraction-rules>
     <cloud-backup>
-        <!-- TODO: Use <include> and <exclude> to control what is backed up.
-        <include .../>
-        <exclude .../>
-        -->
+        <!-- Bundled Bible databases are re-copied from assets on first launch;
+             backing them up wastes the 25MB cloud quota. User styles, working
+             templates, and preferences ARE backed up. -->
+        <exclude domain="database" path="arabic.db"/>
+        <exclude domain="database" path="english_asv.db"/>
+        <!-- User background videos can be hundreds of MB; re-pickable. -->
+        <exclude domain="file" path="backgrounds/"/>
     </cloud-backup>
-    <!--
-    <device-transfer>
-        <include .../>
-        <exclude .../>
-    </device-transfer>
-    -->
 </data-extraction-rules>

@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -164,7 +165,7 @@ fun BibleReaderScreen(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.MenuBook, null, tint = bento.primary, modifier = Modifier.size(18.dp))
+                            Icon(Icons.AutoMirrored.Filled.MenuBook, null, tint = bento.primary, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text = "${uiState.selectedBook.arabicName} ${ArabicTextFormatter.toEasternArabicDigits(uiState.selectedChapter)}",
@@ -292,6 +293,23 @@ fun BibleReaderScreen(
 
                 // Verse List
                 val versesToShow = if (uiState.isSearching) uiState.searchResults else uiState.displayedVerses
+                if (uiState.isLoadingBible && versesToShow.isEmpty()) {
+                    // First-launch database copy: show progress instead of a blank list.
+                    Box(
+                        modifier = Modifier.fillMaxWidth().weight(1f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            CircularProgressIndicator(color = bento.primary)
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                "جاري تحميل الكتاب المقدس...",
+                                fontSize = 13.sp,
+                                color = bento.textSecondary
+                            )
+                        }
+                    }
+                } else
                 LazyColumn(
                     state = lazyListState,
                     modifier = Modifier
@@ -455,8 +473,8 @@ fun BentoBroadcastControlsBar(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            IconButton(onClick = onPrev) { Icon(Icons.Default.ArrowBack, null, tint = bento.primary) }
-            IconButton(onClick = onNext) { Icon(Icons.Default.ArrowForward, null, tint = bento.primary) }
+            IconButton(onClick = onPrev) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = bento.primary) }
+            IconButton(onClick = onNext) { Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = bento.primary) }
             IconButton(onClick = onClear) { Icon(Icons.Default.LayersClear, null, tint = bento.liveRed) }
         }
 

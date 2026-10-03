@@ -223,4 +223,36 @@ class TemplateRepositoryTest {
         assertNull(repo.templateFromJsonString("{\"foo\": 1}"))
         assertNull(repo.templateFromJsonString("{\"name\": \"   \"}"))
     }
+
+    @Test
+    fun `emblem round-trips through json`() {
+        val tpl = baseTemplate("emblem_1", false).copy(emblem = "🕊️")
+        val json = repo.templateToJsonString(tpl)
+        assertTrue(json.contains("emblem"))
+
+        val imported = repo.templateFromJsonString(json)
+        assertNotNull(imported)
+        assertEquals("🕊️", imported!!.emblem)
+
+        // Empty emblem stays empty (no emblem rendered).
+        val empty = repo.templateFromJsonString(repo.templateToJsonString(tpl.copy(emblem = "")))
+        assertNotNull(empty)
+        assertEquals("", empty!!.emblem)
+    }
+
+    @Test
+    fun `legacy showCrossEmblem migrates to cross glyph`() {
+        // Old JSON with the boolean flag and no emblem key.
+        val legacyTrue = repo.templateFromJsonString(
+            "{\"id\":\"leg1\",\"name\":\"Legacy\",\"showCrossEmblem\":true}"
+        )
+        assertNotNull(legacyTrue)
+        assertEquals("✝", legacyTrue!!.emblem)
+
+        val legacyFalse = repo.templateFromJsonString(
+            "{\"id\":\"leg2\",\"name\":\"Legacy\",\"showCrossEmblem\":false}"
+        )
+        assertNotNull(legacyFalse)
+        assertEquals("", legacyFalse!!.emblem)
+    }
 }

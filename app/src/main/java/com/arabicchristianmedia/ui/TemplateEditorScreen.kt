@@ -16,6 +16,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.MenuAnchorType
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -45,7 +46,11 @@ import androidx.compose.ui.unit.sp
 import com.arabicchristianmedia.data.ArabicTextFormatter
 import com.arabicchristianmedia.data.TemplateRepository
 import com.arabicchristianmedia.model.*
+import com.arabicchristianmedia.server.VideoStore
 import com.arabicchristianmedia.ui.theme.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
 
 enum class PreviewBackground(val displayNameAr: String) {
@@ -106,9 +111,27 @@ fun TemplateEditorScreen(
     val bento = LocalBentoColors.current
     val editingTemplate = if (editorTab == 0) currentTemplate else activeShowTemplate
     val onUpdate = if (editorTab == 0) onUpdateTemplate else onUpdateShowTemplate
+    // Fresh template reference for async callbacks (avoids stale captures).
+    val currentEditingTemplate = rememberUpdatedState(editingTemplate)
+    val scope = rememberCoroutineScope()
+    var isImportingVideo by remember { mutableStateOf(false) }
 
     val launcher = rememberLauncherForActivityResult(contract = ActivityResultContracts.GetContent()) { uri ->
-        uri?.let { onUpdate(editingTemplate.copy(customVideoUrl = it.toString(), animatedBackground = AnimatedBackgroundType.CUSTOM_VIDEO)) }
+        uri?.let {
+            // v1.7: copy the picked video into private storage (never keep the
+            // raw URI: no persistable permission, and raw paths are not served).
+            isImportingVideo = true
+            scope.launch(Dispatchers.IO) {
+                val id = VideoStore(context).importFromUri(it)
+                withContext(Dispatchers.Main) {
+                    isImportingVideo = false
+                    val current = currentEditingTemplate.value
+                    if (id != null) {
+                        onUpdate(current.copy(customVideoId = id, customVideoUrl = "", animatedBackground = AnimatedBackgroundType.CUSTOM_VIDEO))
+                    }
+                }
+            }
+        }
     }
 
     val displayVerse = activeVerse ?: BibleVerse(
@@ -118,16 +141,26 @@ fun TemplateEditorScreen(
     )
 
     Column(modifier = modifier.fillMaxSize().background(bento.bg).padding(14.dp).verticalScroll(rememberScrollState())) {
-        // 1. Header & Quick Actions
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Column {
-                Text("محرر القوالب والتصاميم (Template Editor)", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary)
-                Text("تخصيص كامل وشامل لطبقات البث والعرض المباشر", fontSize = 12.sp, color = bento.textSecondary)
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                IconButton(onClick = { onResetDefaults(editorTab == 1) }) { Icon(Icons.Default.Refresh, "إعادة تعيين", tint = bento.primary) }
-                Button(onClick = { newTemplateName = "${editingTemplate.name} النسخة"; showSaveDialog = true }, colors = ButtonDefaults.buttonColors(containerColor = bento.primary)) {
-                    Icon(Icons.Default.Add, null, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(6.dp)); Text("حفظ كقالب جديد", fontSize = 12.sp)
+        // 1. Header & Quick Actions (responsive: compact icon actions on narrow
+        // screens so the title never crushes the buttons under large fonts)
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+            val compactHeader = maxWidth < 420.dp
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("محرر القوالب والتصاميم (Template Editor)", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("تخصيص كامل وشامل لطبقات البث والعرض المباشر", fontSize = 12.sp, color = bento.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { onResetDefaults(editorTab == 1) }) { Icon(Icons.Default.Refresh, "إعادة تعيين", tint = bento.primary) }
+                    if (compactHeader) {
+                        IconButton(onClick = { newTemplateName = "${editingTemplate.name} النسخة"; showSaveDialog = true }) {
+                            Icon(Icons.Default.Add, "حفظ كقالب جديد", tint = bento.primary)
+                        }
+                    } else {
+                        Button(onClick = { newTemplateName = "${editingTemplate.name} النسخة"; showSaveDialog = true }, colors = ButtonDefaults.buttonColors(containerColor = bento.primary)) {
+                            Icon(Icons.Default.Add, null, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(6.dp)); Text("حفظ كقالب جديد", fontSize = 12.sp, maxLines = 1)
+                        }
+                    }
                 }
             }
         }
@@ -357,7 +390,17 @@ fun TemplateEditorScreen(
                 ColorGradePickerRow("لون إطار التمييز (Accent Color)", editingTemplate.accentColorHex, { onUpdate(editingTemplate.copy(accentColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
 
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    FeatureToggleRow("إظهار رمز الصليب", editingTemplate.showCrossEmblem) { onUpdate(editingTemplate.copy(showCrossEmblem = it)) }
+                    // v1.7: free emblem — the user types any emoji/symbol with the
+                    // system keyboard. Empty = no emblem.
+                    OutlinedTextField(
+                        value = editingTemplate.emblem,
+                        onValueChange = { onUpdate(editingTemplate.copy(emblem = it)) },
+                        label = { Text("رمز / إيموجي (Emblem) — اتركه فارغاً للإخفاء", fontSize = 10.sp) },
+                        placeholder = { Text("✝", fontSize = 14.sp) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(8.dp)
+                    )
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     FeatureToggleRow("إظهار الحدود الملونة", editingTemplate.showAccentBorder) { onUpdate(editingTemplate.copy(showAccentBorder = it)) }
@@ -384,11 +427,49 @@ fun TemplateEditorScreen(
                     }
                 }
                 if (editingTemplate.animatedBackground == AnimatedBackgroundType.CUSTOM_VIDEO) {
-                   Button(onClick = { launcher.launch("video/*") }, colors = ButtonDefaults.buttonColors(containerColor = bento.primary)) {
-                       Icon(Icons.Default.VideoLibrary, null, modifier = Modifier.size(16.dp))
-                       Spacer(Modifier.width(6.dp))
-                       Text("اختيار ملف فيديو مخصص (MP4)")
-                   }
+                    // v1.7: opacity slider works ONLY when the custom-video flag is ON.
+                    SliderWithLabel(
+                        label = "شفافية الفيديو (Video Opacity)",
+                        value = editingTemplate.animatedBackgroundOpacity,
+                        range = 0f..1f,
+                        onValueChange = { onUpdate(editingTemplate.copy(animatedBackgroundOpacity = it)) }
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    if (editingTemplate.customVideoId.isNotEmpty()) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                "✓ فيديو مخصص محدد (Custom video set)",
+                                fontSize = 11.sp,
+                                color = bento.textSecondary,
+                                modifier = Modifier.weight(1f)
+                            )
+                            TextButton(onClick = {
+                                onUpdate(editingTemplate.copy(customVideoId = "", animatedBackground = AnimatedBackgroundType.NONE))
+                            }) {
+                                Text("إزالة (Remove)", fontSize = 11.sp, color = bento.primary)
+                            }
+                        }
+                    } else if (editingTemplate.customVideoUrl.isNotEmpty()) {
+                        Text(
+                            "⚠ تعذر العثور على الفيديو المحفوظ — اختر ملفاً جديداً",
+                            fontSize = 11.sp,
+                            color = bento.primary
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                    }
+                    Button(
+                        onClick = { launcher.launch("video/*") },
+                        enabled = !isImportingVideo,
+                        colors = ButtonDefaults.buttonColors(containerColor = bento.primary)
+                    ) {
+                        Icon(Icons.Default.VideoLibrary, null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(if (isImportingVideo) "جاري الاستيراد..." else "اختيار ملف فيديو مخصص (MP4)", fontSize = 12.sp)
+                    }
                 }
             }
         }
@@ -568,7 +649,7 @@ private fun FontDropdown(selected: String, onSelect: (String) -> Unit) {
             label = { Text("الخط (Font)", fontSize = 10.sp) },
             textStyle = TextStyle(fontFamily = selectedFamily, fontSize = 14.sp),
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            modifier = Modifier.menuAnchor().fillMaxWidth(),
+            modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable).fillMaxWidth(),
             singleLine = true
         )
         ExposedDropdownMenu(
@@ -606,7 +687,9 @@ fun SliderWithLabel(label: String, value: Float, range: ClosedFloatingPointRange
     Column {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(label, fontSize = 11.sp, color = bento.textSecondary)
-            Text("${value.toInt()}", fontSize = 11.sp, color = bento.primary, fontWeight = FontWeight.Bold)
+            // Opacity-style 0..1 ranges read better as a percentage.
+            val readout = if (range.endInclusive <= 1f) "${(value * 100).toInt()}%" else "${value.toInt()}"
+            Text(readout, fontSize = 11.sp, color = bento.primary, fontWeight = FontWeight.Bold)
         }
         Slider(value = value, onValueChange = onValueChange, valueRange = range, colors = SliderDefaults.colors(thumbColor = bento.primary, activeTrackColor = bento.primary))
     }
@@ -634,40 +717,64 @@ fun ColorGradePickerRow(
     var showGradeDialog by remember { mutableStateOf(false) }
 
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(label, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = bento.textSecondary)
-            
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Box(
-                    modifier = Modifier
-                        .size(18.dp)
-                        .clip(CircleShape)
-                        .background(try { Color(android.graphics.Color.parseColor(selectedHex)) } catch (e: Exception) { Color.White })
-                        .border(1.dp, bento.border, CircleShape)
-                )
+        // v1.7: the label flexes (weight) and ellipsizes; the Color Grade
+        // action collapses to an icon on narrow widths so the bilingual label
+        // can never be crushed into a letter-by-letter strip under large fonts.
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+            val compactAction = maxWidth < 360.dp
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Text(
-                    text = selectedHex.uppercase(),
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = bento.primary
+                    label,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = bento.textSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
                 )
-                
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = bento.primaryContainer,
-                    modifier = Modifier.clickable { showGradeDialog = true }
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Icon(Icons.Default.Palette, contentDescription = null, tint = bento.onPrimaryContainer, modifier = Modifier.size(12.dp))
-                        Text("درجات الألوان (Color Grade)", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = bento.onPrimaryContainer)
+
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Box(
+                        modifier = Modifier
+                            .size(18.dp)
+                            .clip(CircleShape)
+                            .background(try { Color(android.graphics.Color.parseColor(selectedHex)) } catch (e: Exception) { Color.White })
+                            .border(1.dp, bento.border, CircleShape)
+                    )
+                    Text(
+                        text = selectedHex.uppercase(),
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = bento.primary,
+                        maxLines = 1
+                    )
+
+                    if (compactAction) {
+                        IconButton(
+                            onClick = { showGradeDialog = true },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(Icons.Default.Palette, contentDescription = "درجات الألوان (Color Grade)", tint = bento.primary, modifier = Modifier.size(18.dp))
+                        }
+                    } else {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = bento.primaryContainer,
+                            modifier = Modifier.clickable { showGradeDialog = true }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(Icons.Default.Palette, contentDescription = null, tint = bento.onPrimaryContainer, modifier = Modifier.size(12.dp))
+                                Text("درجات الألوان (Color Grade)", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = bento.onPrimaryContainer, maxLines = 1)
+                            }
+                        }
                     }
                 }
             }
@@ -686,23 +793,32 @@ fun ColorGradePickerRow(
                     border = BorderStroke(if (isSelected) 2.dp else 1.dp, if (isSelected) bento.primary else bento.border),
                     modifier = Modifier.clickable { onColorSelected(hex) }
                 ) {
+                    // v1.7: wider chip, larger swatch, hex readout. The whole
+                    // body applies the color; the X is a separate hit target.
                     Row(
-                        modifier = Modifier.padding(start = 6.dp, end = 2.dp, top = 2.dp, bottom = 2.dp),
+                        modifier = Modifier.padding(start = 8.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(2.dp)
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(18.dp)
+                                .size(22.dp)
                                 .clip(CircleShape)
                                 .background(try { Color(android.graphics.Color.parseColor(hex)) } catch (e: Exception) { Color.Gray })
                                 .border(1.dp, Color.Black.copy(alpha = 0.2f), CircleShape)
                         )
+                        Text(
+                            text = hex.uppercase().removePrefix("#"),
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = bento.textSecondary,
+                            maxLines = 1
+                        )
                         IconButton(
                             onClick = { onRemoveRecentColor(hex) },
-                            modifier = Modifier.size(16.dp)
+                            modifier = Modifier.size(20.dp)
                         ) {
-                            Icon(Icons.Default.Close, contentDescription = "حذف", tint = bento.textSecondary, modifier = Modifier.size(10.dp))
+                            Icon(Icons.Default.Close, contentDescription = "حذف", tint = bento.textSecondary, modifier = Modifier.size(12.dp))
                         }
                     }
                 }
@@ -859,7 +975,7 @@ fun ColorGradeSpectrumModal(
 fun FeatureToggleRow(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
     val bento = LocalBentoColors.current
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-        Text(label, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = bento.textPrimary)
+        Text(label, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = bento.textPrimary, modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
         Switch(checked = checked, onCheckedChange = onCheckedChange, colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = bento.primary))
     }
 }
@@ -973,17 +1089,19 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
                         else -> Alignment.End
                     }
                 ) {
-                    // Arabic Citation & Cross Emblem
+                    // Arabic Citation & user Emblem (v1.7: free emoji/symbol)
+                    // RTL row: the emblem sits before (right of) the Arabic citation,
+                    // matching NDI and HTTP.
+                    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        if (template.showCrossEmblem) {
-                            Box(
-                                modifier = Modifier
-                                    .size(6.dp)
-                                    .clip(CircleShape)
-                                    .background(try { Color(android.graphics.Color.parseColor(template.accentColorHex)) } catch (e: Exception) { Color.Yellow })
+                        if (template.emblem.isNotEmpty()) {
+                            Text(
+                                text = template.emblem,
+                                fontSize = 14.sp,
+                                color = try { Color(android.graphics.Color.parseColor(template.accentColorHex)) } catch (e: Exception) { Color.Yellow }
                             )
                         }
                         Text(
@@ -995,6 +1113,7 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
                             color = refCol,
                             style = TextStyle(shadow = previewShadow)
                         )
+                    }
                     }
 
                     // Arabic Verse Text
@@ -1041,7 +1160,7 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
                                 textAlign = when (template.alignment) {
                                     BroadcastTextAlignment.CENTER -> TextAlign.Center
                                     BroadcastTextAlignment.LEFT -> TextAlign.Left
-                                    else -> TextAlign.Left
+                                    else -> TextAlign.Right
                                 },
                                 modifier = Modifier.fillMaxWidth()
                             )

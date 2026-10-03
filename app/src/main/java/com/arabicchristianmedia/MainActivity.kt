@@ -20,22 +20,23 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.Cast
 import androidx.compose.material.icons.filled.LiveTv
-import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Radio
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material.icons.outlined.AutoAwesome
-import androidx.compose.material.icons.outlined.MenuBook
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.CenterAlignedTopAppBar
@@ -64,6 +65,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.arabicchristianmedia.ui.BibleNdiViewModel
@@ -112,7 +114,9 @@ class MainActivity : ComponentActivity() {
                     topBar = {
                         Surface(
                             color = bento.bg,
-                            modifier = Modifier.fillMaxWidth()
+                            // v1.7: own the status-bar inset so the bar never
+                            // slides under the system status area.
+                            modifier = Modifier.fillMaxWidth().statusBarsPadding()
                         ) {
                             Row(
                                 modifier = Modifier
@@ -123,7 +127,10 @@ class MainActivity : ComponentActivity() {
                             ) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                    // v1.7: title takes the flexible space; the
+                                    // LIVE badge keeps its intrinsic width.
+                                    modifier = Modifier.weight(1f)
                                 ) {
                                     // Bento Round Avatar / Broadcast Badge
                                     Box(
@@ -141,18 +148,22 @@ class MainActivity : ComponentActivity() {
                                         )
                                     }
 
-                                    Column {
+                                    Column(modifier = Modifier.weight(1f)) {
                                         Text(
                                             text = "Bible NDI",
                                             fontSize = 18.sp,
                                             fontWeight = FontWeight.SemiBold,
-                                            color = bento.textPrimary
+                                            color = bento.textPrimary,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
                                         )
                                         Text(
-                                            text = "Broadcast Live / SVD Arabic (الكتاب المقدس)",
+                                            text = "SVD Arabic (الكتاب المقدس)",
                                             fontSize = 12.sp,
                                             fontWeight = FontWeight.Normal,
-                                            color = bento.textSecondary
+                                            color = bento.textSecondary,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
                                         )
                                     }
                                 }
@@ -206,7 +217,7 @@ class MainActivity : ComponentActivity() {
                                     onClick = { selectedTab = 0 },
                                     icon = {
                                         Icon(
-                                            imageVector = if (selectedTab == 0) Icons.Filled.MenuBook else Icons.Outlined.MenuBook,
+                                            imageVector = if (selectedTab == 0) Icons.AutoMirrored.Filled.MenuBook else Icons.AutoMirrored.Outlined.MenuBook,
                                             contentDescription = "Bible & Live Broadcast"
                                         )
                                     },

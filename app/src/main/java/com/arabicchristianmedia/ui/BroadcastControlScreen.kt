@@ -30,6 +30,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cast
 import androidx.compose.material.icons.filled.Check
@@ -1378,7 +1379,7 @@ private fun NdiSourceSettingsRow(
             Column(modifier = Modifier.weight(1f)) {
                 Text("الحركة (Motion)", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = tint)
                 Text(
-                    "إعادة رسم الخلفيات المتحركة باستمرار (بحد أقصى 15 إطار/ثا)",
+                    "إعادة رسم الخلفيات المتحركة باستمرار (بحد أقصى 30 إطار/ثا)",
                     fontSize = 9.sp,
                     color = textSecondary
                 )
@@ -1410,7 +1411,7 @@ private fun NdiDropdown(
             readOnly = true,
             label = { Text(label, fontSize = 9.sp) },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            modifier = Modifier.menuAnchor().width(150.dp),
+            modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable).width(150.dp),
             textStyle = TextStyle(fontSize = 11.sp),
             singleLine = true
         )

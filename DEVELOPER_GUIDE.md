@@ -1,4 +1,4 @@
-# Technical Guide for Developers - Arabic Bible NDI v1.6
+# Technical Guide for Developers - Arabic Bible NDI v1.7
 
 This document explains the internal architecture and NDI 6 implementation details for developers wishing to extend or modify the application (`com.arabicchristianmedia`).
 
@@ -13,7 +13,7 @@ This document explains the internal architecture and NDI 6 implementation detail
     *   `BibleRepository`: queries local `.db` files using raw SQL.
     *   `TemplateRepository`: persists JSON-serialized style templates plus per-tab working templates, highlight ids (`null` = modified/unsaved), and dirty flags in `SharedPreferences`. Legacy `showDropShadow` migrates to the independent `textShadowEnabled`/`cardGlowEnabled` flags (both on, black). Legacy `tpl_modern_glass` highlight migrates to `tpl_transparent_alpha`.
 3.  **Networking Layer (NDI & HTTP)**:
-    *   `NdiNativeSender`: JNI bridge to the NDI 6 SDK managing exactly two senders (`Bible-NDI-Lower`, `Bible-NDI-Full`). Per-feed `SenderSession` coroutines do dirty-frame sending + 2s heartbeat; motion mode re-renders at ~15fps. Per-feed locks serialize render+send across the send loop and `triggerFrame()`.
+    *   `NdiNativeSender`: JNI bridge to the NDI 6 SDK managing exactly two senders (`Bible-NDI-Lower`, `Bible-NDI-Full`). Per-feed `SenderSession` coroutines do dirty-frame sending + 2s heartbeat; motion mode re-renders at up to ~30fps. Per-feed locks serialize render+send across the send loop and `triggerFrame()`.
     *   `NdiBroadcastServer`: hand-rolled HTTP server generating HTML/CSS/JS overlays (`/ndi`, `/show`), MJPEG, snapshots, status API, and SSE event streams with leading-edge throttle + trailing-edge delivery and a monotonic `stateVersion` per message for reconnect re-sync.
     *   NDI discovery is handled by the NDI 6 runtime itself — there is no in-app discovery beacon (the fake mDNS/UDP/TCP beacon was deleted in v1.6).
 
@@ -24,7 +24,7 @@ This document explains the internal architecture and NDI 6 implementation detail
 
 ### Smart sending
 * **Static (motion off, default)**: frames are pushed only when `frameVersion` changes (dirty-frame detection) plus a 2000ms heartbeat. Static verses cost ~zero bandwidth.
-* **Motion on**: if the template has animated content, the feed re-renders every 66ms (~15fps) into dedicated per-feed reused bitmaps (`motionLowerBitmap`/`motionShowBitmap`), never the shared static cache. Declared NDI metadata keeps the user's chosen fps. Verse/template changes trigger an immediate re-render via debounced `triggerFrame()` (120ms) rather than waiting for the tick.
+* **Motion on**: if the template has animated content, the feed re-renders every 33ms (up to ~30fps) into dedicated per-feed reused bitmaps (`motionLowerBitmap`/`motionShowBitmap`), never the shared static cache. Declared NDI metadata keeps the user's chosen fps. Verse/template changes trigger an immediate re-render via debounced `triggerFrame()` (120ms) rather than waiting for the tick.
 
 ### Thread safety
 * Per-feed `Any` locks (`feedLocks`) in `NdiNativeSender` wrap provider-render + `sendBitmapToPtr` in both the send loop and `triggerFrame()`, and guard teardown recycling in `stopSource()`/`stopAll()`. Lock order is always `activeSenders → feedLock`, never the reverse. Lower and Full never block each other.

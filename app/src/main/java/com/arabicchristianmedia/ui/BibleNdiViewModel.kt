@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
 import com.arabicchristianmedia.data.BibleRepository
 import com.arabicchristianmedia.data.TemplateRepository
 import com.arabicchristianmedia.model.AppThemeMode
@@ -20,9 +21,11 @@ import com.arabicchristianmedia.server.NdiNativeSender
 import com.arabicchristianmedia.server.NdiSourceSpec
 import com.arabicchristianmedia.server.NetworkHelper
 import com.arabicchristianmedia.server.NetworkInterfaceInfo
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 
 data class BibleNdiUiState(
     val selectedTestament: Testament = Testament.NEW_TESTAMENT,
@@ -70,7 +73,9 @@ data class BibleNdiUiState(
     val statusMessage: String? = null,
     val appThemeMode: AppThemeMode = AppThemeMode.SYSTEM,
     val readerFontSize: Int = 18,
-    val isKeepScreenOn: Boolean = true
+    val isKeepScreenOn: Boolean = true,
+    // True while the Bible databases are being copied/loaded on first launch.
+    val isLoadingBible: Boolean = false
 )
 
 class BibleNdiViewModel(application: Application) : AndroidViewModel(application) {
@@ -127,7 +132,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             val tpl = if (isFullScreen) _uiState.value.activeShowTemplate else _uiState.value.activeTemplate
             tpl.animatedBackground != AnimatedBackgroundType.NONE
         }
-        loadInitialData()
+        loadInitialDataAsync()
         refreshNetworkInterfaces()
         // startBroadcastServer() // DO NOT auto-start as per request 8? 
         // User said: "on Library tab, don't start the on air, be sure it's off air till a user click on a verse"
@@ -192,6 +197,25 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
                 isNativeNdiActive = false,
                 isNativeShowActive = false
             )
+        }
+    }
+
+    /**
+     * First-launch database copy (16MB of assets) runs on Dispatchers.IO so the
+     * UI never freezes; the reader shows a loading indicator meanwhile.
+     */
+    private fun loadInitialDataAsync() {
+        _uiState.value = _uiState.value.copy(isLoadingBible = true)
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                loadInitialData()
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    statusMessage = "تعذر تحميل الكتاب المقدس: ${e.message}"
+                )
+            } finally {
+                _uiState.value = _uiState.value.copy(isLoadingBible = false)
+            }
         }
     }
 

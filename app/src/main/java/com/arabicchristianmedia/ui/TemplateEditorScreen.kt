@@ -1110,7 +1110,8 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
                             Text(
                                 text = template.emblem,
                                 fontSize = 14.sp,
-                                color = try { Color(android.graphics.Color.parseColor(template.accentColorHex)) } catch (e: Exception) { Color.Yellow }
+                                // v1.8: emblem uses citation styling (was accent).
+                                color = refCol
                             )
                         }
                         Text(

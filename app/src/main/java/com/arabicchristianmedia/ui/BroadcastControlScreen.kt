@@ -401,7 +401,7 @@ fun BroadcastControlScreen(
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Text(
-                                            text = if (uiState.serverUrl.isNotBlank()) uiState.serverUrl else "http://192.168.x.x:${uiState.serverPort}/ndi",
+                                            text = if (uiState.serverUrl.isNotBlank()) uiState.serverUrl else "http://192.168.x.x:${uiState.serverPort}/overlay",
                                             fontSize = 11.sp,
                                             fontFamily = FontFamily.Monospace,
                                             fontWeight = FontWeight.Bold,
@@ -490,7 +490,7 @@ fun BroadcastControlScreen(
                                     border = BorderStroke(1.dp, BentoBorder),
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
-                                    val showUrl = uiState.serverUrl.replace("/ndi", "/show")
+                                    val showUrl = uiState.serverUrl.replace("/overlay", "/overlay/full")
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
@@ -775,7 +775,7 @@ fun BroadcastControlScreen(
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Text(
-                                            text = if (uiState.streamUrl.isNotBlank()) uiState.streamUrl else "http://192.168.x.x:${uiState.serverPort}/ndi/stream",
+                                            text = if (uiState.streamUrl.isNotBlank()) uiState.streamUrl else "http://192.168.x.x:${uiState.serverPort}/stream",
                                             fontSize = 11.sp,
                                             fontFamily = FontFamily.Monospace,
                                             fontWeight = FontWeight.Bold,
@@ -1198,7 +1198,7 @@ fun BroadcastControlScreen(
 
                 val obsSteps = listOf(
                     "1. في برنامج OBS، اضغط على زر (+) في قسم Sources (المصادر) واختر Browser (متصفح).",
-                    "2. ضع في خانة URL الرابط أعلاه: ${if (uiState.serverUrl.isNotBlank()) uiState.serverUrl else "http://<IP>:8080/ndi"}.",
+                    "2. ضع في خانة URL الرابط أعلاه: ${if (uiState.serverUrl.isNotBlank()) uiState.serverUrl else "http://<IP>:8080/overlay"}.",
                     "3. اضبط الأبعاد: Width = 1920 و Height = 1080.",
                     "4. تأكد من تحديد خيار (Shutdown source when not active).",
                     "5. بمجرد النقر على أي آية في التطبيق، ستظهر فوراً في البث المباشر مع خلفية شفافة 100% فوق الكاميرا!"
@@ -1443,13 +1443,16 @@ private fun AllUrlsCard(
     onCopy: (String, String) -> Unit
 ) {
     val urls = listOf(
-        "Overlay شفاف (Browser Source)" to "/ndi",
-        "العرض الكامل (Full Show)" to "/show",
-        "بث MJPEG" to "/ndi/stream",
-        "لقطة PNG" to "/ndi/stream.png",
-        "أحداث SSE (الآيات)" to "/ndi/events",
-        "الحالة (JSON)" to "/ndi/status",
-        "واجهة الآيات (API)" to "/ndi/api/verse"
+        "Overlay شفاف (Browser Source)" to "/overlay",
+        "العرض الكامل (Full Show)" to "/overlay/full",
+        "بث MJPEG" to "/stream",
+        "لقطة PNG" to "/overlay.png",
+        "أحداث SSE (الآيات)" to "/overlay/events",
+        "الحالة" to "/api/status",
+        "واجهة الآيات (API)" to "/api/verse",
+        "تشغيل آية عن بُعد" to "/api/trigger?ref=John+3:16",
+        "صفحة التحكم عن بُعد" to "/remote",
+        "خلاصة vMix (XML)" to "/bibleshow.xml"
     )
     Text(
         text = "٥. جميع الروابط المتاحة:",

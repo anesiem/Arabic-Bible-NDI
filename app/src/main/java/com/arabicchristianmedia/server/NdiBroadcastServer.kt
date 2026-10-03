@@ -132,7 +132,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             }
             isRunning = true
             val ip = getLocalIpAddress()
-            val url = "http://$ip:$port/ndi"
+            val url = "http://$ip:$port/overlay"
             onStarted(url)
             acquireBroadcastLocks()
 
@@ -374,19 +374,20 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
             val out = socket.getOutputStream()
 
+            // v1.8: industry-standard URIs (clean break — no /ndi aliases).
             when {
-                cleanPath == "/ndi" || cleanPath == "/ndi/lowerthird" || cleanPath == "" || cleanPath == "/" -> {
+                cleanPath == "/overlay" || cleanPath == "" || cleanPath == "/" -> {
                     serveNdiHtmlOverlay(out, isFullScreen = false)
                 }
-                cleanPath == "/ndi/show" || cleanPath == "/show" -> {
+                cleanPath == "/overlay/full" -> {
                     serveNdiHtmlOverlay(out, isFullScreen = true)
                 }
-                cleanPath == "/ndi/events" -> {
+                cleanPath == "/overlay/events" -> {
                     serveSseEvents(socket, out, fullPath.contains("show=1"))
                     keepOpen = true
                     return // Persistent SSE stream: socket stays open for pushes
                 }
-                cleanPath == "/ndi/stream.png" || cleanPath == "/ndi/stream.mjpg" || cleanPath == "/ndi/stream" || cleanPath == "/stream" || cleanPath == "/video" || cleanPath == "/live" -> {
+                cleanPath == "/stream" -> {
                     if (isBrowserNavigation && !fullPath.contains("raw=1")) {
                         serveMjpegPlayerHtml(out)
                     } else {
@@ -394,25 +395,35 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                         return // Handled in persistent video loop
                     }
                 }
-                cleanPath == "/ndi/api/verse" -> {
+                cleanPath == "/api/verse" -> {
                     serveJsonState(out, fullPath.contains("show=1"))
                 }
-                cleanPath == "/ndi/overlay.png" -> {
+                cleanPath == "/api/trigger" -> {
+                    serveApiTrigger(out, fullPath)
+                }
+                cleanPath == "/api/clear" -> {
+                    serveApiClear(out)
+                }
+                cleanPath == "/api/videos" -> {
+                    serveApiVideos(out)
+                }
+                cleanPath == "/overlay.png" -> {
                     serveTransparentPngOverlay(out)
                 }
-                cleanPath == "/ndi/status" || cleanPath == "/status" -> {
+                cleanPath == "/api/status" -> {
                     serveStatus(out)
                 }
                 cleanPath.startsWith("/fonts/") -> {
                     serveFontFile(out, cleanPath.removePrefix("/fonts/"))
                 }
-                cleanPath == "/ndi/video" -> {
+                cleanPath == "/video" -> {
                     serveVideoById(out, fullPath, rangeHeader)
                 }
-                cleanPath == "/ndi/video_file" -> {
-                    // v1.7: removed — arbitrary path reads were a LAN security
-                    // hole. Videos are served by ID via /ndi/video.
-                    send404(out)
+                cleanPath == "/remote" -> {
+                    serveRemotePage(out)
+                }
+                cleanPath == "/bibleshow.xml" -> {
+                    serveBibleShowXml(out)
                 }
                 else -> {
                     serveNdiHtmlOverlay(out)
@@ -869,12 +880,23 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         cardBox.classList.remove('mode-full-show');
       }
 
-      // 2. Text Content
-      verseText.textContent = data.arabicText;
-      citationText.textContent = data.arabicCitation;
+      // 2. Text Content (v1.8: three-way language mode)
+      const langMode = data.languageMode || (data.bilingual ? 'BOTH' : 'ARABIC_ONLY');
+      const showArabic = langMode !== 'ENGLISH_ONLY';
+      const showEnglish = langMode !== 'ARABIC_ONLY' && data.englishText;
+      verseText.style.display = showArabic ? '' : 'none';
+      citationText.style.display = showArabic ? '' : 'none';
+      if (showArabic) {
+        verseText.textContent = data.arabicText;
+        citationText.textContent = data.arabicCitation;
+      } else {
+        // ENGLISH_ONLY: English citation takes the citation row.
+        citationText.textContent = data.englishCitation;
+        citationText.style.display = '';
+      }
 
       // 3. Bilingual Mode
-      if (data.bilingual && data.englishText) {
+      if (showEnglish) {
         englishSection.style.display = 'block';
         englishText.textContent = data.englishText;
         englishCitation.textContent = '(' + data.englishCitation + ')';
@@ -925,10 +947,15 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         verseText.style.margin = '0 auto';
 
         englishSection.style.width = '100%';
-        englishSection.style.textAlign = alignCss;
-        englishSection.style.margin = '10px auto 0 auto';
+        // v1.8: English stays left unless centered.
+        const enAlignCss = align === 'CENTER' ? 'center' : 'left';
+        englishSection.style.textAlign = enAlignCss;
+        // v1.8: honor the bilingualSpacing setting (was hardcoded 10px,
+        // overwriting the marginTop set above).
+        const fsSpacing = data.showBilingualSpacing ? (data.bilingualSpacing || 20) : 0;
+        englishSection.style.margin = fsSpacing + 'px auto 0 auto';
         englishText.style.width = '100%';
-        englishText.style.textAlign = alignCss;
+        englishText.style.textAlign = enAlignCss;
       } else {
         const botMargin = (data.positionBottomPercent || 6) + 'vh';
         const hMargin = (data.horizontalMarginPercent || 6) + 'vw';
@@ -965,7 +992,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
           citationRow.style.width = '100%';
           citationRow.style.justifyContent = 'flex-start';
           verseText.style.textAlign = 'right';
-          englishSection.style.textAlign = 'right';
+          // v1.8: English stays left unless centered.
+          englishSection.style.textAlign = 'left';
         }
       }
 
@@ -993,8 +1021,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
       verseText.style.color = textColor;
       citationRow.style.color = refColor;
-      crossEmblem.style.backgroundColor = accent;
-      crossEmblem.style.color = accent;
+      // v1.8: emblem is transparent, citation-colored, inline with the citation
+      // (was: accent-colored chip background).
+      crossEmblem.style.backgroundColor = 'transparent';
+      crossEmblem.style.color = refColor;
       // v1.7: free user emblem (emoji/symbol); empty = hidden.
       if (data.emblem) {
         crossEmblem.textContent = data.emblem;
@@ -1107,7 +1137,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     function connectSse() {
       const urlParams = new URLSearchParams(window.location.search);
       const isShow = urlParams.get('show') === '1' || window.location.pathname.includes('/show');
-      const sseUrl = '/ndi/events' + (isShow ? '?show=1' : '');
+      const sseUrl = '/overlay/events' + (isShow ? '?show=1' : '');
       
       const evtSource = new EventSource(sseUrl);
       evtSource.onmessage = function(e) {
@@ -1626,7 +1656,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         val emblemText = tpl.emblem
         if (emblemText.isNotEmpty()) {
             val emblemPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = try { Color.parseColor(tpl.accentColorHex) } catch (e: Exception) { refPaint.color }
+                // v1.8: emblem uses citation styling (was accent color).
+                color = refPaint.color
                 textSize = refPaint.textSize
                 // System default typeface: reliable emoji/symbol fallback.
                 typeface = Typeface.DEFAULT
@@ -2055,7 +2086,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     <p class="subtitle">يتم تحديث البث تلقائياً وفورياً عند اختيار أي آية من التطبيق</p>
 
     <div class="video-container">
-      <img id="streamImg" src="/ndi/stream.mjpg?raw=1" alt="Bible Live Broadcast Stream" onerror="setTimeout(() => { this.src = '/ndi/stream.mjpg?raw=1&t=' + Date.now(); }, 1500);" />
+      <img id="streamImg" src="/stream?raw=1" alt="Bible Live Broadcast Stream" onerror="setTimeout(() => { this.src = '/stream?raw=1&t=' + Date.now(); }, 1500);" />
     </div>
 
     <div class="instructions">
@@ -2067,8 +2098,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     </div>
 
     <div class="btn-row">
-      <a class="btn btn-primary" href="/ndi" target="_blank">فتح طبقة البث الشفافة (Overlay)</a>
-      <a class="btn btn-secondary" href="/ndi/stream.mjpg?raw=1" target="_blank">عرض دفق الفيديو المباشر (Raw MJPEG)</a>
+      <a class="btn btn-primary" href="/overlay" target="_blank">فتح طبقة البث الشفافة (Overlay)</a>
+      <a class="btn btn-secondary" href="/stream?raw=1" target="_blank">عرض دفق الفيديو المباشر (Raw MJPEG)</a>
     </div>
   </div>
 </body>

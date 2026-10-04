@@ -576,7 +576,7 @@ fun BroadcastControlScreen(
                                 
                                 Surface(
                                     shape = RoundedCornerShape(10.dp),
-                                    color = Color(0xFFF8FAFC),
+                                    color = BentoCardWhite,
                                     border = androidx.compose.foundation.BorderStroke(1.dp, BentoBorder),
                                     modifier = Modifier.fillMaxWidth()
                                 ) {

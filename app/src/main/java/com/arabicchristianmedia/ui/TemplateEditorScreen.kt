@@ -560,6 +560,15 @@ fun TemplateEditorScreen(
                         ) {
                             onUpdate(editingTemplate.copy(customVideoMuted = it))
                         }
+                        // v1.8: Motion speed slider (0.25x to 3.0x).
+                        Spacer(modifier = Modifier.height(4.dp))
+                        SliderWithLabel(
+                            "سرعة الحركة (Motion speed)",
+                            editingTemplate.motionSpeed,
+                            0.25f..3.0f
+                        ) {
+                            onUpdate(editingTemplate.copy(motionSpeed = it))
+                        }
                     } else if (editingTemplate.customVideoUrl.isNotEmpty()) {
                         Text(
                             "⚠ تعذر العثور على الفيديو المحفوظ — اختر ملفاً جديداً",

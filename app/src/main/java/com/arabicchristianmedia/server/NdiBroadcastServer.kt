@@ -257,6 +257,22 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     fun updateTemplate(template: LowerThirdTemplate) {
         currentTemplate = template
         invalidateBitmapCache()
+        // v1.8: Kickstart video renderer if the new template uses a custom video.
+        // Without this, the video doesn't start until motion is toggled OFF/ON.
+        if (template.animatedBackground == AnimatedBackgroundType.CUSTOM_VIDEO &&
+            template.customVideoId.isNotEmpty()) {
+            try {
+                val file = videoStore.fileFor(template.customVideoId)
+                if (file != null) {
+                    val renderer = getVideoRenderer(false)
+                    renderer.setSource(file)
+                    renderer.setMuted(template.customVideoMuted)
+                    renderer.requestFrame()
+                }
+            } catch (e: Exception) {
+                // Non-fatal; the draw loop will retry.
+            }
+        }
         broadcastStateThrottled()
     }
 
@@ -269,6 +285,21 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     fun updateShowTemplate(template: LowerThirdTemplate) {
         currentShowTemplate = template
         invalidateBitmapCache()
+        // v1.8: Kickstart video renderer for full show (same as updateTemplate).
+        if (template.animatedBackground == AnimatedBackgroundType.CUSTOM_VIDEO &&
+            template.customVideoId.isNotEmpty()) {
+            try {
+                val file = videoStore.fileFor(template.customVideoId)
+                if (file != null) {
+                    val renderer = getVideoRenderer(true)
+                    renderer.setSource(file)
+                    renderer.setMuted(template.customVideoMuted)
+                    renderer.requestFrame()
+                }
+            } catch (e: Exception) {
+                // Non-fatal; the draw loop will retry.
+            }
+        }
         broadcastStateThrottled()
     }
 
@@ -563,6 +594,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             put("customVideoUrl", tpl.customVideoUrl)
             put("customVideoId", tpl.customVideoId)
             put("customVideoMuted", tpl.customVideoMuted)
+            put("motionSpeed", tpl.motionSpeed)
         }
         return root.toString()
     }
@@ -610,15 +642,21 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       overflow: hidden;
       font-family: 'Amiri', 'Noto Naskh Arabic', serif;
       -webkit-font-smoothing: antialiased;
+      /* v1.8: Center the 16:9 stage (maintains aspect ratio on any display). */
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
 
     /* Stage Container (Default: Lower Third alignment at screen bottom) */
+    /* v1.8: Fixed 16:9 aspect ratio — scales to fit viewport, never distorts. */
     #stage {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100vw;
-      height: 100vh;
+      position: relative;
+      aspect-ratio: 16 / 9;
+      width: min(100vw, 177.78vh);
+      height: auto;
+      max-width: 100vw;
+      max-height: 100vh;
       pointer-events: none;
       display: flex;
       flex-direction: column;
@@ -923,9 +961,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         citationText.style.display = '';
         verseText.textContent = data.englishText || '';
         citationText.textContent = data.englishCitation || '';
-        // Apply English (secondary) styling to main rows in ENGLISH_ONLY mode.
-        verseText.style.color = data.secondaryTextColorHex || verseText.style.color;
-        citationText.style.color = data.secondaryReferenceColorHex || citationText.style.color;
+        // Font size/family: English (secondary) styling for main rows.
+        // Colors are handled in the main styling section below (respects language mode).
         verseText.style.fontSize = scaledPx(data.secondaryVerseFontSize || data.verseFontSize || 28);
         citationText.style.fontSize = scaledPx(data.secondaryReferenceFontSize || data.referenceFontSize || 20);
         verseText.style.fontFamily = data.secondaryFontFamily || verseText.style.fontFamily;
@@ -1056,13 +1093,18 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       const accent = data.accentColorHex || '#E5A93C';
       const textColor = data.textColorHex || '#FFFFFF';
       const refColor = data.referenceColorHex || '#F4D06F';
+      // v1.8: In ENGLISH_ONLY, use secondary (English) colors for main rows.
+      const langMode2 = data.languageMode || 'ARABIC_ONLY';
+      const isEnglishOnly = langMode2 === 'ENGLISH_ONLY';
+      const mainTextColor = isEnglishOnly ? (data.secondaryTextColorHex || textColor) : textColor;
+      const mainRefColor = isEnglishOnly ? (data.secondaryReferenceColorHex || refColor) : refColor;
 
-      verseText.style.color = textColor;
-      citationRow.style.color = refColor;
+      verseText.style.color = mainTextColor;
+      citationRow.style.color = mainRefColor;
       // v1.8: emblem is transparent, citation-colored, inline with the citation
       // (was: accent-colored chip background).
       crossEmblem.style.backgroundColor = 'transparent';
-      crossEmblem.style.color = refColor;
+      crossEmblem.style.color = mainRefColor;
       // v1.7: free user emblem (emoji/symbol); empty = hidden.
       if (data.emblem) {
         crossEmblem.textContent = data.emblem;
@@ -1158,8 +1200,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // v1.7: videos are served by opaque ID from private storage (never by path).
         const videoUrl = '/video?id=' + encodeURIComponent(data.customVideoId);
         if (customVideoBg.src !== videoUrl) customVideoBg.src = videoUrl;
-        // v1.8: Respect the template's muted flag.
-        customVideoBg.muted = data.customVideoMuted !== false;
+        // v1.8: HTTP is ALWAYS muted (browser autoplay policy + Ashraf: audio goes to NDI only).
+        // The customVideoMuted toggle only affects NDI.
+        customVideoBg.muted = true;
+        // v1.8: Apply motion speed to video playback rate.
+        const speed = parseFloat(data.motionSpeed) || 1.0;
+        if (customVideoBg.playbackRate !== speed) customVideoBg.playbackRate = speed;
         customVideoBg.style.display = 'block';
         customVideoBg.style.opacity = animOpacity;
         animBgLayer.style.opacity = '1';
@@ -1434,7 +1480,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // Calculate bilingual secondary text if needed
         var secondaryLayout: StaticLayout? = null
         if (showEnglish) {
-            val citationText = " (" + activeVerse.getFormattedEnglishCitation() + ")"
+            // v1.8: In ENGLISH_ONLY, the citation is already in the main citation row.
+            // Don't duplicate it here. In BOTH mode, include it with the English verse.
+            val isEnglishOnly = tpl.languageMode == LanguageMode.ENGLISH_ONLY
+            val citationText = if (isEnglishOnly) "" else " (" + activeVerse.getFormattedEnglishCitation() + ")"
             val fullSecondaryText = activeVerse.englishText + citationText
             
             val secondaryTextPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -1526,6 +1575,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             videoRenderer.setSource(customVideoFile)
             videoRenderer.setAlpha(tpl.animatedBackgroundOpacity)
             videoRenderer.setMuted(tpl.customVideoMuted)
+            videoRenderer.setSpeed(tpl.motionSpeed)
             if (isMotionTick || !videoRenderer.hasFrame()) videoRenderer.requestFrame()
             val videoRect = Rect(boxLeft.toInt(), boxTop.toInt(), boxRight.toInt(), boxBottom.toInt())
             if (radius > 0f) {
@@ -1766,6 +1816,16 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // v1.7: the verse block obeys the user's alignment on Full Show too.
         val translateX = if (tpl.alignment == BroadcastTextAlignment.CENTER) {
             (width - contentWidth) / 2f
+        } else if (tpl.alignment == BroadcastTextAlignment.RIGHT) {
+            // v1.8: Right-align the verse layout with the citation (account for emblem).
+            // The citation's right edge is at boxRight - paddingH - emblemW - emblemGap.
+            // Use a temporary paint for measurement (emblemPaint is defined later).
+            val tmpPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                textSize = 24f * scale
+            }
+            val emblemW = tmpPaint.measureText(tpl.emblem)
+            val emblemGap = 16f * scale
+            boxRight - paddingH - emblemW - emblemGap - contentWidth
         } else {
             boxLeft + paddingH
         }

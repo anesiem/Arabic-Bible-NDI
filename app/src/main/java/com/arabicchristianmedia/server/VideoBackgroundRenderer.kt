@@ -98,6 +98,23 @@ class VideoBackgroundRenderer(
     }
 
     /**
+     * v1.8: Set playback speed (0.25x to 3.0x). Uses PlaybackParams on API 23+.
+     */
+    fun setSpeed(speed: Float) {
+        handler.post {
+            try {
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                    val params = player?.playbackParams ?: android.media.PlaybackParams()
+                    params.speed = speed.coerceIn(0.25f, 3.0f)
+                    player?.playbackParams = params
+                }
+            } catch (e: Exception) {
+                // Player not ready or speed not supported; ignore.
+            }
+        }
+    }
+
+    /**
      * Points the renderer at a video file. No-op if unchanged. Pauses
      * playback when null.
      */

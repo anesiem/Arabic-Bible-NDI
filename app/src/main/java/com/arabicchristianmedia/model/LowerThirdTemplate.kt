@@ -136,5 +136,11 @@ data class LowerThirdTemplate(
      * for church production — background visuals shouldn't have audio.
      */
     val customVideoMuted: Boolean = true,
+    /**
+     * v1.8: Motion/animation playback speed multiplier. 1.0 = normal,
+     * 0.5 = half speed, 2.0 = double speed. Applies to custom video
+     * and procedural animations.
+     */
+    val motionSpeed: Float = 1.0f,
     val streamBackgroundMode: StreamBackgroundMode = StreamBackgroundMode.TRANSPARENT_ALPHA,
 )

@@ -521,6 +521,15 @@ fun TemplateEditorScreen(
                         onValueChange = { onUpdate(editingTemplate.copy(animatedBackgroundOpacity = it)) }
                     )
                     Spacer(modifier = Modifier.height(4.dp))
+                    // v1.8: Motion speed slider (0.25x to 3.0x) — right after opacity.
+                    SliderWithLabel(
+                        "سرعة الحركة (Motion speed)",
+                        editingTemplate.motionSpeed,
+                        0.25f..3.0f
+                    ) {
+                        onUpdate(editingTemplate.copy(motionSpeed = it))
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
                     if (editingTemplate.animatedBackground == AnimatedBackgroundType.CUSTOM_VIDEO &&
                         editingTemplate.customVideoId.isNotEmpty()) {
                         Row(
@@ -560,15 +569,6 @@ fun TemplateEditorScreen(
                             editingTemplate.customVideoMuted
                         ) {
                             onUpdate(editingTemplate.copy(customVideoMuted = it))
-                        }
-                        // v1.8: Motion speed slider (0.25x to 3.0x).
-                        Spacer(modifier = Modifier.height(4.dp))
-                        SliderWithLabel(
-                            "سرعة الحركة (Motion speed)",
-                            editingTemplate.motionSpeed,
-                            0.25f..3.0f
-                        ) {
-                            onUpdate(editingTemplate.copy(motionSpeed = it))
                         }
                     } else if (editingTemplate.customVideoUrl.isNotEmpty()) {
                         Text(

@@ -1756,6 +1756,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 AnimatedBackgroundType.CANDLE_LITURGICAL_GLOW -> Color.argb(animAlpha, 245, 158, 11)
                 AnimatedBackgroundType.ROYAL_PURPLE_SILK -> Color.argb(animAlpha, 192, 132, 252)
                 AnimatedBackgroundType.PARTICLE_STARS -> Color.argb(animAlpha, 125, 211, 252)
+                AnimatedBackgroundType.EMERALD_GARDEN_WAVES -> Color.argb(animAlpha, 52, 211, 153)
+                AnimatedBackgroundType.ROSE_DAWN_GLOW -> Color.argb(animAlpha, 251, 113, 133)
+                AnimatedBackgroundType.GOLDEN_PARTICLES -> Color.argb(animAlpha, 252, 211, 77)
                 else -> Color.argb(animAlpha, 255, 255, 255)
             }
             val glowShader = RadialGradient(

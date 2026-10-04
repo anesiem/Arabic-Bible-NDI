@@ -542,6 +542,7 @@ class TemplateRepository(context: Context) {
             put("animatedBackgroundOpacity", t.animatedBackgroundOpacity.toDouble())
             put("customVideoUrl", t.customVideoUrl)
             put("customVideoId", t.customVideoId)
+            put("customVideoMuted", t.customVideoMuted)
             put("streamBackgroundMode", t.streamBackgroundMode.name)
         }
     }
@@ -618,6 +619,7 @@ class TemplateRepository(context: Context) {
             animatedBackgroundOpacity = obj.optDouble("animatedBackgroundOpacity", 0.65).toFloat(),
             customVideoUrl = obj.optString("customVideoUrl", ""),
             customVideoId = obj.optString("customVideoId", ""),
+            customVideoMuted = obj.optBoolean("customVideoMuted", true),
             streamBackgroundMode = try { com.arabicchristianmedia.model.StreamBackgroundMode.valueOf(obj.optString("streamBackgroundMode")) } catch (e: Exception) { com.arabicchristianmedia.model.StreamBackgroundMode.TRANSPARENT_ALPHA }
         ).let { migrateLegacyVideo(it) }
     }

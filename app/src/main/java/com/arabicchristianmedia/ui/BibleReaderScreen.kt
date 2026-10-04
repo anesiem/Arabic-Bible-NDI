@@ -414,7 +414,8 @@ fun BentoVerseCard(
         bento.primary.copy(alpha = 0.25f)
     }
     val bgColor by animateColorAsState(if (isCued) highlightColor else bento.card, label = "cardBg")
-    val borderColor = if (isLiveOnAir) bento.liveRed else if (isCued) bento.primary else bento.border
+    // v1.8: Use primary (theme-aware) instead of red for the verse highlight border.
+    val borderColor = if (isLiveOnAir || isCued) bento.primary else bento.border
 
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
         Card(

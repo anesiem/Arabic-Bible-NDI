@@ -453,12 +453,20 @@ fun TemplateEditorScreen(
                     }
                     Text("اتجاه الظل (Direction)", fontSize = 11.sp, color = bento.textSecondary)
                     // 8-direction compass: 0°=→, 45°=↘, 90°=↓, 135°=↙, 180°=←, 225°=↖, 270°=↑, 315°=↗
+                    // v1.8: Constrained to max 200dp so it doesn't blow up on tablets.
                     val directions = listOf(
                         315 to "↗", 0 to "→", 45 to "↘",
                         270 to "↑", null to "•", 90 to "↓",
                         225 to "↖", 180 to "←", 135 to "↙"
                     )
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Box(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                            modifier = Modifier.widthIn(max = 200.dp)
+                        ) {
                         for (row in 0..2) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -487,7 +495,7 @@ fun TemplateEditorScreen(
                                 }
                             }
                         }
-                    }
+                    } // Close Box (v1.8: constrains compass size on tablets)
                 }
                 if (!editingTemplate.isFullScreen) {
                     FeatureToggleRow("توهج الكارت (Card Glow)", editingTemplate.cardGlowEnabled) { onUpdate(editingTemplate.copy(cardGlowEnabled = it)) }
@@ -542,6 +550,14 @@ fun TemplateEditorScreen(
                             }) {
                                 Text("إزالة (Remove)", fontSize = 11.sp, color = bento.primary)
                             }
+                        }
+                        // v1.8: Muted toggle for custom video (default muted for church production).
+                        Spacer(modifier = Modifier.height(4.dp))
+                        FeatureToggleRow(
+                            "كتم صوت الفيديو (Mute video audio)",
+                            editingTemplate.customVideoMuted
+                        ) {
+                            onUpdate(editingTemplate.copy(customVideoMuted = it))
                         }
                     } else if (editingTemplate.customVideoUrl.isNotEmpty()) {
                         Text(

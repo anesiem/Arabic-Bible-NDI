@@ -1483,7 +1483,8 @@ private fun AllUrlsCard(
                 )
             } else {
                 urls.forEach { (label, path) ->
-                    val full = baseUrl + path
+                    // v1.8: Strip /lower from base to avoid duplication (e.g., /lower/full).
+                    val full = baseUrl.removeSuffix("/lower") + path
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
                         verticalAlignment = Alignment.CenterVertically,

@@ -84,6 +84,20 @@ class VideoBackgroundRenderer(
     }
 
     /**
+     * v1.8: Set muted state. When muted, volume is 0; otherwise full volume.
+     */
+    fun setMuted(muted: Boolean) {
+        handler.post {
+            try {
+                val vol = if (muted) 0f else 1f
+                player?.setVolume(vol, vol)
+            } catch (e: Exception) {
+                // Player not ready; ignore.
+            }
+        }
+    }
+
+    /**
      * Points the renderer at a video file. No-op if unchanged. Pauses
      * playback when null.
      */

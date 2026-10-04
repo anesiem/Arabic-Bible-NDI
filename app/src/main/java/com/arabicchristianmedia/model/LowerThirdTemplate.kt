@@ -131,5 +131,10 @@ data class LowerThirdTemplate(
      * migrate best-effort on load.
      */
     val customVideoId: String = "",
+    /**
+     * v1.8: Play the custom background video with sound. Default true (muted)
+     * for church production — background visuals shouldn't have audio.
+     */
+    val customVideoMuted: Boolean = true,
     val streamBackgroundMode: StreamBackgroundMode = StreamBackgroundMode.TRANSPARENT_ALPHA,
 )

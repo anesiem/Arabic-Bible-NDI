@@ -562,6 +562,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             put("animatedBackgroundOpacity", tpl.animatedBackgroundOpacity)
             put("customVideoUrl", tpl.customVideoUrl)
             put("customVideoId", tpl.customVideoId)
+            put("customVideoMuted", tpl.customVideoMuted)
         }
         return root.toString()
     }
@@ -888,8 +889,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       // v1.8: viewport-relative font sizing — the style's font sizes are
       // designed for a 1920-wide canvas (like NDI); scale to the actual
       // viewport so HTTP matches preview/NDI proportions at any size.
-      var vwScale = Math.max(0.2, (window.innerWidth || 1920) / 1920);
-      function scaledPx(base) { return (base * vwScale) + 'px'; }
+      // v1.8: Match NDI font size exactly. NDI renders at verseFontSize * 2 (see
+      // drawFrameInto: textSize = verseFontSize * 2f * scale). No viewport scaling —
+      // HTTP must match NDI pixel-for-pixel at 1920x1080.
+      function scaledPx(base) { return (base * 2) + 'px'; }
 
       // 1. Set mode classes
       if (isFull) {
@@ -905,20 +908,33 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       // 2. Text Content (v1.8: three-way language mode)
       const langMode = data.languageMode || (data.bilingual ? 'BOTH' : 'ARABIC_ONLY');
       const showArabic = langMode !== 'ENGLISH_ONLY';
-      const showEnglish = langMode !== 'ARABIC_ONLY' && data.englishText;
-      verseText.style.display = showArabic ? '' : 'none';
-      citationText.style.display = showArabic ? '' : 'none';
+      // ENGLISH_ONLY: English takes the main verse/citation rows (not the secondary section).
+      // BOTH: English goes in the secondary section below Arabic.
+      const showEnglishSection = langMode === 'BOTH' && data.englishText;
       if (showArabic) {
+        verseText.style.display = '';
+        citationText.style.display = '';
         verseText.textContent = data.arabicText;
         citationText.textContent = data.arabicCitation;
+        // Main verse uses Arabic styling (already set above).
       } else {
-        // ENGLISH_ONLY: English citation takes the citation row.
-        citationText.textContent = data.englishCitation;
+        // ENGLISH_ONLY: English verse/citation take the main rows.
+        verseText.style.display = '';
         citationText.style.display = '';
+        verseText.textContent = data.englishText || '';
+        citationText.textContent = data.englishCitation || '';
+        // Apply English (secondary) styling to main rows in ENGLISH_ONLY mode.
+        verseText.style.color = data.secondaryTextColorHex || verseText.style.color;
+        citationText.style.color = data.secondaryReferenceColorHex || citationText.style.color;
+        verseText.style.fontSize = scaledPx(data.secondaryVerseFontSize || data.verseFontSize || 28);
+        citationText.style.fontSize = scaledPx(data.secondaryReferenceFontSize || data.referenceFontSize || 20);
+        verseText.style.fontFamily = data.secondaryFontFamily || verseText.style.fontFamily;
+        // Alignment: in ENGLISH_ONLY, the main verse respects the alignment setting
+        // (not forced left). The CSS text-align is set in section 4 below.
       }
 
-      // 3. Bilingual Mode
-      if (showEnglish) {
+      // 3. Bilingual Mode (BOTH only: English in secondary section below Arabic)
+      if (showEnglishSection) {
         englishSection.style.display = 'block';
         englishText.textContent = data.englishText;
         englishCitation.textContent = '(' + data.englishCitation + ')';
@@ -1142,6 +1158,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // v1.7: videos are served by opaque ID from private storage (never by path).
         const videoUrl = '/video?id=' + encodeURIComponent(data.customVideoId);
         if (customVideoBg.src !== videoUrl) customVideoBg.src = videoUrl;
+        // v1.8: Respect the template's muted flag.
+        customVideoBg.muted = data.customVideoMuted !== false;
         customVideoBg.style.display = 'block';
         customVideoBg.style.opacity = animOpacity;
         animBgLayer.style.opacity = '1';
@@ -1166,7 +1184,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     // Connect Server-Sent Events (SSE)
     function connectSse() {
       const urlParams = new URLSearchParams(window.location.search);
-      const isShow = urlParams.get('show') === '1' || window.location.pathname.includes('/show');
+      const isShow = urlParams.get('show') === '1' || window.location.pathname.includes('/full');
       const sseUrl = '/events' + (isShow ? '?show=1' : '');
       
       const evtSource = new EventSource(sseUrl);
@@ -1507,6 +1525,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         if (videoRenderer != null && customVideoFile != null) {
             videoRenderer.setSource(customVideoFile)
             videoRenderer.setAlpha(tpl.animatedBackgroundOpacity)
+            videoRenderer.setMuted(tpl.customVideoMuted)
             if (isMotionTick || !videoRenderer.hasFrame()) videoRenderer.requestFrame()
             val videoRect = Rect(boxLeft.toInt(), boxTop.toInt(), boxRight.toInt(), boxBottom.toInt())
             if (radius > 0f) {
@@ -2375,16 +2394,30 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // .NET ticks: 100ns intervals since 0001-01-01 UTC.
         val dotNetTicks = System.currentTimeMillis() * 10000L + 621355968000000000L
 
-        val arabicVerse = if (verse != null) {
+        // v1.8: Respect the Lower Third language mode.
+        val langMode = tpl.languageMode
+        val showArabic = langMode != LanguageMode.ENGLISH_ONLY
+        val showEnglish = langMode != LanguageMode.ARABIC_ONLY
+        // Numbers in Eastern Arabic when Arabic is shown (BOTH uses Arabic numbers per Ashraf).
+        val useEasternNumbers = showArabic && tpl.useEasternArabicNumerals
+
+        fun formatNum(n: Int): String {
+            return if (useEasternNumbers) ArabicTextFormatter.toEasternArabicDigits(n.toString())
+            else n.toString()
+        }
+
+        val arabicVerse = if (verse != null && showArabic) {
             ArabicTextFormatter.prepareForBroadcast(
                 verse.arabicText, tpl.useEasternArabicNumerals, tpl.useArabicPunctuation
             )
         } else ""
-        val arabicCitation = verse?.getFormattedArabicCitation(tpl.useEasternArabicNumerals) ?: ""
-        val englishVerse = verse?.englishText ?: ""
-        val englishCitation = verse?.getFormattedEnglishCitation() ?: ""
+        val arabicCitation = if (verse != null && showArabic) {
+            verse.getFormattedArabicCitation(tpl.useEasternArabicNumerals)
+        } else ""
+        val englishVerse = if (verse != null && showEnglish) verse.englishText ?: "" else ""
+        val englishCitation = if (verse != null && showEnglish) verse.getFormattedEnglishCitation() else ""
 
-        // Scripture: Arabic verse/citation, blank line, English verse/citation.
+        // Scripture: respects language mode.
         val scripture = buildString {
             if (arabicVerse.isNotEmpty()) {
                 append(arabicVerse)
@@ -2399,9 +2432,31 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             }
         }
 
-        val bookName = verse?.bookEnglishName ?: ""
-        val chapterNum = verse?.chapter?.toString() ?: ""
-        val verseNum = verse?.verse?.toString() ?: ""
+        // Separate fields for vMix text inputs.
+        val bookName = when {
+            showArabic && !showEnglish -> verse?.bookArabicName ?: ""
+            showEnglish && !showArabic -> verse?.bookEnglishName ?: ""
+            else -> verse?.bookArabicName ?: ""
+        }
+        val chapterNum = verse?.chapter?.let { formatNum(it) } ?: ""
+        val verseNum = verse?.verse?.let { formatNum(it) } ?: ""
+        val chapterVerse = if (verse != null) {
+            if (useEasternNumbers) "${formatNum(verse.chapter)} : ${formatNum(verse.verse)}"
+            else "${verse.chapter}:${verse.verse}"
+        } else ""
+        // Verse text without citation.
+        val verseTextOnly = buildString {
+            if (arabicVerse.isNotEmpty()) append(arabicVerse)
+            if (englishVerse.isNotEmpty()) {
+                if (arabicVerse.isNotEmpty()) append("\n\n")
+                append(englishVerse)
+            }
+        }
+        val bibleLanguage = when (langMode) {
+            LanguageMode.ARABIC_ONLY -> "Arabic"
+            LanguageMode.ENGLISH_ONLY -> "English"
+            LanguageMode.BOTH -> "Arabic,English"
+        }
 
         val xml = buildString {
             append("""<?xml version="1.0" encoding="utf-8"?>""")
@@ -2412,12 +2467,14 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             append("  <ImagePath />\n")
             append("  <BibleVersion></BibleVersion>\n")
             append("  <BibleCopyright></BibleCopyright>\n")
-            append("  <BibleLanguage>Arabic</BibleLanguage>\n")
+            append("  <BibleLanguage>$bibleLanguage</BibleLanguage>\n")
             append("  <BookName>${xmlEscape(bookName)}</BookName>\n")
             append("  <BookTitle>${xmlEscape(bookName)}</BookTitle>\n")
             append("  <BookAbbreviation></BookAbbreviation>\n")
             append("  <ChapterNumber>${xmlEscape(chapterNum)}</ChapterNumber>\n")
             append("  <VerseNumber>${xmlEscape(verseNum)}</VerseNumber>\n")
+            append("  <ChapterVerse>${xmlEscape(chapterVerse)}</ChapterVerse>\n")
+            append("  <VerseText>${xmlEscape(verseTextOnly)}</VerseText>\n")
             append("  <BackgroundPath />\n")
             append("</BibleShowData>\n")
         }

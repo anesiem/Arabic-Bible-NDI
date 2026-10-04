@@ -601,18 +601,20 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
      */
     fun onVerseClicked(verse: BibleVerse) {
         val needsNavigation = _uiState.value.isSearching
-        
+
+        if (needsNavigation) {
+            val book = BibleRepository.allBooks.find { it.id == verse.bookId } ?: _uiState.value.selectedBook
+            // v1.8: Navigate first (selectBook clears activeVerse), then set the verse
+            // so the UI auto-scrolls to it and highlights it.
+            selectBook(book, verse.chapter)
+        }
+
         _uiState.value = _uiState.value.copy(
             activeVerse = verse,
             isLiveOnAir = true,
             statusMessage = "Cued & Live: ${verse.getFormattedArabicCitation()}",
             isSearching = false // Close search view on click
         )
-
-        if (needsNavigation) {
-            val book = BibleRepository.allBooks.find { it.id == verse.bookId } ?: _uiState.value.selectedBook
-            selectBook(book, verse.chapter)
-        }
 
         broadcastServer.updateVerse(verse, live = true)
         triggerAllFrames()

@@ -41,6 +41,9 @@ enum class AnimatedBackgroundType(val id: String, val displayNameAr: String, val
     CANDLE_LITURGICAL_GLOW("candle_glow", "توهج قناديل كنسية (Candle Glow)", "Warm breathing cathedral liturgical candle ambience"),
     ROYAL_PURPLE_SILK("purple_silk", "حرير ملوكي بنفسجي (Purple Silk)", "Graceful royal liturgical violet curtains"),
     PARTICLE_STARS("particles", "ذرات نورانية عائمة (Holy Particles)", "Slowly floating stardust holy particles"),
+    EMERALD_GARDEN_WAVES("emerald_waves", "أمواج زمردية (Emerald Waves)", "Soft green flowing garden waves"),
+    ROSE_DAWN_GLOW("rose_glow", "توهج وردي فجري (Rose Dawn)", "Gentle pink rose dawn glow"),
+    GOLDEN_PARTICLES("gold_particles", "ذرات ذهبية (Golden Particles)", "Floating golden light particles"),
     CUSTOM_VIDEO("custom_video", "رابط فيديو مخصص (Custom MP4)", "Custom transparent/looping video URL")
 }
 

@@ -642,25 +642,27 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       overflow: hidden;
       font-family: 'Amiri', 'Noto Naskh Arabic', serif;
       -webkit-font-smoothing: antialiased;
-      /* v1.8: Center the 16:9 stage (maintains aspect ratio on any display). */
+      /* v1.8: Center the fixed 1920x1080 stage. The stage is always 1920x1080
+         internally (matching NDI), scaled via transform to fit the viewport. */
       display: flex;
       align-items: center;
       justify-content: center;
     }
 
     /* Stage Container (Default: Lower Third alignment at screen bottom) */
-    /* v1.8: Fixed 16:9 aspect ratio — scales to fit viewport, never distorts. */
+    /* v1.8: Fixed 1920x1080 internal resolution (matches NDI exactly).
+       Scaled via JS transform to fit viewport while maintaining 16:9. */
     #stage {
       position: relative;
-      aspect-ratio: 16 / 9;
-      width: min(100vw, 177.78vh);
-      height: auto;
-      max-width: 100vw;
-      max-height: 100vh;
+      width: 1920px;
+      height: 1080px;
+      flex-shrink: 0;
       pointer-events: none;
       display: flex;
       flex-direction: column;
       justify-content: flex-end;
+      transform-origin: center center;
+    }
     }
 
     /* Stage Container (Full Show Mode: Centered vertically and horizontally) */
@@ -800,6 +802,23 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       animation: smoothFlow 18s linear infinite;
     }
 
+    .anim-emerald-waves {
+      background: linear-gradient(45deg, rgba(6, 78, 59, 0.4) 0%, rgba(52, 211, 153, 0.6) 50%, rgba(6, 78, 59, 0.4) 100%);
+      background-size: 400% 400%;
+      animation: smoothFlow 20s linear infinite;
+    }
+
+    .anim-rose-glow {
+      background: radial-gradient(circle at 50% 50%, rgba(251, 113, 133, 0.5) 0%, rgba(136, 19, 55, 0.3) 100%);
+      animation: candleBreath 8s ease-in-out infinite alternate;
+    }
+
+    .anim-gold-particles {
+      background: linear-gradient(135deg, rgba(120, 53, 15, 0.4) 0%, rgba(252, 211, 77, 0.5) 50%, rgba(120, 53, 15, 0.4) 100%);
+      background-size: 300% 300%;
+      animation: smoothFlow 15s linear infinite;
+    }
+
     .anim-particles {
       background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.1) 0%, transparent 100%);
       animation: particleBreath 10s ease-in-out infinite alternate;
@@ -858,10 +877,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       line-height: 1.35;
     }
     .english-citation {
-      display: inline-block;
+      display: block;
       direction: ltr;
       font-weight: 700;
-      margin-left: 6px;
+      margin-top: 4px;
       font-size: 0.7em;
     }
   </style>
@@ -892,6 +911,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   <script>
     // Elements
     const stage = document.getElementById('stage');
+    // v1.8: Scale the fixed 1920x1080 stage to fit viewport (maintains 16:9).
+    function fitStage() {
+      const scale = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+      stage.style.transform = 'scale(' + scale + ')';
+    }
+    window.addEventListener('resize', fitStage);
+    fitStage();
     const container = document.getElementById('lowerthird-container');
     const cardBox = document.getElementById('card-box');
     const animBgLayer = document.getElementById('animated-bg-layer');
@@ -946,28 +972,18 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       // 2. Text Content (v1.8: three-way language mode)
       const langMode = data.languageMode || (data.bilingual ? 'BOTH' : 'ARABIC_ONLY');
       const showArabic = langMode !== 'ENGLISH_ONLY';
-      // ENGLISH_ONLY: English takes the main verse/citation rows (not the secondary section).
-      // BOTH: English goes in the secondary section below Arabic.
-      const showEnglishSection = langMode === 'BOTH' && data.englishText;
+      // v1.8: English section is shown in BOTH and ENGLISH_ONLY (with its own colors).
+      // No color swapping — each language keeps its own styling.
+      const showEnglishSection = langMode !== 'ARABIC_ONLY' && data.englishText;
       if (showArabic) {
         verseText.style.display = '';
         citationText.style.display = '';
         verseText.textContent = data.arabicText;
         citationText.textContent = data.arabicCitation;
-        // Main verse uses Arabic styling (already set above).
       } else {
-        // ENGLISH_ONLY: English verse/citation take the main rows.
-        verseText.style.display = '';
-        citationText.style.display = '';
-        verseText.textContent = data.englishText || '';
-        citationText.textContent = data.englishCitation || '';
-        // Font size/family: English (secondary) styling for main rows.
-        // Colors are handled in the main styling section below (respects language mode).
-        verseText.style.fontSize = scaledPx(data.secondaryVerseFontSize || data.verseFontSize || 28);
-        citationText.style.fontSize = scaledPx(data.secondaryReferenceFontSize || data.referenceFontSize || 20);
-        verseText.style.fontFamily = data.secondaryFontFamily || verseText.style.fontFamily;
-        // Alignment: in ENGLISH_ONLY, the main verse respects the alignment setting
-        // (not forced left). The CSS text-align is set in section 4 below.
+        // ENGLISH_ONLY: Hide Arabic rows, English section takes over.
+        verseText.style.display = 'none';
+        citationText.style.display = 'none';
       }
 
       // 3. Bilingual Mode (BOTH only: English in secondary section below Arabic)
@@ -1093,18 +1109,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       const accent = data.accentColorHex || '#E5A93C';
       const textColor = data.textColorHex || '#FFFFFF';
       const refColor = data.referenceColorHex || '#F4D06F';
-      // v1.8: In ENGLISH_ONLY, use secondary (English) colors for main rows.
-      const langMode2 = data.languageMode || 'ARABIC_ONLY';
-      const isEnglishOnly = langMode2 === 'ENGLISH_ONLY';
-      const mainTextColor = isEnglishOnly ? (data.secondaryTextColorHex || textColor) : textColor;
-      const mainRefColor = isEnglishOnly ? (data.secondaryReferenceColorHex || refColor) : refColor;
 
-      verseText.style.color = mainTextColor;
-      citationRow.style.color = mainRefColor;
+      verseText.style.color = textColor;
+      citationRow.style.color = refColor;
       // v1.8: emblem is transparent, citation-colored, inline with the citation
       // (was: accent-colored chip background).
       crossEmblem.style.backgroundColor = 'transparent';
-      crossEmblem.style.color = mainRefColor;
+      crossEmblem.style.color = refColor;
       // v1.7: free user emblem (emoji/symbol); empty = hidden.
       if (data.emblem) {
         crossEmblem.textContent = data.emblem;
@@ -1192,6 +1203,15 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         animBgLayer.style.opacity = animOpacity;
       } else if (animType === 'purple_silk') {
         animBgLayer.classList.add('anim-purple-silk');
+        animBgLayer.style.opacity = animOpacity;
+      } else if (animType === 'emerald_waves') {
+        animBgLayer.classList.add('anim-emerald-waves');
+        animBgLayer.style.opacity = animOpacity;
+      } else if (animType === 'rose_glow') {
+        animBgLayer.classList.add('anim-rose-glow');
+        animBgLayer.style.opacity = animOpacity;
+      } else if (animType === 'gold_particles') {
+        animBgLayer.classList.add('anim-gold-particles');
         animBgLayer.style.opacity = animOpacity;
       } else if (animType === 'particles') {
         animBgLayer.classList.add('anim-particles');
@@ -1660,6 +1680,33 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                         val c2 = Color.argb(bgAlpha, 192, 132, 252)
                         LinearGradient(
                             boxLeft + (boxWidth * phase), boxTop,
+                            boxRight, boxBottom,
+                            intArrayOf(c1, c2, c1), null, Shader.TileMode.CLAMP
+                        )
+                    }
+                    AnimatedBackgroundType.EMERALD_GARDEN_WAVES -> {
+                        val c1 = Color.argb(bgAlpha, 6, 78, 59)
+                        val c2 = Color.argb(bgAlpha, 52, 211, 153)
+                        LinearGradient(
+                            boxLeft, boxTop + (boxHeight * phase),
+                            boxRight, boxBottom,
+                            intArrayOf(c1, c2, c1), null, Shader.TileMode.CLAMP
+                        )
+                    }
+                    AnimatedBackgroundType.ROSE_DAWN_GLOW -> {
+                        val c1 = Color.argb(bgAlpha, 136, 19, 55)
+                        val c2 = Color.argb(bgAlpha, 251, 113, 133)
+                        RadialGradient(
+                            boxLeft + (boxWidth / 2f), boxTop + (boxHeight / 2f),
+                            (boxHeight * 1.2f) * (0.8f + 0.3f * phase),
+                            intArrayOf(c2, c1), floatArrayOf(0f, 1f), Shader.TileMode.CLAMP
+                        )
+                    }
+                    AnimatedBackgroundType.GOLDEN_PARTICLES -> {
+                        val c1 = Color.argb(bgAlpha, 120, 53, 15)
+                        val c2 = Color.argb(bgAlpha, 252, 211, 77)
+                        LinearGradient(
+                            boxLeft + (boxWidth * (1f - phase)), boxTop,
                             boxRight, boxBottom,
                             intArrayOf(c1, c2, c1), null, Shader.TileMode.CLAMP
                         )

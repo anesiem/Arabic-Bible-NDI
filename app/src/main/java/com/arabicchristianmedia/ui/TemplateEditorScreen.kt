@@ -512,16 +512,17 @@ fun TemplateEditorScreen(
                         FilterChip(selected = editingTemplate.animatedBackground == type, onClick = { onUpdate(editingTemplate.copy(animatedBackground = type)) }, label = { Text(type.displayNameAr, fontSize = 10.sp) })
                     }
                 }
-                if (editingTemplate.animatedBackground == AnimatedBackgroundType.CUSTOM_VIDEO) {
-                    // v1.7: opacity slider works ONLY when the custom-video flag is ON.
+                if (editingTemplate.animatedBackground != AnimatedBackgroundType.NONE) {
+                    // v1.8: opacity slider for ALL animated backgrounds (not just custom video).
                     SliderWithLabel(
-                        label = "شفافية الفيديو (Video Opacity)",
+                        label = "شفافية الحركة (Animation Opacity)",
                         value = editingTemplate.animatedBackgroundOpacity,
                         range = 0f..1f,
                         onValueChange = { onUpdate(editingTemplate.copy(animatedBackgroundOpacity = it)) }
                     )
                     Spacer(modifier = Modifier.height(4.dp))
-                    if (editingTemplate.customVideoId.isNotEmpty()) {
+                    if (editingTemplate.animatedBackground == AnimatedBackgroundType.CUSTOM_VIDEO &&
+                        editingTemplate.customVideoId.isNotEmpty()) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,

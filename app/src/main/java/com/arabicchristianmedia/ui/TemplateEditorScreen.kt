@@ -495,6 +495,7 @@ fun TemplateEditorScreen(
                                 }
                             }
                         }
+                        }
                     } // Close Box (v1.8: constrains compass size on tablets)
                 }
                 if (!editingTemplate.isFullScreen) {

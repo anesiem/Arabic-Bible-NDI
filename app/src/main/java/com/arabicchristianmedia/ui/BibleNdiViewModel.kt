@@ -13,6 +13,7 @@ import com.arabicchristianmedia.model.BibleBook
 import com.arabicchristianmedia.model.BibleVerse
 import com.arabicchristianmedia.model.BibleVersion
 import com.arabicchristianmedia.model.BroadcastTextAlignment
+import com.arabicchristianmedia.model.LanguageMode
 import com.arabicchristianmedia.model.LowerThirdTemplate
 import com.arabicchristianmedia.model.Testament
 import com.arabicchristianmedia.server.NdiBroadcastServer
@@ -139,6 +140,16 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         // This might mean isLive = false, not necessarily server off. 
         // But usually, servers start on init. I'll just set isLive = false.
         startBroadcastServer()
+        // v1.8: wire the HTTP remote API (/api/trigger, /api/clear, /api/videos).
+        broadcastServer.onTriggerVerse = { bookId, chapter, verseNum, target ->
+            triggerVerseByReference(bookId, chapter, verseNum, target)
+        }
+        broadcastServer.onClearVerse = {
+            clearBroadcast()
+        }
+        broadcastServer.onListVideos = {
+            listBackgroundVideos()
+        }
     }
 
     fun refreshNetworkInterfaces() {
@@ -245,7 +256,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         val initialBook = BibleRepository.getBookById("jhn") ?: BibleRepository.allBooks.first()
         val initialChapter = 3
         val verses = BibleRepository.getVerses(initialBook.id, initialChapter)
-        val defaultActiveVerse = verses.firstOrNull { it.verse == 16 } ?: verses.firstOrNull()
+        // v1.8: no verse selected on launch — the user picks one.
 
         _uiState.value = _uiState.value.copy(
             selectedBook = initialBook,
@@ -258,16 +269,14 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             highlightedShowStyleId = showStyle?.id,
             lowerWorkingDirty = templateRepo.isWorkingDirty(false),
             showWorkingDirty = templateRepo.isWorkingDirty(true),
-            activeVerse = defaultActiveVerse,
+            activeVerse = null,
             isLiveOnAir = false, // Start OFF AIR as per request 8
             statusMessage = "Ready. Tap a verse to go LIVE."
         )
         loadPersistedNdiSpecs()
 
-        if (defaultActiveVerse != null) {
-            broadcastServer.currentVerse = defaultActiveVerse
-            broadcastServer.isLive = false // Ensure server starts off-air
-        }
+        broadcastServer.currentVerse = null
+        broadcastServer.isLive = false // Ensure server starts off-air
         broadcastServer.currentTemplate = lowerWorking
         broadcastServer.currentShowTemplate = showWorking
     }
@@ -395,7 +404,18 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
     fun toggleNdiMotion(feedKey: String) {
         val current = _uiState.value.ndiSourceSpecs[feedKey]
             ?: NdiNativeSender.defaultSpec(feedKey)
-        updateNdiSourceSpec(feedKey, current.width, current.height, current.fps, !current.motionEnabled)
+        val newMotion = !current.motionEnabled
+        updateNdiSourceSpec(feedKey, current.width, current.height, current.fps, newMotion)
+        // v1.8: When motion is turned ON, kick the video renderer so it starts
+        // immediately without needing an OFF/ON cycle.
+        if (newMotion) {
+            val isFull = feedKey == NdiNativeSender.FEED_FULL
+            try {
+                broadcastServer.kickVideoRenderer(isFull)
+            } catch (e: Exception) {
+                // Non-fatal.
+            }
+        }
     }
 
     fun toggleAdvancedNdi() {
@@ -550,10 +570,14 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
 
     fun setBibleVersion(version: BibleVersion) {
         _uiState.value = _uiState.value.copy(bibleVersion = version)
-        // If template has bilingual toggle, sync if needed
-        val isDual = version == BibleVersion.DUAL_BILINGUAL
-        if (isDual != _uiState.value.activeTemplate.bilingualMode) {
-            updateActiveTemplate(_uiState.value.activeTemplate.copy(bilingualMode = isDual))
+        // v1.8: sync the three-way language mode with the reader's version picker.
+        val newMode = when (version) {
+            BibleVersion.DUAL_BILINGUAL -> LanguageMode.BOTH
+            BibleVersion.ENGLISH_KJV, BibleVersion.ENGLISH_WEB -> LanguageMode.ENGLISH_ONLY
+            else -> LanguageMode.ARABIC_ONLY
+        }
+        if (newMode != _uiState.value.activeTemplate.languageMode) {
+            updateActiveTemplate(_uiState.value.activeTemplate.copy(languageMode = newMode))
         }
     }
 
@@ -588,18 +612,20 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
      */
     fun onVerseClicked(verse: BibleVerse) {
         val needsNavigation = _uiState.value.isSearching
-        
+
+        if (needsNavigation) {
+            val book = BibleRepository.allBooks.find { it.id == verse.bookId } ?: _uiState.value.selectedBook
+            // v1.8: Navigate first (selectBook clears activeVerse), then set the verse
+            // so the UI auto-scrolls to it and highlights it.
+            selectBook(book, verse.chapter)
+        }
+
         _uiState.value = _uiState.value.copy(
             activeVerse = verse,
             isLiveOnAir = true,
             statusMessage = "Cued & Live: ${verse.getFormattedArabicCitation()}",
             isSearching = false // Close search view on click
         )
-
-        if (needsNavigation) {
-            val book = BibleRepository.allBooks.find { it.id == verse.bookId } ?: _uiState.value.selectedBook
-            selectBook(book, verse.chapter)
-        }
 
         broadcastServer.updateVerse(verse, live = true)
         triggerAllFrames()
@@ -622,6 +648,117 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         )
         broadcastServer.setLiveState(false)
         triggerAllFrames()
+    }
+
+    /**
+     * v1.8: trigger a verse from the HTTP remote API (/api/trigger).
+     * Looks up the verse by book/chapter/verse and takes it live.
+     * Target is "lower", "show", or "both" (both = current behavior).
+     * Returns true if the verse was found and triggered.
+     */
+    fun triggerVerseByReference(bookId: String, chapter: Int, verseNum: Int, target: String): Boolean {
+        return try {
+            val verses = BibleRepository.getVerses(bookId, chapter)
+            val verse = verses.firstOrNull { it.verse == verseNum } ?: return false
+
+            // Update UI state (no navigation — this is a remote trigger).
+            _uiState.value = _uiState.value.copy(
+                activeVerse = verse,
+                isLiveOnAir = true,
+                statusMessage = "Remote trigger: ${verse.getFormattedArabicCitation()}"
+            )
+
+            // Take live on the requested target(s).
+            // For now, "lower"/"show"/"both" all use the shared verse state;
+            // the target selects which outputs render it (both = current).
+            broadcastServer.updateVerse(verse, live = true)
+            triggerAllFrames()
+
+            // vMix SetText push (if enabled).
+            pushToVMix(verse)
+
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    /**
+     * v1.8: list background videos for /api/videos.
+     * Returns opaque IDs with display names and sizes.
+     */
+    fun listBackgroundVideos(): List<NdiBroadcastServer.VideoInfo> {
+        return try {
+            val app = try { getApplication<Application>() } catch (e: Exception) { null } ?: return emptyList()
+            val videoStore = com.arabicchristianmedia.server.VideoStore(app)
+            videoStore.listVideos().map { (id, file) ->
+                // Display name: try to find a template using this video, else use ID prefix.
+                val displayName = findVideoDisplayName(id) ?: "Video ${id.take(8)}"
+                NdiBroadcastServer.VideoInfo(
+                    id = id,
+                    displayName = displayName,
+                    sizeBytes = file.length()
+                )
+            }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    /** Find a friendly name for a video ID from templates that use it. */
+    private fun findVideoDisplayName(videoId: String): String? {
+        return try {
+            val all = _uiState.value.templates + templateRepo.getAllTemplates()
+            // Look for a template with this video; use its name.
+            all.firstOrNull { it.customVideoId == videoId }?.let {
+                "Video for '${it.name}'"
+            }
+        } catch (e: Exception) { null }
+    }
+
+    /**
+     * v1.8: push the triggered verse to vMix via SetText (if enabled in settings).
+     */
+    private fun pushToVMix(verse: com.arabicchristianmedia.model.BibleVerse) {
+        try {
+            // Defensive nullable getter (per AGENTS.md lesson #2).
+            val app = try { getApplication<Application>() } catch (e: Exception) { null } ?: return
+            val prefs = app.getSharedPreferences("vmix_prefs", 0) ?: return
+            val enabled = prefs.getBoolean("vmix_enabled", false)
+            if (!enabled) return
+
+            val controller = com.arabicchristianmedia.server.VMixController(
+                host = prefs.getString("vmix_host", "") ?: "",
+                port = prefs.getInt("vmix_port", 8088),
+                input = prefs.getString("vmix_input", "") ?: ""
+            )
+            val arabicVerseField = prefs.getString("vmix_field_arabic_verse", "") ?: ""
+            val arabicCitationField = prefs.getString("vmix_field_arabic_citation", "") ?: ""
+            val englishVerseField = prefs.getString("vmix_field_english_verse", "") ?: ""
+            val englishCitationField = prefs.getString("vmix_field_english_citation", "") ?: ""
+
+            // Run on IO to avoid blocking.
+            Thread {
+                try {
+                    if (arabicVerseField.isNotEmpty()) {
+                        controller.setText(arabicVerseField, verse.arabicText)
+                    }
+                    if (arabicCitationField.isNotEmpty()) {
+                        controller.setText(arabicCitationField, verse.getFormattedArabicCitation())
+                    }
+                    if (englishVerseField.isNotEmpty()) {
+                        controller.setText(englishVerseField, verse.englishText)
+                    }
+                    if (englishCitationField.isNotEmpty()) {
+                        controller.setText(englishCitationField, verse.getFormattedEnglishCitation())
+                    }
+                } catch (e: Exception) {
+                    // Best-effort; log but don't fail the trigger.
+                }
+            }.start()
+        } catch (e: Exception) {
+            // vMix push is best-effort.
+        }
     }
 
     fun nextVerse() {

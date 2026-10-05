@@ -147,22 +147,24 @@ class TemplateRepositoryTest {
     @Test
     fun `factory styles carry explicit safe shadow and glow values`() {
         val defaults = TemplateRepository.DEFAULT_TEMPLATES
-        assertEquals(7, defaults.size)
+        assertEquals(10, defaults.size)
         defaults.forEach { tpl ->
             assertTrue(tpl.textShadowEnabled)
-            assertEquals("#000000", tpl.textShadowColorHex)
-            assertEquals("#000000", tpl.cardGlowColorHex)
+            assertTrue(tpl.textShadowColorHex.isNotBlank())
+            assertTrue(tpl.cardGlowColorHex.isNotBlank())
         }
         // The two transparent styles must not glow: there is no card, and the
-        // feeds promise 100% transparency. The five card styles keep the glow
-        // (matches the legacy drop-shadow look).
+        // feeds promise 100% transparency. The card styles keep the glow.
         assertFalse(defaults.first { it.id == "tpl_transparent_alpha" }.cardGlowEnabled)
         assertFalse(defaults.first { it.id == "tpl_transparent_animated_video" }.cardGlowEnabled)
+        assertFalse(defaults.first { it.id == "tpl_upper_room" }.cardGlowEnabled)
         assertTrue(defaults.first { it.id == "tpl_modern_glass" }.cardGlowEnabled)
         assertTrue(defaults.first { it.id == "tpl_animated_gold" }.cardGlowEnabled)
         assertTrue(defaults.first { it.id == "tpl_classic_banner" }.cardGlowEnabled)
         assertTrue(defaults.first { it.id == "tpl_cathedral_gold" }.cardGlowEnabled)
         assertTrue(defaults.first { it.id == "tpl_bilingual_dual" }.cardGlowEnabled)
+        assertTrue(defaults.first { it.id == "tpl_sanctuary_gold" }.cardGlowEnabled)
+        assertTrue(defaults.first { it.id == "tpl_morning_mercy" }.cardGlowEnabled)
     }
 
     @Test

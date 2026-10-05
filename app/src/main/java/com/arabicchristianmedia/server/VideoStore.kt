@@ -95,4 +95,22 @@ class VideoStore(private val context: Context) {
     fun deleteVideo(id: String) {
         try { fileFor(id)?.delete() } catch (e: Exception) {}
     }
+
+    /**
+     * v1.8: list all stored background videos (for /api/videos).
+     * Returns (id, file) pairs sorted by name.
+     */
+    fun listVideos(): List<Pair<String, File>> {
+        return try {
+            val dir = backgroundsDir()
+            val files = dir.listFiles { f -> f.isFile && f.name.endsWith(".mp4") }
+                ?: return emptyList()
+            files.mapNotNull { f ->
+                val id = f.name.removeSuffix(".mp4")
+                if (ID_PATTERN.matches(id)) id to f else null
+            }.sortedBy { it.first }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
 }

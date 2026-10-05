@@ -48,6 +48,7 @@ import com.arabicchristianmedia.data.BibleRepository
 import com.arabicchristianmedia.data.TemplateRepository
 import com.arabicchristianmedia.model.BibleVerse
 import com.arabicchristianmedia.model.BroadcastTextAlignment
+import com.arabicchristianmedia.model.LanguageMode
 import com.arabicchristianmedia.model.LowerThirdTemplate
 import com.arabicchristianmedia.model.TemplateStyle
 import androidx.compose.ui.tooling.preview.Preview
@@ -96,7 +97,9 @@ fun FullscreenOverlayContent(
         template.useEasternArabicNumerals,
         template.useArabicPunctuation
     )
-    val formattedCitation = verse.getFormattedArabicCitation(template.useEasternArabicNumerals)
+    val formattedCitation = if (template.languageMode != LanguageMode.ENGLISH_ONLY)
+        verse.getFormattedArabicCitation(template.useEasternArabicNumerals)
+    else verse.getFormattedEnglishCitation()
 
     Box(
         modifier = Modifier
@@ -192,6 +195,8 @@ fun FullscreenOverlayContent(
 
                         Spacer(modifier = Modifier.height(8.dp))
 
+                        // v1.8: three-way language mode — Arabic verse hidden in ENGLISH_ONLY.
+                        if (template.languageMode != LanguageMode.ENGLISH_ONLY) {
                         Text(
                             text = formattedVerse,
                             fontSize = template.verseFontSize.sp,
@@ -204,8 +209,10 @@ fun FullscreenOverlayContent(
                                 else -> TextAlign.Right
                             }
                         )
+                        }
 
-                        if (template.bilingualMode) {
+                        // v1.8: three-way language mode; English left unless centered.
+                        if (template.languageMode != LanguageMode.ARABIC_ONLY && verse.englishText.isNotBlank()) {
                             Spacer(modifier = Modifier.height(6.dp))
                             CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
                                 Text(
@@ -214,8 +221,7 @@ fun FullscreenOverlayContent(
                                     color = Color(0xFFCBD5E1),
                                     textAlign = when (template.alignment) {
                                         BroadcastTextAlignment.CENTER -> TextAlign.Center
-                                        BroadcastTextAlignment.LEFT -> TextAlign.Left
-                                        else -> TextAlign.Right
+                                        else -> TextAlign.Left
                                     },
                                     modifier = Modifier.fillMaxWidth()
                                 )

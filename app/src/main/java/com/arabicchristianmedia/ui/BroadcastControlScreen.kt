@@ -401,7 +401,7 @@ fun BroadcastControlScreen(
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Text(
-                                            text = if (uiState.serverUrl.isNotBlank()) uiState.serverUrl else "http://192.168.x.x:${uiState.serverPort}/ndi",
+                                            text = if (uiState.serverUrl.isNotBlank()) uiState.serverUrl else "http://192.168.x.x:${uiState.serverPort}/lower",
                                             fontSize = 11.sp,
                                             fontFamily = FontFamily.Monospace,
                                             fontWeight = FontWeight.Bold,
@@ -490,7 +490,7 @@ fun BroadcastControlScreen(
                                     border = BorderStroke(1.dp, BentoBorder),
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
-                                    val showUrl = uiState.serverUrl.replace("/ndi", "/show")
+                                    val showUrl = uiState.serverUrl.replace("/lower", "/full")
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
@@ -576,7 +576,7 @@ fun BroadcastControlScreen(
                                 
                                 Surface(
                                     shape = RoundedCornerShape(10.dp),
-                                    color = Color(0xFFF8FAFC),
+                                    color = BentoCardWhite,
                                     border = androidx.compose.foundation.BorderStroke(1.dp, BentoBorder),
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
@@ -775,7 +775,7 @@ fun BroadcastControlScreen(
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Text(
-                                            text = if (uiState.streamUrl.isNotBlank()) uiState.streamUrl else "http://192.168.x.x:${uiState.serverPort}/ndi/stream",
+                                            text = if (uiState.streamUrl.isNotBlank()) uiState.streamUrl else "http://192.168.x.x:${uiState.serverPort}/stream",
                                             fontSize = 11.sp,
                                             fontFamily = FontFamily.Monospace,
                                             fontWeight = FontWeight.Bold,
@@ -841,6 +841,14 @@ fun BroadcastControlScreen(
                 clipboard.setPrimaryClip(clip)
                 Toast.makeText(context, "تم نسخ: $label", Toast.LENGTH_SHORT).show()
             }
+        )
+
+        // v1.8: vMix SetText push settings (LAN-only).
+        VMixSettingsCard(
+            cardColor = BentoCardWhite,
+            borderColor = BentoBorder,
+            textPrimary = BentoTextPrimary,
+            textSecondary = BentoTextSecondary
         )
 
         // Card: Keep Screen Awake
@@ -1198,7 +1206,7 @@ fun BroadcastControlScreen(
 
                 val obsSteps = listOf(
                     "1. في برنامج OBS، اضغط على زر (+) في قسم Sources (المصادر) واختر Browser (متصفح).",
-                    "2. ضع في خانة URL الرابط أعلاه: ${if (uiState.serverUrl.isNotBlank()) uiState.serverUrl else "http://<IP>:8080/ndi"}.",
+                    "2. ضع في خانة URL الرابط أعلاه: ${if (uiState.serverUrl.isNotBlank()) uiState.serverUrl else "http://<IP>:8080/lower"}.",
                     "3. اضبط الأبعاد: Width = 1920 و Height = 1080.",
                     "4. تأكد من تحديد خيار (Shutdown source when not active).",
                     "5. بمجرد النقر على أي آية في التطبيق، ستظهر فوراً في البث المباشر مع خلفية شفافة 100% فوق الكاميرا!"
@@ -1443,13 +1451,16 @@ private fun AllUrlsCard(
     onCopy: (String, String) -> Unit
 ) {
     val urls = listOf(
-        "Overlay شفاف (Browser Source)" to "/ndi",
-        "العرض الكامل (Full Show)" to "/show",
-        "بث MJPEG" to "/ndi/stream",
-        "لقطة PNG" to "/ndi/stream.png",
-        "أحداث SSE (الآيات)" to "/ndi/events",
-        "الحالة (JSON)" to "/ndi/status",
-        "واجهة الآيات (API)" to "/ndi/api/verse"
+        "Lower Third (Browser Source)" to "/lower",
+        "العرض الكامل (Full Show)" to "/full",
+        "بث MJPEG" to "/stream",
+        "لقطة PNG" to "/snapshot.png",
+        "أحداث SSE (الآيات)" to "/events",
+        "الحالة" to "/api/status",
+        "واجهة الآيات (API)" to "/api/verse",
+        "تشغيل آية عن بُعد" to "/api/trigger?ref=John+3:16",
+        "صفحة التحكم عن بُعد" to "/remote",
+        "خلاصة vMix (XML)" to "/bibleshow.xml"
     )
     Text(
         text = "٥. جميع الروابط المتاحة:",
@@ -1472,7 +1483,8 @@ private fun AllUrlsCard(
                 )
             } else {
                 urls.forEach { (label, path) ->
-                    val full = baseUrl + path
+                    // v1.8: Strip /lower from base to avoid duplication (e.g., /lower/full).
+                    val full = baseUrl.removeSuffix("/lower") + path
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -1489,6 +1501,155 @@ private fun AllUrlsCard(
                 }
             }
         }
+    }
+}
+
+/**
+ * v1.8: vMix SetText push settings (LAN-only).
+ * Configures the vMix IP, port, input, and field mappings for pushing
+ * verse text via vMix's HTTP API (Function=SetText).
+ */
+@Composable
+private fun VMixSettingsCard(
+    cardColor: Color,
+    borderColor: Color,
+    textPrimary: Color,
+    textSecondary: Color
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val prefs = remember {
+        context.getSharedPreferences("vmix_prefs", Context.MODE_PRIVATE)
+    }
+
+    var enabled by remember { mutableStateOf(prefs.getBoolean("vmix_enabled", false)) }
+    var host by remember { mutableStateOf(prefs.getString("vmix_host", "") ?: "") }
+    var port by remember { mutableStateOf(prefs.getInt("vmix_port", 8088).toString()) }
+    var input by remember { mutableStateOf(prefs.getString("vmix_input", "") ?: "") }
+    var fieldArabicVerse by remember { mutableStateOf(prefs.getString("vmix_field_arabic_verse", "") ?: "") }
+    var fieldArabicCitation by remember { mutableStateOf(prefs.getString("vmix_field_arabic_citation", "") ?: "") }
+    var fieldEnglishVerse by remember { mutableStateOf(prefs.getString("vmix_field_english_verse", "") ?: "") }
+    var fieldEnglishCitation by remember { mutableStateOf(prefs.getString("vmix_field_english_citation", "") ?: "") }
+    var testResult by remember { mutableStateOf<String?>(null) }
+    var isTesting by remember { mutableStateOf(false) }
+
+    fun save() {
+        prefs.edit()
+            .putBoolean("vmix_enabled", enabled)
+            .putString("vmix_host", host.trim())
+            .putInt("vmix_port", port.toIntOrNull() ?: 8088)
+            .putString("vmix_input", input.trim())
+            .putString("vmix_field_arabic_verse", fieldArabicVerse.trim())
+            .putString("vmix_field_arabic_citation", fieldArabicCitation.trim())
+            .putString("vmix_field_english_verse", fieldEnglishVerse.trim())
+            .putString("vmix_field_english_citation", fieldEnglishCitation.trim())
+            .apply()
+    }
+
+    Surface(
+        shape = RoundedCornerShape(20.dp),
+        color = cardColor,
+        border = BorderStroke(1.dp, borderColor),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "vMix SetText Push (LAN)",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = textPrimary
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("مفعّل", fontSize = 12.sp, color = textSecondary)
+                    Spacer(Modifier.width(8.dp))
+                    androidx.compose.material3.Switch(
+                        checked = enabled,
+                        onCheckedChange = {
+                            enabled = it
+                            save()
+                        }
+                    )
+                }
+            }
+
+            Text(
+                "Push verse text to vMix title fields via LAN. vMix controls all formatting.",
+                fontSize = 11.sp,
+                color = textSecondary
+            )
+
+            if (enabled) {
+                VMixTextField("vMix IP (e.g. 192.168.1.50)", host, { host = it; save() }, textPrimary, textSecondary)
+                VMixTextField("Port (default 8088)", port, { port = it; save() }, textPrimary, textSecondary)
+                VMixTextField("Title input (name, number, or GUID)", input, { input = it; save() }, textPrimary, textSecondary)
+
+                Text("Field mappings (GT field names, e.g. Headline.Text):", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = textPrimary)
+                VMixTextField("Arabic verse field", fieldArabicVerse, { fieldArabicVerse = it; save() }, textPrimary, textSecondary)
+                VMixTextField("Arabic citation field", fieldArabicCitation, { fieldArabicCitation = it; save() }, textPrimary, textSecondary)
+                VMixTextField("English verse field", fieldEnglishVerse, { fieldEnglishVerse = it; save() }, textPrimary, textSecondary)
+                VMixTextField("English citation field", fieldEnglishCitation, { fieldEnglishCitation = it; save() }, textPrimary, textSecondary)
+
+                androidx.compose.material3.Button(
+                    onClick = {
+                        isTesting = true
+                        testResult = null
+                        Thread {
+                            try {
+                                val controller = com.arabicchristianmedia.server.VMixController(
+                                    host = host.trim(),
+                                    port = port.toIntOrNull() ?: 8088,
+                                    input = input.trim()
+                                )
+                                val testField = fieldArabicVerse.trim().ifEmpty { fieldEnglishVerse.trim() }
+                                val (ok, msg) = controller.testConnection(testField, "Test 123 — Bible NDI")
+                                testResult = if (ok) "✓ $msg" else "✗ $msg"
+                            } catch (e: Exception) {
+                                testResult = "✗ Error: ${e.message}"
+                            } finally {
+                                isTesting = false
+                            }
+                        }.start()
+                    },
+                    enabled = !isTesting && host.isNotBlank() && input.isNotBlank(),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(if (isTesting) "Testing…" else "Test Connection")
+                }
+
+                testResult?.let {
+                    Text(
+                        it,
+                        fontSize = 12.sp,
+                        color = if (it.startsWith("✓")) Color(0xFF16A34A) else Color(0xFFDC2626),
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun VMixTextField(
+    label: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    textPrimary: Color,
+    textSecondary: Color
+) {
+    Column {
+        Text(label, fontSize = 11.sp, color = textSecondary, modifier = Modifier.padding(bottom = 4.dp))
+        androidx.compose.material3.OutlinedTextField(
+            value = value,
+            onValueChange = onValueChange,
+            singleLine = true,
+            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, color = textPrimary),
+            modifier = Modifier.fillMaxWidth()
+        )
     }
 }
 

@@ -2,7 +2,9 @@ package com.arabicchristianmedia.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.arabicchristianmedia.model.AnimatedBackgroundType
 import com.arabicchristianmedia.model.BroadcastTextAlignment
+import com.arabicchristianmedia.model.LanguageMode
 import com.arabicchristianmedia.model.LowerThirdTemplate
 import com.arabicchristianmedia.model.TemplateStyle
 import com.arabicchristianmedia.model.TransitionType
@@ -46,10 +48,14 @@ class TemplateRepository(context: Context) {
                 showDropShadow = true,
                 textShadowEnabled = true, // safe default: white text over video needs a shadow
                 textShadowColorHex = "#000000",
+                textShadowBlurDp = 8f,
+                textShadowOffsetDp = 4f,
+                textShadowAngleDeg = 90,
                 cardGlowEnabled = false, // safe default: no card on transparent styles
                 cardGlowColorHex = "#000000",
                 emblem = "✝",
                 bilingualMode = false,
+                languageMode = LanguageMode.ARABIC_ONLY,
                 isPureTransparentBackground = true,
                 streamBackgroundMode = StreamBackgroundMode.TRANSPARENT_ALPHA,
             ),
@@ -77,10 +83,14 @@ class TemplateRepository(context: Context) {
                 showDropShadow = true,
                 textShadowEnabled = true, // safe default: white text over video needs a shadow
                 textShadowColorHex = "#000000",
+                textShadowBlurDp = 8f,
+                textShadowOffsetDp = 4f,
+                textShadowAngleDeg = 90,
                 cardGlowEnabled = true, // safe default: matches legacy drop-shadow look
                 cardGlowColorHex = "#000000",
                 emblem = "✝",
                 bilingualMode = false,
+                languageMode = LanguageMode.ARABIC_ONLY,
                 streamBackgroundMode = com.arabicchristianmedia.model.StreamBackgroundMode.TRANSPARENT_ALPHA
             ),
             LowerThirdTemplate(
@@ -107,10 +117,14 @@ class TemplateRepository(context: Context) {
                 showDropShadow = true,
                 textShadowEnabled = true, // safe default: white text over video needs a shadow
                 textShadowColorHex = "#000000",
+                textShadowBlurDp = 8f,
+                textShadowOffsetDp = 4f,
+                textShadowAngleDeg = 90,
                 cardGlowEnabled = false, // safe default: no card on transparent styles
                 cardGlowColorHex = "#000000",
                 emblem = "✝",
                 bilingualMode = false,
+                languageMode = LanguageMode.ARABIC_ONLY,
                 isPureTransparentBackground = true,
                 animatedBackground = com.arabicchristianmedia.model.AnimatedBackgroundType.GOLDEN_DIVINE_RAYS,
                 animatedBackgroundOpacity = 0.80f
@@ -139,10 +153,14 @@ class TemplateRepository(context: Context) {
                 showDropShadow = true,
                 textShadowEnabled = true, // safe default: white text over video needs a shadow
                 textShadowColorHex = "#000000",
+                textShadowBlurDp = 8f,
+                textShadowOffsetDp = 4f,
+                textShadowAngleDeg = 90,
                 cardGlowEnabled = true, // safe default: matches legacy drop-shadow look
                 cardGlowColorHex = "#000000",
                 emblem = "✝",
                 bilingualMode = false,
+                languageMode = LanguageMode.ARABIC_ONLY,
                 isPureTransparentBackground = false,
                 animatedBackground = com.arabicchristianmedia.model.AnimatedBackgroundType.GOLDEN_DIVINE_RAYS,
                 animatedBackgroundOpacity = 0.75f
@@ -171,10 +189,14 @@ class TemplateRepository(context: Context) {
                 showDropShadow = true,
                 textShadowEnabled = true, // safe default: white text over video needs a shadow
                 textShadowColorHex = "#000000",
+                textShadowBlurDp = 8f,
+                textShadowOffsetDp = 4f,
+                textShadowAngleDeg = 90,
                 cardGlowEnabled = true, // safe default: matches legacy drop-shadow look
                 cardGlowColorHex = "#000000",
                 emblem = "",
-                bilingualMode = false
+                bilingualMode = false,
+                languageMode = LanguageMode.ARABIC_ONLY
             ),
             LowerThirdTemplate(
                 id = "tpl_cathedral_gold",
@@ -200,10 +222,14 @@ class TemplateRepository(context: Context) {
                 showDropShadow = true,
                 textShadowEnabled = true, // safe default: white text over video needs a shadow
                 textShadowColorHex = "#000000",
+                textShadowBlurDp = 8f,
+                textShadowOffsetDp = 4f,
+                textShadowAngleDeg = 90,
                 cardGlowEnabled = true, // safe default: matches legacy drop-shadow look
                 cardGlowColorHex = "#000000",
                 emblem = "✝",
-                bilingualMode = false
+                bilingualMode = false,
+                languageMode = LanguageMode.ARABIC_ONLY
             ),
             LowerThirdTemplate(
                 id = "tpl_bilingual_dual",
@@ -229,10 +255,134 @@ class TemplateRepository(context: Context) {
                 showDropShadow = true,
                 textShadowEnabled = true, // safe default: white text over video needs a shadow
                 textShadowColorHex = "#000000",
+                textShadowBlurDp = 8f,
+                textShadowOffsetDp = 4f,
+                textShadowAngleDeg = 90,
                 cardGlowEnabled = true, // safe default: matches legacy drop-shadow look
                 cardGlowColorHex = "#000000",
                 emblem = "✝",
-                bilingualMode = true
+                bilingualMode = true,
+                languageMode = LanguageMode.BOTH
+            ),
+            // v1.8: Sanctuary Gold — charcoal card, gold citation, candle-glow motion.
+            LowerThirdTemplate(
+                id = "tpl_sanctuary_gold",
+                name = "Sanctuary Gold",
+                style = TemplateStyle.CLASSIC_BANNER,
+                bgColorHex = "#1C1917",
+                bgOpacity = 0.92f,
+                accentColorHex = "#D4AF37",
+                textColorHex = "#FEFCE8",
+                referenceColorHex = "#FDE68A",
+                verseFontSize = 28,
+                referenceFontSize = 20,
+                fontFamily = "Amiri",
+                useEasternArabicNumerals = true,
+                useArabicPunctuation = true,
+                alignment = BroadcastTextAlignment.CENTER,
+                positionBottomPercent = 6,
+                horizontalMarginPercent = 8,
+                cornerRadiusDp = 16,
+                transition = TransitionType.FADE,
+                transitionDurationMs = 500,
+                showAccentBorder = true,
+                showDropShadow = true,
+                textShadowEnabled = true,
+                textShadowColorHex = "#000000",
+                textShadowBlurDp = 10f,
+                textShadowOffsetDp = 5f,
+                textShadowAngleDeg = 90,
+                cardGlowEnabled = true,
+                cardGlowColorHex = "#D4AF37",
+                emblem = "✦",
+                languageMode = LanguageMode.BOTH,
+                animatedBackground = AnimatedBackgroundType.CANDLE_LITURGICAL_GLOW,
+                animatedBackgroundOpacity = 0.35f,
+                secondaryTextColorHex = "#FEF3C7",
+                secondaryReferenceColorHex = "#FCD34D",
+                secondaryVerseFontSize = 20,
+                secondaryReferenceFontSize = 15,
+                bilingualSpacing = 12
+            ),
+            // v1.8: Morning Mercy — warm off-white, soft, highly readable.
+            LowerThirdTemplate(
+                id = "tpl_morning_mercy",
+                name = "Morning Mercy",
+                style = TemplateStyle.MODERN_GLASS,
+                bgColorHex = "#FFFBEB",
+                bgOpacity = 0.95f,
+                accentColorHex = "#B45309",
+                textColorHex = "#451A03",
+                referenceColorHex = "#92400E",
+                verseFontSize = 26,
+                referenceFontSize = 19,
+                fontFamily = "Amiri",
+                useEasternArabicNumerals = true,
+                useArabicPunctuation = true,
+                alignment = BroadcastTextAlignment.RIGHT,
+                positionBottomPercent = 6,
+                horizontalMarginPercent = 6,
+                cornerRadiusDp = 18,
+                transition = TransitionType.SLIDE_UP,
+                transitionDurationMs = 450,
+                showAccentBorder = true,
+                showDropShadow = true,
+                textShadowEnabled = true,
+                textShadowColorHex = "#FFFFFF",
+                textShadowBlurDp = 6f,
+                textShadowOffsetDp = 3f,
+                textShadowAngleDeg = 90,
+                cardGlowEnabled = true,
+                cardGlowColorHex = "#FDE68A",
+                emblem = "☀",
+                languageMode = LanguageMode.BOTH,
+                animatedBackground = AnimatedBackgroundType.GOLDEN_DIVINE_RAYS,
+                animatedBackgroundOpacity = 0.25f,
+                secondaryTextColorHex = "#78350F",
+                secondaryReferenceColorHex = "#A16207",
+                secondaryVerseFontSize = 19,
+                secondaryReferenceFontSize = 14,
+                bilingualSpacing = 10
+            ),
+            // v1.8: Upper Room — transparent, large centered text, minimal.
+            LowerThirdTemplate(
+                id = "tpl_upper_room",
+                name = "Upper Room",
+                style = TemplateStyle.TRANSPARENT_OUTLINE,
+                bgColorHex = "#000000",
+                bgOpacity = 0.0f,
+                accentColorHex = "#E0E7FF",
+                textColorHex = "#FFFFFF",
+                referenceColorHex = "#C7D2FE",
+                verseFontSize = 42,
+                referenceFontSize = 26,
+                fontFamily = "Amiri",
+                useEasternArabicNumerals = true,
+                useArabicPunctuation = true,
+                alignment = BroadcastTextAlignment.CENTER,
+                positionBottomPercent = 10,
+                horizontalMarginPercent = 10,
+                cornerRadiusDp = 0,
+                transition = TransitionType.FADE,
+                transitionDurationMs = 600,
+                showAccentBorder = false,
+                showDropShadow = false,
+                textShadowEnabled = true,
+                textShadowColorHex = "#000000",
+                textShadowBlurDp = 12f,
+                textShadowOffsetDp = 6f,
+                textShadowAngleDeg = 90,
+                cardGlowEnabled = false,
+                cardGlowColorHex = "#000000",
+                emblem = "",
+                languageMode = LanguageMode.BOTH,
+                animatedBackground = AnimatedBackgroundType.PARTICLE_STARS,
+                animatedBackgroundOpacity = 0.4f,
+                secondaryTextColorHex = "#E0E7FF",
+                secondaryReferenceColorHex = "#A5B4FC",
+                secondaryVerseFontSize = 28,
+                secondaryReferenceFontSize = 20,
+                bilingualSpacing = 16
             )
         )
     }
@@ -379,15 +529,21 @@ class TemplateRepository(context: Context) {
             put("showDropShadow", t.showDropShadow)
             put("textShadowEnabled", t.textShadowEnabled)
             put("textShadowColorHex", t.textShadowColorHex)
+            put("textShadowBlurDp", t.textShadowBlurDp.toDouble())
+            put("textShadowOffsetDp", t.textShadowOffsetDp.toDouble())
+            put("textShadowAngleDeg", t.textShadowAngleDeg)
             put("cardGlowEnabled", t.cardGlowEnabled)
             put("cardGlowColorHex", t.cardGlowColorHex)
             put("emblem", t.emblem)
             put("bilingualMode", t.bilingualMode)
+            put("languageMode", t.languageMode.name)
             put("isPureTransparentBackground", t.isPureTransparentBackground)
             put("animatedBackground", t.animatedBackground.name)
             put("animatedBackgroundOpacity", t.animatedBackgroundOpacity.toDouble())
             put("customVideoUrl", t.customVideoUrl)
             put("customVideoId", t.customVideoId)
+            put("customVideoMuted", t.customVideoMuted)
+            put("motionSpeed", t.motionSpeed)
             put("streamBackgroundMode", t.streamBackgroundMode.name)
         }
     }
@@ -438,6 +594,9 @@ class TemplateRepository(context: Context) {
             textShadowEnabled = if (obj.has("textShadowEnabled")) obj.optBoolean("textShadowEnabled", true)
                                 else legacyShadow,
             textShadowColorHex = obj.optString("textShadowColorHex", "#000000"),
+            textShadowBlurDp = obj.optDouble("textShadowBlurDp", 8.0).toFloat(),
+            textShadowOffsetDp = obj.optDouble("textShadowOffsetDp", 4.0).toFloat(),
+            textShadowAngleDeg = obj.optInt("textShadowAngleDeg", 90),
             cardGlowEnabled = if (obj.has("cardGlowEnabled")) obj.optBoolean("cardGlowEnabled", true)
                               else safeGlowDefault,
             cardGlowColorHex = obj.optString("cardGlowColorHex", "#000000"),
@@ -446,11 +605,23 @@ class TemplateRepository(context: Context) {
             emblem = if (obj.has("emblem")) obj.optString("emblem", "")
                      else if (obj.optBoolean("showCrossEmblem", true)) "✝" else "",
             bilingualMode = obj.optBoolean("bilingualMode", false),
+            // v1.8 migration: the legacy bilingualMode boolean becomes the
+            // three-way languageMode; old "true" styles become BOTH.
+            languageMode = if (obj.has("languageMode")) {
+                try { com.arabicchristianmedia.model.LanguageMode.valueOf(obj.optString("languageMode")) }
+                catch (e: Exception) { com.arabicchristianmedia.model.LanguageMode.ARABIC_ONLY }
+            } else if (obj.optBoolean("bilingualMode", false)) {
+                com.arabicchristianmedia.model.LanguageMode.BOTH
+            } else {
+                com.arabicchristianmedia.model.LanguageMode.ARABIC_ONLY
+            },
             isPureTransparentBackground = obj.optBoolean("isPureTransparentBackground", false),
             animatedBackground = try { com.arabicchristianmedia.model.AnimatedBackgroundType.valueOf(obj.optString("animatedBackground")) } catch (e: Exception) { com.arabicchristianmedia.model.AnimatedBackgroundType.NONE },
             animatedBackgroundOpacity = obj.optDouble("animatedBackgroundOpacity", 0.65).toFloat(),
             customVideoUrl = obj.optString("customVideoUrl", ""),
             customVideoId = obj.optString("customVideoId", ""),
+            customVideoMuted = obj.optBoolean("customVideoMuted", true),
+            motionSpeed = obj.optDouble("motionSpeed", 1.0).toFloat().coerceIn(0f, 3.0f),
             streamBackgroundMode = try { com.arabicchristianmedia.model.StreamBackgroundMode.valueOf(obj.optString("streamBackgroundMode")) } catch (e: Exception) { com.arabicchristianmedia.model.StreamBackgroundMode.TRANSPARENT_ALPHA }
         ).let { migrateLegacyVideo(it) }
     }

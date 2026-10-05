@@ -84,6 +84,44 @@ class VideoBackgroundRenderer(
     }
 
     /**
+     * v1.8: Set muted state. When muted, volume is 0; otherwise full volume.
+     */
+    fun setMuted(muted: Boolean) {
+        handler.post {
+            try {
+                val vol = if (muted) 0f else 1f
+                player?.setVolume(vol, vol)
+            } catch (e: Exception) {
+                // Player not ready; ignore.
+            }
+        }
+    }
+
+    /**
+     * v1.8: Set playback speed (0 to 3.0x). 0 pauses. Uses PlaybackParams on API 23+.
+     */
+    fun setSpeed(speed: Float) {
+        handler.post {
+            try {
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                    val s = speed.coerceIn(0f, 3.0f)
+                    if (s == 0f) {
+                        player?.pause()
+                    } else {
+                        val params = player?.playbackParams ?: android.media.PlaybackParams()
+                        params.speed = s
+                        player?.playbackParams = params
+                        // Resume if was paused by speed=0
+                        try { player?.start() } catch (e: Exception) { }
+                    }
+                }
+            } catch (e: Exception) {
+                // Player not ready or speed not supported; ignore.
+            }
+        }
+    }
+
+    /**
      * Points the renderer at a video file. No-op if unchanged. Pauses
      * playback when null.
      */

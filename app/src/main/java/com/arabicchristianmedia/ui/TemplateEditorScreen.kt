@@ -167,7 +167,15 @@ fun TemplateEditorScreen(
 
         Spacer(Modifier.height(12.dp))
 
-        // 2. Tab Switcher: Lower Third vs Full Show (Projector)
+        // 2. Tab Switcher: Lower Third vs Full Show (v1.8: segmented, unmistakable active target).
+        Text(
+            if (editorTab == 0) "أنت تحرر: طبقة البث السفلى (You are editing: Lower Third)"
+            else "أنت تحرر: العرض الكامل (You are editing: Full Show)",
+            fontWeight = FontWeight.Bold,
+            fontSize = 14.sp,
+            color = bento.primary,
+            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+        )
         Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(bento.surfaceVariant).padding(4.dp)) {
             EditorTabItem("طبقة البث السفلى (Lower Third)", editorTab == 0, { editorTab = 0 }, Modifier.weight(1f))
             EditorTabItem("العرض الكامل (Full Show Projector)", editorTab == 1, { editorTab = 1 }, Modifier.weight(1f))
@@ -349,10 +357,35 @@ fun TemplateEditorScreen(
                 ColorGradePickerRow("لون الشاهد العربي (Citation Color)", editingTemplate.referenceColorHex, { onUpdate(editingTemplate.copy(referenceColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
                 SliderWithLabel("حجم الشاهد العربي", editingTemplate.referenceFontSize.toFloat(), 10f..120f) { onUpdate(editingTemplate.copy(referenceFontSize = it.toInt())) }
 
-                // Bilingual Typography & English Citation Options
+                // v1.8: Three-way language mode (replaces the bilingual toggle).
                 HorizontalDivider(color = bento.borderSubtle)
-                FeatureToggleRow("تفعيل النص الإنجليزي (Bilingual Mode)", editingTemplate.bilingualMode) { onUpdate(editingTemplate.copy(bilingualMode = it)) }
-                if (editingTemplate.bilingualMode) {
+                Text("لغة العرض (Language)", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary)
+                Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(bento.surfaceVariant).padding(4.dp)) {
+                    val modes = listOf(
+                        com.arabicchristianmedia.model.LanguageMode.ARABIC_ONLY to "العربية",
+                        com.arabicchristianmedia.model.LanguageMode.ENGLISH_ONLY to "English",
+                        com.arabicchristianmedia.model.LanguageMode.BOTH to "الاثنان (Both)"
+                    )
+                    modes.forEach { (mode, label) ->
+                        val selected = editingTemplate.languageMode == mode
+                        Box(
+                            modifier = Modifier.weight(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (selected) bento.primary else androidx.compose.ui.graphics.Color.Transparent)
+                                .clickable { onUpdate(editingTemplate.copy(languageMode = mode)) }
+                                .padding(vertical = 10.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                label,
+                                fontSize = 13.sp,
+                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                                color = if (selected) bento.onPrimary else bento.textSecondary
+                            )
+                        }
+                    }
+                }
+                if (editingTemplate.languageMode != com.arabicchristianmedia.model.LanguageMode.ARABIC_ONLY) {
                     Text("تنسيق الخط الإنجليزي (English Typography)", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary)
                     
                     // English Verse Controls
@@ -376,15 +409,29 @@ fun TemplateEditorScreen(
                     SliderWithLabel("المسافة الفاصلة بين اللغتين", editingTemplate.bilingualSpacing.toFloat(), 0f..150f) { onUpdate(editingTemplate.copy(bilingualSpacing = it.toInt())) }
                 }
 
-                // Background, Transparency & Accents
+                // Background, Transparency & Accents (Layer 2: Card on top of motion background)
                 HorizontalDivider(color = bento.borderSubtle)
-                Text("الخلفية والمؤثرات البصرية (Background & Effects)", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary)
+                Text("الخلفية والمؤثرات البصرية (Background & Effects) — فوق الفيديو", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary)
                 
                 FeatureToggleRow("خلفية شفافة تماماً 100% Alpha", editingTemplate.isPureTransparentBackground) { onUpdate(editingTemplate.copy(isPureTransparentBackground = it)) }
                 
                 if (!editingTemplate.isPureTransparentBackground) {
                     SliderWithLabel("درجة شفافية الكارت (Background Opacity)", editingTemplate.bgOpacity, 0f..1f) { onUpdate(editingTemplate.copy(bgOpacity = it)) }
-                    ColorGradePickerRow("لون كارت الخلفية (Card Color)", editingTemplate.bgColorHex, { onUpdate(editingTemplate.copy(bgColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Box(modifier = Modifier.weight(1f)) {
+                            ColorGradePickerRow("لون كارت الخلفية (Card Color)", editingTemplate.bgColorHex, { onUpdate(editingTemplate.copy(bgColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
+                        }
+                        // v1.8: Quick transparent option for card color.
+                        TextButton(
+                            onClick = { onUpdate(editingTemplate.copy(bgColorHex = "#00000000", bgOpacity = 0f)) }
+                        ) {
+                            Text("شفاف", fontSize = 11.sp, color = bento.primary)
+                        }
+                    }
                 }
 
                 ColorGradePickerRow("لون إطار التمييز (Accent Color)", editingTemplate.accentColorHex, { onUpdate(editingTemplate.copy(accentColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
@@ -411,6 +458,59 @@ fun TemplateEditorScreen(
                 FeatureToggleRow("ظل النص (Text Shadow)", editingTemplate.textShadowEnabled) { onUpdate(editingTemplate.copy(textShadowEnabled = it)) }
                 if (editingTemplate.textShadowEnabled) {
                     ColorGradePickerRow("لون ظل النص (Text Shadow Color)", editingTemplate.textShadowColorHex, { onUpdate(editingTemplate.copy(textShadowColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
+                    // v1.8: shadow thickness (blur), distance (offset), and 8-direction compass.
+                    SliderWithLabel("سماكة الظل (Thickness)", editingTemplate.textShadowBlurDp, 0f..32f) {
+                        onUpdate(editingTemplate.copy(textShadowBlurDp = it))
+                    }
+                    SliderWithLabel("مسافة الظل (Distance)", editingTemplate.textShadowOffsetDp, 0f..32f) {
+                        onUpdate(editingTemplate.copy(textShadowOffsetDp = it))
+                    }
+                    Text("اتجاه الظل (Direction)", fontSize = 11.sp, color = bento.textSecondary)
+                    // 8-direction compass: 0°=→, 45°=↘, 90°=↓, 135°=↙, 180°=←, 225°=↖, 270°=↑, 315°=↗
+                    // v1.8: Constrained to max 200dp so it doesn't blow up on tablets.
+                    val directions = listOf(
+                        315 to "↗", 0 to "→", 45 to "↘",
+                        270 to "↑", null to "•", 90 to "↓",
+                        225 to "↖", 180 to "←", 135 to "↙"
+                    )
+                    Box(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                            modifier = Modifier.widthIn(max = 200.dp)
+                        ) {
+                        for (row in 0..2) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                for (col in 0..2) {
+                                    val (angle, symbol) = directions[row * 3 + col]
+                                    val selected = if (angle == null) false else editingTemplate.textShadowAngleDeg == angle
+                                    // Center button clears to default (90° down).
+                                    Box(
+                                        modifier = Modifier.weight(1f)
+                                            .aspectRatio(1f)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(if (selected) bento.primary else bento.surfaceVariant)
+                                            .clickable {
+                                                if (angle != null) onUpdate(editingTemplate.copy(textShadowAngleDeg = angle))
+                                            },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            symbol,
+                                            fontSize = 20.sp,
+                                            color = if (selected) bento.onPrimary else bento.textPrimary
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        }
+                    } // Close Box (v1.8: constrains compass size on tablets)
                 }
                 if (!editingTemplate.isFullScreen) {
                     FeatureToggleRow("توهج الكارت (Card Glow)", editingTemplate.cardGlowEnabled) { onUpdate(editingTemplate.copy(cardGlowEnabled = it)) }
@@ -419,39 +519,70 @@ fun TemplateEditorScreen(
                     }
                 }
 
-                // Animated Motion Backgrounds
-                Text("الخلفيات المتحركة (Motion Video Backgrounds)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
+                // Animated Motion Backgrounds (Layer 1: Bottom background layer)
+                Text("الخلفيات المتحركة (Motion Video Backgrounds) — طبقة الخلفية", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(AnimatedBackgroundType.entries) { type ->
                         FilterChip(selected = editingTemplate.animatedBackground == type, onClick = { onUpdate(editingTemplate.copy(animatedBackground = type)) }, label = { Text(type.displayNameAr, fontSize = 10.sp) })
                     }
                 }
-                if (editingTemplate.animatedBackground == AnimatedBackgroundType.CUSTOM_VIDEO) {
-                    // v1.7: opacity slider works ONLY when the custom-video flag is ON.
+                if (editingTemplate.animatedBackground != AnimatedBackgroundType.NONE) {
+                    // v1.8: opacity slider for ALL animated backgrounds (not just custom video).
                     SliderWithLabel(
-                        label = "شفافية الفيديو (Video Opacity)",
+                        label = "شفافية الحركة (Animation Opacity)",
                         value = editingTemplate.animatedBackgroundOpacity,
                         range = 0f..1f,
                         onValueChange = { onUpdate(editingTemplate.copy(animatedBackgroundOpacity = it)) }
                     )
                     Spacer(modifier = Modifier.height(4.dp))
-                    if (editingTemplate.customVideoId.isNotEmpty()) {
+                    // v1.8: Motion speed slider (0 to 3.0x) — right after opacity.
+                    SliderWithLabel(
+                        "سرعة الحركة (Motion speed)",
+                        editingTemplate.motionSpeed,
+                        0f..3f
+                    ) {
+                        onUpdate(editingTemplate.copy(motionSpeed = it))
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    if (editingTemplate.animatedBackground == AnimatedBackgroundType.CUSTOM_VIDEO &&
+                        editingTemplate.customVideoId.isNotEmpty()) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Text(
-                                "✓ فيديو مخصص محدد (Custom video set)",
-                                fontSize = 11.sp,
-                                color = bento.textSecondary,
-                                modifier = Modifier.weight(1f)
-                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    "✓ فيديو مخصص محدد (Custom video set)",
+                                    fontSize = 11.sp,
+                                    color = bento.textSecondary
+                                )
+                                // v1.8: show the opaque video ID and its local URL.
+                                Text(
+                                    "ID: ${editingTemplate.customVideoId}",
+                                    fontSize = 10.sp,
+                                    color = bento.textSecondary,
+                                    modifier = Modifier.padding(top = 2.dp)
+                                )
+                                Text(
+                                    "URL: /video?id=${editingTemplate.customVideoId}",
+                                    fontSize = 10.sp,
+                                    color = bento.textSecondary
+                                )
+                            }
                             TextButton(onClick = {
                                 onUpdate(editingTemplate.copy(customVideoId = "", animatedBackground = AnimatedBackgroundType.NONE))
                             }) {
                                 Text("إزالة (Remove)", fontSize = 11.sp, color = bento.primary)
                             }
+                        }
+                        // v1.8: Muted toggle for custom video (default muted for church production).
+                        Spacer(modifier = Modifier.height(4.dp))
+                        FeatureToggleRow(
+                            "كتم صوت الفيديو (Mute video audio)",
+                            editingTemplate.customVideoMuted
+                        ) {
+                            onUpdate(editingTemplate.copy(customVideoMuted = it))
                         }
                     } else if (editingTemplate.customVideoUrl.isNotEmpty()) {
                         Text(
@@ -688,7 +819,9 @@ fun SliderWithLabel(label: String, value: Float, range: ClosedFloatingPointRange
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(label, fontSize = 11.sp, color = bento.textSecondary)
             // Opacity-style 0..1 ranges read better as a percentage.
-            val readout = if (range.endInclusive <= 1f) "${(value * 100).toInt()}%" else "${value.toInt()}"
+            // Other ranges show 2 decimals for fine control (e.g., motion speed 0.00-3.00).
+            val readout = if (range.endInclusive <= 1f) "${(value * 100).toInt()}%"
+                          else "%.2f".format(value)
             Text(readout, fontSize = 11.sp, color = bento.primary, fontWeight = FontWeight.Bold)
         }
         Slider(value = value, onValueChange = onValueChange, valueRange = range, colors = SliderDefaults.colors(thumbColor = bento.primary, activeTrackColor = bento.primary))
@@ -1029,9 +1162,18 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
         val refCol = try { Color(android.graphics.Color.parseColor(template.referenceColorHex)) } catch (e: Exception) { Color.Yellow }
         val secTextCol = try { Color(android.graphics.Color.parseColor(template.secondaryTextColorHex)) } catch (e: Exception) { Color.Gray }
         val secRefCol = try { Color(android.graphics.Color.parseColor(template.secondaryReferenceColorHex)) } catch (e: Exception) { Color.Gray }
-        // Independent text shadow (v1.6): mirrors the NDI canvas + HTML overlay rendering.
+        // Independent text shadow (v1.8): user-controlled thickness (blur),
+        // distance (offset) and compass direction — mirrors NDI canvas + HTTP.
         val shadowCol = try { Color(android.graphics.Color.parseColor(template.textShadowColorHex)) } catch (e: Exception) { Color.Black }
-        val previewShadow = if (template.textShadowEnabled) Shadow(color = shadowCol, offset = Offset(2f, 3f), blurRadius = 7f) else null
+        val shadowAngleRad = Math.toRadians(template.textShadowAngleDeg.toDouble())
+        val previewShadow = if (template.textShadowEnabled) Shadow(
+            color = shadowCol,
+            offset = Offset(
+                (kotlin.math.cos(shadowAngleRad) * template.textShadowOffsetDp).toFloat(),
+                (kotlin.math.sin(shadowAngleRad) * template.textShadowOffsetDp).toFloat()
+            ),
+            blurRadius = template.textShadowBlurDp
+        ) else null
         // Bundled Arabic font for a true WYSIWYG preview (same TTFs the NDI canvas uses).
         val previewFontFamily = remember(template.fontFamily) { bundledFontFamily(context, template.fontFamily) }
         // Independent card glow (v1.6): colored halo behind the card, only where a card exists.
@@ -1101,11 +1243,14 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
                             Text(
                                 text = template.emblem,
                                 fontSize = 14.sp,
-                                color = try { Color(android.graphics.Color.parseColor(template.accentColorHex)) } catch (e: Exception) { Color.Yellow }
+                                // v1.8: emblem uses citation styling (was accent).
+                                color = refCol
                             )
                         }
                         Text(
-                            text = verse.getFormattedArabicCitation(template.useEasternArabicNumerals),
+                            text = if (template.languageMode != com.arabicchristianmedia.model.LanguageMode.ENGLISH_ONLY)
+                                verse.getFormattedArabicCitation(template.useEasternArabicNumerals)
+                            else verse.getFormattedEnglishCitation(),
                             fontSize = (template.referenceFontSize * 0.42f).sp,
                             fontWeight = if (template.referenceIsBold) FontWeight.Bold else FontWeight.Normal,
                             fontStyle = if (template.referenceIsItalic) FontStyle.Italic else FontStyle.Normal,
@@ -1116,6 +1261,8 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
                     }
                     }
 
+                    // v1.8: Arabic verse hidden in ENGLISH_ONLY mode.
+                    if (template.languageMode != com.arabicchristianmedia.model.LanguageMode.ENGLISH_ONLY) {
                     // Arabic Verse Text
                     Text(
                         text = verse.arabicText,
@@ -1133,9 +1280,10 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
                         },
                         modifier = Modifier.fillMaxWidth()
                     )
+                    }
                     
-                    // English Bilingual Verse & Citation
-                    if (template.bilingualMode) {
+                    // v1.8: three-way language mode; English left unless centered.
+                    if (template.languageMode != com.arabicchristianmedia.model.LanguageMode.ARABIC_ONLY) {
                         Spacer(Modifier.height((template.bilingualSpacing * 0.2f).dp))
                         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
                             Text(
@@ -1159,8 +1307,7 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
                                 style = TextStyle(shadow = previewShadow),
                                 textAlign = when (template.alignment) {
                                     BroadcastTextAlignment.CENTER -> TextAlign.Center
-                                    BroadcastTextAlignment.LEFT -> TextAlign.Left
-                                    else -> TextAlign.Right
+                                    else -> TextAlign.Left
                                 },
                                 modifier = Modifier.fillMaxWidth()
                             )
@@ -1185,7 +1332,7 @@ fun PreviewLowerThirdDesign() {
     MyApplicationTheme {
         Box(modifier = Modifier.fillMaxSize().background(Color(0xFF0F172A))) {
             BroadcastPreviewViewport(
-                template = sampleTemplate.copy(bilingualMode = true),
+                template = sampleTemplate.copy(languageMode = com.arabicchristianmedia.model.LanguageMode.BOTH),
                 verse = sampleVerse,
                 previewBg = PreviewBackground.SIMULATED_STUDIO_CAMERA
             )

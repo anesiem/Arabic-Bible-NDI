@@ -2,7 +2,6 @@ package com.arabicchristianmedia.server
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.LinearGradient
@@ -31,6 +30,7 @@ import com.arabicchristianmedia.model.AnimatedBackgroundType
 import com.arabicchristianmedia.model.ArabicFonts
 import com.arabicchristianmedia.model.BibleVerse
 import com.arabicchristianmedia.model.BroadcastTextAlignment
+import com.arabicchristianmedia.model.LanguageMode
 import com.arabicchristianmedia.model.LowerThirdTemplate
 import com.arabicchristianmedia.model.StreamBackgroundMode
 import com.arabicchristianmedia.model.TemplateStyle
@@ -54,6 +54,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.sin
+import kotlin.math.cos
 
 class NdiBroadcastServer(private val context: Context, private var port: Int = 8080) {
 
@@ -71,6 +72,22 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
      */
     private var wifiLock: WifiManager.WifiLock? = null
     private var multicastLock: WifiManager.MulticastLock? = null
+
+    /**
+     * v1.8 remote API hooks, wired by the ViewModel.
+     * onTriggerVerse(bookId, chapter, verse, target) — target is
+     * "lower", "show"/"full", or "both".
+     */
+    var onTriggerVerse: ((bookId: String, chapter: Int, verse: Int, target: String) -> Boolean)? = null
+    var onClearVerse: (() -> Unit)? = null
+    var onListVideos: (() -> List<VideoInfo>)? = null
+
+    /** Opaque video ID + display info for /api/videos. */
+    data class VideoInfo(
+        val id: String,
+        val displayName: String,
+        val sizeBytes: Long
+    )
 
     private fun acquireBroadcastLocks() {
         try {
@@ -105,18 +122,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     @Volatile
     var isLive = true
 
-    // Pre-populate with default verse so NDI stream and overlay never open with a black screen
+    // v1.8: no verse selected on launch — the user picks one. Renderers
+    // handle null by producing a blank frame (card chrome only).
     @Volatile
-    var currentVerse: BibleVerse? = BibleVerse(
-        id = "jhn_3_16",
-        bookId = "jhn",
-        bookArabicName = "إنجيل يوحنا",
-        bookEnglishName = "John",
-        chapter = 3,
-        verse = 16,
-        arabicText = "لأَنَّهُ هكَذَا أَحَبَّ اللهُ الْعَالَمَ حَتَّى بَذَلَ ابْنَهُ الْوَحِيدَ، لِكَيْ لاَ يَهْلِكَ كُلُّ مَنْ يُؤْمِنُ بِهِ، بَلْ تَكُونُ لَهُ الْحَيَاةُ الأَبَدِيَّةُ.",
-        englishText = "For God so loved the world that He gave His only begotten Son, that whoever believes in Him should not perish but have everlasting life."
-    )
+    var currentVerse: BibleVerse? = null
 
     @Volatile
     var currentTemplate: LowerThirdTemplate = LowerThirdTemplate(id = "default", name = "Default")
@@ -139,7 +148,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             }
             isRunning = true
             val ip = getLocalIpAddress()
-            val url = "http://$ip:$port/ndi"
+            val url = "http://$ip:$port/lower"
             onStarted(url)
             acquireBroadcastLocks()
 
@@ -248,6 +257,22 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     fun updateTemplate(template: LowerThirdTemplate) {
         currentTemplate = template
         invalidateBitmapCache()
+        // v1.8: Kickstart video renderer if the new template uses a custom video.
+        // Without this, the video doesn't start until motion is toggled OFF/ON.
+        if (template.animatedBackground == AnimatedBackgroundType.CUSTOM_VIDEO &&
+            template.customVideoId.isNotEmpty()) {
+            try {
+                val file = videoStore.fileFor(template.customVideoId)
+                if (file != null) {
+                    val renderer = getVideoRenderer(false)
+                    renderer.setSource(file)
+                    renderer.setMuted(template.customVideoMuted)
+                    renderer.requestFrame()
+                }
+            } catch (e: Exception) {
+                // Non-fatal; the draw loop will retry.
+            }
+        }
         broadcastStateThrottled()
     }
 
@@ -260,7 +285,45 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     fun updateShowTemplate(template: LowerThirdTemplate) {
         currentShowTemplate = template
         invalidateBitmapCache()
+        // v1.8: Kickstart video renderer for full show (same as updateTemplate).
+        if (template.animatedBackground == AnimatedBackgroundType.CUSTOM_VIDEO &&
+            template.customVideoId.isNotEmpty()) {
+            try {
+                val file = videoStore.fileFor(template.customVideoId)
+                if (file != null) {
+                    val renderer = getVideoRenderer(true)
+                    renderer.setSource(file)
+                    renderer.setMuted(template.customVideoMuted)
+                    renderer.requestFrame()
+                }
+            } catch (e: Exception) {
+                // Non-fatal; the draw loop will retry.
+            }
+        }
         broadcastStateThrottled()
+    }
+
+    /**
+     * v1.8: Kick the video renderer for a feed (call when motion is toggled ON).
+     * Ensures the video starts without needing an OFF/ON cycle.
+     */
+    fun kickVideoRenderer(isFull: Boolean) {
+        try {
+            val tpl = if (isFull) currentShowTemplate else currentTemplate
+            if (tpl.animatedBackground == AnimatedBackgroundType.CUSTOM_VIDEO &&
+                tpl.customVideoId.isNotEmpty()) {
+                val file = videoStore.fileFor(tpl.customVideoId)
+                if (file != null) {
+                    val renderer = getVideoRenderer(isFull)
+                    renderer.setSource(file)
+                    renderer.setMuted(tpl.customVideoMuted)
+                    renderer.setSpeed(tpl.motionSpeed)
+                    renderer.requestFrame()
+                }
+            }
+        } catch (e: Exception) {
+            // Non-fatal.
+        }
     }
 
     /**
@@ -381,19 +444,20 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
             val out = socket.getOutputStream()
 
+            // v1.8: simple user-facing URIs (/lower, /full).
             when {
-                cleanPath == "/ndi" || cleanPath == "/ndi/lowerthird" || cleanPath == "" || cleanPath == "/" -> {
+                cleanPath == "/lower" || cleanPath == "" || cleanPath == "/" -> {
                     serveNdiHtmlOverlay(out, isFullScreen = false)
                 }
-                cleanPath == "/ndi/show" || cleanPath == "/show" -> {
+                cleanPath == "/full" -> {
                     serveNdiHtmlOverlay(out, isFullScreen = true)
                 }
-                cleanPath == "/ndi/events" -> {
+                cleanPath == "/events" -> {
                     serveSseEvents(socket, out, fullPath.contains("show=1"))
                     keepOpen = true
                     return // Persistent SSE stream: socket stays open for pushes
                 }
-                cleanPath == "/ndi/stream.png" || cleanPath == "/ndi/stream.mjpg" || cleanPath == "/ndi/stream" || cleanPath == "/stream" || cleanPath == "/video" || cleanPath == "/live" -> {
+                cleanPath == "/stream" -> {
                     if (isBrowserNavigation && !fullPath.contains("raw=1")) {
                         serveMjpegPlayerHtml(out)
                     } else {
@@ -401,25 +465,35 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                         return // Handled in persistent video loop
                     }
                 }
-                cleanPath == "/ndi/api/verse" -> {
+                cleanPath == "/api/verse" -> {
                     serveJsonState(out, fullPath.contains("show=1"))
                 }
-                cleanPath == "/ndi/overlay.png" -> {
+                cleanPath == "/api/trigger" -> {
+                    serveApiTrigger(out, fullPath)
+                }
+                cleanPath == "/api/clear" -> {
+                    serveApiClear(out)
+                }
+                cleanPath == "/api/videos" -> {
+                    serveApiVideos(out)
+                }
+                cleanPath == "/snapshot.png" -> {
                     serveTransparentPngOverlay(out)
                 }
-                cleanPath == "/ndi/status" || cleanPath == "/status" -> {
+                cleanPath == "/api/status" -> {
                     serveStatus(out)
                 }
                 cleanPath.startsWith("/fonts/") -> {
                     serveFontFile(out, cleanPath.removePrefix("/fonts/"))
                 }
-                cleanPath == "/ndi/video" -> {
+                cleanPath == "/video" -> {
                     serveVideoById(out, fullPath, rangeHeader)
                 }
-                cleanPath == "/ndi/video_file" -> {
-                    // v1.7: removed — arbitrary path reads were a LAN security
-                    // hole. Videos are served by ID via /ndi/video.
-                    send404(out)
+                cleanPath == "/remote" -> {
+                    serveRemotePage(out)
+                }
+                cleanPath == "/bibleshow.xml" -> {
+                    serveBibleShowXml(out)
                 }
                 else -> {
                     serveNdiHtmlOverlay(out)
@@ -494,7 +568,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             put("arabicCitation", formattedCitation)
             put("englishText", verse?.englishText ?: "")
             put("englishCitation", verse?.getFormattedEnglishCitation() ?: "")
-            put("bilingual", tpl.bilingualMode)
+            put("bilingual", tpl.languageMode == LanguageMode.BOTH)
+            put("languageMode", tpl.languageMode.name)
             put("style", tpl.style.name)
             put("bgColorHex", tpl.bgColorHex)
             put("bgOpacity", tpl.bgOpacity)
@@ -519,6 +594,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             put("showDropShadow", tpl.showDropShadow)
             put("textShadowEnabled", tpl.textShadowEnabled)
             put("textShadowColorHex", tpl.textShadowColorHex)
+            put("textShadowBlurDp", tpl.textShadowBlurDp)
+            put("textShadowOffsetDp", tpl.textShadowOffsetDp)
+            put("textShadowAngleDeg", tpl.textShadowAngleDeg)
             put("cardGlowEnabled", tpl.cardGlowEnabled)
             put("cardGlowColorHex", tpl.cardGlowColorHex)
             put("emblem", tpl.emblem)
@@ -538,6 +616,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             put("animatedBackgroundOpacity", tpl.animatedBackgroundOpacity)
             put("customVideoUrl", tpl.customVideoUrl)
             put("customVideoId", tpl.customVideoId)
+            put("customVideoMuted", tpl.customVideoMuted)
+            put("motionSpeed", tpl.motionSpeed)
         }
         return root.toString()
     }
@@ -585,19 +665,27 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       overflow: hidden;
       font-family: 'Amiri', 'Noto Naskh Arabic', serif;
       -webkit-font-smoothing: antialiased;
+      /* v1.8: Center the 16:9 stage. */
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
 
     /* Stage Container (Default: Lower Third alignment at screen bottom) */
+    /* v1.8: True 16:9 aspect ratio. Width is min(100vw, 177.78vh) to fit
+       any viewport without distortion. Content scales via JS stageScale. */
     #stage {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100vw;
-      height: 100vh;
+      position: relative;
+      aspect-ratio: 16 / 9;
+      width: min(100vw, 177.78vh);
+      height: auto;
+      max-height: 100vh;
+      flex-shrink: 0;
       pointer-events: none;
       display: flex;
       flex-direction: column;
       justify-content: flex-end;
+    }
     }
 
     /* Stage Container (Full Show Mode: Centered vertically and horizontally) */
@@ -737,6 +825,23 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       animation: smoothFlow 18s linear infinite;
     }
 
+    .anim-emerald-waves {
+      background: linear-gradient(45deg, rgba(6, 78, 59, 0.4) 0%, rgba(52, 211, 153, 0.6) 50%, rgba(6, 78, 59, 0.4) 100%);
+      background-size: 400% 400%;
+      animation: smoothFlow 20s linear infinite;
+    }
+
+    .anim-rose-glow {
+      background: radial-gradient(circle at 50% 50%, rgba(251, 113, 133, 0.5) 0%, rgba(136, 19, 55, 0.3) 100%);
+      animation: candleBreath 8s ease-in-out infinite alternate;
+    }
+
+    .anim-gold-particles {
+      background: linear-gradient(135deg, rgba(120, 53, 15, 0.4) 0%, rgba(252, 211, 77, 0.5) 50%, rgba(120, 53, 15, 0.4) 100%);
+      background-size: 300% 300%;
+      animation: smoothFlow 15s linear infinite;
+    }
+
     .anim-particles {
       background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.1) 0%, transparent 100%);
       animation: particleBreath 10s ease-in-out infinite alternate;
@@ -795,10 +900,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       line-height: 1.35;
     }
     .english-citation {
-      display: inline-block;
+      display: block;
       direction: ltr;
       font-weight: 700;
-      margin-left: 6px;
+      margin-top: 4px;
       font-size: 0.7em;
     }
   </style>
@@ -829,6 +934,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   <script>
     // Elements
     const stage = document.getElementById('stage');
+    // v1.8: stageScale for font sizing — stage is 16:9, scale fonts to match NDI proportions.
+    // NDI renders at verseFontSize * 2 at 1920px wide; scale proportionally.
+    function getStageScale() {
+      const w = stage.clientWidth || 1920;
+      return w / 1920;
+    }
     const container = document.getElementById('lowerthird-container');
     const cardBox = document.getElementById('card-box');
     const animBgLayer = document.getElementById('animated-bg-layer');
@@ -861,6 +972,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
       const isFull = data.isFullScreen || $forceFullScreen;
 
+      // v1.8: viewport-relative font sizing — the style's font sizes are
+      // designed for a 1920-wide canvas (like NDI); scale to the actual
+      // viewport so HTTP matches preview/NDI proportions at any size.
+      // v1.8: Match NDI font size proportionally. NDI renders at verseFontSize * 2
+      // at 1920px wide; scale by actual stage width to maintain proportions at any size.
+      function scaledPx(base) { return (base * 2 * getStageScale()) + 'px'; }
+
       // 1. Set mode classes
       if (isFull) {
         stage.classList.add('mode-full-show');
@@ -872,19 +990,32 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         cardBox.classList.remove('mode-full-show');
       }
 
-      // 2. Text Content
-      verseText.textContent = data.arabicText;
-      citationText.textContent = data.arabicCitation;
+      // 2. Text Content (v1.8: three-way language mode)
+      const langMode = data.languageMode || (data.bilingual ? 'BOTH' : 'ARABIC_ONLY');
+      const showArabic = langMode !== 'ENGLISH_ONLY';
+      // v1.8: English section is shown in BOTH and ENGLISH_ONLY (with its own colors).
+      // No color swapping — each language keeps its own styling.
+      const showEnglishSection = langMode !== 'ARABIC_ONLY' && data.englishText;
+      if (showArabic) {
+        verseText.style.display = '';
+        citationText.style.display = '';
+        verseText.textContent = data.arabicText;
+        citationText.textContent = data.arabicCitation;
+      } else {
+        // ENGLISH_ONLY: Hide Arabic rows, English section takes over.
+        verseText.style.display = 'none';
+        citationText.style.display = 'none';
+      }
 
-      // 3. Bilingual Mode
-      if (data.bilingual && data.englishText) {
+      // 3. Bilingual Mode (BOTH only: English in secondary section below Arabic)
+      if (showEnglishSection) {
         englishSection.style.display = 'block';
         englishText.textContent = data.englishText;
         englishCitation.textContent = '(' + data.englishCitation + ')';
         englishText.style.color = data.secondaryTextColorHex || '#CBD5E1';
         englishCitation.style.color = data.secondaryReferenceColorHex || '#94A3B8';
-        englishText.style.fontSize = (data.secondaryVerseFontSize || 18) + 'px';
-        englishCitation.style.fontSize = (data.secondaryReferenceFontSize || 14) + 'px';
+        englishText.style.fontSize = scaledPx(data.secondaryVerseFontSize || 18);
+        englishCitation.style.fontSize = scaledPx(data.secondaryReferenceFontSize || 14);
         englishText.style.fontFamily = data.secondaryFontFamily || 'system-ui';
         englishText.style.fontWeight = data.secondaryVerseIsBold ? 'bold' : 'normal';
         englishText.style.fontStyle = data.secondaryVerseIsItalic ? 'italic' : 'normal';
@@ -928,10 +1059,15 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         verseText.style.margin = '0 auto';
 
         englishSection.style.width = '100%';
-        englishSection.style.textAlign = alignCss;
-        englishSection.style.margin = '10px auto 0 auto';
+        // v1.8: English stays left unless centered.
+        const enAlignCss = align === 'CENTER' ? 'center' : 'left';
+        englishSection.style.textAlign = enAlignCss;
+        // v1.8: honor the bilingualSpacing setting (was hardcoded 10px,
+        // overwriting the marginTop set above).
+        const fsSpacing = data.showBilingualSpacing ? (data.bilingualSpacing || 20) : 0;
+        englishSection.style.margin = fsSpacing + 'px auto 0 auto';
         englishText.style.width = '100%';
-        englishText.style.textAlign = alignCss;
+        englishText.style.textAlign = enAlignCss;
       } else {
         const botMargin = (data.positionBottomPercent || 6) + 'vh';
         const hMargin = (data.horizontalMarginPercent || 6) + 'vw';
@@ -968,7 +1104,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
           citationRow.style.width = '100%';
           citationRow.style.justifyContent = 'flex-start';
           verseText.style.textAlign = 'right';
-          englishSection.style.textAlign = 'right';
+          // v1.8: English stays left unless centered.
+          englishSection.style.textAlign = 'left';
         }
       }
 
@@ -980,8 +1117,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       verseText.style.fontStyle = data.verseIsItalic ? 'italic' : 'normal';
       citationRow.style.fontWeight = data.referenceIsBold ? 'bold' : 'normal';
       citationRow.style.fontStyle = data.referenceIsItalic ? 'italic' : 'normal';
-      verseText.style.fontSize = (data.verseFontSize || 26) + 'px';
-      citationRow.style.fontSize = (data.referenceFontSize || 18) + 'px';
+      verseText.style.fontSize = scaledPx(data.verseFontSize || 26);
+      citationRow.style.fontSize = scaledPx(data.referenceFontSize || 18);
 
       // 6. Color Schemes & Container Styling
       const hex = data.bgColorHex || '#0A1128';
@@ -992,12 +1129,17 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
       const accent = data.accentColorHex || '#E5A93C';
       const textColor = data.textColorHex || '#FFFFFF';
-      const refColor = data.referenceColorHex || '#F4D06F';
+      // v1.8: In ENGLISH_ONLY, use the English citation color for clear design.
+      const refColor = langMode === 'ENGLISH_ONLY'
+        ? (data.secondaryReferenceColorHex || '#94A3B8')
+        : (data.referenceColorHex || '#F4D06F');
 
       verseText.style.color = textColor;
       citationRow.style.color = refColor;
-      crossEmblem.style.backgroundColor = accent;
-      crossEmblem.style.color = accent;
+      // v1.8: emblem is transparent, citation-colored, inline with the citation
+      // (was: accent-colored chip background).
+      crossEmblem.style.backgroundColor = 'transparent';
+      crossEmblem.style.color = refColor;
       // v1.7: free user emblem (emoji/symbol); empty = hidden.
       if (data.emblem) {
         crossEmblem.textContent = data.emblem;
@@ -1026,10 +1168,18 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         if (!c) return 'none';
         return shape + ' rgba(' + c.r + ',' + c.g + ',' + c.b + ',' + alpha + ')';
       }
-      function textShadowCss(blurSet) {
+      function textShadowCss() {
+        // v1.8: directional shadow from the style's thickness (blur),
+        // distance (offset) and compass angle — mirrors NDI canvas.
         if (!data.textShadowEnabled) return 'none';
         var col = data.textShadowColorHex || '#000000';
-        return blurSet.map(function(b) { return b + ' ' + col; }).join(', ');
+        var blur = (data.textShadowBlurDp !== undefined) ? data.textShadowBlurDp : 8;
+        var dist = (data.textShadowOffsetDp !== undefined) ? data.textShadowOffsetDp : 4;
+        var angDeg = (data.textShadowAngleDeg !== undefined) ? data.textShadowAngleDeg : 90;
+        var ang = angDeg * Math.PI / 180;
+        var dx = (Math.cos(ang) * dist).toFixed(1);
+        var dy = (Math.sin(ang) * dist).toFixed(1);
+        return dx + 'px ' + dy + 'px ' + blur + 'px ' + col;
       }
 
       // 100% transparent toggle behaves like the transparent style (mirrors the NDI canvas).
@@ -1056,8 +1206,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       }
 
       // Text shadow on verse + citation (independent flag, both feeds).
-      verseText.style.textShadow = textShadowCss(['0 0 5px', '0 0 12px', '2px 2px 8px']);
-      citationRow.style.textShadow = textShadowCss(['0 0 4px', '0 0 8px']);
+      verseText.style.textShadow = textShadowCss();
+      citationRow.style.textShadow = textShadowCss();
 
       // 7. Motion Background Layer
       const animType = data.animatedBackground || 'none';
@@ -1078,13 +1228,28 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       } else if (animType === 'purple_silk') {
         animBgLayer.classList.add('anim-purple-silk');
         animBgLayer.style.opacity = animOpacity;
+      } else if (animType === 'emerald_waves') {
+        animBgLayer.classList.add('anim-emerald-waves');
+        animBgLayer.style.opacity = animOpacity;
+      } else if (animType === 'rose_glow') {
+        animBgLayer.classList.add('anim-rose-glow');
+        animBgLayer.style.opacity = animOpacity;
+      } else if (animType === 'gold_particles') {
+        animBgLayer.classList.add('anim-gold-particles');
+        animBgLayer.style.opacity = animOpacity;
       } else if (animType === 'particles') {
         animBgLayer.classList.add('anim-particles');
         animBgLayer.style.opacity = animOpacity;
       } else if (animType === 'custom_video' && data.customVideoId) {
         // v1.7: videos are served by opaque ID from private storage (never by path).
-        const videoUrl = '/ndi/video?id=' + encodeURIComponent(data.customVideoId);
+        const videoUrl = '/video?id=' + encodeURIComponent(data.customVideoId);
         if (customVideoBg.src !== videoUrl) customVideoBg.src = videoUrl;
+        // v1.8: HTTP is ALWAYS muted (browser autoplay policy + Ashraf: audio goes to NDI only).
+        // The customVideoMuted toggle only affects NDI.
+        customVideoBg.muted = true;
+        // v1.8: Apply motion speed to video playback rate.
+        const speed = parseFloat(data.motionSpeed) || 1.0;
+        if (customVideoBg.playbackRate !== speed) customVideoBg.playbackRate = speed;
         customVideoBg.style.display = 'block';
         customVideoBg.style.opacity = animOpacity;
         animBgLayer.style.opacity = '1';
@@ -1109,8 +1274,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     // Connect Server-Sent Events (SSE)
     function connectSse() {
       const urlParams = new URLSearchParams(window.location.search);
-      const isShow = urlParams.get('show') === '1' || window.location.pathname.includes('/show');
-      const sseUrl = '/ndi/events' + (isShow ? '?show=1' : '');
+      const isShow = urlParams.get('show') === '1' || window.location.pathname.includes('/full');
+      const sseUrl = '/events' + (isShow ? '?show=1' : '');
       
       const evtSource = new EventSource(sseUrl);
       evtSource.onmessage = function(e) {
@@ -1258,20 +1423,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     private fun drawFrameInto(bitmap: Bitmap, width: Int, height: Int, isForStream: Boolean, tpl: LowerThirdTemplate, isFull: Boolean, isMotionTick: Boolean = false) {
         val canvas = Canvas(bitmap)
 
-        val fallbackVerse = BibleVerse(
-            id = "jhn_3_16",
-            bookId = "jhn",
-            bookArabicName = "إنجيل يوحنا",
-            bookEnglishName = "John",
-            chapter = 3,
-            verse = 16,
-            arabicText = "لأَنَّهُ هكَذَا أَحَبَّ اللهُ الْعَالَمَ حَتَّى بَذَلَ ابْنَهُ الْوَحِيدَ، لِكَيْ لاَ يَهْلِكَ كُلُّ مَنْ يُؤْمِنُ بِهِ، بَلْ تَكُونُ لَهُ الْحَيَاةُ الأَبَدِيَّةُ.",
-            englishText = "For God so loved the world that He gave His only begotten Son, that whoever believes in Him should not perish but have everlasting life."
-        )
-        val activeVerse = currentVerse ?: fallbackVerse
-
         // 100% Pure transparent alpha canvas by default
         canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
+
+        // v1.8: no verse selected on launch — blank frame (cleared above; no text).
+        val activeVerse = currentVerse ?: return
 
         // Video Stream Background: Since JPEG encoders have no alpha channel,
         // provide keyable broadcast background (Chroma Green #00FF00, Luma Black, or Studio)
@@ -1293,16 +1449,28 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         }
 
         val scale = width / 1920f
+        // v1.8: user-controlled text shadow — thickness (blur radius), offset
+        // distance, compass direction (0°=right, 90°=down, 180°=left, 270°=up).
+        val shadowAngleRad = Math.toRadians(tpl.textShadowAngleDeg.toDouble())
+        val shadowDx = (cos(shadowAngleRad) * tpl.textShadowOffsetDp * scale).toFloat()
+        val shadowDy = (sin(shadowAngleRad) * tpl.textShadowOffsetDp * scale).toFloat()
+        val shadowBlur = tpl.textShadowBlurDp * scale
         val marginH = (width * (tpl.horizontalMarginPercent / 100f)).coerceAtLeast(40f * scale)
         val marginB = (height * (tpl.positionBottomPercent / 100f)).coerceAtLeast(30f * scale)
         val boxWidth = width - (2 * marginH)
+
+        // v1.8: three-way language control.
+        val showArabic = tpl.languageMode != LanguageMode.ENGLISH_ONLY
+        val showEnglish = tpl.languageMode != LanguageMode.ARABIC_ONLY &&
+                !activeVerse.englishText.isNullOrBlank()
 
         val verseText = ArabicTextFormatter.prepareForBroadcast(
             activeVerse.arabicText,
             tpl.useEasternArabicNumerals,
             tpl.useArabicPunctuation
         )
-        val citation = activeVerse.getFormattedArabicCitation(tpl.useEasternArabicNumerals)
+        val citation = if (showArabic) activeVerse.getFormattedArabicCitation(tpl.useEasternArabicNumerals)
+                       else activeVerse.getFormattedEnglishCitation()
 
         // Setup TextPaint for multi-line wrapped text
         val verseTextPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -1317,13 +1485,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             typeface = getBestTypeface(tpl.fontFamily, textStyle)
             if (tpl.textShadowEnabled) {
                 val shadowCol = try { Color.parseColor(tpl.textShadowColorHex) } catch (e: Exception) { Color.BLACK }
-                setShadowLayer(8f * scale, 0f, 4f * scale, shadowCol)
+                setShadowLayer(shadowBlur, shadowDx, shadowDy, shadowCol)
             }
             isFakeBoldText = tpl.verseIsBold
         }
 
-        val paddingH = 32f * scale
-        val paddingV = 24f * scale
+        val paddingH = 36f * scale
+        val paddingV = 32f * scale
         val contentWidth = (boxWidth - (2 * paddingH)).toInt().coerceAtLeast(200)
 
         // Fix alignment: ALIGN_NORMAL is Start (Right for RTL Arabic)
@@ -1338,7 +1506,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             verseTextPaint.textSkewX = -0.25f
         }
 
-        val staticLayout = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+        val staticLayout: StaticLayout? = if (showArabic) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             StaticLayout.Builder.obtain(verseText, 0, verseText.length, verseTextPaint, contentWidth)
                 .setAlignment(alignment)
                 .setLineSpacing(6f * scale, 1.25f)
@@ -1348,13 +1517,17 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             @Suppress("DEPRECATION")
             StaticLayout(verseText, verseTextPaint, contentWidth, alignment, 1.25f, 6f * scale, true)
         }
+        } else null
 
         val citationHeight = 44f * scale
         
         // Calculate bilingual secondary text if needed
         var secondaryLayout: StaticLayout? = null
-        if (tpl.bilingualMode && !activeVerse.englishText.isNullOrBlank()) {
-            val citationText = " (" + activeVerse.getFormattedEnglishCitation() + ")"
+        if (showEnglish) {
+            // v1.8: In ENGLISH_ONLY, the citation is already in the main citation row.
+            // Don't duplicate it here. In BOTH mode, include it with the English verse.
+            val isEnglishOnly = tpl.languageMode == LanguageMode.ENGLISH_ONLY
+            val citationText = if (isEnglishOnly) "" else " (" + activeVerse.getFormattedEnglishCitation() + ")"
             val fullSecondaryText = activeVerse.englishText + citationText
             
             val secondaryTextPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -1369,7 +1542,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 typeface = getBestTypeface(tpl.secondaryFontFamily, secStyle)
                 if (tpl.textShadowEnabled) {
                     val shadowCol = try { Color.parseColor(tpl.textShadowColorHex) } catch (e: Exception) { Color.BLACK }
-                    setShadowLayer(4f * scale, 0f, 2f * scale, shadowCol)
+                    setShadowLayer(shadowBlur, shadowDx, shadowDy, shadowCol)
                 }
                 isFakeBoldText = tpl.secondaryVerseIsBold
                 if (tpl.secondaryVerseIsItalic) textSkewX = -0.25f
@@ -1393,13 +1566,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
             )
             
-            // Bidi-aware: the user's LEFT/RIGHT choice means visual left/right
-            // regardless of script. For LTR English that's NORMAL (left) /
-            // OPPOSITE (right) — previously both mapped to left.
+            // v1.8: English stays visually left-aligned for LEFT and RIGHT;
+            // only CENTER centers it (matches HTTP overlay + Compose preview).
             val secAlignment = when (tpl.alignment) {
                 BroadcastTextAlignment.CENTER -> Layout.Alignment.ALIGN_CENTER
-                BroadcastTextAlignment.LEFT -> Layout.Alignment.ALIGN_NORMAL
-                BroadcastTextAlignment.RIGHT -> Layout.Alignment.ALIGN_OPPOSITE
+                else -> Layout.Alignment.ALIGN_NORMAL // LTR English: NORMAL = left
             }
             
             secondaryLayout = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -1415,13 +1586,18 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         }
 
         val bilSpacing = if (tpl.showBilingualSpacing) tpl.bilingualSpacing * scale else 0f
-        val secHeight = if (secondaryLayout != null) secondaryLayout.height + bilSpacing else 0f
+        // v1.8: primary content drives sizing/positioning — Arabic when shown,
+        // else English (ENGLISH_ONLY). The offset secondary block only exists
+        // when BOTH languages are shown.
+        val primaryLayout = staticLayout ?: secondaryLayout ?: return
+        val bilingualSecondary = if (staticLayout != null) secondaryLayout else null
+        val secHeight = if (bilingualSecondary != null) bilingualSecondary.height + bilSpacing else 0f
         
         // Full screen check for projector/full show mode
         val boxHeight = if (tpl.isFullScreen) {
             height.toFloat() 
         } else {
-            (staticLayout.height + citationHeight + secHeight + (paddingV * 2) + 16f * scale).coerceAtLeast(140f * scale)
+            (primaryLayout.height + citationHeight + secHeight + (paddingV * 2) + 16f * scale).coerceAtLeast(140f * scale)
         }
 
         val boxTop = if (tpl.isFullScreen) 0f else (height - marginB - boxHeight)
@@ -1433,6 +1609,31 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
         val paint = Paint(Paint.ANTI_ALIAS_FLAG)
 
+        // v1.8: Card glow drawn FIRST (behind video/card) so it appears as an
+        // outer halo without covering the video. The glow expands beyond the
+        // card bounds; drawing it first lets the video/card cover the inner part.
+        if (!tpl.isPureTransparentBackground && tpl.style != TemplateStyle.TRANSPARENT_OUTLINE) {
+            if (tpl.cardGlowEnabled && !tpl.isFullScreen) {
+                val glowCol = try { Color.parseColor(tpl.cardGlowColorHex) } catch (e: Exception) { Color.BLACK }
+                val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+                val layers = listOf(
+                    Triple(14f * scale, 0.30f, 4f * scale),
+                    Triple(30f * scale, 0.15f, 8f * scale)
+                )
+                for ((expand, alpha, radiusBump) in layers) {
+                    glowPaint.color = Color.argb(
+                        (255 * alpha).toInt().coerceIn(0, 255),
+                        Color.red(glowCol), Color.green(glowCol), Color.blue(glowCol)
+                    )
+                    canvas.drawRoundRect(
+                        RectF(rect.left - expand, rect.top - expand,
+                              rect.right + expand, rect.bottom + expand),
+                        radius + radiusBump, radius + radiusBump, glowPaint
+                    )
+                }
+            }
+        }
+
         // v1.7 custom video background (per feed). The video is the background
         // layer: drawn behind card/effects/text/emblem with the user's opacity.
         // Motion ticks pull fresh decoded frames; static renders freeze on the
@@ -1442,6 +1643,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         if (videoRenderer != null && customVideoFile != null) {
             videoRenderer.setSource(customVideoFile)
             videoRenderer.setAlpha(tpl.animatedBackgroundOpacity)
+            videoRenderer.setMuted(tpl.customVideoMuted)
+            videoRenderer.setSpeed(tpl.motionSpeed)
             if (isMotionTick || !videoRenderer.hasFrame()) videoRenderer.requestFrame()
             val videoRect = Rect(boxLeft.toInt(), boxTop.toInt(), boxRight.toInt(), boxBottom.toInt())
             if (radius > 0f) {
@@ -1460,17 +1663,6 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         }
 
         if (!tpl.isPureTransparentBackground && tpl.style != TemplateStyle.TRANSPARENT_OUTLINE) {
-            // Independent card glow (v1.6): soft halo behind the card in the user's
-            // glow color. Only where a real card exists — skipped for fullscreen
-            // full-bleed and transparent styles, mirroring the HTML overlay.
-            if (tpl.cardGlowEnabled && !tpl.isFullScreen) {
-                val glowCol = try { Color.parseColor(tpl.cardGlowColorHex) } catch (e: Exception) { Color.BLACK }
-                val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                    color = glowCol
-                    maskFilter = BlurMaskFilter(28f * scale, BlurMaskFilter.Blur.OUTER)
-                }
-                canvas.drawRoundRect(rect, radius, radius, glowPaint)
-            }
             val bgAlpha = (tpl.bgOpacity * 255).toInt().coerceIn(0, 255)
             val baseBgCol = try { Color.parseColor(tpl.bgColorHex) } catch (e: Exception) { Color.DKGRAY }
 
@@ -1513,6 +1705,33 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                         val c2 = Color.argb(bgAlpha, 192, 132, 252)
                         LinearGradient(
                             boxLeft + (boxWidth * phase), boxTop,
+                            boxRight, boxBottom,
+                            intArrayOf(c1, c2, c1), null, Shader.TileMode.CLAMP
+                        )
+                    }
+                    AnimatedBackgroundType.EMERALD_GARDEN_WAVES -> {
+                        val c1 = Color.argb(bgAlpha, 6, 78, 59)
+                        val c2 = Color.argb(bgAlpha, 52, 211, 153)
+                        LinearGradient(
+                            boxLeft, boxTop + (boxHeight * phase),
+                            boxRight, boxBottom,
+                            intArrayOf(c1, c2, c1), null, Shader.TileMode.CLAMP
+                        )
+                    }
+                    AnimatedBackgroundType.ROSE_DAWN_GLOW -> {
+                        val c1 = Color.argb(bgAlpha, 136, 19, 55)
+                        val c2 = Color.argb(bgAlpha, 251, 113, 133)
+                        RadialGradient(
+                            boxLeft + (boxWidth / 2f), boxTop + (boxHeight / 2f),
+                            (boxHeight * 1.2f) * (0.8f + 0.3f * phase),
+                            intArrayOf(c2, c1), floatArrayOf(0f, 1f), Shader.TileMode.CLAMP
+                        )
+                    }
+                    AnimatedBackgroundType.GOLDEN_PARTICLES -> {
+                        val c1 = Color.argb(bgAlpha, 120, 53, 15)
+                        val c2 = Color.argb(bgAlpha, 252, 211, 77)
+                        LinearGradient(
+                            boxLeft + (boxWidth * (1f - phase)), boxTop,
                             boxRight, boxBottom,
                             intArrayOf(c1, c2, c1), null, Shader.TileMode.CLAMP
                         )
@@ -1562,6 +1781,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 AnimatedBackgroundType.CANDLE_LITURGICAL_GLOW -> Color.argb(animAlpha, 245, 158, 11)
                 AnimatedBackgroundType.ROYAL_PURPLE_SILK -> Color.argb(animAlpha, 192, 132, 252)
                 AnimatedBackgroundType.PARTICLE_STARS -> Color.argb(animAlpha, 125, 211, 252)
+                AnimatedBackgroundType.EMERALD_GARDEN_WAVES -> Color.argb(animAlpha, 52, 211, 153)
+                AnimatedBackgroundType.ROSE_DAWN_GLOW -> Color.argb(animAlpha, 251, 113, 133)
+                AnimatedBackgroundType.GOLDEN_PARTICLES -> Color.argb(animAlpha, 252, 211, 77)
                 else -> Color.argb(animAlpha, 255, 255, 255)
             }
             val glowShader = RadialGradient(
@@ -1576,7 +1798,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
         // Draw Citation Badge
         val refPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = try { Color.parseColor(tpl.referenceColorHex) } catch (e: Exception) { Color.YELLOW }
+            // v1.8: In ENGLISH_ONLY, use the English citation color for clear design.
+            val refColorHex = if (tpl.languageMode == LanguageMode.ENGLISH_ONLY) tpl.secondaryReferenceColorHex else tpl.referenceColorHex
+            color = try { Color.parseColor(refColorHex) } catch (e: Exception) { Color.YELLOW }
             textSize = (tpl.referenceFontSize * 2f * scale).coerceAtLeast(18f)
             
             var refStyle = Typeface.NORMAL
@@ -1587,13 +1811,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             typeface = getBestTypeface(tpl.fontFamily, refStyle)
             if (tpl.textShadowEnabled) {
                 val shadowCol = try { Color.parseColor(tpl.textShadowColorHex) } catch (e: Exception) { Color.BLACK }
-                setShadowLayer(6f * scale, 0f, 3f * scale, shadowCol)
+                setShadowLayer(shadowBlur, shadowDx, shadowDy, shadowCol)
             }
             isFakeBoldText = tpl.referenceIsBold
             if (tpl.referenceIsItalic) textSkewX = -0.25f
         }
 
-        val contentTotalHeight = staticLayout.height + citationHeight + secHeight
+        val contentTotalHeight = primaryLayout.height + citationHeight + secHeight
         val startY = if (tpl.isFullScreen) {
             (height - contentTotalHeight) / 2f
         } else {
@@ -1608,13 +1832,14 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         val emblemText = tpl.emblem
         if (emblemText.isNotEmpty()) {
             val emblemPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = try { Color.parseColor(tpl.accentColorHex) } catch (e: Exception) { refPaint.color }
+                // v1.8: emblem uses citation styling (was accent color).
+                color = refPaint.color
                 textSize = refPaint.textSize
                 // System default typeface: reliable emoji/symbol fallback.
                 typeface = Typeface.DEFAULT
                 if (tpl.textShadowEnabled) {
                     val shadowCol = try { Color.parseColor(tpl.textShadowColorHex) } catch (e: Exception) { Color.BLACK }
-                    setShadowLayer(6f * scale, 0f, 3f * scale, shadowCol)
+                    setShadowLayer(shadowBlur, shadowDx, shadowDy, shadowCol)
                 }
             }
             val emblemW = emblemPaint.measureText(emblemText)
@@ -1668,6 +1893,16 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // v1.7: the verse block obeys the user's alignment on Full Show too.
         val translateX = if (tpl.alignment == BroadcastTextAlignment.CENTER) {
             (width - contentWidth) / 2f
+        } else if (tpl.alignment == BroadcastTextAlignment.RIGHT) {
+            // v1.8: Right-align the verse layout with the citation (account for emblem).
+            // The citation's right edge is at boxRight - paddingH - emblemW - emblemGap.
+            // Use a temporary paint for measurement (emblemPaint is defined later).
+            val tmpPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                textSize = 24f * scale
+            }
+            val emblemW = tmpPaint.measureText(tpl.emblem)
+            val emblemGap = 16f * scale
+            boxRight - paddingH - emblemW - emblemGap - contentWidth
         } else {
             boxLeft + paddingH
         }
@@ -1676,16 +1911,16 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         val textY = citationY + (16f * scale)
         canvas.save()
         canvas.translate(translateX, textY)
-        staticLayout.draw(canvas)
+        primaryLayout.draw(canvas)
         canvas.restore()
 
-        // Draw Bilingual Section if active
-        if (secondaryLayout != null) {
+        // Draw Bilingual Section if active (BOTH mode only)
+        if (bilingualSecondary != null) {
             val bilSpacing = if (tpl.showBilingualSpacing) tpl.bilingualSpacing * scale else 0f
-            val secY = textY + staticLayout.height + bilSpacing
+            val secY = textY + primaryLayout.height + bilSpacing
             canvas.save()
             canvas.translate(translateX, secY)
-            secondaryLayout.draw(canvas)
+            bilingualSecondary.draw(canvas)
             canvas.restore()
         }
 
@@ -2037,7 +2272,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     <p class="subtitle">يتم تحديث البث تلقائياً وفورياً عند اختيار أي آية من التطبيق</p>
 
     <div class="video-container">
-      <img id="streamImg" src="/ndi/stream.mjpg?raw=1" alt="Bible Live Broadcast Stream" onerror="setTimeout(() => { this.src = '/ndi/stream.mjpg?raw=1&t=' + Date.now(); }, 1500);" />
+      <img id="streamImg" src="/stream?raw=1" alt="Bible Live Broadcast Stream" onerror="setTimeout(() => { this.src = '/stream?raw=1&t=' + Date.now(); }, 1500);" />
     </div>
 
     <div class="instructions">
@@ -2049,8 +2284,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     </div>
 
     <div class="btn-row">
-      <a class="btn btn-primary" href="/ndi" target="_blank">فتح طبقة البث الشفافة (Overlay)</a>
-      <a class="btn btn-secondary" href="/ndi/stream.mjpg?raw=1" target="_blank">عرض دفق الفيديو المباشر (Raw MJPEG)</a>
+      <a class="btn btn-primary" href="/lower" target="_blank">فتح طبقة البث الشفافة (Overlay)</a>
+      <a class="btn btn-secondary" href="/stream?raw=1" target="_blank">عرض دفق الفيديو المباشر (Raw MJPEG)</a>
     </div>
   </div>
 </body>
@@ -2130,13 +2365,457 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
     private fun serveStatus(out: OutputStream) {
         val ip = getLocalIpAddress()
-        val msg = "OK - Bible NDI Server Online\nIP: $ip\nPort: $port\nStream: http://$ip:$port/ndi/stream\nOverlay: http://$ip:$port/ndi\n"
+        val msg = "OK - Bible NDI Server Online\nIP: $ip\nPort: $port\nStream: http://$ip:$port/stream\nLower: http://$ip:$port/lower\nFull: http://$ip:$port/full\n"
         val bytes = msg.toByteArray(Charsets.UTF_8)
         val writer = PrintWriter(out)
         writer.print("HTTP/1.1 200 OK\r\n")
         writer.print("Content-Type: text/plain; charset=utf-8\r\n")
         writer.print("Content-Length: ${bytes.size}\r\n")
         writer.print("Access-Control-Allow-Origin: *\r\n")
+        writer.print("Connection: close\r\n\r\n")
+        writer.flush()
+        out.write(bytes)
+        out.flush()
+    }
+
+    // ---- v1.8 remote API ----
+
+    /** Parse URL query string into a decoded map. */
+    private fun parseQueryParams(fullPath: String): Map<String, String> {
+        val qIndex = fullPath.indexOf('?')
+        if (qIndex < 0) return emptyMap()
+        val query = fullPath.substring(qIndex + 1)
+        val map = mutableMapOf<String, String>()
+        for (pair in query.split('&')) {
+            val eq = pair.indexOf('=')
+            if (eq < 0) continue
+            val key = pair.substring(0, eq)
+            val value = try {
+                java.net.URLDecoder.decode(pair.substring(eq + 1), "UTF-8")
+            } catch (e: Exception) {
+                pair.substring(eq + 1)
+            }
+            map[key] = value
+        }
+        return map
+    }
+
+    /** Send a JSON response with consistent {"ok": ...} shape. */
+    private fun sendJson(out: OutputStream, statusCode: Int, json: String) {
+        val bytes = json.toByteArray(Charsets.UTF_8)
+        val writer = PrintWriter(out)
+        val statusText = when (statusCode) {
+            200 -> "OK"
+            400 -> "Bad Request"
+            404 -> "Not Found"
+            else -> "OK"
+        }
+        writer.print("HTTP/1.1 $statusCode $statusText\r\n")
+        writer.print("Content-Type: application/json; charset=utf-8\r\n")
+        writer.print("Content-Length: ${bytes.size}\r\n")
+        writer.print("Access-Control-Allow-Origin: *\r\n")
+        writer.print("Connection: close\r\n\r\n")
+        writer.flush()
+        out.write(bytes)
+        out.flush()
+    }
+
+    private fun jsonEscape(s: String): String {
+        return s.replace("\\", "\\\\")
+            .replace("\"", "\\\"")
+            .replace("\n", "\\n")
+            .replace("\r", "\\r")
+            .replace("\t", "\\t")
+    }
+
+    /**
+     * GET /api/trigger?ref=John+3:16[&target=lower|show|both]
+     * GET /api/trigger?book=43&chapter=3&verse=16[&target=...]
+     * Triggers a verse on the broadcast outputs.
+     */
+    private fun serveApiTrigger(out: OutputStream, fullPath: String) {
+        val params = parseQueryParams(fullPath)
+        val target = (params["target"] ?: "both").lowercase().let {
+            when (it) {
+                "lower", "lowerthird", "lower-third" -> "lower"
+                "show", "full", "fullscreen", "fullshow" -> "show"
+                else -> "both"
+            }
+        }
+
+        val ref = params["ref"]
+        var bookId: String? = null
+        var chapter: Int? = null
+        var verseNum: Int? = null
+
+        if (ref != null) {
+            // Free-form reference: English/Arabic name or abbreviation.
+            val books = try {
+                com.arabicchristianmedia.data.BibleRepository.allBooks
+            } catch (e: Exception) { emptyList() }
+            val parsed = com.arabicchristianmedia.model.ReferenceParser.parse(ref, books)
+            if (parsed == null) {
+                sendJson(out, 400, """{"ok":false,"error":"Could not understand reference: ${jsonEscape(ref)}"}""")
+                return
+            }
+            bookId = parsed.book.id
+            chapter = parsed.chapter
+            verseNum = parsed.verse
+        } else {
+            // Numeric fallback: ?book=43&chapter=3&verse=16 (1-indexed book).
+            val bookNum = params["book"]?.toIntOrNull()
+            chapter = params["chapter"]?.toIntOrNull()
+            verseNum = params["verse"]?.toIntOrNull()
+            if (bookNum == null || chapter == null || verseNum == null ||
+                bookNum < 1 || chapter < 1 || verseNum < 1) {
+                sendJson(out, 400, """{"ok":false,"error":"Provide ?ref=John+3:16 or ?book=43&chapter=3&verse=16"}""")
+                return
+            }
+            val books = try {
+                com.arabicchristianmedia.data.BibleRepository.allBooks
+            } catch (e: Exception) { emptyList() }
+            val book = books.getOrNull(bookNum - 1)
+            if (book == null) {
+                sendJson(out, 400, """{"ok":false,"error":"Book number out of range: $bookNum"}""")
+                return
+            }
+            bookId = book.id
+        }
+
+        val ok = try {
+            onTriggerVerse?.invoke(bookId!!, chapter!!, verseNum!!, target) ?: false
+        } catch (e: Exception) { false }
+
+        if (ok) {
+            sendJson(out, 200, """{"ok":true,"bookId":"${jsonEscape(bookId!!)}","chapter":$chapter,"verse":$verseNum,"target":"$target"}""")
+        } else {
+            sendJson(out, 400, """{"ok":false,"error":"Verse not found: bookId=$bookId $chapter:$verseNum"}""")
+        }
+    }
+
+    /** GET /api/clear — clear the active verse (take outputs off-air). */
+    private fun serveApiClear(out: OutputStream) {
+        try { onClearVerse?.invoke() } catch (e: Exception) { }
+        sendJson(out, 200, """{"ok":true,"cleared":true}""")
+    }
+
+    /** GET /api/videos — list background videos by opaque ID. */
+    private fun serveApiVideos(out: OutputStream) {
+        val videos = try { onListVideos?.invoke() ?: emptyList() } catch (e: Exception) { emptyList() }
+        val sb = StringBuilder()
+        sb.append("""{"ok":true,"videos":[""")
+        videos.forEachIndexed { i, v ->
+            if (i > 0) sb.append(",")
+            sb.append("""{"id":"${jsonEscape(v.id)}","name":"${jsonEscape(v.displayName)}","sizeBytes":${v.sizeBytes},"url":"/video?id=${jsonEscape(v.id)}"}""")
+        }
+        sb.append("]}")
+        sendJson(out, 200, sb.toString())
+    }
+
+    /**
+     * GET /bibleshow.xml — vMix BibleShow-compatible text feed (v1.8).
+     * Text/data only; vMix controls all formatting. TimeCode is .NET ticks.
+     */
+    private fun serveBibleShowXml(out: OutputStream) {
+        val verse = currentVerse
+        val tpl = currentTemplate
+
+        fun xmlEscape(s: String): String {
+            return s.replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;")
+                .replace("'", "&apos;")
+        }
+
+        // .NET ticks: 100ns intervals since 0001-01-01 UTC.
+        val dotNetTicks = System.currentTimeMillis() * 10000L + 621355968000000000L
+
+        // v1.8: Respect the Lower Third language mode.
+        val langMode = tpl.languageMode
+        val showArabic = langMode != LanguageMode.ENGLISH_ONLY
+        val showEnglish = langMode != LanguageMode.ARABIC_ONLY
+        // Numbers in Eastern Arabic when Arabic is shown (BOTH uses Arabic numbers per Ashraf).
+        val useEasternNumbers = showArabic && tpl.useEasternArabicNumerals
+
+        fun formatNum(n: Int): String {
+            return if (useEasternNumbers) ArabicTextFormatter.toEasternArabicDigits(n.toString())
+            else n.toString()
+        }
+
+        val arabicVerse = if (verse != null && showArabic) {
+            ArabicTextFormatter.prepareForBroadcast(
+                verse.arabicText, tpl.useEasternArabicNumerals, tpl.useArabicPunctuation
+            )
+        } else ""
+        val arabicCitation = if (verse != null && showArabic) {
+            verse.getFormattedArabicCitation(tpl.useEasternArabicNumerals)
+        } else ""
+        val englishVerse = if (verse != null && showEnglish) verse.englishText ?: "" else ""
+        val englishCitation = if (verse != null && showEnglish) verse.getFormattedEnglishCitation() else ""
+
+        // Scripture: respects language mode.
+        val scripture = buildString {
+            if (arabicVerse.isNotEmpty()) {
+                append(arabicVerse)
+                append("\n")
+                append(arabicCitation)
+            }
+            if (englishVerse.isNotEmpty()) {
+                if (arabicVerse.isNotEmpty()) append("\n\n")
+                append(englishVerse)
+                append("\n")
+                append(englishCitation)
+            }
+        }
+
+        // Separate fields for vMix text inputs.
+        val bookName = when {
+            showArabic && !showEnglish -> verse?.bookArabicName ?: ""
+            showEnglish && !showArabic -> verse?.bookEnglishName ?: ""
+            else -> verse?.bookArabicName ?: ""
+        }
+        val chapterNum = verse?.chapter?.let { formatNum(it) } ?: ""
+        val verseNum = verse?.verse?.let { formatNum(it) } ?: ""
+        val chapterVerse = if (verse != null) {
+            if (useEasternNumbers) "${formatNum(verse.chapter)} : ${formatNum(verse.verse)}"
+            else "${verse.chapter}:${verse.verse}"
+        } else ""
+        // Verse text without citation.
+        val verseTextOnly = buildString {
+            if (arabicVerse.isNotEmpty()) append(arabicVerse)
+            if (englishVerse.isNotEmpty()) {
+                if (arabicVerse.isNotEmpty()) append("\n\n")
+                append(englishVerse)
+            }
+        }
+        val bibleLanguage = when (langMode) {
+            LanguageMode.ARABIC_ONLY -> "Arabic"
+            LanguageMode.ENGLISH_ONLY -> "English"
+            LanguageMode.BOTH -> "Arabic,English"
+        }
+
+        val xml = buildString {
+            append("""<?xml version="1.0" encoding="utf-8"?>""")
+            append("\n<BibleShowData>\n")
+            append("  <TimeCode>$dotNetTicks</TimeCode>\n")
+            append("  <Reference />\n")
+            append("  <Scripture>${xmlEscape(scripture)}</Scripture>\n")
+            append("  <ImagePath />\n")
+            append("  <BibleVersion></BibleVersion>\n")
+            append("  <BibleCopyright></BibleCopyright>\n")
+            append("  <BibleLanguage>$bibleLanguage</BibleLanguage>\n")
+            append("  <BookName>${xmlEscape(bookName)}</BookName>\n")
+            append("  <BookTitle>${xmlEscape(bookName)}</BookTitle>\n")
+            append("  <BookAbbreviation></BookAbbreviation>\n")
+            append("  <ChapterNumber>${xmlEscape(chapterNum)}</ChapterNumber>\n")
+            append("  <VerseNumber>${xmlEscape(verseNum)}</VerseNumber>\n")
+            append("  <ChapterVerse>${xmlEscape(chapterVerse)}</ChapterVerse>\n")
+            append("  <VerseText>${xmlEscape(verseTextOnly)}</VerseText>\n")
+            append("  <BackgroundPath />\n")
+            append("</BibleShowData>\n")
+        }
+
+        val bytes = xml.toByteArray(Charsets.UTF_8)
+        val writer = PrintWriter(out)
+        writer.print("HTTP/1.1 200 OK\r\n")
+        writer.print("Content-Type: application/xml; charset=utf-8\r\n")
+        writer.print("Content-Length: ${bytes.size}\r\n")
+        writer.print("Access-Control-Allow-Origin: *\r\n")
+        writer.print("Connection: close\r\n\r\n")
+        writer.flush()
+        out.write(bytes)
+        out.flush()
+    }
+
+    /**
+     * GET /remote — phone-friendly remote control page (v1.8).
+     * One-handed operation, follows the device's light/dark theme,
+     * fully offline (served by the tablet, no external resources).
+     */
+    private fun serveRemotePage(out: OutputStream) {
+        val html = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="color-scheme" content="light dark">
+<title>Bible Remote</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0; padding: 0;
+    font-family: system-ui, -apple-system, sans-serif;
+    background: Canvas; color: CanvasText;
+    min-height: 100vh; min-height: 100dvh;
+    display: flex; flex-direction: column;
+  }
+  @media (prefers-color-scheme: light) {
+    body { background: #f1f5f9; color: #0f172a; }
+    .card { background: #ffffff; border-color: #e2e8f0; }
+    input { background: #f8fafc; border-color: #cbd5e1; color: #0f172a; }
+    .seg button { color: #475569; }
+    .seg button.active { background: #0f172a; color: #fff; }
+    .hint { color: #64748b; }
+  }
+  @media (prefers-color-scheme: dark) {
+    body { background: #0f172a; color: #f1f5f9; }
+    .card { background: #1e293b; border-color: #334155; }
+    input { background: #0f172a; border-color: #475569; color: #f1f5f9; }
+    .seg button { color: #94a3b8; }
+    .seg button.active { background: #f1f5f9; color: #0f172a; }
+    .hint { color: #94a3b8; }
+  }
+  header {
+    padding: 16px 20px 8px;
+    font-size: 20px; font-weight: 700;
+  }
+  header .sub { font-size: 13px; font-weight: 400; opacity: 0.7; margin-top: 2px; }
+  main { flex: 1; padding: 8px 16px 16px; display: flex; flex-direction: column; gap: 12px; max-width: 560px; width: 100%; margin: 0 auto; }
+  .card {
+    border: 1px solid; border-radius: 16px;
+    padding: 16px;
+  }
+  label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 8px; opacity: 0.8; }
+  input {
+    width: 100%; font-size: 20px; padding: 14px 16px;
+    border: 1px solid; border-radius: 12px;
+    outline: none;
+  }
+  input:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.25); }
+  .seg { display: flex; gap: 8px; }
+  .seg button {
+    flex: 1; padding: 12px 8px; font-size: 15px; font-weight: 600;
+    border: 1px solid; border-radius: 12px; background: transparent;
+    cursor: pointer;
+  }
+  .seg button.active { border-color: transparent; }
+  .btn {
+    width: 100%; padding: 18px; font-size: 20px; font-weight: 700;
+    border: none; border-radius: 16px; cursor: pointer;
+    background: #16a34a; color: #fff;
+    min-height: 64px;
+  }
+  .btn:active { transform: scale(0.98); opacity: 0.9; }
+  .btn-clear {
+    background: transparent; color: inherit;
+    border: 2px solid; font-size: 17px; padding: 14px;
+  }
+  .status {
+    text-align: center; font-size: 14px; min-height: 22px;
+    font-weight: 600;
+  }
+  .status.ok { color: #16a34a; }
+  .status.err { color: #dc2626; }
+  .hint { font-size: 12px; margin-top: 8px; line-height: 1.5; }
+  .now { font-size: 15px; text-align: center; padding: 4px 0; opacity: 0.85; }
+</style>
+</head>
+<body>
+<header>
+  📖 Bible Remote
+  <div class="sub">Arabic Bible NDI — live verse trigger</div>
+</header>
+<main>
+  <div class="now" id="now">—</div>
+  <div class="card">
+    <label for="ref">Bible reference</label>
+    <input id="ref" type="text" inputmode="text" autocomplete="off"
+           placeholder="John 3:16  •  يوحنا 3:16  •  Jn 3:16"
+           enterkeyhint="go">
+    <div class="hint">English, Arabic, or abbreviation. Examples: <b>Rom 8:28</b>, <b>مزمور 23:1</b>, <b>1Jn 1:9</b></div>
+  </div>
+  <div class="card">
+    <label>Target output</label>
+    <div class="seg" id="targetSeg">
+      <button data-t="lower">Lower Third</button>
+      <button data-t="show">Full Show</button>
+      <button data-t="both" class="active">Both</button>
+    </div>
+  </div>
+  <button class="btn" id="goBtn" onclick="trigger()">▶ Show Verse</button>
+  <button class="btn btn-clear" onclick="clearVerse()">Clear (off-air)</button>
+  <div class="status" id="status"></div>
+</main>
+<script>
+  let target = 'both';
+  const seg = document.getElementById('targetSeg');
+  seg.addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    target = b.dataset.t;
+    seg.querySelectorAll('button').forEach(x => x.classList.toggle('active', x === b));
+  });
+  const refInput = document.getElementById('ref');
+  refInput.addEventListener('keydown', e => { if (e.key === 'Enter') trigger(); });
+  // Select-all on focus so re-typing replaces (v2.0 pattern, applied here too).
+  refInput.addEventListener('focus', () => refInput.select());
+
+  function setStatus(msg, cls) {
+    const el = document.getElementById('status');
+    el.textContent = msg;
+    el.className = 'status ' + (cls || '');
+  }
+
+  async function trigger() {
+    const ref = refInput.value.trim();
+    if (!ref) { setStatus('Type a reference first', 'err'); refInput.focus(); return; }
+    setStatus('Sending…', '');
+    try {
+      const r = await fetch('/api/trigger?ref=' + encodeURIComponent(ref) + '&target=' + target);
+      const j = await r.json();
+      if (j.ok) {
+        setStatus('✓ ' + ref + ' → ' + target, 'ok');
+        updateNow(ref);
+      } else {
+        setStatus('✗ ' + (j.error || 'failed'), 'err');
+      }
+    } catch (e) {
+      setStatus('✗ Network error', 'err');
+    }
+  }
+
+  async function clearVerse() {
+    setStatus('Clearing…', '');
+    try {
+      const r = await fetch('/api/clear');
+      const j = await r.json();
+      if (j.ok) { setStatus('✓ Cleared', 'ok'); updateNow('—'); }
+      else setStatus('✗ failed', 'err');
+    } catch (e) {
+      setStatus('✗ Network error', 'err');
+    }
+  }
+
+  function updateNow(t) { document.getElementById('now').textContent = 'Now: ' + t; }
+
+  // Poll current verse for the "Now" line.
+  async function pollNow() {
+    try {
+      const r = await fetch('/api/verse');
+      const j = await r.json();
+      if (j.isLive && (j.arabicCitation || j.englishCitation)) {
+        updateNow(j.arabicCitation || j.englishCitation);
+      } else {
+        updateNow('—');
+      }
+    } catch (e) {}
+  }
+  pollNow();
+  setInterval(pollNow, 5000);
+</script>
+</body>
+</html>
+        """.trimIndent()
+
+        val bytes = html.toByteArray(Charsets.UTF_8)
+        val writer = PrintWriter(out)
+        writer.print("HTTP/1.1 200 OK\r\n")
+        writer.print("Content-Type: text/html; charset=utf-8\r\n")
+        writer.print("Content-Length: ${bytes.size}\r\n")
+        writer.print("Cache-Control: no-cache\r\n")
         writer.print("Connection: close\r\n\r\n")
         writer.flush()
         out.write(bytes)

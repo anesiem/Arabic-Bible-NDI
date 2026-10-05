@@ -14,7 +14,7 @@ This document explains the internal architecture and NDI 6 implementation detail
     *   `TemplateRepository`: persists JSON-serialized style templates plus per-tab working templates, highlight ids (`null` = modified/unsaved), and dirty flags in `SharedPreferences`. Legacy `showDropShadow` migrates to the independent `textShadowEnabled`/`cardGlowEnabled` flags (both on, black). Legacy `tpl_modern_glass` highlight migrates to `tpl_transparent_alpha`.
 3.  **Networking Layer (NDI & HTTP)**:
     *   `NdiNativeSender`: JNI bridge to the NDI 6 SDK managing exactly two senders (`Bible-NDI-Lower`, `Bible-NDI-Full`). Per-feed `SenderSession` coroutines do dirty-frame sending + 2s heartbeat; motion mode re-renders at up to ~30fps. Per-feed locks serialize render+send across the send loop and `triggerFrame()`.
-    *   `NdiBroadcastServer`: hand-rolled HTTP server generating HTML/CSS/JS overlays (`/ndi`, `/show`), MJPEG, snapshots, status API, and SSE event streams with leading-edge throttle + trailing-edge delivery and a monotonic `stateVersion` per message for reconnect re-sync.
+    *   `NdiBroadcastServer`: hand-rolled HTTP server generating HTML/CSS/JS overlays (`/lower`, `/full`), MJPEG, snapshots, status API, remote trigger API, and SSE event streams with leading-edge throttle + trailing-edge delivery and a monotonic `stateVersion` per message for reconnect re-sync.
     *   NDI discovery is handled by the NDI 6 runtime itself — there is no in-app discovery beacon (the fake mDNS/UDP/TCP beacon was deleted in v1.6).
 
 ## 🔌 NDI 6 Implementation
@@ -49,7 +49,7 @@ Feed-agnostic: `nativeInitialize`, `nativeCreateSender(name, fps)`, `nativeDestr
 ### 🔤 Bundled offline fonts
 * All 57 Arabic-subset Google Fonts (OFL) ship as TTFs in `app/src/main/assets/fonts/` (`<id>-400.ttf`, plus `-700.ttf` where the family has a true bold) — ~11 MB.
 * Single source of truth: `model/ArabicFonts.kt` drives the editor dropdown, the NDI canvas loader (`getBestTypeface` → `Typeface.createFromAsset`, cached per family+style in a `ConcurrentHashMap`), and the HTTP overlay `@font-face` rules.
-* The tablet serves its own fonts at `/fonts/<file>.ttf` (allowlisted, `font/ttf`, immutable cache), so `/ndi` and `/show` overlays render the exact same typefaces with no internet access.
+* The tablet serves its own fonts at `/fonts/<file>.ttf` (allowlisted, `font/ttf`, immutable cache), so `/lower` and `/full` overlays render the exact same typefaces with no internet access.
 * Adding a font = drop the TTFs in `assets/fonts/` + one `BundledFont(...)` line; everything else follows automatically.
 
 ## 🔨 Build & pre-ship checklist

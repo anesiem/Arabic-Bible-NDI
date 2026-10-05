@@ -78,6 +78,17 @@ Fixed the red/blue channel swap: `#FF0000` now appears correctly red on all NDI 
 - **Shadow controls**: Thickness slider, distance slider, and 8-direction compass picker
 - **"You are editing" indicator**: Always shows which target (Lower Third / Full Show) you're editing
 - **Video info**: Picker displays the video ID and direct URL for reference
+- **Motion speed slider**: 0.00 to 3.00 with decimal precision (0 pauses the video)
+- **Card transparent button**: One-tap "شفاف" button to make the card fully transparent
+- **Layer order labels**: Editor sections now indicate background vs. foreground layers
+
+## Motion Backgrounds & Polish
+- **8 animated presets**: Royal Purple Silk, Ethereal Blue Waves, Candle Liturgical Glow, Golden Divine Rays, Emerald Garden Waves, Rose Dawn Glow, Golden Particles, Particle Stars — from dark reverent to light joyful, all with transparency support
+- **Animation opacity**: Per-style opacity slider for all motion backgrounds (not just video)
+- **NDI layer fix**: Card glow now renders behind the video as an outer halo (was covering the video)
+- **English citation color**: In English-only mode, citations use the English color for clear design
+- **Card padding**: Increased padding for better spacing between card edge and text
+- **HTTP 16:9**: Overlays now maintain true 16:9 aspect ratio at any viewport size
 
 ## Technical Details
 - All new style fields (shadow params, language mode) are present in all 10 factory styles

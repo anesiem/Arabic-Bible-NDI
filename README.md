@@ -1,4 +1,4 @@
-# Arabic Bible NDI (Version 1.7 - Latest Release)
+# Arabic Bible NDI (Version 1.8 - Latest Release)
 
 Professional Arabic/English Bible broadcast controller for Android. Transform your tablet or phone into a high-quality NDI 6 source and HTTP overlay server optimized for church presentations, live streaming, and OBS/vMix broadcast integration.
 
@@ -6,7 +6,21 @@ Professional Arabic/English Bible broadcast controller for Android. Transform yo
 
 ---
 
-## 🚀 What's New in Version 1.7 (Latest Release)
+## 🚀 What's New in Version 1.8 (Latest Release)
+
+* 🗣️ **Three-way language mode**: Arabic / English / Both (replaces the bilingual toggle).
+* 🌐 **Clean HTTP API**: `/lower`, `/full`, `/api/*` — industry-standard REST URIs (no `/ndi` prefix).
+* 🎬 **vMix integration**: `/bibleshow.xml` feed + SetText push to your vMix titles over LAN.
+* 📱 **Remote control page** (`/remote`): phone-friendly, one-handed, follows device theme.
+* ✨ **Three new factory styles**: Sanctuary Gold, Morning Mercy, Upper Room.
+* 🎨 **8 animated backgrounds**: from dark reverent to light joyful, all with transparency.
+* 🎚️ **Motion speed slider**: 0.00–3.00 with decimal precision (0 pauses).
+* 🔧 **NDI color fix**: red/blue channel swap corrected (RGBA FourCC).
+* 💡 **Directional text shadows**: thickness, distance, and 8-direction compass.
+
+See [RELEASE_NOTES_v1.8.md](RELEASE_NOTES_v1.8.md) for the full list.
+
+## 🚀 What's New in Version 1.7
 
 * 😊 **Custom emoji/symbol emblem**: the old cross toggle is now a free text field — type any emoji or symbol (empty = none). Saved per style, in style exports, rendered on NDI, HTTP, preview, and fullscreen.
 * 🎬 **Real animated video backgrounds on NDI**: pick a local MP4 and it loops *behind* the card and text on the NDI canvas — fully animated, per-feed decoders. Motion ON animates (up to 30fps); Motion OFF freezes the frame. Videos are stored privately and served to browsers by secure ID (the old `?path=` file endpoint is removed).
@@ -62,7 +76,7 @@ Each NDI source is independently configurable from dropdown lists:
 
 Requires Android 7.0+. Download the APK from the [Releases page](https://github.com/anesiem/Arabic-Bible-NDI/releases) and install.
 
-> **Note:** v1.5 changed the application ID to `com.arabicchristianmedia`, so it installs as a separate app from v1.4 and earlier (templates do not migrate automatically). v1.7 (versionCode 7) installs cleanly over v1.5/v1.6.
+> **Note:** v1.5 changed the application ID to `com.arabicchristianmedia`, so it installs as a separate app from v1.4 and earlier (templates do not migrate automatically). v1.8 (versionCode 8) installs cleanly over v1.5/v1.6/v1.7.
 
 ---
 

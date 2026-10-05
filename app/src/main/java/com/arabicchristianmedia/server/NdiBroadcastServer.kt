@@ -1129,7 +1129,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
       const accent = data.accentColorHex || '#E5A93C';
       const textColor = data.textColorHex || '#FFFFFF';
-      const refColor = data.referenceColorHex || '#F4D06F';
+      // v1.8: In ENGLISH_ONLY, use the English citation color for clear design.
+      const refColor = langMode === 'ENGLISH_ONLY'
+        ? (data.secondaryReferenceColorHex || '#94A3B8')
+        : (data.referenceColorHex || '#F4D06F');
 
       verseText.style.color = textColor;
       citationRow.style.color = refColor;
@@ -1795,7 +1798,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
         // Draw Citation Badge
         val refPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = try { Color.parseColor(tpl.referenceColorHex) } catch (e: Exception) { Color.YELLOW }
+            // v1.8: In ENGLISH_ONLY, use the English citation color for clear design.
+            val refColorHex = if (tpl.languageMode == LanguageMode.ENGLISH_ONLY) tpl.secondaryReferenceColorHex else tpl.referenceColorHex
+            color = try { Color.parseColor(refColorHex) } catch (e: Exception) { Color.YELLOW }
             textSize = (tpl.referenceFontSize * 2f * scale).coerceAtLeast(18f)
             
             var refStyle = Typeface.NORMAL

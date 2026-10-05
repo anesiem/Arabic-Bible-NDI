@@ -308,507 +308,572 @@ fun TemplateEditorScreen(
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
                 
                 // Style Preset Selector
-                Text("المظهر والتأطير (Design Style)", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary)
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(TemplateStyle.entries) { style ->
-                        FilterChip(
-                            selected = editingTemplate.style == style,
-                            onClick = { onUpdate(editingTemplate.copy(style = style)) },
-                            label = { Text(style.displayName, fontSize = 11.sp) }
-                        )
-                    }
-                }
-
-                // Alignment
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Column(Modifier.weight(1f)) {
-                        Text("محاذاة النص (Alignment)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
-                        Spacer(Modifier.height(4.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            BroadcastTextAlignment.entries.forEach { align ->
-                                FilterChip(selected = editingTemplate.alignment == align, onClick = { onUpdate(editingTemplate.copy(alignment = align)) }, label = { Text(align.displayName, fontSize = 10.sp) })
-                            }
-                        }
-                    }
-                }
-
-                HorizontalDivider(color = bento.borderSubtle)
-
-                // Primary Typography (Arabic Verse & Citation)
-                Text("تنسيق الخط العربي (Arabic Typography)", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary)
-                FontDropdown(
-                    selected = editingTemplate.fontFamily,
-                    onSelect = { onUpdate(editingTemplate.copy(fontFamily = it)) }
-                )
-                
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("الآية:", fontSize = 11.sp, color = bento.textSecondary)
-                    StyleToggle("B", editingTemplate.verseIsBold) { onUpdate(editingTemplate.copy(verseIsBold = it)) }
-                    StyleToggle("I", editingTemplate.verseIsItalic) { onUpdate(editingTemplate.copy(verseIsItalic = it)) }
-                }
-                ColorGradePickerRow("لون النص العربي (Verse Color)", editingTemplate.textColorHex, { onUpdate(editingTemplate.copy(textColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
-                SliderWithLabel("حجم النص العربي", editingTemplate.verseFontSize.toFloat(), 10f..180f) { onUpdate(editingTemplate.copy(verseFontSize = it.toInt())) }
-
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("الشاهد:", fontSize = 11.sp, color = bento.textSecondary)
-                    StyleToggle("B", editingTemplate.referenceIsBold) { onUpdate(editingTemplate.copy(referenceIsBold = it)) }
-                    StyleToggle("I", editingTemplate.referenceIsItalic) { onUpdate(editingTemplate.copy(referenceIsItalic = it)) }
-                }
-                ColorGradePickerRow("لون الشاهد العربي (Citation Color)", editingTemplate.referenceColorHex, { onUpdate(editingTemplate.copy(referenceColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
-                SliderWithLabel("حجم الشاهد العربي", editingTemplate.referenceFontSize.toFloat(), 10f..120f) { onUpdate(editingTemplate.copy(referenceFontSize = it.toInt())) }
-
-                // v1.8: Three-way language mode (replaces the bilingual toggle).
-                HorizontalDivider(color = bento.borderSubtle)
-                Text("لغة العرض (Language)", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary)
-                Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(bento.surfaceVariant).padding(4.dp)) {
-                    val modes = listOf(
-                        com.arabicchristianmedia.model.LanguageMode.ARABIC_ONLY to "العربية",
-                        com.arabicchristianmedia.model.LanguageMode.ENGLISH_ONLY to "English",
-                        com.arabicchristianmedia.model.LanguageMode.BOTH to "الاثنان (Both)"
-                    )
-                    modes.forEach { (mode, label) ->
-                        val selected = editingTemplate.languageMode == mode
-                        Box(
-                            modifier = Modifier.weight(1f)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(if (selected) bento.primary else androidx.compose.ui.graphics.Color.Transparent)
-                                .clickable { onUpdate(editingTemplate.copy(languageMode = mode)) }
-                                .padding(vertical = 10.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                label,
-                                fontSize = 13.sp,
-                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                                color = if (selected) bento.onPrimary else bento.textSecondary
+CollapsibleSection(
+                    title = "المظهر والتأطير (Design Style)",
+                    initiallyExpanded = true
+                ) {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(TemplateStyle.entries) { style ->
+                            FilterChip(
+                                selected = editingTemplate.style == style,
+                                onClick = { onUpdate(editingTemplate.copy(style = style)) },
+                                label = { Text(style.displayName, fontSize = 11.sp) }
                             )
                         }
                     }
-                }
-                if (editingTemplate.languageMode != com.arabicchristianmedia.model.LanguageMode.ARABIC_ONLY) {
-                    Text("تنسيق الخط الإنجليزي (English Typography)", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary)
-                    
-                    // English Verse Controls
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text("الآية الإنجليزية:", fontSize = 11.sp, color = bento.textSecondary)
-                        StyleToggle("B", editingTemplate.secondaryVerseIsBold) { onUpdate(editingTemplate.copy(secondaryVerseIsBold = it)) }
-                        StyleToggle("I", editingTemplate.secondaryVerseIsItalic) { onUpdate(editingTemplate.copy(secondaryVerseIsItalic = it)) }
-                    }
-                    ColorGradePickerRow("لون النص الإنجليزي (English Verse Color)", editingTemplate.secondaryTextColorHex, { onUpdate(editingTemplate.copy(secondaryTextColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
-                    SliderWithLabel("حجم النص الإنجليزي", editingTemplate.secondaryVerseFontSize.toFloat(), 8f..120f) { onUpdate(editingTemplate.copy(secondaryVerseFontSize = it.toInt())) }
 
-                    // English Citation Controls
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text("الشاهد الإنجليزي:", fontSize = 11.sp, color = bento.textSecondary)
-                        StyleToggle("B", editingTemplate.secondaryReferenceIsBold) { onUpdate(editingTemplate.copy(secondaryReferenceIsBold = it)) }
-                        StyleToggle("I", editingTemplate.secondaryReferenceIsItalic) { onUpdate(editingTemplate.copy(secondaryReferenceIsItalic = it)) }
-                    }
-                    ColorGradePickerRow("لون الشاهد الإنجليزي (English Citation Color)", editingTemplate.secondaryReferenceColorHex, { onUpdate(editingTemplate.copy(secondaryReferenceColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
-                    SliderWithLabel("حجم الشاهد الإنجليزي", editingTemplate.secondaryReferenceFontSize.toFloat(), 8f..100f) { onUpdate(editingTemplate.copy(secondaryReferenceFontSize = it.toInt())) }
-
-                    SliderWithLabel("المسافة الفاصلة بين اللغتين", editingTemplate.bilingualSpacing.toFloat(), 0f..150f) { onUpdate(editingTemplate.copy(bilingualSpacing = it.toInt())) }
-                }
-
-                // Background, Transparency & Accents (Layer 2: Card on top of motion background)
-                HorizontalDivider(color = bento.borderSubtle)
-                Text("الخلفية والمؤثرات البصرية (Background & Effects) — فوق الفيديو", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary)
-                
-                FeatureToggleRow("خلفية شفافة تماماً 100% Alpha", editingTemplate.isPureTransparentBackground) { onUpdate(editingTemplate.copy(isPureTransparentBackground = it)) }
-                
-                if (!editingTemplate.isPureTransparentBackground) {
-                    SliderWithLabel("درجة شفافية الكارت (Background Opacity)", editingTemplate.bgOpacity, 0f..1f) { onUpdate(editingTemplate.copy(bgOpacity = it)) }
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Box(modifier = Modifier.weight(1f)) {
-                            ColorGradePickerRow("لون كارت الخلفية (Card Color)", editingTemplate.bgColorHex, { onUpdate(editingTemplate.copy(bgColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
-                        }
-                        // v1.8: Quick transparent option for card color.
-                        TextButton(
-                            onClick = { onUpdate(editingTemplate.copy(bgColorHex = "#00000000", bgOpacity = 0f)) }
-                        ) {
-                            Text("شفاف", fontSize = 11.sp, color = bento.primary)
-                        }
-                    }
-                }
-
-                ColorGradePickerRow("لون إطار التمييز (Accent Color)", editingTemplate.accentColorHex, { onUpdate(editingTemplate.copy(accentColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
-
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    // v1.7: free emblem — the user types any emoji/symbol with the
-                    // system keyboard. Empty = no emblem.
-                    OutlinedTextField(
-                        value = editingTemplate.emblem,
-                        onValueChange = { onUpdate(editingTemplate.copy(emblem = it)) },
-                        label = { Text("رمز / إيموجي (Emblem) — اتركه فارغاً للإخفاء", fontSize = 10.sp) },
-                        placeholder = { Text("✝", fontSize = 14.sp) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(8.dp)
-                    )
-                }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    FeatureToggleRow("إظهار الحدود الملونة", editingTemplate.showAccentBorder) { onUpdate(editingTemplate.copy(showAccentBorder = it)) }
-                }
-                // Independent text shadow and card glow (v1.6). Card glow only
-                // applies where a card exists — not on full-bleed Full Show.
-                Text("الظل والتوهج (Shadow & Glow)", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary)
-                FeatureToggleRow("ظل النص (Text Shadow)", editingTemplate.textShadowEnabled) { onUpdate(editingTemplate.copy(textShadowEnabled = it)) }
-                if (editingTemplate.textShadowEnabled) {
-                    ColorGradePickerRow("لون ظل النص (Text Shadow Color)", editingTemplate.textShadowColorHex, { onUpdate(editingTemplate.copy(textShadowColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
-                    // v1.8: shadow thickness (blur), distance (offset), and 8-direction compass.
-                    SliderWithLabel("سماكة الظل (Thickness)", editingTemplate.textShadowBlurDp, 0f..32f) {
-                        onUpdate(editingTemplate.copy(textShadowBlurDp = it))
-                    }
-                    SliderWithLabel("مسافة الظل (Distance)", editingTemplate.textShadowOffsetDp, 0f..32f) {
-                        onUpdate(editingTemplate.copy(textShadowOffsetDp = it))
-                    }
-                    Text("اتجاه الظل (Direction)", fontSize = 11.sp, color = bento.textSecondary)
-                    // 8-direction compass: 0°=→, 45°=↘, 90°=↓, 135°=↙, 180°=←, 225°=↖, 270°=↑, 315°=↗
-                    // v1.8: Constrained to max 200dp so it doesn't blow up on tablets.
-                    val directions = listOf(
-                        315 to "↗", 0 to "→", 45 to "↘",
-                        270 to "↑", null to "•", 90 to "↓",
-                        225 to "↖", 180 to "←", 135 to "↙"
-                    )
-                    Box(
-                        modifier = Modifier.fillMaxWidth(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(
-                            verticalArrangement = Arrangement.spacedBy(4.dp),
-                            modifier = Modifier.widthIn(max = 200.dp)
-                        ) {
-                        for (row in 0..2) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                for (col in 0..2) {
-                                    val (angle, symbol) = directions[row * 3 + col]
-                                    val selected = if (angle == null) false else editingTemplate.textShadowAngleDeg == angle
-                                    // Center button clears to default (90° down).
-                                    Box(
-                                        modifier = Modifier.weight(1f)
-                                            .aspectRatio(1f)
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(if (selected) bento.primary else bento.surfaceVariant)
-                                            .clickable {
-                                                if (angle != null) onUpdate(editingTemplate.copy(textShadowAngleDeg = angle))
-                                            },
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            symbol,
-                                            fontSize = 20.sp,
-                                            color = if (selected) bento.onPrimary else bento.textPrimary
-                                        )
-                                    }
+                    // Alignment
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        Column(Modifier.weight(1f)) {
+                            Text("محاذاة النص (Alignment)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
+                            Spacer(Modifier.height(4.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                BroadcastTextAlignment.entries.forEach { align ->
+                                    FilterChip(selected = editingTemplate.alignment == align, onClick = { onUpdate(editingTemplate.copy(alignment = align)) }, label = { Text(align.displayName, fontSize = 10.sp) })
                                 }
                             }
                         }
-                        }
-                    } // Close Box (v1.8: constrains compass size on tablets)
-                }
-                if (!editingTemplate.isFullScreen) {
-                    FeatureToggleRow("توهج الكارت (Card Glow)", editingTemplate.cardGlowEnabled) { onUpdate(editingTemplate.copy(cardGlowEnabled = it)) }
-                    if (editingTemplate.cardGlowEnabled) {
-                        ColorGradePickerRow("لون توهج الكارت (Card Glow Color)", editingTemplate.cardGlowColorHex, { onUpdate(editingTemplate.copy(cardGlowColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
                     }
-                }
 
-                // Animated Motion Backgrounds (Layer 1: Bottom background layer)
-                Text("الخلفيات المتحركة (Motion Video Backgrounds) — طبقة الخلفية", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(AnimatedBackgroundType.entries) { type ->
-                        FilterChip(selected = editingTemplate.animatedBackground == type, onClick = { onUpdate(editingTemplate.copy(animatedBackground = type)) }, label = { Text(type.displayNameAr, fontSize = 10.sp) })
-                    }
+                
                 }
-                if (editingTemplate.animatedBackground != AnimatedBackgroundType.NONE) {
-                    // v1.8: opacity slider for ALL animated backgrounds (not just custom video).
-                    SliderWithLabel(
-                        label = "شفافية الحركة (Animation Opacity)",
-                        value = editingTemplate.animatedBackgroundOpacity,
-                        range = 0f..1f,
-                        onValueChange = { onUpdate(editingTemplate.copy(animatedBackgroundOpacity = it)) }
+HorizontalDivider(color = bento.borderSubtle)
+
+                // Primary Typography (Arabic Verse & Citation)
+CollapsibleSection(
+                    title = "تنسيق الخط العربي (Arabic Typography)",
+                    initiallyExpanded = true
+                ) {
+                    FontDropdown(
+                        selected = editingTemplate.fontFamily,
+                        onSelect = { onUpdate(editingTemplate.copy(fontFamily = it)) }
                     )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    // v1.8: Motion speed slider (0 to 3.0x) — right after opacity.
-                    SliderWithLabel(
-                        "سرعة الحركة (Motion speed)",
-                        editingTemplate.motionSpeed,
-                        0f..3f
-                    ) {
-                        onUpdate(editingTemplate.copy(motionSpeed = it))
+                
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text("الآية:", fontSize = 11.sp, color = bento.textSecondary)
+                        StyleToggle("B", editingTemplate.verseIsBold) { onUpdate(editingTemplate.copy(verseIsBold = it)) }
+                        StyleToggle("I", editingTemplate.verseIsItalic) { onUpdate(editingTemplate.copy(verseIsItalic = it)) }
                     }
-                    Spacer(modifier = Modifier.height(4.dp))
-                    if (editingTemplate.animatedBackground == AnimatedBackgroundType.CUSTOM_VIDEO &&
-                        editingTemplate.customVideoId.isNotEmpty()) {
+                    ColorGradePickerRow("لون النص العربي (Verse Color)", editingTemplate.textColorHex, { onUpdate(editingTemplate.copy(textColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
+                    SliderWithLabel("حجم النص العربي", editingTemplate.verseFontSize.toFloat(), 10f..180f) { onUpdate(editingTemplate.copy(verseFontSize = it.toInt())) }
+
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text("الشاهد:", fontSize = 11.sp, color = bento.textSecondary)
+                        StyleToggle("B", editingTemplate.referenceIsBold) { onUpdate(editingTemplate.copy(referenceIsBold = it)) }
+                        StyleToggle("I", editingTemplate.referenceIsItalic) { onUpdate(editingTemplate.copy(referenceIsItalic = it)) }
+                    }
+                    ColorGradePickerRow("لون الشاهد العربي (Citation Color)", editingTemplate.referenceColorHex, { onUpdate(editingTemplate.copy(referenceColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
+                    SliderWithLabel("حجم الشاهد العربي", editingTemplate.referenceFontSize.toFloat(), 10f..120f) { onUpdate(editingTemplate.copy(referenceFontSize = it.toInt())) }
+
+                    // v1.8: Three-way language mode (replaces the bilingual toggle).
+                
+                }
+HorizontalDivider(color = bento.borderSubtle)
+CollapsibleSection(
+                    title = "لغة العرض (Language)",
+                    initiallyExpanded = false
+                ) {
+                    Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(bento.surfaceVariant).padding(4.dp)) {
+                        val modes = listOf(
+                            com.arabicchristianmedia.model.LanguageMode.ARABIC_ONLY to "العربية",
+                            com.arabicchristianmedia.model.LanguageMode.ENGLISH_ONLY to "English",
+                            com.arabicchristianmedia.model.LanguageMode.BOTH to "الاثنان (Both)"
+                        )
+                        modes.forEach { (mode, label) ->
+                            val selected = editingTemplate.languageMode == mode
+                            Box(
+                                modifier = Modifier.weight(1f)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (selected) bento.primary else androidx.compose.ui.graphics.Color.Transparent)
+                                    .clickable { onUpdate(editingTemplate.copy(languageMode = mode)) }
+                                    .padding(vertical = 10.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    label,
+                                    fontSize = 13.sp,
+                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (selected) bento.onPrimary else bento.textSecondary
+                                )
+                            }
+                        }
+                    }
+                    if (editingTemplate.languageMode != com.arabicchristianmedia.model.LanguageMode.ARABIC_ONLY) {
+                    
+                }
+CollapsibleSection(
+                    title = "تنسيق الخط الإنجليزي (English Typography)",
+                    initiallyExpanded = false
+                ) {
+                    
+                        // English Verse Controls
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Text("الآية الإنجليزية:", fontSize = 11.sp, color = bento.textSecondary)
+                            StyleToggle("B", editingTemplate.secondaryVerseIsBold) { onUpdate(editingTemplate.copy(secondaryVerseIsBold = it)) }
+                            StyleToggle("I", editingTemplate.secondaryVerseIsItalic) { onUpdate(editingTemplate.copy(secondaryVerseIsItalic = it)) }
+                        }
+                        ColorGradePickerRow("لون النص الإنجليزي (English Verse Color)", editingTemplate.secondaryTextColorHex, { onUpdate(editingTemplate.copy(secondaryTextColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
+                        SliderWithLabel("حجم النص الإنجليزي", editingTemplate.secondaryVerseFontSize.toFloat(), 8f..120f) { onUpdate(editingTemplate.copy(secondaryVerseFontSize = it.toInt())) }
+
+                        // English Citation Controls
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Text("الشاهد الإنجليزي:", fontSize = 11.sp, color = bento.textSecondary)
+                            StyleToggle("B", editingTemplate.secondaryReferenceIsBold) { onUpdate(editingTemplate.copy(secondaryReferenceIsBold = it)) }
+                            StyleToggle("I", editingTemplate.secondaryReferenceIsItalic) { onUpdate(editingTemplate.copy(secondaryReferenceIsItalic = it)) }
+                        }
+                        ColorGradePickerRow("لون الشاهد الإنجليزي (English Citation Color)", editingTemplate.secondaryReferenceColorHex, { onUpdate(editingTemplate.copy(secondaryReferenceColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
+                        SliderWithLabel("حجم الشاهد الإنجليزي", editingTemplate.secondaryReferenceFontSize.toFloat(), 8f..100f) { onUpdate(editingTemplate.copy(secondaryReferenceFontSize = it.toInt())) }
+
+                        SliderWithLabel("المسافة الفاصلة بين اللغتين", editingTemplate.bilingualSpacing.toFloat(), 0f..150f) { onUpdate(editingTemplate.copy(bilingualSpacing = it.toInt())) }
+                    }
+
+                    // Background, Transparency & Accents (Layer 2: Card on top of motion background)
+                
+                }
+HorizontalDivider(color = bento.borderSubtle)
+CollapsibleSection(
+                    title = "الخلفية والمؤثرات البصرية (Background & Effects) — فوق الفيديو",
+                    initiallyExpanded = true
+                ) {
+                
+                    FeatureToggleRow("خلفية شفافة تماماً 100% Alpha", editingTemplate.isPureTransparentBackground) { onUpdate(editingTemplate.copy(isPureTransparentBackground = it)) }
+                
+                    if (!editingTemplate.isPureTransparentBackground) {
+                        SliderWithLabel("درجة شفافية الكارت (Background Opacity)", editingTemplate.bgOpacity, 0f..1f) { onUpdate(editingTemplate.copy(bgOpacity = it)) }
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    "✓ فيديو مخصص محدد (Custom video set)",
-                                    fontSize = 11.sp,
-                                    color = bento.textSecondary
-                                )
-                                // v1.8: show the opaque video ID and its local URL.
-                                Text(
-                                    "ID: ${editingTemplate.customVideoId}",
-                                    fontSize = 10.sp,
-                                    color = bento.textSecondary,
-                                    modifier = Modifier.padding(top = 2.dp)
-                                )
-                                Text(
-                                    "URL: /video?id=${editingTemplate.customVideoId}",
-                                    fontSize = 10.sp,
-                                    color = bento.textSecondary
-                                )
+                            Box(modifier = Modifier.weight(1f)) {
+                                ColorGradePickerRow("لون كارت الخلفية (Card Color)", editingTemplate.bgColorHex, { onUpdate(editingTemplate.copy(bgColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
                             }
-                            TextButton(onClick = {
-                                onUpdate(editingTemplate.copy(customVideoId = "", animatedBackground = AnimatedBackgroundType.NONE))
-                            }) {
-                                Text("إزالة (Remove)", fontSize = 11.sp, color = bento.primary)
+                            // v1.8: Quick transparent option for card color.
+                            TextButton(
+                                onClick = { onUpdate(editingTemplate.copy(bgColorHex = "#00000000", bgOpacity = 0f)) }
+                            ) {
+                                Text("شفاف", fontSize = 11.sp, color = bento.primary)
                             }
                         }
-                        // v1.8: Muted toggle for custom video (default muted for church production).
-                        Spacer(modifier = Modifier.height(4.dp))
-                        FeatureToggleRow(
-                            "كتم صوت الفيديو (Mute video audio)",
-                            editingTemplate.customVideoMuted
-                        ) {
-                            onUpdate(editingTemplate.copy(customVideoMuted = it))
+                    }
+
+                    ColorGradePickerRow("لون إطار التمييز (Accent Color)", editingTemplate.accentColorHex, { onUpdate(editingTemplate.copy(accentColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
+
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        // v1.7: free emblem — the user types any emoji/symbol with the
+                        // system keyboard. Empty = no emblem.
+                        OutlinedTextField(
+                            value = editingTemplate.emblem,
+                            onValueChange = { onUpdate(editingTemplate.copy(emblem = it)) },
+                            label = { Text("رمز / إيموجي (Emblem) — اتركه فارغاً للإخفاء", fontSize = 10.sp) },
+                            placeholder = { Text("✝", fontSize = 14.sp) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(8.dp)
+                        )
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        FeatureToggleRow("إظهار الحدود الملونة", editingTemplate.showAccentBorder) { onUpdate(editingTemplate.copy(showAccentBorder = it)) }
+                    }
+                    // Independent text shadow and card glow (v1.6). Card glow only
+                    // applies where a card exists — not on full-bleed Full Show.
+                
+                }
+CollapsibleSection(
+                    title = "الظل والتوهج (Shadow & Glow)",
+                    initiallyExpanded = false
+                ) {
+                    FeatureToggleRow("ظل النص (Text Shadow)", editingTemplate.textShadowEnabled) { onUpdate(editingTemplate.copy(textShadowEnabled = it)) }
+                    if (editingTemplate.textShadowEnabled) {
+                        ColorGradePickerRow("لون ظل النص (Text Shadow Color)", editingTemplate.textShadowColorHex, { onUpdate(editingTemplate.copy(textShadowColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
+                        // v1.8: shadow thickness (blur), distance (offset), and 8-direction compass.
+                        SliderWithLabel("سماكة الظل (Thickness)", editingTemplate.textShadowBlurDp, 0f..32f) {
+                            onUpdate(editingTemplate.copy(textShadowBlurDp = it))
                         }
-                    } else if (editingTemplate.customVideoUrl.isNotEmpty()) {
-                        Text(
-                            "⚠ تعذر العثور على الفيديو المحفوظ — اختر ملفاً جديداً",
-                            fontSize = 11.sp,
-                            color = bento.primary
+                        SliderWithLabel("مسافة الظل (Distance)", editingTemplate.textShadowOffsetDp, 0f..32f) {
+                            onUpdate(editingTemplate.copy(textShadowOffsetDp = it))
+                        }
+                        Text("اتجاه الظل (Direction)", fontSize = 11.sp, color = bento.textSecondary)
+                        // 8-direction compass: 0°=→, 45°=↘, 90°=↓, 135°=↙, 180°=←, 225°=↖, 270°=↑, 315°=↗
+                        // v1.8: Constrained to max 200dp so it doesn't blow up on tablets.
+                        val directions = listOf(
+                            315 to "↗", 0 to "→", 45 to "↘",
+                            270 to "↑", null to "•", 90 to "↓",
+                            225 to "↖", 180 to "←", 135 to "↙"
+                        )
+                        Box(
+                            modifier = Modifier.fillMaxWidth(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(
+                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                                modifier = Modifier.widthIn(max = 200.dp)
+                            ) {
+                            for (row in 0..2) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    for (col in 0..2) {
+                                        val (angle, symbol) = directions[row * 3 + col]
+                                        val selected = if (angle == null) false else editingTemplate.textShadowAngleDeg == angle
+                                        // Center button clears to default (90° down).
+                                        Box(
+                                            modifier = Modifier.weight(1f)
+                                                .aspectRatio(1f)
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(if (selected) bento.primary else bento.surfaceVariant)
+                                                .clickable {
+                                                    if (angle != null) onUpdate(editingTemplate.copy(textShadowAngleDeg = angle))
+                                                },
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                symbol,
+                                                fontSize = 20.sp,
+                                                color = if (selected) bento.onPrimary else bento.textPrimary
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                            }
+                        } // Close Box (v1.8: constrains compass size on tablets)
+                    }
+                    if (!editingTemplate.isFullScreen) {
+                        FeatureToggleRow("توهج الكارت (Card Glow)", editingTemplate.cardGlowEnabled) { onUpdate(editingTemplate.copy(cardGlowEnabled = it)) }
+                        if (editingTemplate.cardGlowEnabled) {
+                            ColorGradePickerRow("لون توهج الكارت (Card Glow Color)", editingTemplate.cardGlowColorHex, { onUpdate(editingTemplate.copy(cardGlowColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
+                        }
+                    }
+
+                    // Animated Motion Backgrounds (Layer 1: Bottom background layer)
+                    Text("الخلفيات المتحركة (Motion Video Backgrounds) — طبقة الخلفية", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(AnimatedBackgroundType.entries) { type ->
+                            FilterChip(selected = editingTemplate.animatedBackground == type, onClick = { onUpdate(editingTemplate.copy(animatedBackground = type)) }, label = { Text(type.displayNameAr, fontSize = 10.sp) })
+                        }
+                    }
+                    if (editingTemplate.animatedBackground != AnimatedBackgroundType.NONE) {
+                        // v1.8: opacity slider for ALL animated backgrounds (not just custom video).
+                        SliderWithLabel(
+                            label = "شفافية الحركة (Animation Opacity)",
+                            value = editingTemplate.animatedBackgroundOpacity,
+                            range = 0f..1f,
+                            onValueChange = { onUpdate(editingTemplate.copy(animatedBackgroundOpacity = it)) }
                         )
                         Spacer(modifier = Modifier.height(4.dp))
-                    }
-                    Button(
-                        onClick = { launcher.launch("video/*") },
-                        enabled = !isImportingVideo,
-                        colors = ButtonDefaults.buttonColors(containerColor = bento.primary)
-                    ) {
-                        Icon(Icons.Default.VideoLibrary, null, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text(if (isImportingVideo) "جاري الاستيراد..." else "اختيار ملف فيديو مخصص (MP4)", fontSize = 12.sp)
-                    }
-                }
-            }
-        }
-        Spacer(Modifier.height(100.dp))
-    }
-
-    if (showSaveDialog) {
-        AlertDialog(
-            onDismissRequest = { showSaveDialog = false },
-            title = { Text("حفظ القالب") },
-            text = { OutlinedTextField(value = newTemplateName, onValueChange = { newTemplateName = it }, label = { Text("اسم القالب") }, singleLine = true) },
-            confirmButton = { Button(onClick = { if (newTemplateName.isNotBlank()) { onSaveAsNew(newTemplateName, editingTemplate, editorTab == 1); showSaveDialog = false } }) { Text("حفظ") } },
-            dismissButton = { TextButton(onClick = { showSaveDialog = false }) { Text("إلغاء") } }
-        )
-    }
-
-    // Long-press style menu: export / update-from-import / delete (full user control).
-    styleMenuTpl?.let { tpl ->
-        AlertDialog(
-            onDismissRequest = { styleMenuTpl = null },
-            title = { Text("\"${tpl.name}\"", fontSize = 15.sp, fontWeight = FontWeight.Bold) },
-            text = {
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    TextButton(
-                        onClick = {
-                            onExportTemplate(tpl.id)?.let { json ->
-                                val intent = Intent(Intent.ACTION_SEND).apply {
-                                    type = "text/plain"
-                                    putExtra(Intent.EXTRA_SUBJECT, "Bible NDI style: ${tpl.name}")
-                                    putExtra(Intent.EXTRA_TEXT, json)
+                        // v1.8: Motion speed slider (0 to 3.0x) — right after opacity.
+                        SliderWithLabel(
+                            "سرعة الحركة (Motion speed)",
+                            editingTemplate.motionSpeed,
+                            0f..3f
+                        ) {
+                            onUpdate(editingTemplate.copy(motionSpeed = it))
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        if (editingTemplate.animatedBackground == AnimatedBackgroundType.CUSTOM_VIDEO &&
+                            editingTemplate.customVideoId.isNotEmpty()) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        "✓ فيديو مخصص محدد (Custom video set)",
+                                        fontSize = 11.sp,
+                                        color = bento.textSecondary
+                                    )
+                                    // v1.8: show the opaque video ID and its local URL.
+                                    Text(
+                                        "ID: ${editingTemplate.customVideoId}",
+                                        fontSize = 10.sp,
+                                        color = bento.textSecondary,
+                                        modifier = Modifier.padding(top = 2.dp)
+                                    )
+                                    Text(
+                                        "URL: /video?id=${editingTemplate.customVideoId}",
+                                        fontSize = 10.sp,
+                                        color = bento.textSecondary
+                                    )
                                 }
-                                context.startActivity(Intent.createChooser(intent, "تصدير القالب (Export style)"))
+                                TextButton(onClick = {
+                                    onUpdate(editingTemplate.copy(customVideoId = "", animatedBackground = AnimatedBackgroundType.NONE))
+                                }) {
+                                    Text("إزالة (Remove)", fontSize = 11.sp, color = bento.primary)
+                                }
                             }
-                            styleMenuTpl = null
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) { Text("تصدير / مشاركة (Export / Share)", fontSize = 13.sp) }
-                    TextButton(
-                        onClick = { importTargetTpl = tpl; showImportDialog = true; styleMenuTpl = null },
-                        modifier = Modifier.fillMaxWidth()
-                    ) { Text("تحديث باستيراد JSON (Update from import)", fontSize = 13.sp) }
-                    TextButton(
-                        onClick = { templateToDelete = tpl; styleMenuTpl = null },
-                        modifier = Modifier.fillMaxWidth()
-                    ) { Text("حذف (Delete)", fontSize = 13.sp, color = bento.liveRed) }
-                }
-            },
-            confirmButton = {},
-            dismissButton = { TextButton(onClick = { styleMenuTpl = null }) { Text("إلغاء") } }
-        )
-    }
-
-    // Import dialog: paste JSON or pick a .json file. Target null = new style,
-    // otherwise the target style is updated in place (id preserved).
-    if (showImportDialog) {
-        var importText by remember { mutableStateOf("") }
-        var importError by remember { mutableStateOf<String?>(null) }
-        val jsonPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-            if (uri != null) {
-                try {
-                    context.contentResolver.openInputStream(uri)?.bufferedReader()?.readText()?.let { text ->
-                        importText = text
-                        importError = null
-                    } ?: run { importError = "تعذر قراءة الملف (could not read file)" }
-                } catch (e: Exception) {
-                    importError = "تعذر قراءة الملف (could not read file)"
+                            // v1.8: Muted toggle for custom video (default muted for church production).
+                            Spacer(modifier = Modifier.height(4.dp))
+                            FeatureToggleRow(
+                                "كتم صوت الفيديو (Mute video audio)",
+                                editingTemplate.customVideoMuted
+                            ) {
+                                onUpdate(editingTemplate.copy(customVideoMuted = it))
+                            }
+                        } else if (editingTemplate.customVideoUrl.isNotEmpty()) {
+                            Text(
+                                "⚠ تعذر العثور على الفيديو المحفوظ — اختر ملفاً جديداً",
+                                fontSize = 11.sp,
+                                color = bento.primary
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                        }
+                        Button(
+                            onClick = { launcher.launch("video/*") },
+                            enabled = !isImportingVideo,
+                            colors = ButtonDefaults.buttonColors(containerColor = bento.primary)
+                        ) {
+                            Icon(Icons.Default.VideoLibrary, null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(if (isImportingVideo) "جاري الاستيراد..." else "اختيار ملف فيديو مخصص (MP4)", fontSize = 12.sp)
+                        }
+                    }
                 }
             }
+            Spacer(Modifier.height(100.dp))
         }
-        val targetName = importTargetTpl?.name
-        AlertDialog(
-            onDismissRequest = { showImportDialog = false; importTargetTpl = null },
-            title = {
-                Text(
-                    if (targetName == null) "استيراد قالب جديد (Import new style)" else "تحديث \"$targetName\" بالاستيراد",
-                    fontSize = 15.sp, fontWeight = FontWeight.Bold
-                )
-            },
-            text = {
-                Column(modifier = Modifier.fillMaxWidth()) {
+
+        if (showSaveDialog) {
+            AlertDialog(
+                onDismissRequest = { showSaveDialog = false },
+                title = { Text("حفظ القالب") },
+                text = { OutlinedTextField(value = newTemplateName, onValueChange = { newTemplateName = it }, label = { Text("اسم القالب") }, singleLine = true) },
+                confirmButton = { Button(onClick = { if (newTemplateName.isNotBlank()) { onSaveAsNew(newTemplateName, editingTemplate, editorTab == 1); showSaveDialog = false } }) { Text("حفظ") } },
+                dismissButton = { TextButton(onClick = { showSaveDialog = false }) { Text("إلغاء") } }
+            )
+        }
+
+        // Long-press style menu: export / update-from-import / delete (full user control).
+        styleMenuTpl?.let { tpl ->
+            AlertDialog(
+                onDismissRequest = { styleMenuTpl = null },
+                title = { Text("\"${tpl.name}\"", fontSize = 15.sp, fontWeight = FontWeight.Bold) },
+                text = {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        TextButton(
+                            onClick = {
+                                onExportTemplate(tpl.id)?.let { json ->
+                                    val intent = Intent(Intent.ACTION_SEND).apply {
+                                        type = "text/plain"
+                                        putExtra(Intent.EXTRA_SUBJECT, "Bible NDI style: ${tpl.name}")
+                                        putExtra(Intent.EXTRA_TEXT, json)
+                                    }
+                                    context.startActivity(Intent.createChooser(intent, "تصدير القالب (Export style)"))
+                                }
+                                styleMenuTpl = null
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("تصدير / مشاركة (Export / Share)", fontSize = 13.sp) }
+                        TextButton(
+                            onClick = { importTargetTpl = tpl; showImportDialog = true; styleMenuTpl = null },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("تحديث باستيراد JSON (Update from import)", fontSize = 13.sp) }
+                        TextButton(
+                            onClick = { templateToDelete = tpl; styleMenuTpl = null },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("حذف (Delete)", fontSize = 13.sp, color = bento.liveRed) }
+                    }
+                },
+                confirmButton = {},
+                dismissButton = { TextButton(onClick = { styleMenuTpl = null }) { Text("إلغاء") } }
+            )
+        }
+
+        // Import dialog: paste JSON or pick a .json file. Target null = new style,
+        // otherwise the target style is updated in place (id preserved).
+        if (showImportDialog) {
+            var importText by remember { mutableStateOf("") }
+            var importError by remember { mutableStateOf<String?>(null) }
+            val jsonPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+                if (uri != null) {
+                    try {
+                        context.contentResolver.openInputStream(uri)?.bufferedReader()?.readText()?.let { text ->
+                            importText = text
+                            importError = null
+                        } ?: run { importError = "تعذر قراءة الملف (could not read file)" }
+                    } catch (e: Exception) {
+                        importError = "تعذر قراءة الملف (could not read file)"
+                    }
+                }
+            }
+            val targetName = importTargetTpl?.name
+            AlertDialog(
+                onDismissRequest = { showImportDialog = false; importTargetTpl = null },
+                title = {
                     Text(
-                        "الصق JSON القالب أدناه أو اختر ملف .json:",
-                        fontSize = 12.sp, color = bento.textSecondary
+                        if (targetName == null) "استيراد قالب جديد (Import new style)" else "تحديث \"$targetName\" بالاستيراد",
+                        fontSize = 15.sp, fontWeight = FontWeight.Bold
                     )
-                    Spacer(Modifier.height(8.dp))
-                    TextField(
-                        value = importText,
-                        onValueChange = { importText = it; importError = null },
-                        modifier = Modifier.fillMaxWidth().height(150.dp),
-                        placeholder = { Text("{\"name\": ...}", fontSize = 11.sp) },
-                        textStyle = TextStyle(fontSize = 11.sp)
-                    )
-                    if (importError != null) {
-                        Text(importError!!, fontSize = 12.sp, color = bento.liveRed, modifier = Modifier.padding(top = 4.dp))
+                },
+                text = {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            "الصق JSON القالب أدناه أو اختر ملف .json:",
+                            fontSize = 12.sp, color = bento.textSecondary
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        TextField(
+                            value = importText,
+                            onValueChange = { importText = it; importError = null },
+                            modifier = Modifier.fillMaxWidth().height(150.dp),
+                            placeholder = { Text("{\"name\": ...}", fontSize = 11.sp) },
+                            textStyle = TextStyle(fontSize = 11.sp)
+                        )
+                        if (importError != null) {
+                            Text(importError!!, fontSize = 12.sp, color = bento.liveRed, modifier = Modifier.padding(top = 4.dp))
+                        }
+                        TextButton(onClick = { jsonPicker.launch(arrayOf("application/json", "text/plain")) }) {
+                            Text("اختر ملف JSON (Choose file)", fontSize = 12.sp)
+                        }
                     }
-                    TextButton(onClick = { jsonPicker.launch(arrayOf("application/json", "text/plain")) }) {
-                        Text("اختر ملف JSON (Choose file)", fontSize = 12.sp)
-                    }
+                },
+                confirmButton = {
+                    Button(onClick = {
+                        val target = importTargetTpl
+                        val ok = if (target != null) {
+                            onUpdateTemplateFromJson(target.id, importText, editorTab == 1)
+                        } else {
+                            onImportNewTemplate(importText, editorTab == 1)
+                        }
+                        if (ok) {
+                            showImportDialog = false
+                            importTargetTpl = null
+                        } else {
+                            importError = "JSON غير صالح — تحقق من النص وحاول مجدداً (invalid style JSON)"
+                        }
+                    }) { Text("استيراد (Import)") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showImportDialog = false; importTargetTpl = null }) { Text("إلغاء") }
                 }
-            },
-            confirmButton = {
-                Button(onClick = {
-                    val target = importTargetTpl
-                    val ok = if (target != null) {
-                        onUpdateTemplateFromJson(target.id, importText, editorTab == 1)
-                    } else {
-                        onImportNewTemplate(importText, editorTab == 1)
-                    }
-                    if (ok) {
-                        showImportDialog = false
-                        importTargetTpl = null
-                    } else {
-                        importError = "JSON غير صالح — تحقق من النص وحاول مجدداً (invalid style JSON)"
-                    }
-                }) { Text("استيراد (Import)") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showImportDialog = false; importTargetTpl = null }) { Text("إلغاء") }
-            }
-        )
-    }
+            )
+        }
 
-    // Long-press delete confirmation (deletes from the style's own tab collection).
-    templateToDelete?.let { tpl ->
-        AlertDialog(
-            onDismissRequest = { templateToDelete = null },
-            title = { Text("حذف القالب") },
-            text = { Text("هل تريد حذف القالب \"${tpl.name}\"؟ لا يمكن التراجع عن الحذف.") },
-            confirmButton = {
-                Button(
-                    onClick = { onDeleteTemplate(tpl.id, tpl.isFullScreen); templateToDelete = null },
-                    colors = ButtonDefaults.buttonColors(containerColor = bento.liveRed)
-                ) { Text("حذف") }
-            },
-            dismissButton = { TextButton(onClick = { templateToDelete = null }) { Text("إلغاء") } }
-        )
-    }
-}
-
-/** Cache of Compose FontFamilies built from bundled asset fonts (editor + preview). */
-private val editorFontFamilyCache = ConcurrentHashMap<String, FontFamily>()
-
-/**
- * Compose [FontFamily] for a bundled Arabic font. Returns [FontFamily.Default]
- * for "System" or unknown families.
- */
-private fun bundledFontFamily(context: Context, family: String): FontFamily {
-    if (family == ArabicFonts.SYSTEM) return FontFamily.Default
-    return editorFontFamilyCache.getOrPut(family) {
-        val bundled = ArabicFonts.find(family) ?: return FontFamily.Default
-        try {
-            FontFamily(android.graphics.Typeface.createFromAsset(context.assets, bundled.asset400))
-        } catch (_: Exception) {
-            FontFamily.Default
+        // Long-press delete confirmation (deletes from the style's own tab collection).
+        templateToDelete?.let { tpl ->
+            AlertDialog(
+                onDismissRequest = { templateToDelete = null },
+                title = { Text("حذف القالب") },
+                text = { Text("هل تريد حذف القالب \"${tpl.name}\"؟ لا يمكن التراجع عن الحذف.") },
+                confirmButton = {
+                    Button(
+                        onClick = { onDeleteTemplate(tpl.id, tpl.isFullScreen); templateToDelete = null },
+                        colors = ButtonDefaults.buttonColors(containerColor = bento.liveRed)
+                    ) { Text("حذف") }
+                },
+                dismissButton = { TextButton(onClick = { templateToDelete = null }) { Text("إلغاء") } }
+            )
         }
     }
-}
 
-/**
- * Dropdown listing every bundled Arabic font (plus System), each item rendered
- * in its own typeface so the user can see the actual look before choosing.
- */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun FontDropdown(selected: String, onSelect: (String) -> Unit) {
-    val context = LocalContext.current
-    var expanded by remember { mutableStateOf(false) }
-    val selectedFamily = remember(selected) { bundledFontFamily(context, selected) }
-    ExposedDropdownMenuBox(
-        expanded = expanded,
-        onExpandedChange = { expanded = !expanded }
-    ) {
-        TextField(
-            value = selected,
-            onValueChange = {},
-            readOnly = true,
-            label = { Text("الخط (Font)", fontSize = 10.sp) },
-            textStyle = TextStyle(fontFamily = selectedFamily, fontSize = 14.sp),
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable).fillMaxWidth(),
-            singleLine = true
-        )
-        ExposedDropdownMenu(
+    /** Cache of Compose FontFamilies built from bundled asset fonts (editor + preview). */
+    private val editorFontFamilyCache = ConcurrentHashMap<String, FontFamily>()
+
+    /**
+     * Compose [FontFamily] for a bundled Arabic font. Returns [FontFamily.Default]
+     * for "System" or unknown families.
+     */
+    private fun bundledFontFamily(context: Context, family: String): FontFamily {
+        if (family == ArabicFonts.SYSTEM) return FontFamily.Default
+        return editorFontFamilyCache.getOrPut(family) {
+            val bundled = ArabicFonts.find(family) ?: return FontFamily.Default
+            try {
+                FontFamily(android.graphics.Typeface.createFromAsset(context.assets, bundled.asset400))
+            } catch (_: Exception) {
+                FontFamily.Default
+            }
+        }
+    }
+
+    /**
+     * Dropdown listing every bundled Arabic font (plus System), each item rendered
+     * in its own typeface so the user can see the actual look before choosing.
+     */
+    @OptIn(ExperimentalMaterial3Api::class)
+    @Composable
+    private fun FontDropdown(selected: String, onSelect: (String) -> Unit) {
+        val context = LocalContext.current
+        var expanded by remember { mutableStateOf(false) }
+        val selectedFamily = remember(selected) { bundledFontFamily(context, selected) }
+        ExposedDropdownMenuBox(
             expanded = expanded,
-            onDismissRequest = { expanded = false }
+            onExpandedChange = { expanded = !expanded }
         ) {
-            ArabicFonts.displayNames.forEach { name ->
-                val itemFamily = remember(name) { bundledFontFamily(context, name) }
-                DropdownMenuItem(
-                    text = { Text(name, fontFamily = itemFamily, fontSize = 14.sp) },
-                    onClick = { onSelect(name); expanded = false }
+            TextField(
+                value = selected,
+                onValueChange = {},
+                readOnly = true,
+                label = { Text("الخط (Font)", fontSize = 10.sp) },
+                textStyle = TextStyle(fontFamily = selectedFamily, fontSize = 14.sp),
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable).fillMaxWidth(),
+                singleLine = true
+            )
+            ExposedDropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false }
+            ) {
+                ArabicFonts.displayNames.forEach { name ->
+                    val itemFamily = remember(name) { bundledFontFamily(context, name) }
+                    DropdownMenuItem(
+                        text = { Text(name, fontFamily = itemFamily, fontSize = 14.sp) },
+                        onClick = { onSelect(name); expanded = false }
+                    )
+                }
+            }
+        }
+    }
+
+    @Composable
+    fun StyleToggle(label: String, active: Boolean, onToggle: (Boolean) -> Unit) {    val bento = LocalBentoColors.current
+        Box(
+            modifier = Modifier
+                .size(34.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(if (active) bento.primary else bento.surfaceVariant)
+                .clickable { onToggle(!active) },
+            contentAlignment = Alignment.Center
+        ) {
+            Text(label, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = if (active) Color.White else bento.textPrimary)
+        }
+    }
+
+    /**
+     * v1.9: Collapsible section for the editor. Groups related settings under an
+     * expandable header to reduce scrolling and improve organization.
+     */
+    @Composable
+    fun CollapsibleSection(
+        title: String,
+        initiallyExpanded: Boolean = true,
+        content: @Composable () -> Unit
+    ) {
+        val bento = LocalBentoColors.current
+        var expanded by remember { mutableStateOf(initiallyExpanded) }
+        Column {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = !expanded }
+                    .padding(vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(title, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary)
+                Text(
+                    if (expanded) "▼" else "▶",
+                    fontSize = 12.sp,
+                    color = bento.textSecondary
                 )
             }
-        }
-    }
-}
-
-@Composable
-fun StyleToggle(label: String, active: Boolean, onToggle: (Boolean) -> Unit) {    val bento = LocalBentoColors.current
-    Box(
-        modifier = Modifier
-            .size(34.dp)
-            .clip(RoundedCornerShape(8.dp))
-            .background(if (active) bento.primary else bento.surfaceVariant)
-            .clickable { onToggle(!active) },
-        contentAlignment = Alignment.Center
-    ) {
-        Text(label, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = if (active) Color.White else bento.textPrimary)
+            if (expanded) {
+                content()
+            }
+        
+                }
+HorizontalDivider(color = bento.borderSubtle, modifier = Modifier.padding(vertical = 4.dp))
     }
 }
 

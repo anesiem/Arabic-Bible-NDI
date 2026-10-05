@@ -304,6 +304,29 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     }
 
     /**
+     * v1.8: Kick the video renderer for a feed (call when motion is toggled ON).
+     * Ensures the video starts without needing an OFF/ON cycle.
+     */
+    fun kickVideoRenderer(isFull: Boolean) {
+        try {
+            val tpl = if (isFull) currentShowTemplate else currentTemplate
+            if (tpl.animatedBackground == AnimatedBackgroundType.CUSTOM_VIDEO &&
+                tpl.customVideoId.isNotEmpty()) {
+                val file = videoStore.fileFor(tpl.customVideoId)
+                if (file != null) {
+                    val renderer = getVideoRenderer(isFull)
+                    renderer.setSource(file)
+                    renderer.setMuted(tpl.customVideoMuted)
+                    renderer.setSpeed(tpl.motionSpeed)
+                    renderer.requestFrame()
+                }
+            }
+        } catch (e: Exception) {
+            // Non-fatal.
+        }
+    }
+
+    /**
      * Leading-edge throttled broadcast with a trailing edge: rapid slider drags
      * broadcast immediately, and the final state is always delivered ~100ms
      * after the last change, so overlays never show a stale value.
@@ -642,26 +665,26 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       overflow: hidden;
       font-family: 'Amiri', 'Noto Naskh Arabic', serif;
       -webkit-font-smoothing: antialiased;
-      /* v1.8: Center the fixed 1920x1080 stage. The stage is always 1920x1080
-         internally (matching NDI), scaled via transform to fit the viewport. */
+      /* v1.8: Center the 16:9 stage. */
       display: flex;
       align-items: center;
       justify-content: center;
     }
 
     /* Stage Container (Default: Lower Third alignment at screen bottom) */
-    /* v1.8: Fixed 1920x1080 internal resolution (matches NDI exactly).
-       Scaled via JS transform to fit viewport while maintaining 16:9. */
+    /* v1.8: True 16:9 aspect ratio. Width is min(100vw, 177.78vh) to fit
+       any viewport without distortion. Content scales via JS stageScale. */
     #stage {
       position: relative;
-      width: 1920px;
-      height: 1080px;
+      aspect-ratio: 16 / 9;
+      width: min(100vw, 177.78vh);
+      height: auto;
+      max-height: 100vh;
       flex-shrink: 0;
       pointer-events: none;
       display: flex;
       flex-direction: column;
       justify-content: flex-end;
-      transform-origin: center center;
     }
     }
 
@@ -911,13 +934,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   <script>
     // Elements
     const stage = document.getElementById('stage');
-    // v1.8: Scale the fixed 1920x1080 stage to fit viewport (maintains 16:9).
-    function fitStage() {
-      const scale = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
-      stage.style.transform = 'scale(' + scale + ')';
+    // v1.8: stageScale for font sizing — stage is 16:9, scale fonts to match NDI proportions.
+    // NDI renders at verseFontSize * 2 at 1920px wide; scale proportionally.
+    function getStageScale() {
+      const w = stage.clientWidth || 1920;
+      return w / 1920;
     }
-    window.addEventListener('resize', fitStage);
-    fitStage();
     const container = document.getElementById('lowerthird-container');
     const cardBox = document.getElementById('card-box');
     const animBgLayer = document.getElementById('animated-bg-layer');
@@ -953,10 +975,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       // v1.8: viewport-relative font sizing — the style's font sizes are
       // designed for a 1920-wide canvas (like NDI); scale to the actual
       // viewport so HTTP matches preview/NDI proportions at any size.
-      // v1.8: Match NDI font size exactly. NDI renders at verseFontSize * 2 (see
-      // drawFrameInto: textSize = verseFontSize * 2f * scale). No viewport scaling —
-      // HTTP must match NDI pixel-for-pixel at 1920x1080.
-      function scaledPx(base) { return (base * 2) + 'px'; }
+      // v1.8: Match NDI font size proportionally. NDI renders at verseFontSize * 2
+      // at 1920px wide; scale by actual stage width to maintain proportions at any size.
+      function scaledPx(base) { return (base * 2 * getStageScale()) + 'px'; }
 
       // 1. Set mode classes
       if (isFull) {

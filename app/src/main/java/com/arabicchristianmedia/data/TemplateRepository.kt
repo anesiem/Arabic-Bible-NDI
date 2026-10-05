@@ -621,7 +621,7 @@ class TemplateRepository(context: Context) {
             customVideoUrl = obj.optString("customVideoUrl", ""),
             customVideoId = obj.optString("customVideoId", ""),
             customVideoMuted = obj.optBoolean("customVideoMuted", true),
-            motionSpeed = obj.optDouble("motionSpeed", 1.0).toFloat().coerceIn(0.25f, 3.0f),
+            motionSpeed = obj.optDouble("motionSpeed", 1.0).toFloat().coerceIn(0f, 3.0f),
             streamBackgroundMode = try { com.arabicchristianmedia.model.StreamBackgroundMode.valueOf(obj.optString("streamBackgroundMode")) } catch (e: Exception) { com.arabicchristianmedia.model.StreamBackgroundMode.TRANSPARENT_ALPHA }
         ).let { migrateLegacyVideo(it) }
     }

@@ -141,7 +141,7 @@ data class LowerThirdTemplate(
     val customVideoMuted: Boolean = true,
     /**
      * v1.8: Motion/animation playback speed multiplier. 1.0 = normal,
-     * 0.5 = half speed, 2.0 = double speed. Applies to custom video
+     * 0 = paused, 3.0 = triple speed. Applies to custom video
      * and procedural animations.
      */
     val motionSpeed: Float = 1.0f,

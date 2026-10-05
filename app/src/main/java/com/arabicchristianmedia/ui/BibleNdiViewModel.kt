@@ -404,7 +404,18 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
     fun toggleNdiMotion(feedKey: String) {
         val current = _uiState.value.ndiSourceSpecs[feedKey]
             ?: NdiNativeSender.defaultSpec(feedKey)
-        updateNdiSourceSpec(feedKey, current.width, current.height, current.fps, !current.motionEnabled)
+        val newMotion = !current.motionEnabled
+        updateNdiSourceSpec(feedKey, current.width, current.height, current.fps, newMotion)
+        // v1.8: When motion is turned ON, kick the video renderer so it starts
+        // immediately without needing an OFF/ON cycle.
+        if (newMotion) {
+            val isFull = feedKey == NdiNativeSender.FEED_FULL
+            try {
+                broadcastServer.kickVideoRenderer(isFull)
+            } catch (e: Exception) {
+                // Non-fatal.
+            }
+        }
     }
 
     fun toggleAdvancedNdi() {

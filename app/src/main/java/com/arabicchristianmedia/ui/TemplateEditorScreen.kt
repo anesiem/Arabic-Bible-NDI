@@ -521,11 +521,11 @@ fun TemplateEditorScreen(
                         onValueChange = { onUpdate(editingTemplate.copy(animatedBackgroundOpacity = it)) }
                     )
                     Spacer(modifier = Modifier.height(4.dp))
-                    // v1.8: Motion speed slider (0.25x to 3.0x) — right after opacity.
+                    // v1.8: Motion speed slider (0 to 3.0x) — right after opacity.
                     SliderWithLabel(
                         "سرعة الحركة (Motion speed)",
                         editingTemplate.motionSpeed,
-                        0.25f..3.0f
+                        0f..3f
                     ) {
                         onUpdate(editingTemplate.copy(motionSpeed = it))
                     }

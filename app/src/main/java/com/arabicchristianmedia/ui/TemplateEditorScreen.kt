@@ -417,7 +417,21 @@ fun TemplateEditorScreen(
                 
                 if (!editingTemplate.isPureTransparentBackground) {
                     SliderWithLabel("درجة شفافية الكارت (Background Opacity)", editingTemplate.bgOpacity, 0f..1f) { onUpdate(editingTemplate.copy(bgOpacity = it)) }
-                    ColorGradePickerRow("لون كارت الخلفية (Card Color)", editingTemplate.bgColorHex, { onUpdate(editingTemplate.copy(bgColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Box(modifier = Modifier.weight(1f)) {
+                            ColorGradePickerRow("لون كارت الخلفية (Card Color)", editingTemplate.bgColorHex, { onUpdate(editingTemplate.copy(bgColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
+                        }
+                        // v1.8: Quick transparent option for card color.
+                        TextButton(
+                            onClick = { onUpdate(editingTemplate.copy(bgColorHex = "#00000000", bgOpacity = 0f)) }
+                        ) {
+                            Text("شفاف", fontSize = 11.sp, color = bento.primary)
+                        }
+                    }
                 }
 
                 ColorGradePickerRow("لون إطار التمييز (Accent Color)", editingTemplate.accentColorHex, { onUpdate(editingTemplate.copy(accentColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
@@ -805,7 +819,9 @@ fun SliderWithLabel(label: String, value: Float, range: ClosedFloatingPointRange
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(label, fontSize = 11.sp, color = bento.textSecondary)
             // Opacity-style 0..1 ranges read better as a percentage.
-            val readout = if (range.endInclusive <= 1f) "${(value * 100).toInt()}%" else "${value.toInt()}"
+            // Other ranges show 2 decimals for fine control (e.g., motion speed 0.00-3.00).
+            val readout = if (range.endInclusive <= 1f) "${(value * 100).toInt()}%"
+                          else "%.2f".format(value)
             Text(readout, fontSize = 11.sp, color = bento.primary, fontWeight = FontWeight.Bold)
         }
         Slider(value = value, onValueChange = onValueChange, valueRange = range, colors = SliderDefaults.colors(thumbColor = bento.primary, activeTrackColor = bento.primary))

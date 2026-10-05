@@ -409,9 +409,9 @@ fun TemplateEditorScreen(
                     SliderWithLabel("المسافة الفاصلة بين اللغتين", editingTemplate.bilingualSpacing.toFloat(), 0f..150f) { onUpdate(editingTemplate.copy(bilingualSpacing = it.toInt())) }
                 }
 
-                // Background, Transparency & Accents
+                // Background, Transparency & Accents (Layer 2: Card on top of motion background)
                 HorizontalDivider(color = bento.borderSubtle)
-                Text("الخلفية والمؤثرات البصرية (Background & Effects)", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary)
+                Text("الخلفية والمؤثرات البصرية (Background & Effects) — فوق الفيديو", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary)
                 
                 FeatureToggleRow("خلفية شفافة تماماً 100% Alpha", editingTemplate.isPureTransparentBackground) { onUpdate(editingTemplate.copy(isPureTransparentBackground = it)) }
                 
@@ -519,8 +519,8 @@ fun TemplateEditorScreen(
                     }
                 }
 
-                // Animated Motion Backgrounds
-                Text("الخلفيات المتحركة (Motion Video Backgrounds)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
+                // Animated Motion Backgrounds (Layer 1: Bottom background layer)
+                Text("الخلفيات المتحركة (Motion Video Backgrounds) — طبقة الخلفية", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(AnimatedBackgroundType.entries) { type ->
                         FilterChip(selected = editingTemplate.animatedBackground == type, onClick = { onUpdate(editingTemplate.copy(animatedBackground = type)) }, label = { Text(type.displayNameAr, fontSize = 10.sp) })

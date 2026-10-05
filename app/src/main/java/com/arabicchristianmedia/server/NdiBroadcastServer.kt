@@ -1487,8 +1487,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             isFakeBoldText = tpl.verseIsBold
         }
 
-        val paddingH = 32f * scale
-        val paddingV = 24f * scale
+        val paddingH = 36f * scale
+        val paddingV = 32f * scale
         val contentWidth = (boxWidth - (2 * paddingH)).toInt().coerceAtLeast(200)
 
         // Fix alignment: ALIGN_NORMAL is Start (Right for RTL Arabic)
@@ -1606,6 +1606,31 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
         val paint = Paint(Paint.ANTI_ALIAS_FLAG)
 
+        // v1.8: Card glow drawn FIRST (behind video/card) so it appears as an
+        // outer halo without covering the video. The glow expands beyond the
+        // card bounds; drawing it first lets the video/card cover the inner part.
+        if (!tpl.isPureTransparentBackground && tpl.style != TemplateStyle.TRANSPARENT_OUTLINE) {
+            if (tpl.cardGlowEnabled && !tpl.isFullScreen) {
+                val glowCol = try { Color.parseColor(tpl.cardGlowColorHex) } catch (e: Exception) { Color.BLACK }
+                val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+                val layers = listOf(
+                    Triple(14f * scale, 0.30f, 4f * scale),
+                    Triple(30f * scale, 0.15f, 8f * scale)
+                )
+                for ((expand, alpha, radiusBump) in layers) {
+                    glowPaint.color = Color.argb(
+                        (255 * alpha).toInt().coerceIn(0, 255),
+                        Color.red(glowCol), Color.green(glowCol), Color.blue(glowCol)
+                    )
+                    canvas.drawRoundRect(
+                        RectF(rect.left - expand, rect.top - expand,
+                              rect.right + expand, rect.bottom + expand),
+                        radius + radiusBump, radius + radiusBump, glowPaint
+                    )
+                }
+            }
+        }
+
         // v1.7 custom video background (per feed). The video is the background
         // layer: drawn behind card/effects/text/emblem with the user's opacity.
         // Motion ticks pull fresh decoded frames; static renders freeze on the
@@ -1635,30 +1660,6 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         }
 
         if (!tpl.isPureTransparentBackground && tpl.style != TemplateStyle.TRANSPARENT_OUTLINE) {
-            // Independent card glow (v1.8): deterministic layered outer halo in
-            // the user's glow color, drawn strictly OUTSIDE the card bounds.
-            // Replaces BlurMaskFilter.OUTER, whose blurred color bled through
-            // semi-transparent card fills. Only where a real card exists.
-            if (tpl.cardGlowEnabled && !tpl.isFullScreen) {
-                val glowCol = try { Color.parseColor(tpl.cardGlowColorHex) } catch (e: Exception) { Color.BLACK }
-                val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-                // (expand beyond card, alpha, corner-radius bump)
-                val layers = listOf(
-                    Triple(14f * scale, 0.30f, 4f * scale),
-                    Triple(30f * scale, 0.15f, 8f * scale)
-                )
-                for ((expand, alpha, radiusBump) in layers) {
-                    glowPaint.color = Color.argb(
-                        (255 * alpha).toInt().coerceIn(0, 255),
-                        Color.red(glowCol), Color.green(glowCol), Color.blue(glowCol)
-                    )
-                    canvas.drawRoundRect(
-                        RectF(rect.left - expand, rect.top - expand,
-                              rect.right + expand, rect.bottom + expand),
-                        radius + radiusBump, radius + radiusBump, glowPaint
-                    )
-                }
-            }
             val bgAlpha = (tpl.bgOpacity * 255).toInt().coerceIn(0, 255)
             val baseBgCol = try { Color.parseColor(tpl.bgColorHex) } catch (e: Exception) { Color.DKGRAY }
 

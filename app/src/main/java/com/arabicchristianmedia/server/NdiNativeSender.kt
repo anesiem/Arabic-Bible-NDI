@@ -391,6 +391,8 @@ class NdiNativeSender {
                 return false
             }
             val spec = session.spec
+            // v1.9: frame-timing instrumentation (pairs with NdiBroadcastServer draw timing).
+            val sendStartNs = System.nanoTime()
             val targetBitmap = if (bitmap.width == spec.width && bitmap.height == spec.height) {
                 bitmap
             } else {
@@ -413,13 +415,38 @@ class NdiNativeSender {
                 )
                 scaled
             }
+            val downscaleNs = System.nanoTime() - sendStartNs
 
             val ok = nativeSendVideoBitmap(session.ptr, targetBitmap, spec.width, spec.height)
+            recordSendTiming(spec.feedKey, downscaleNs, System.nanoTime() - sendStartNs - downscaleNs)
             if (!ok) reportError(spec.feedKey, "nativeSendVideoBitmap returned false", throttleMs = 10_000L)
             ok
         } catch (e: Exception) {
             reportError(session.spec.feedKey, "Error sending frame: ${e.message}", throttleMs = 10_000L)
             false
+        }
+    }
+
+    // v1.9: per-feed send timing (downscale vs NDI encode). 1-line log per feed every
+    // 300 frames. Sender threads converge here — guard the accumulator.
+    private val sendTimingLock = Any()
+    private val sendTimingNs = mutableMapOf<String, LongArray>() // feedKey -> [downscaleNs, sendNs]
+    private val sendTimingFrames = mutableMapOf<String, Int>()
+    private fun recordSendTiming(feedKey: String, downscaleNs: Long, sendNs: Long) {
+        synchronized(sendTimingLock) {
+            val frames = (sendTimingFrames[feedKey] ?: 0) + 1
+            sendTimingFrames[feedKey] = frames
+            val acc = sendTimingNs.getOrPut(feedKey) { LongArray(2) }
+            acc[0] += downscaleNs
+            acc[1] += sendNs
+            if (frames >= 300) {
+                val dMs = acc[0] / 1_000_000.0 / frames
+                val sMs = acc[1] / 1_000_000.0 / frames
+                Log.d("NdiPerf", "send $feedKey: downscale avg ${"%.2f".format(dMs)} ms, ndi-encode avg ${"%.2f".format(sMs)} ms over $frames frames")
+                sendTimingFrames[feedKey] = 0
+                acc[0] = 0L
+                acc[1] = 0L
+            }
         }
     }
 

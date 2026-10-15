@@ -1,9 +1,21 @@
-# Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
+# v1.9: R8 is enabled. Keep rules for JNI, the foreground service, and JSON models.
+# Verify the release build on device before shipping.
+
+# NDI native bridge — native methods must keep their exact names for JNI lookup.
+-keepclasseswithmembernames class * {
+    native <methods>;
+}
+-keep class com.arabicchristianmedia.server.NdiNativeSender { *; }
+
+# Foreground service for background NDI broadcast (referenced from manifest).
+-keep class com.arabicchristianmedia.server.NdiService { *; }
+
+# Template/style models: serialized to JSON/export payloads; keep stable.
+-keep class com.arabicchristianmedia.model.** { *; }
+
+# Moshi/Retrofit are currently unused dependencies. If re-enabled, keep the
+# generated adapters:
+# -keep class **_JsonAdapter { *; }
 
 # If your project uses WebView with JS, uncomment the following
 # and specify the fully qualified class name to the JavaScript interface

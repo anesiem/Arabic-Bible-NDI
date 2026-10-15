@@ -303,6 +303,39 @@ fun TemplateEditorScreen(
 
         Spacer(Modifier.height(8.dp))
 
+        // 4b. Quick Setup — pick a style above, adjust the essentials here, save.
+        // The full ~48 advanced options remain in the collapsible sections below.
+CollapsibleSection(
+                    title = "إعداد سريع (Quick Setup) — الأساسيات فقط",
+                    initiallyExpanded = true
+                ) {
+                    Text(
+                        "اختر نمطاً من الأعلى، ثم اضبط الأساسيات هنا — كل التفاصيل موجودة في الأقسام بالأسفل.",
+                        fontSize = 11.sp, color = bento.textSecondary
+                    )
+                    FeatureToggleRow("خلفية شفافة تماماً 100% Alpha", editingTemplate.isPureTransparentBackground) { onUpdate(editingTemplate.copy(isPureTransparentBackground = it)) }
+                    if (!editingTemplate.isPureTransparentBackground) {
+                        SliderWithLabel("درجة شفافية الكارت (Background Opacity)", editingTemplate.bgOpacity, 0f..1f) { onUpdate(editingTemplate.copy(bgOpacity = it)) }
+                    }
+                    FontDropdown(
+                        selected = editingTemplate.fontFamily,
+                        onSelect = { onUpdate(editingTemplate.copy(fontFamily = it)) }
+                    )
+                    SliderWithLabel("حجم النص (Text Size)", editingTemplate.verseFontSize.toFloat(), 10f..180f) { onUpdate(editingTemplate.copy(verseFontSize = it.toInt())) }
+                    ColorGradePickerRow("لون النص (Text Color)", editingTemplate.textColorHex, { onUpdate(editingTemplate.copy(textColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
+                    Button(
+                        onClick = { newTemplateName = "${editingTemplate.name} النسخة"; showSaveDialog = true },
+                        colors = ButtonDefaults.buttonColors(containerColor = bento.primary),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Add, null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("حفظ كنمط جديد (Save as new style)", fontSize = 13.sp)
+                    }
+                }
+
+        Spacer(Modifier.height(8.dp))
+
         // 5. Detailed Independent Configuration Controls
         Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = bento.card), modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
@@ -427,15 +460,99 @@ CollapsibleSection(
                         SliderWithLabel("المسافة الفاصلة بين اللغتين", editingTemplate.bilingualSpacing.toFloat(), 0f..150f) { onUpdate(editingTemplate.copy(bilingualSpacing = it.toInt())) }
                     }
 
-                    // Background, Transparency & Accents (Layer 2: Card on top of motion background)
+                    // Background layers: motion backgrounds (Layer 1, bottom) + card/transparency/accents (Layer 2, above video)
                 
                 }
 HorizontalDivider(color = bento.borderSubtle)
 CollapsibleSection(
-                    title = "الخلفية والمؤثرات البصرية (Background & Effects) — فوق الفيديو",
+                    title = "الخلفية والمؤثرات البصرية (Background & Effects)",
                     initiallyExpanded = true
                 ) {
                 
+                    // Animated Motion Backgrounds (Layer 1: Bottom background layer)
+                    Text("الخلفيات المتحركة (Motion Video Backgrounds) — طبقة الخلفية", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(AnimatedBackgroundType.entries) { type ->
+                            FilterChip(selected = editingTemplate.animatedBackground == type, onClick = { onUpdate(editingTemplate.copy(animatedBackground = type)) }, label = { Text(type.displayNameAr, fontSize = 10.sp) })
+                        }
+                    }
+                    if (editingTemplate.animatedBackground != AnimatedBackgroundType.NONE) {
+                        // v1.8: opacity slider for ALL animated backgrounds (not just custom video).
+                        SliderWithLabel(
+                            label = "شفافية الحركة (Animation Opacity)",
+                            value = editingTemplate.animatedBackgroundOpacity,
+                            range = 0f..1f,
+                            onValueChange = { onUpdate(editingTemplate.copy(animatedBackgroundOpacity = it)) }
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        // v1.8: Motion speed slider (0 to 3.0x) — right after opacity.
+                        SliderWithLabel(
+                            "سرعة الحركة (Motion speed)",
+                            editingTemplate.motionSpeed,
+                            0f..3f
+                        ) {
+                            onUpdate(editingTemplate.copy(motionSpeed = it))
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        if (editingTemplate.animatedBackground == AnimatedBackgroundType.CUSTOM_VIDEO &&
+                            editingTemplate.customVideoId.isNotEmpty()) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        "✓ فيديو مخصص محدد (Custom video set)",
+                                        fontSize = 11.sp,
+                                        color = bento.textSecondary
+                                    )
+                                    // v1.8: show the opaque video ID and its local URL.
+                                    Text(
+                                        "ID: ${editingTemplate.customVideoId}",
+                                        fontSize = 10.sp,
+                                        color = bento.textSecondary,
+                                        modifier = Modifier.padding(top = 2.dp)
+                                    )
+                                    Text(
+                                        "URL: /video?id=${editingTemplate.customVideoId}",
+                                        fontSize = 10.sp,
+                                        color = bento.textSecondary
+                                    )
+                                }
+                                TextButton(onClick = {
+                                    onUpdate(editingTemplate.copy(customVideoId = "", animatedBackground = AnimatedBackgroundType.NONE))
+                                }) {
+                                    Text("إزالة (Remove)", fontSize = 11.sp, color = bento.primary)
+                                }
+                            }
+                            // v1.8: Muted toggle for custom video (default muted for church production).
+                            Spacer(modifier = Modifier.height(4.dp))
+                            FeatureToggleRow(
+                                "كتم صوت الفيديو (Mute video audio)",
+                                editingTemplate.customVideoMuted
+                            ) {
+                                onUpdate(editingTemplate.copy(customVideoMuted = it))
+                            }
+                        } else if (editingTemplate.customVideoUrl.isNotEmpty()) {
+                            Text(
+                                "⚠ تعذر العثور على الفيديو المحفوظ — اختر ملفاً جديداً",
+                                fontSize = 11.sp,
+                                color = bento.primary
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                        }
+                        Button(
+                            onClick = { launcher.launch("video/*") },
+                            enabled = !isImportingVideo,
+                            colors = ButtonDefaults.buttonColors(containerColor = bento.primary)
+                        ) {
+                            Icon(Icons.Default.VideoLibrary, null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(if (isImportingVideo) "جاري الاستيراد..." else "اختيار ملف فيديو مخصص (MP4)", fontSize = 12.sp)
+                        }
+                    }
+
                     FeatureToggleRow("خلفية شفافة تماماً 100% Alpha", editingTemplate.isPureTransparentBackground) { onUpdate(editingTemplate.copy(isPureTransparentBackground = it)) }
                 
                     if (!editingTemplate.isPureTransparentBackground) {
@@ -547,89 +664,6 @@ CollapsibleSection(
                         }
                     }
 
-                    // Animated Motion Backgrounds (Layer 1: Bottom background layer)
-                    Text("الخلفيات المتحركة (Motion Video Backgrounds) — طبقة الخلفية", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(AnimatedBackgroundType.entries) { type ->
-                            FilterChip(selected = editingTemplate.animatedBackground == type, onClick = { onUpdate(editingTemplate.copy(animatedBackground = type)) }, label = { Text(type.displayNameAr, fontSize = 10.sp) })
-                        }
-                    }
-                    if (editingTemplate.animatedBackground != AnimatedBackgroundType.NONE) {
-                        // v1.8: opacity slider for ALL animated backgrounds (not just custom video).
-                        SliderWithLabel(
-                            label = "شفافية الحركة (Animation Opacity)",
-                            value = editingTemplate.animatedBackgroundOpacity,
-                            range = 0f..1f,
-                            onValueChange = { onUpdate(editingTemplate.copy(animatedBackgroundOpacity = it)) }
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        // v1.8: Motion speed slider (0 to 3.0x) — right after opacity.
-                        SliderWithLabel(
-                            "سرعة الحركة (Motion speed)",
-                            editingTemplate.motionSpeed,
-                            0f..3f
-                        ) {
-                            onUpdate(editingTemplate.copy(motionSpeed = it))
-                        }
-                        Spacer(modifier = Modifier.height(4.dp))
-                        if (editingTemplate.animatedBackground == AnimatedBackgroundType.CUSTOM_VIDEO &&
-                            editingTemplate.customVideoId.isNotEmpty()) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        "✓ فيديو مخصص محدد (Custom video set)",
-                                        fontSize = 11.sp,
-                                        color = bento.textSecondary
-                                    )
-                                    // v1.8: show the opaque video ID and its local URL.
-                                    Text(
-                                        "ID: ${editingTemplate.customVideoId}",
-                                        fontSize = 10.sp,
-                                        color = bento.textSecondary,
-                                        modifier = Modifier.padding(top = 2.dp)
-                                    )
-                                    Text(
-                                        "URL: /video?id=${editingTemplate.customVideoId}",
-                                        fontSize = 10.sp,
-                                        color = bento.textSecondary
-                                    )
-                                }
-                                TextButton(onClick = {
-                                    onUpdate(editingTemplate.copy(customVideoId = "", animatedBackground = AnimatedBackgroundType.NONE))
-                                }) {
-                                    Text("إزالة (Remove)", fontSize = 11.sp, color = bento.primary)
-                                }
-                            }
-                            // v1.8: Muted toggle for custom video (default muted for church production).
-                            Spacer(modifier = Modifier.height(4.dp))
-                            FeatureToggleRow(
-                                "كتم صوت الفيديو (Mute video audio)",
-                                editingTemplate.customVideoMuted
-                            ) {
-                                onUpdate(editingTemplate.copy(customVideoMuted = it))
-                            }
-                        } else if (editingTemplate.customVideoUrl.isNotEmpty()) {
-                            Text(
-                                "⚠ تعذر العثور على الفيديو المحفوظ — اختر ملفاً جديداً",
-                                fontSize = 11.sp,
-                                color = bento.primary
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                        }
-                        Button(
-                            onClick = { launcher.launch("video/*") },
-                            enabled = !isImportingVideo,
-                            colors = ButtonDefaults.buttonColors(containerColor = bento.primary)
-                        ) {
-                            Icon(Icons.Default.VideoLibrary, null, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text(if (isImportingVideo) "جاري الاستيراد..." else "اختيار ملف فيديو مخصص (MP4)", fontSize = 12.sp)
-                        }
-                    }
                 }
             }
             Spacer(Modifier.height(100.dp))
@@ -1277,7 +1311,7 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
         ) {
             val cardBg = when {
                 template.isPureTransparentBackground || template.style == TemplateStyle.TRANSPARENT_OUTLINE -> Color(0xFF1E293B).copy(alpha = 0.45f)
-                else -> bgCol.copy(alpha = template.bgOpacity.coerceAtLeast(0.3f))
+                else -> bgCol.copy(alpha = template.bgOpacity)
             }
 
             Surface(

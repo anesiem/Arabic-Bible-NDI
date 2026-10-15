@@ -1421,6 +1421,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
      * never redrawn in place — static readers can never observe a half-drawn frame.
      */
     private fun drawFrameInto(bitmap: Bitmap, width: Int, height: Int, isForStream: Boolean, tpl: LowerThirdTemplate, isFull: Boolean, isMotionTick: Boolean = false) {
+        // v1.9: frame-timing instrumentation (replaces the GPU investigation).
+        val drawStartNs = System.nanoTime()
         val canvas = Canvas(bitmap)
 
         // 100% Pure transparent alpha canvas by default
@@ -1740,7 +1742,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                         val c1 = Color.argb(bgAlpha, 15, 23, 42)
                         val c2 = Color.argb(bgAlpha, 56, 189, 248)
                         LinearGradient(
-                            boxLeft, boxTop,
+                            boxLeft + (boxWidth * phase), boxTop,
                             boxRight, boxBottom,
                             intArrayOf(c1, c2, c1), null, Shader.TileMode.CLAMP
                         )
@@ -1948,6 +1950,24 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             canvas.drawText("وضع الاستعداد • STANDBY (اضغط على الهواء للبث)", width / 2f, 35f * scale + (badgeH * 0.65f), standbyTextPaint)
         }
 
+        recordDrawTiming(isFull, System.nanoTime() - drawStartNs)
+    }
+
+    // v1.9: frame-timing instrumentation — finds the real bottleneck (canvas draw vs
+    // downscale vs NDI encode) with a 1-line log per feed every 300 frames. Keeps log
+    // spam and hot-path overhead negligible; informs whether a GPU path is ever worth it.
+    private val drawTimingNs = mutableMapOf<Boolean, Long>()
+    private val drawTimingFrames = mutableMapOf<Boolean, Int>()
+    private fun recordDrawTiming(isFull: Boolean, ns: Long) {
+        val frames = (drawTimingFrames[isFull] ?: 0) + 1
+        drawTimingFrames[isFull] = frames
+        drawTimingNs[isFull] = (drawTimingNs[isFull] ?: 0L) + ns
+        if (frames >= 300) {
+            val avgMs = (drawTimingNs[isFull] ?: 0L) / 1_000_000.0 / frames
+            Log.d("NdiPerf", "draw ${if (isFull) "full" else "lower"}: avg ${"%.2f".format(avgMs)} ms over $frames frames")
+            drawTimingFrames[isFull] = 0
+            drawTimingNs[isFull] = 0L
+        }
     }
 
     /**

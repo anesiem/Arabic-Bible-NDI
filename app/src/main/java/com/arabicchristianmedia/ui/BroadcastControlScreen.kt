@@ -118,20 +118,20 @@ fun BroadcastControlScreen(
         val sp = uiState.ndiSourceSpecs[feedKey] ?: NdiNativeSender.defaultSpec(feedKey)
         "$tier • ${sp.width}×${sp.height} @ ${sp.fps}fps"
     }
-    val BentoBg = bento.bg
-    val BentoCardWhite = bento.card
-    val BentoSurfaceContainer = bento.surfaceContainer
-    val BentoSurfaceVariant = bento.surfaceVariant
-    val BentoBorder = bento.border
-    val BentoBorderSubtle = bento.borderSubtle
-    val BentoTextPrimary = bento.textPrimary
-    val BentoTextSecondary = bento.textSecondary
-    val BentoPrimary = bento.primary
-    val BentoOnPrimary = bento.onPrimary
-    val BentoPrimaryContainer = bento.primaryContainer
-    val BentoOnPrimaryContainer = bento.onPrimaryContainer
-    val BentoSecondary = bento.secondary
-    val BentoOnSecondary = bento.onSecondary
+    val bento.bg = bento.bg
+    val bento.card = bento.card
+    val bento.surfaceContainer = bento.surfaceContainer
+    val bento.surfaceVariant = bento.surfaceVariant
+    val bento.border = bento.border
+    val bento.borderSubtle = bento.borderSubtle
+    val bento.textPrimary = bento.textPrimary
+    val bento.textSecondary = bento.textSecondary
+    val bento.primary = bento.primary
+    val bento.onPrimary = bento.onPrimary
+    val bento.primaryContainer = bento.primaryContainer
+    val bento.onPrimaryContainer = bento.onPrimaryContainer
+    val bento.secondary = bento.secondary
+    val bento.onSecondary = bento.onSecondary
 
     var copiedUrlType by remember { mutableStateOf<String?>(null) }
     var showHelpGuide by remember { mutableStateOf(false) }
@@ -139,7 +139,7 @@ fun BroadcastControlScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(BentoBg)
+            .background(bento.bg)
             .verticalScroll(rememberScrollState())
             .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -147,10 +147,10 @@ fun BroadcastControlScreen(
         // Card 1: NDI & Stream Server Status + Master Controls
         Surface(
             shape = RoundedCornerShape(24.dp),
-            color = BentoCardWhite,
+            color = bento.card,
             border = androidx.compose.foundation.BorderStroke(
                 1.dp,
-                if (uiState.isServerRunning) Color(0xFF10B981) else BentoBorder
+                if (uiState.isServerRunning) bento.green else bento.border
             ),
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -166,14 +166,14 @@ fun BroadcastControlScreen(
                             modifier = Modifier
                                 .size(10.dp)
                                 .clip(CircleShape)
-                                .background(if (uiState.isServerRunning) Color(0xFF10B981) else BentoLiveRed)
+                                .background(if (uiState.isServerRunning) bento.green else bento.liveRed)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = if (uiState.isServerRunning) "بث NDI 6 نشط (NDI Broadcast Active)" else "بث NDI متوقف (NDI Broadcast Standby)",
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
-                            color = if (uiState.isServerRunning) Color(0xFF10B981) else BentoTextPrimary
+                            color = if (uiState.isServerRunning) bento.green else bento.textPrimary
                         )
                     }
 
@@ -182,8 +182,8 @@ fun BroadcastControlScreen(
                     if (uiState.isServerRunning && bothActive) {
                         Surface(
                             shape = RoundedCornerShape(16.dp),
-                            color = Color(0xFFFFECE8),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, BentoLiveRed),
+                            color = bento.liveRed.copy(alpha = 0.12f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, bento.liveRed),
                             modifier = Modifier
                                 .clip(RoundedCornerShape(16.dp))
                                 .clickable(onClick = onStopServer)
@@ -193,15 +193,15 @@ fun BroadcastControlScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                             ) {
-                                Icon(Icons.Default.Stop, contentDescription = null, tint = BentoLiveRed, modifier = Modifier.size(14.dp))
+                                Icon(Icons.Default.Stop, contentDescription = null, tint = bento.liveRed, modifier = Modifier.size(14.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("إيقاف المصادر", fontSize = 11.sp, color = BentoLiveRed, fontWeight = FontWeight.Bold)
+                                Text("إيقاف المصادر", fontSize = 11.sp, color = bento.liveRed, fontWeight = FontWeight.Bold)
                             }
                         }
                     } else {
                         Surface(
                             shape = RoundedCornerShape(16.dp),
-                            color = BentoPrimary,
+                            color = bento.primary,
                             modifier = Modifier
                                 .clip(RoundedCornerShape(16.dp))
                                 .clickable { onStartServer(uiState.serverPort) }
@@ -211,9 +211,9 @@ fun BroadcastControlScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
                             ) {
-                                Icon(Icons.Default.PlayArrow, contentDescription = null, tint = BentoOnPrimary, modifier = Modifier.size(14.dp))
+                                Icon(Icons.Default.PlayArrow, contentDescription = null, tint = bento.onPrimary, modifier = Modifier.size(14.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("تشغيل المصادر", fontSize = 11.sp, color = BentoOnPrimary, fontWeight = FontWeight.Bold)
+                                Text("تشغيل المصادر", fontSize = 11.sp, color = bento.onPrimary, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -225,10 +225,10 @@ fun BroadcastControlScreen(
                 // is handled by the NDI runtime itself — no in-app beacon)
                 Surface(
                     shape = RoundedCornerShape(12.dp),
-                    color = if (uiState.isServerRunning) Color(0xFFF0FDF4) else Color(0xFFF8FAFC),
+                    color = if (uiState.isServerRunning) bento.green.copy(alpha = 0.12f) else bento.surfaceVariant,
                     border = BorderStroke(
                         1.dp,
-                        if (uiState.isServerRunning) Color(0xFF86EFAC) else Color(0xFFE2E8F0)
+                        if (uiState.isServerRunning) bento.green else bento.border
                     ),
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -239,7 +239,7 @@ fun BroadcastControlScreen(
                         Icon(
                             imageVector = Icons.Default.Sensors,
                             contentDescription = null,
-                            tint = if (uiState.isServerRunning) Color(0xFF16A34A) else Color(0xFF94A3B8),
+                            tint = if (uiState.isServerRunning) bento.green else bento.textSecondary,
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
@@ -251,7 +251,7 @@ fun BroadcastControlScreen(
                                     "خادم البث في وضع الاستعداد (Ready to Start)",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = if (uiState.isServerRunning) Color(0xFF166534) else BentoTextSecondary
+                                color = if (uiState.isServerRunning) bento.green else bento.textSecondary
                             )
                             Text(
                                 text = if (uiState.isServerRunning)
@@ -259,7 +259,7 @@ fun BroadcastControlScreen(
                                 else
                                     "المصدر: Bible-NDI | المنفذ: ${uiState.serverPort} | اضغط 'تشغيل بث NDI' لبدء البث",
                                 fontSize = 10.sp,
-                                color = if (uiState.isServerRunning) Color(0xFF15803D) else BentoTextSecondary
+                                color = if (uiState.isServerRunning) bento.green else bento.textSecondary
                             )
                         }
                     }
@@ -272,8 +272,8 @@ fun BroadcastControlScreen(
 
                 Surface(
                     shape = RoundedCornerShape(14.dp),
-                    color = BentoSurfaceContainer,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, BentoBorder),
+                    color = bento.surfaceContainer,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, bento.border),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.fillMaxWidth()) {
@@ -291,7 +291,7 @@ fun BroadcastControlScreen(
                                 Icon(
                                     imageVector = Icons.Default.Link,
                                     contentDescription = null,
-                                    tint = BentoPrimary,
+                                    tint = bento.primary,
                                     modifier = Modifier.size(16.dp)
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
@@ -300,12 +300,12 @@ fun BroadcastControlScreen(
                                         text = "روابط الإخراج المباشر لـ OBS و vMix (شفافية 100%)",
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = BentoTextPrimary
+                                        color = bento.textPrimary
                                     )
                                     Text(
                                         text = if (showOutputUrls) "انقر للطي" else "انقر لعرض روابط Browser Source و MJPEG للبرامج الأخرى",
                                         fontSize = 9.sp,
-                                        color = BentoTextSecondary
+                                        color = bento.textSecondary
                                     )
                                 }
                             }
@@ -314,20 +314,20 @@ fun BroadcastControlScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(8.dp))
-                                    .background(BentoPrimaryContainer.copy(alpha = 0.6f))
+                                    .background(bento.primaryContainer.copy(alpha = 0.6f))
                                     .padding(horizontal = 8.dp, vertical = 3.dp)
                             ) {
                                 Text(
                                     text = if (showOutputUrls) "طي" else "عرض",
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = BentoPrimary
+                                    color = bento.primary
                                 )
                                 Spacer(modifier = Modifier.width(2.dp))
                                 Icon(
                                     imageVector = if (showOutputUrls) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
                                     contentDescription = null,
-                                    tint = BentoPrimary,
+                                    tint = bento.primary,
                                     modifier = Modifier.size(16.dp)
                                 )
                             }
@@ -344,13 +344,13 @@ fun BroadcastControlScreen(
                                     .padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
                                 verticalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                androidx.compose.material3.HorizontalDivider(color = BentoBorderSubtle)
+                                androidx.compose.material3.HorizontalDivider(color = bento.borderSubtle)
 
                                 // How-to OBS Guide Banner
                                 Surface(
                                     shape = RoundedCornerShape(10.dp),
-                                    color = Color(0xFFF0FDF4),
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFBBF7D0)),
+                                    color = bento.green.copy(alpha = 0.12f),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, bento.green),
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Column(modifier = Modifier.padding(10.dp)) {
@@ -358,7 +358,7 @@ fun BroadcastControlScreen(
                                             Icon(
                                                 imageVector = Icons.Default.Check,
                                                 contentDescription = null,
-                                                tint = Color(0xFF16A34A),
+                                                tint = bento.green,
                                                 modifier = Modifier.size(14.dp)
                                             )
                                             Spacer(modifier = Modifier.width(6.dp))
@@ -366,14 +366,14 @@ fun BroadcastControlScreen(
                                                 text = "روابط الربط لبرامج البث (OBS / vMix / Projector):",
                                                 fontSize = 10.sp,
                                                 fontWeight = FontWeight.Bold,
-                                                color = Color(0xFF15803D)
+                                                color = bento.green
                                             )
                                         }
                                         Spacer(modifier = Modifier.height(4.dp))
                                         Text(
                                             text = "• للآيات أسفل الشاشة (Lower Third): استخدم الرابط رقم ١.\n• للعرض الكامل (Projector/Full): استخدم الرابط رقم ١.١.\n• لبرامج المونتاج القديمة: استخدم رابط MJPEG رقم ٢.\n• للأداء الأقصى وجودة NDI 6: ابحث عن المصادر رقم ٣ مباشرة.",
                                             fontSize = 9.sp,
-                                            color = Color(0xFF166534),
+                                            color = bento.green,
                                             lineHeight = 14.sp
                                         )
                                     }
@@ -384,13 +384,13 @@ fun BroadcastControlScreen(
                                     text = "١. رابط التغذية الشفافة (Lower Third Overlay):",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.SemiBold,
-                                    color = BentoTextPrimary
+                                    color = bento.textPrimary
                                 )
 
                                 Surface(
                                     shape = RoundedCornerShape(10.dp),
-                                    color = BentoCardWhite,
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, BentoBorder),
+                                    color = bento.card,
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, bento.border),
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Row(
@@ -405,7 +405,7 @@ fun BroadcastControlScreen(
                                             fontSize = 11.sp,
                                             fontFamily = FontFamily.Monospace,
                                             fontWeight = FontWeight.Bold,
-                                            color = BentoPrimary,
+                                            color = bento.primary,
                                             modifier = Modifier.weight(1f)
                                         )
 
@@ -413,7 +413,7 @@ fun BroadcastControlScreen(
                                             val isCopied = copiedUrlType == "OVERLAY"
                                             Surface(
                                                 shape = RoundedCornerShape(8.dp),
-                                                color = if (isCopied) Color(0xFF10B981) else BentoPrimary,
+                                                color = if (isCopied) bento.green else bento.primary,
                                                 modifier = Modifier
                                                     .clip(RoundedCornerShape(8.dp))
                                                     .clickable {
@@ -448,7 +448,7 @@ fun BroadcastControlScreen(
 
                                             Surface(
                                                 shape = RoundedCornerShape(8.dp),
-                                                color = BentoSurfaceVariant,
+                                                color = bento.surfaceVariant,
                                                 modifier = Modifier
                                                     .clip(RoundedCornerShape(8.dp))
                                                     .clickable {
@@ -468,7 +468,7 @@ fun BroadcastControlScreen(
                                                 Icon(
                                                     imageVector = Icons.Default.OpenInBrowser,
                                                     contentDescription = "Open in Browser",
-                                                    tint = BentoTextPrimary,
+                                                    tint = bento.textPrimary,
                                                     modifier = Modifier.size(14.dp)
                                                 )
                                             }
@@ -481,13 +481,13 @@ fun BroadcastControlScreen(
                                     text = "١.١ رابط عرض الشاشة الكامل (Full Show Projector):",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.SemiBold,
-                                    color = BentoTextPrimary
+                                    color = bento.textPrimary
                                 )
 
                                 Surface(
                                     shape = RoundedCornerShape(10.dp),
-                                    color = BentoCardWhite,
-                                    border = BorderStroke(1.dp, BentoBorder),
+                                    color = bento.card,
+                                    border = BorderStroke(1.dp, bento.border),
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     val showUrl = uiState.serverUrl.replace("/lower", "/full")
@@ -503,7 +503,7 @@ fun BroadcastControlScreen(
                                             fontSize = 11.sp,
                                             fontFamily = FontFamily.Monospace,
                                             fontWeight = FontWeight.Bold,
-                                            color = BentoPrimary,
+                                            color = bento.primary,
                                             modifier = Modifier.weight(1f)
                                         )
 
@@ -511,7 +511,7 @@ fun BroadcastControlScreen(
                                             val isCopied = copiedUrlType == "SHOW"
                                             Surface(
                                                 shape = RoundedCornerShape(8.dp),
-                                                color = if (isCopied) Color(0xFF10B981) else BentoPrimary,
+                                                color = if (isCopied) bento.green else bento.primary,
                                                 modifier = Modifier
                                                     .clip(RoundedCornerShape(8.dp))
                                                     .clickable {
@@ -542,7 +542,7 @@ fun BroadcastControlScreen(
                                             
                                             Surface(
                                                 shape = RoundedCornerShape(8.dp),
-                                                color = BentoSurfaceVariant,
+                                                color = bento.surfaceVariant,
                                                 modifier = Modifier
                                                     .clip(RoundedCornerShape(8.dp))
                                                     .clickable {
@@ -558,7 +558,7 @@ fun BroadcastControlScreen(
                                                 Icon(
                                                     imageVector = Icons.Default.OpenInBrowser,
                                                     contentDescription = "Open in Browser",
-                                                    tint = BentoTextPrimary,
+                                                    tint = bento.textPrimary,
                                                     modifier = Modifier.size(14.dp)
                                                 )
                                             }
@@ -571,17 +571,17 @@ fun BroadcastControlScreen(
                                     text = "٣. مصادر NDI الأصلية (Native NDI 6 Sources):",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.SemiBold,
-                                    color = BentoTextPrimary
+                                    color = bento.textPrimary
                                 )
                                 
                                 Surface(
                                     shape = RoundedCornerShape(10.dp),
-                                    color = BentoCardWhite,
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, BentoBorder),
+                                    color = bento.card,
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, bento.border),
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Column(modifier = Modifier.padding(10.dp)) {
-                                        Text("ابحث في برامج vMix/OBS عن المصادر التالية:", fontSize = 10.sp, color = BentoTextSecondary)
+                                        Text("ابحث في برامج vMix/OBS عن المصادر التالية:", fontSize = 10.sp, color = bento.textSecondary)
                                         Spacer(modifier = Modifier.height(6.dp))
                                         // Exact on-air names: "<TabletModel> - <FeedName>" (never localhost/IP)
                                         // Exactly two genuine NDI senders: Lower Third and Full Show.
@@ -591,8 +591,8 @@ fun BroadcastControlScreen(
                                             tierLabel = specLabel(NdiNativeSender.FEED_LOWER, "Lower Third • شفاف"),
                                             enabled = uiState.ndiLowerEnabled,
                                             active = uiState.isNativeNdiActive,
-                                            tint = BentoPrimary,
-                                            textSecondary = BentoTextSecondary,
+                                            tint = bento.primary,
+                                            textSecondary = bento.textSecondary,
                                             onToggle = onToggleNdiSource
                                         )
                                         NdiSourceRow(
@@ -601,8 +601,8 @@ fun BroadcastControlScreen(
                                             tierLabel = specLabel(NdiNativeSender.FEED_FULL, "Full Show • شفاف"),
                                             enabled = uiState.ndiFullShowEnabled,
                                             active = uiState.isNativeShowActive,
-                                            tint = Color(0xFF10B981),
-                                            textSecondary = BentoTextSecondary,
+                                            tint = bento.green,
+                                            textSecondary = bento.textSecondary,
                                             onToggle = onToggleNdiSource
                                         )
                                     }
@@ -613,14 +613,14 @@ fun BroadcastControlScreen(
                                     Spacer(modifier = Modifier.height(6.dp))
                                     Surface(
                                         shape = RoundedCornerShape(10.dp),
-                                        color = Color(0xFFFEF2F2),
-                                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFCA5A5)),
+                                        color = bento.liveRed.copy(alpha = 0.12f),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, bento.liveRed),
                                         modifier = Modifier.fillMaxWidth()
                                     ) {
                                         Text(
                                             text = "⚠ تم تسجيل ${uiState.ndiErrorEvents.size} من أخطاء NDI — فعّل «الخيارات المتقدمة» بالأسفل لعرض التفاصيل",
                                             fontSize = 10.sp,
-                                            color = Color(0xFFB91C1C),
+                                            color = bento.liveRed,
                                             modifier = Modifier.padding(10.dp)
                                         )
                                     }
@@ -631,34 +631,34 @@ fun BroadcastControlScreen(
                                     text = "٤. إعدادات مصادر NDI (الدقة ومعدل الإطارات):",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.SemiBold,
-                                    color = BentoTextPrimary
+                                    color = bento.textPrimary
                                 )
                                 Surface(
                                     shape = RoundedCornerShape(10.dp),
-                                    color = BentoCardWhite,
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, BentoBorder),
+                                    color = bento.card,
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, bento.border),
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Column(modifier = Modifier.padding(10.dp)) {
                                         Text(
                                             "اختر الدقة ومعدل الإطارات لكل مصدر. التغيير يُعاد تشغيل المصدر فوراً.",
                                             fontSize = 10.sp,
-                                            color = BentoTextSecondary
+                                            color = bento.textSecondary
                                         )
                                         val specOf = { feed: String -> uiState.ndiSourceSpecs[feed] ?: NdiNativeSender.defaultSpec(feed) }
                                         NdiSourceSettingsRow(
                                             feedKey = NdiNativeSender.FEED_LOWER,
                                             spec = specOf(NdiNativeSender.FEED_LOWER),
-                                            tint = BentoPrimary,
-                                            textSecondary = BentoTextSecondary,
+                                            tint = bento.primary,
+                                            textSecondary = bento.textSecondary,
                                             onUpdate = onUpdateNdiSourceSpec,
                                             onToggleMotion = onToggleNdiMotion
                                         )
                                         NdiSourceSettingsRow(
                                             feedKey = NdiNativeSender.FEED_FULL,
                                             spec = specOf(NdiNativeSender.FEED_FULL),
-                                            tint = Color(0xFF10B981),
-                                            textSecondary = BentoTextSecondary,
+                                            tint = bento.green,
+                                            textSecondary = bento.textSecondary,
                                             onUpdate = onUpdateNdiSourceSpec,
                                             onToggleMotion = onToggleNdiMotion
                                         )
@@ -668,8 +668,8 @@ fun BroadcastControlScreen(
                                 // Advanced diagnostics toggle
                                 Surface(
                                     shape = RoundedCornerShape(10.dp),
-                                    color = BentoCardWhite,
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, BentoBorder),
+                                    color = bento.card,
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, bento.border),
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Column(modifier = Modifier.padding(10.dp)) {
@@ -683,12 +683,12 @@ fun BroadcastControlScreen(
                                                     "خيارات متقدمة (Advanced)",
                                                     fontSize = 11.sp,
                                                     fontWeight = FontWeight.Bold,
-                                                    color = BentoTextPrimary
+                                                    color = bento.textPrimary
                                                 )
                                                 Text(
                                                     "عرض أخطاء NDI التشخيصية وحالة المصادر",
                                                     fontSize = 10.sp,
-                                                    color = BentoTextSecondary
+                                                    color = bento.textSecondary
                                                 )
                                             }
                                             Switch(
@@ -698,7 +698,7 @@ fun BroadcastControlScreen(
                                         }
                                         if (uiState.showAdvancedNdi) {
                                             Spacer(modifier = Modifier.height(8.dp))
-                                            HorizontalDivider(color = BentoBorder)
+                                            HorizontalDivider(color = bento.border)
                                             Spacer(modifier = Modifier.height(8.dp))
                                             val activeOf = mapOf(
                                                 NdiNativeSender.FEED_LOWER to uiState.isNativeNdiActive,
@@ -712,7 +712,7 @@ fun BroadcastControlScreen(
                                                         if (running) "يعمل ✓" else "متوقف",
                                                     fontSize = 10.sp,
                                                     fontFamily = FontFamily.Monospace,
-                                                    color = if (running) Color(0xFF047857) else BentoTextSecondary
+                                                    color = if (running) bento.green else bento.textSecondary
                                                 )
                                                 Spacer(modifier = Modifier.height(2.dp))
                                             }
@@ -721,13 +721,13 @@ fun BroadcastControlScreen(
                                                 "سجل الأخطاء (${uiState.ndiErrorEvents.size}):",
                                                 fontSize = 11.sp,
                                                 fontWeight = FontWeight.Bold,
-                                                color = BentoTextPrimary
+                                                color = bento.textPrimary
                                             )
                                             if (uiState.ndiErrorEvents.isEmpty()) {
                                                 Text(
                                                     "لا توجد أخطاء مسجلة — جميع المصادر تعمل بشكل طبيعي.",
                                                     fontSize = 10.sp,
-                                                    color = Color(0xFF047857)
+                                                    color = bento.green
                                                 )
                                             } else {
                                                 uiState.ndiErrorEvents.takeLast(20).reversed().forEach { e ->
@@ -735,7 +735,7 @@ fun BroadcastControlScreen(
                                                         "${e.time} • ${e.source}: ${e.message}",
                                                         fontSize = 9.sp,
                                                         fontFamily = FontFamily.Monospace,
-                                                        color = Color(0xFFB91C1C)
+                                                        color = bento.liveRed
                                                     )
                                                     Spacer(modifier = Modifier.height(2.dp))
                                                 }
@@ -758,13 +758,13 @@ fun BroadcastControlScreen(
                                     text = "٢. رابط بث الفيديو المباشر (Direct Video Stream / MJPEG في vMix و OBS):",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.SemiBold,
-                                    color = BentoTextPrimary
+                                    color = bento.textPrimary
                                 )
 
                                 Surface(
                                     shape = RoundedCornerShape(10.dp),
-                                    color = BentoCardWhite,
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, BentoBorder),
+                                    color = bento.card,
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, bento.border),
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Row(
@@ -779,14 +779,14 @@ fun BroadcastControlScreen(
                                             fontSize = 11.sp,
                                             fontFamily = FontFamily.Monospace,
                                             fontWeight = FontWeight.Bold,
-                                            color = Color(0xFF0D9488),
+                                            color = bento.green,
                                             modifier = Modifier.weight(1f)
                                         )
 
                                         val isCopied = copiedUrlType == "STREAM"
                                         Surface(
                                             shape = RoundedCornerShape(8.dp),
-                                            color = if (isCopied) Color(0xFF10B981) else Color(0xFF0D9488),
+                                            color = if (isCopied) bento.green else bento.green,
                                             modifier = Modifier
                                                 .clip(RoundedCornerShape(8.dp))
                                                 .clickable {
@@ -832,10 +832,10 @@ fun BroadcastControlScreen(
         // Card: All available URLs
         AllUrlsCard(
             baseUrl = uiState.serverUrl,
-            textPrimary = BentoTextPrimary,
-            textSecondary = BentoTextSecondary,
-            cardColor = BentoCardWhite,
-            borderColor = BentoBorder,
+            textPrimary = bento.textPrimary,
+            textSecondary = bento.textSecondary,
+            cardColor = bento.card,
+            borderColor = bento.border,
             onCopy = { label, url ->
                 val clip = ClipData.newPlainText("URL", url)
                 clipboard.setPrimaryClip(clip)
@@ -845,17 +845,17 @@ fun BroadcastControlScreen(
 
         // v1.8: vMix SetText push settings (LAN-only).
         VMixSettingsCard(
-            cardColor = BentoCardWhite,
-            borderColor = BentoBorder,
-            textPrimary = BentoTextPrimary,
-            textSecondary = BentoTextSecondary
+            cardColor = bento.card,
+            borderColor = bento.border,
+            textPrimary = bento.textPrimary,
+            textSecondary = bento.textSecondary
         )
 
         // Card: Keep Screen Awake
         Surface(
             shape = RoundedCornerShape(20.dp),
-            color = BentoCardWhite,
-            border = BorderStroke(1.dp, BentoBorder),
+            color = bento.card,
+            border = BorderStroke(1.dp, bento.border),
             modifier = Modifier.fillMaxWidth()
         ) {
             Row(
@@ -875,12 +875,12 @@ fun BroadcastControlScreen(
                         modifier = Modifier
                             .size(38.dp)
                             .clip(CircleShape)
-                            .background(if (uiState.isKeepScreenOn) BentoPrimaryContainer else BentoSurfaceVariant)
+                            .background(if (uiState.isKeepScreenOn) bento.primaryContainer else bento.surfaceVariant)
                     ) {
                         Icon(
                             imageVector = if (uiState.isKeepScreenOn) Icons.Default.LiveTv else Icons.Default.Tv,
                             contentDescription = null,
-                            tint = if (uiState.isKeepScreenOn) BentoPrimary else BentoTextSecondary,
+                            tint = if (uiState.isKeepScreenOn) bento.primary else bento.textSecondary,
                             modifier = Modifier.size(20.dp)
                         )
                     }
@@ -890,12 +890,12 @@ fun BroadcastControlScreen(
                             text = "إبقاء الشاشة مفعلة (Keep Screen Awake)",
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold,
-                            color = BentoTextPrimary
+                            color = bento.textPrimary
                         )
                         Text(
                             text = "يمنع خمول الشاشة أو توقف معالج الجهاز أثناء البث المباشر",
                             fontSize = 11.sp,
-                            color = BentoTextSecondary
+                            color = bento.textSecondary
                         )
                     }
                 }
@@ -905,7 +905,7 @@ fun BroadcastControlScreen(
                     onCheckedChange = { onToggleKeepScreenOn() },
                     colors = SwitchDefaults.colors(
                         checkedThumbColor = Color.White,
-                        checkedTrackColor = BentoPrimary
+                        checkedTrackColor = bento.primary
                     )
                 )
             }
@@ -914,8 +914,8 @@ fun BroadcastControlScreen(
         // Card 2: Network Interface Selector & IP Troubleshooter
         Surface(
             shape = RoundedCornerShape(24.dp),
-            color = BentoCardWhite,
-            border = androidx.compose.foundation.BorderStroke(1.dp, BentoBorder),
+            color = bento.card,
+            border = androidx.compose.foundation.BorderStroke(1.dp, bento.border),
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
@@ -928,7 +928,7 @@ fun BroadcastControlScreen(
                         Icon(
                             imageVector = Icons.Default.Router,
                             contentDescription = null,
-                            tint = BentoPrimary,
+                            tint = bento.primary,
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
@@ -936,14 +936,14 @@ fun BroadcastControlScreen(
                             text = "عناوين وبطاقات الشبكة المتاحة في الهاتف:",
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
-                            color = BentoTextPrimary
+                            color = bento.textPrimary
                         )
                     }
 
                     // Refresh Network Interfaces Button
                     Surface(
                         shape = RoundedCornerShape(12.dp),
-                        color = BentoSurfaceVariant,
+                        color = bento.surfaceVariant,
                         modifier = Modifier
                             .clip(RoundedCornerShape(12.dp))
                             .clickable(onClick = onRefreshInterfaces)
@@ -953,11 +953,11 @@ fun BroadcastControlScreen(
                             Icon(
                                 imageVector = Icons.Default.Refresh,
                                 contentDescription = "Refresh Interfaces",
-                                tint = BentoTextPrimary,
+                                tint = bento.textPrimary,
                                 modifier = Modifier.size(12.dp)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("تحديث", fontSize = 10.sp, color = BentoTextPrimary, fontWeight = FontWeight.Bold)
+                            Text("تحديث", fontSize = 10.sp, color = bento.textPrimary, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -968,23 +968,23 @@ fun BroadcastControlScreen(
                     Text(
                         text = "العنوان النشط حالياً: ${uiState.activeIpAddress}",
                         fontSize = 11.sp,
-                        color = BentoTextSecondary
+                        color = bento.textSecondary
                     )
                 } else {
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         uiState.availableInterfaces.forEach { iface ->
                             val isSelected = uiState.selectedInterface?.id == iface.id || uiState.activeIpAddress == iface.ip
                             val cardBg = when {
-                                isSelected -> BentoPrimaryContainer
-                                iface.isRecommended -> Color(0xFFF0FDF4)
-                                !iface.reachableFromLan -> Color(0xFFFEF2F2)
-                                else -> BentoSurfaceContainer
+                                isSelected -> bento.primaryContainer
+                                iface.isRecommended -> bento.green.copy(alpha = 0.12f)
+                                !iface.reachableFromLan -> bento.liveRed.copy(alpha = 0.12f)
+                                else -> bento.surfaceContainer
                             }
                             val borderCol = when {
-                                isSelected -> BentoPrimary
-                                iface.isRecommended -> Color(0xFF86EFAC)
-                                !iface.reachableFromLan -> Color(0xFFFECACA)
-                                else -> BentoBorder
+                                isSelected -> bento.primary
+                                iface.isRecommended -> bento.green
+                                !iface.reachableFromLan -> bento.liveRed
+                                else -> bento.border
                             }
 
                             Surface(
@@ -1009,7 +1009,7 @@ fun BroadcastControlScreen(
                                                 else -> Icons.Default.Info
                                             },
                                             contentDescription = null,
-                                            tint = if (isSelected) BentoPrimary else BentoTextSecondary,
+                                            tint = if (isSelected) bento.primary else bento.textSecondary,
                                             modifier = Modifier.size(16.dp)
                                         )
                                         Spacer(modifier = Modifier.width(8.dp))
@@ -1018,20 +1018,20 @@ fun BroadcastControlScreen(
                                                 text = iface.labelAr,
                                                 fontSize = 11.sp,
                                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                                color = if (isSelected) BentoOnPrimaryContainer else BentoTextPrimary
+                                                color = if (isSelected) bento.onPrimaryContainer else bento.textPrimary
                                             )
                                             if (iface.isRecommended) {
                                                 Text(
                                                     text = "✓ موصى به للربط مع كمبيوتر البث في نفس الراوتر",
                                                     fontSize = 9.sp,
-                                                    color = Color(0xFF15803D),
+                                                    color = bento.green,
                                                     fontWeight = FontWeight.SemiBold
                                                 )
                                             } else if (!iface.reachableFromLan) {
                                                 Text(
                                                     text = "⚠️ بيانات شريحة SIM (لا يمكن للكمبيوتر الوصول إليها)",
                                                     fontSize = 9.sp,
-                                                    color = Color(0xFFDC2626)
+                                                    color = bento.liveRed
                                                 )
                                             }
                                         }
@@ -1040,7 +1040,7 @@ fun BroadcastControlScreen(
                                     if (isSelected) {
                                         Surface(
                                             shape = RoundedCornerShape(8.dp),
-                                            color = BentoPrimary
+                                            color = bento.primary
                                         ) {
                                             Text(
                                                 text = "محدد",
@@ -1062,8 +1062,8 @@ fun BroadcastControlScreen(
                 // Connection Warning & Troubleshooting Explanation Banner
                 Surface(
                     shape = RoundedCornerShape(14.dp),
-                    color = Color(0xFFFFFBEB),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFDE68A)),
+                    color = Color(0xFFD97706).copy(alpha = 0.12f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFD97706)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
@@ -1079,7 +1079,7 @@ fun BroadcastControlScreen(
                                 text = "تنبيه هام للمتصفح وحل مشكلة عدم الاتصال (ERR_ADDRESS_UNREACHABLE):",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFF92400E)
+                                color = Color(0xFFD97706)
                             )
                         }
 
@@ -1089,21 +1089,21 @@ fun BroadcastControlScreen(
                             text = "١. في شريط عنوان المتصفح: اكتب http:// صراحة وليس https:// لأن الخادم يعمل محلياً داخل الشبكة بدون شهادة SSL خارجية. برامج vMix و OBS تتصل مباشرة وبسرعة فائقة بدون أي تنبيهات.",
                             fontSize = 10.sp,
                             lineHeight = 15.sp,
-                            color = Color(0xFF78350F)
+                            color = Color(0xFFD97706)
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = "٢. تأكد من اختيار عنوان Wi-Fi (يبدأ عادة بـ 192.168 أو 10.0) من القائمة أعلاه، وتجنب اختيار عنوان بيانات الشريحة (Cellular).",
                             fontSize = 10.sp,
                             lineHeight = 15.sp,
-                            color = Color(0xFF78350F)
+                            color = Color(0xFFD97706)
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = "٣. إذا كانت شبكة الواي فاي تفصل الأجهزة عن بعضها (AP Isolation)، شغّل (نقطة اتصال الهواتف المحمولة / Mobile Hotspot) في الهاتف واشبك كمبيوتر البث بها مباشرة، وسيعمل فوراً بدون مشاكل.",
                             fontSize = 10.sp,
                             lineHeight = 15.sp,
-                            color = Color(0xFF78350F)
+                            color = Color(0xFFD97706)
                         )
                     }
                 }
@@ -1113,8 +1113,8 @@ fun BroadcastControlScreen(
         // Card 3: Fullscreen Transparent Overlay Option
         Surface(
             shape = RoundedCornerShape(24.dp),
-            color = BentoPrimaryContainer,
-            border = androidx.compose.foundation.BorderStroke(1.dp, BentoSecondary),
+            color = bento.primaryContainer,
+            border = androidx.compose.foundation.BorderStroke(1.dp, bento.secondary),
             modifier = Modifier.fillMaxWidth()
         ) {
             Row(
@@ -1133,12 +1133,12 @@ fun BroadcastControlScreen(
                         modifier = Modifier
                             .size(42.dp)
                             .clip(RoundedCornerShape(12.dp))
-                            .background(BentoSurfaceContainer)
+                            .background(bento.surfaceContainer)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Tv,
                             contentDescription = null,
-                            tint = BentoPrimary,
+                            tint = bento.primary,
                             modifier = Modifier.size(24.dp)
                         )
                     }
@@ -1148,26 +1148,26 @@ fun BroadcastControlScreen(
                             text = "عرض الشاشة الشفافة الكامل",
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold,
-                            color = BentoOnPrimaryContainer
+                            color = bento.onPrimaryContainer
                         )
                         Text(
                             text = "HDMI capture or NDI Screen capture ready",
                             fontSize = 10.sp,
-                            color = BentoTextSecondary
+                            color = bento.textSecondary
                         )
                     }
                 }
 
                 Surface(
                     shape = RoundedCornerShape(16.dp),
-                    color = BentoPrimary,
+                    color = bento.primary,
                     modifier = Modifier
                         .clip(RoundedCornerShape(16.dp))
                         .clickable(onClick = onLaunchFullscreenOverlay)
                         .padding(horizontal = 14.dp, vertical = 8.dp)
                         .testTag("fullscreen_overlay_button")
                 ) {
-                    Text("عرض كامل", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BentoOnPrimary)
+                    Text("عرض كامل", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.onPrimary)
                 }
             }
         }
@@ -1175,21 +1175,21 @@ fun BroadcastControlScreen(
         // Card 4: OBS Studio Quick Setup Guide Card
         Surface(
             shape = RoundedCornerShape(24.dp),
-            color = BentoCardWhite,
-            border = androidx.compose.foundation.BorderStroke(1.dp, BentoBorder),
+            color = bento.card,
+            border = androidx.compose.foundation.BorderStroke(1.dp, bento.border),
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Surface(
                         shape = RoundedCornerShape(6.dp),
-                        color = BentoPrimary
+                        color = bento.primary
                     ) {
                         Text(
                             text = "OBS",
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
-                            color = BentoOnPrimary,
+                            color = bento.onPrimary,
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                         )
                     }
@@ -1198,7 +1198,7 @@ fun BroadcastControlScreen(
                         text = "طريقة الربط مع OBS Studio (3 خطوات سريعة):",
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
-                        color = BentoTextPrimary
+                        color = bento.textPrimary
                     )
                 }
 
@@ -1217,7 +1217,7 @@ fun BroadcastControlScreen(
                         text = step,
                         fontSize = 11.sp,
                         lineHeight = 17.sp,
-                        color = BentoTextSecondary,
+                        color = bento.textSecondary,
                         modifier = Modifier.padding(vertical = 2.dp)
                     )
                 }
@@ -1227,15 +1227,15 @@ fun BroadcastControlScreen(
         // Card 5: vMix Quick Setup Guide Card
         Surface(
             shape = RoundedCornerShape(24.dp),
-            color = BentoCardWhite,
-            border = androidx.compose.foundation.BorderStroke(1.dp, BentoBorder),
+            color = bento.card,
+            border = androidx.compose.foundation.BorderStroke(1.dp, bento.border),
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Surface(
                         shape = RoundedCornerShape(6.dp),
-                        color = Color(0xFF10B981)
+                        color = bento.green
                     ) {
                         Text(
                             text = "vMix",
@@ -1250,7 +1250,7 @@ fun BroadcastControlScreen(
                         text = "طريقة الربط مع vMix:",
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
-                        color = BentoTextPrimary
+                        color = bento.textPrimary
                     )
                 }
 
@@ -1268,7 +1268,7 @@ fun BroadcastControlScreen(
                         text = step,
                         fontSize = 11.sp,
                         lineHeight = 17.sp,
-                        color = BentoTextSecondary,
+                        color = bento.textSecondary,
                         modifier = Modifier.padding(vertical = 2.dp)
                     )
                 }
@@ -1279,7 +1279,7 @@ fun BroadcastControlScreen(
         Text(
             text = "Arabic Bible NDI v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE}) • ${BuildConfig.BUILD_DATE}",
             fontSize = 11.sp,
-            color = BentoTextSecondary,
+            color = bento.textSecondary,
             textAlign = TextAlign.Center,
             modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)
         )
@@ -1311,7 +1311,7 @@ private fun NdiSourceRow(
             modifier = Modifier
                 .size(8.dp)
                 .clip(CircleShape)
-                .background(if (active) Color(0xFF10B981) else Color(0xFF94A3B8))
+                .background(if (active) bento.green else bento.textSecondary)
         )
         Spacer(modifier = Modifier.width(8.dp))
         Column(modifier = Modifier.weight(1f)) {
@@ -1624,7 +1624,7 @@ private fun VMixSettingsCard(
                     Text(
                         it,
                         fontSize = 12.sp,
-                        color = if (it.startsWith("✓")) Color(0xFF16A34A) else Color(0xFFDC2626),
+                        color = if (it.startsWith("✓")) bento.green else bento.liveRed,
                         fontWeight = FontWeight.SemiBold
                     )
                 }

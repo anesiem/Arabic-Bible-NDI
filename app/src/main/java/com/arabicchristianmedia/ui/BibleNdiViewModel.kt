@@ -121,6 +121,19 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         // v1.9: frame providers are wired by NdiService (they resolve the server
         // lazily and capture no ViewModel state, so the feeds render headlessly
         // after an OS process kill).
+        // v1.9: if the broadcast is stopped from the notification while the app
+        // is open, the service tells us here so the UI doesn't stay stale.
+        viewModelScope.launch {
+            NdiService.externalStopEvents.collect {
+                _uiState.value = _uiState.value.copy(
+                    isServerRunning = false,
+                    isNativeNdiActive = false,
+                    isNativeShowActive = false,
+                    isLiveOnAir = false,
+                    statusMessage = "NDI Server Stopped"
+                )
+            }
+        }
         loadInitialDataAsync()
         refreshNetworkInterfaces()
         // startBroadcastServer() // DO NOT auto-start as per request 8? 

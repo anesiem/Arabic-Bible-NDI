@@ -21,6 +21,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 
 /**
@@ -203,6 +206,15 @@ class NdiService : Service() {
             try { server?.stop() } catch (e: Exception) { /* ignore */ }
         }
 
+        /**
+         * Emitted when the broadcast is stopped outside the ViewModel (the
+         * notification Stop action). The UI collects this to clear its stale
+         * "active" state. Buffer of 1, no replay: if nobody is collecting (app
+         * dead), the event is dropped — a fresh start reads the real state anyway.
+         */
+        private val _externalStopEvents = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+        val externalStopEvents: SharedFlow<Unit> = _externalStopEvents.asSharedFlow()
+
         private fun setBroadcastActive(context: Context, active: Boolean) {
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .edit().putBoolean(KEY_BROADCAST_ACTIVE, active).apply()
@@ -231,6 +243,7 @@ class NdiService : Service() {
                 try { sender?.stopAll() } catch (e: Exception) { /* ignore */ }
                 try { server?.stop() } catch (e: Exception) { /* ignore */ }
                 server = null
+                _externalStopEvents.tryEmit(Unit)
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
                 return START_NOT_STICKY
@@ -263,10 +276,15 @@ class NdiService : Service() {
                         try {
                             BibleRepository.initialize(this@NdiService)
                             val srv = ensureServer(this@NdiService)
-                            srv.restorePersistedRenderState(TemplateRepository(this@NdiService))
+                            val verseRestored = srv.restorePersistedRenderState(TemplateRepository(this@NdiService))
                             if (!srv.isRunning) srv.start()
-                            syncNativeSources(this@NdiService)
+                            val (lowerActive, fullActive) = syncNativeSources(this@NdiService)
                             refreshNotification(this@NdiService)
+                            Log.i(
+                                "NdiService",
+                                "Auto-resume complete: verseRestored=$verseRestored, " +
+                                    "isLive=${srv.isLive}, lower=$lowerActive, full=$fullActive"
+                            )
                         } catch (e: Exception) {
                             Log.e("NdiService", "Auto-resume failed", e)
                         }

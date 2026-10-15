@@ -430,8 +430,8 @@ class NdiNativeSender {
     // v1.9: per-feed send timing (downscale vs NDI encode). 1-line log per feed every
     // 300 frames. Sender threads converge here — guard the accumulator.
     private val sendTimingLock = Any()
-    private val sendTimingNs = mutableMapOf<String, LongArray>() // feedKey -> [downscaleNs, sendNs]
-    private val sendTimingFrames = mutableMapOf<String, Int>()
+    private val sendTimingNs = ConcurrentHashMap<String, LongArray>() // feedKey -> [downscaleNs, sendNs]
+    private val sendTimingFrames = ConcurrentHashMap<String, Int>()
     private fun recordSendTiming(feedKey: String, downscaleNs: Long, sendNs: Long) {
         synchronized(sendTimingLock) {
             val frames = (sendTimingFrames[feedKey] ?: 0) + 1

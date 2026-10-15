@@ -2024,8 +2024,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     // v1.9: frame-timing instrumentation — finds the real bottleneck (canvas draw vs
     // downscale vs NDI encode) with a 1-line log per feed every 300 frames. Keeps log
     // spam and hot-path overhead negligible; informs whether a GPU path is ever worth it.
-    private val drawTimingNs = mutableMapOf<Boolean, Long>()
-    private val drawTimingFrames = mutableMapOf<Boolean, Int>()
+    // v1.9: ConcurrentHashMap — the two sender threads write their own feed keys
+    // concurrently; a plain mutableMapOf risks lost updates/corruption.
+    private val drawTimingNs = ConcurrentHashMap<Boolean, Long>()
+    private val drawTimingFrames = ConcurrentHashMap<Boolean, Int>()
     private fun recordDrawTiming(isFull: Boolean, ns: Long) {
         val frames = (drawTimingFrames[isFull] ?: 0) + 1
         drawTimingFrames[isFull] = frames

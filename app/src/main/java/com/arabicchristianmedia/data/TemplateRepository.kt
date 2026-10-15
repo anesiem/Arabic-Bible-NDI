@@ -383,6 +383,44 @@ class TemplateRepository(context: Context) {
                 secondaryVerseFontSize = 28,
                 secondaryReferenceFontSize = 20,
                 bilingualSpacing = 16
+            ),
+            // v1.9: Full Show needs its own 100% transparent factory style — the
+            // style chooser filters by isFullScreen, so the Lower Third transparent
+            // style never appears on the Full Show tab.
+            LowerThirdTemplate(
+                id = "tpl_transparent_alpha_full",
+                name = "100% Transparent Alpha — Full Show",
+                isFullScreen = true,
+                style = TemplateStyle.TRANSPARENT_OUTLINE,
+                bgColorHex = "#000000",
+                bgOpacity = 0.0f, // PURE 100% TRANSPARENT BACKGROUND
+                accentColorHex = "#F59E0B",
+                textColorHex = "#FFFFFF",
+                referenceColorHex = "#FBBF24",
+                verseFontSize = 64,
+                referenceFontSize = 38,
+                fontFamily = "Amiri",
+                useEasternArabicNumerals = true,
+                useArabicPunctuation = true,
+                alignment = BroadcastTextAlignment.CENTER,
+                positionBottomPercent = 8,
+                horizontalMarginPercent = 5,
+                cornerRadiusDp = 0,
+                transition = TransitionType.FADE,
+                transitionDurationMs = 400,
+                showAccentBorder = false,
+                showDropShadow = false,
+                textShadowEnabled = true, // safe default: white text over video needs a shadow
+                textShadowColorHex = "#000000",
+                textShadowBlurDp = 10f,
+                textShadowOffsetDp = 5f,
+                textShadowAngleDeg = 90,
+                cardGlowEnabled = false, // safe default: no card on transparent styles
+                cardGlowColorHex = "#000000",
+                emblem = "✝",
+                languageMode = LanguageMode.ARABIC_ONLY,
+                isPureTransparentBackground = true,
+                streamBackgroundMode = StreamBackgroundMode.TRANSPARENT_ALPHA,
             )
         )
     }

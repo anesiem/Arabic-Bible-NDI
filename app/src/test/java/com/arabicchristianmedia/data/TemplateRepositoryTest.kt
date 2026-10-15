@@ -147,7 +147,7 @@ class TemplateRepositoryTest {
     @Test
     fun `factory styles carry explicit safe shadow and glow values`() {
         val defaults = TemplateRepository.DEFAULT_TEMPLATES
-        assertEquals(10, defaults.size)
+        assertEquals(11, defaults.size)
         defaults.forEach { tpl ->
             assertTrue(tpl.textShadowEnabled)
             assertTrue(tpl.textShadowColorHex.isNotBlank())
@@ -157,6 +157,8 @@ class TemplateRepositoryTest {
         // feeds promise 100% transparency. The card styles keep the glow.
         assertFalse(defaults.first { it.id == "tpl_transparent_alpha" }.cardGlowEnabled)
         assertFalse(defaults.first { it.id == "tpl_transparent_animated_video" }.cardGlowEnabled)
+        assertFalse(defaults.first { it.id == "tpl_transparent_alpha_full" }.cardGlowEnabled)
+        assertTrue(defaults.first { it.id == "tpl_transparent_alpha_full" }.isFullScreen)
         assertFalse(defaults.first { it.id == "tpl_upper_room" }.cardGlowEnabled)
         assertTrue(defaults.first { it.id == "tpl_modern_glass" }.cardGlowEnabled)
         assertTrue(defaults.first { it.id == "tpl_animated_gold" }.cardGlowEnabled)

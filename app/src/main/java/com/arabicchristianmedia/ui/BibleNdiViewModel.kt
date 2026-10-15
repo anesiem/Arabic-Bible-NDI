@@ -97,27 +97,27 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             )
     }
 
-    private val templateRepo = TemplateRepository(application)
+    private val templateRepo = TemplateRepository(getApplication())
     /**
      * v1.9: the broadcast server is owned by [NdiService] (foreground service) so
      * broadcasting survives backgrounding. Always resolve through the service
      * holder — never keep a second instance.
      */
     private val broadcastServer: NdiBroadcastServer
-        get() = NdiService.ensureServer(application)
+        get() = NdiService.ensureServer(getApplication())
     /**
      * v1.9: the NDI senders live in [NdiService] (foreground service) so the feeds
      * survive backgrounding and OS-kill auto-resume. Always resolve through the
      * service holder — never keep a second instance.
      */
     private val nativeSender: NdiNativeSender
-        get() = NdiService.ensureSender(application)
+        get() = NdiService.ensureSender(getApplication())
 
     private val _uiState = MutableStateFlow(BibleNdiUiState())
     val uiState: StateFlow<BibleNdiUiState> = _uiState.asStateFlow()
 
     init {
-        BibleRepository.initialize(application)
+        BibleRepository.initialize(getApplication())
         // v1.9: frame providers are wired by NdiService (they resolve the server
         // lazily and capture no ViewModel state, so the feeds render headlessly
         // after an OS process kill).
@@ -280,7 +280,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         // up yet — rehydration runs on its own thread), give it a moment to finish
         // before deciding whether the server state below gets reset or kept.
         // This runs on Dispatchers.IO; the wait is bounded and rare.
-        if (NdiService.isBroadcastActive(application) && !broadcastServer.isRunning) {
+        if (NdiService.isBroadcastActive(getApplication()) && !broadcastServer.isRunning) {
             val deadline = android.os.SystemClock.uptimeMillis() + 3000
             while (!broadcastServer.isRunning && android.os.SystemClock.uptimeMillis() < deadline) {
                 try { Thread.sleep(100) } catch (e: InterruptedException) { break }
@@ -321,7 +321,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         refreshNetworkInterfaces()
         _uiState.value = _uiState.value.copy(isNdiProtocolEnabled = true)
         // v1.9: run under the foreground service so the broadcast survives backgrounding.
-        NdiService.start(application)
+        NdiService.start(getApplication())
         val handleStarted: (String) -> Unit = { url ->
             val ip = broadcastServer.getLocalIpAddress()
             val streamUrl = broadcastServer.getStreamUrl()
@@ -365,7 +365,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         syncNativeSources()
         triggerAllFrames()
         // v1.9: keep the foreground notification's feed list truthful.
-        NdiService.refreshNotification(application)
+        NdiService.refreshNotification(getApplication())
         _uiState.value = _uiState.value.copy(statusMessage = "NDI Sources (Lower Third + Full Show) Started")
     }
 
@@ -383,7 +383,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             statusMessage = "All NDI Sources Stopped"
         )
         // v1.9: keep the foreground notification's feed list truthful.
-        NdiService.refreshNotification(application)
+        NdiService.refreshNotification(getApplication())
     }
 
     /**
@@ -391,7 +391,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
      * there (from the persisted feed specs) and reflects the result in UI state.
      */
     private fun syncNativeSources() {
-        val (lower, full) = NdiService.syncNativeSources(application)
+        val (lower, full) = NdiService.syncNativeSources(getApplication())
         _uiState.value = _uiState.value.copy(
             isNativeNdiActive = lower,
             isNativeShowActive = full
@@ -524,7 +524,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         syncNativeSources()
         triggerAllFrames()
         // v1.9: keep the foreground notification's feed list truthful.
-        NdiService.refreshNotification(application)
+        NdiService.refreshNotification(getApplication())
     }
 
     private fun triggerAllFrames() {
@@ -537,7 +537,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         try { broadcastServer.stop() } catch (e: Exception) { /* ignore */ }
         // v1.9: clears the auto-resume flag, drops the foreground notification,
         // and stops the service.
-        NdiService.stop(application)
+        NdiService.stop(getApplication())
         _uiState.value = _uiState.value.copy(
             isServerRunning = false,
             isNativeNdiActive = false,

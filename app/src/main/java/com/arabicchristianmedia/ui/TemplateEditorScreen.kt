@@ -134,6 +134,21 @@ fun TemplateEditorScreen(
         }
     }
 
+    var importText by remember { mutableStateOf("") }
+    var importError by remember { mutableStateOf<String?>(null) }
+    val jsonPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            try {
+                context.contentResolver.openInputStream(uri)?.bufferedReader()?.readText()?.let { text ->
+                    importText = text
+                    importError = null
+                } ?: run { importError = "تعذر قراءة الملف (could not read file)" }
+            } catch (e: Exception) {
+                importError = "تعذر قراءة الملف (could not read file)"
+            }
+        }
+    }
+
     val displayVerse = activeVerse ?: BibleVerse(
         id = "sample", bookId = "jhn", bookArabicName = "إنجيل يوحنا", bookEnglishName = "John", chapter = 3, verse = 16,
         arabicText = "لأَنَّهُ هكَذَا أَحَبَّ اللهُ الْعَالَمَ حَتَّى بَذَلَ ابْنَهُ الْوَحِيدَ، لِكَيْ لاَ يَهْلِكَ كُلُّ مَنْ يُؤْمِنُ بِهِ، بَلْ تَكُونُ لَهُ الْحَيَاةُ الأَبَدِيَّةُ.",
@@ -718,20 +733,6 @@ CollapsibleSection(
         // Import dialog: paste JSON or pick a .json file. Target null = new style,
         // otherwise the target style is updated in place (id preserved).
         if (showImportDialog) {
-            var importText by remember { mutableStateOf("") }
-            var importError by remember { mutableStateOf<String?>(null) }
-            val jsonPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-                if (uri != null) {
-                    try {
-                        context.contentResolver.openInputStream(uri)?.bufferedReader()?.readText()?.let { text ->
-                            importText = text
-                            importError = null
-                        } ?: run { importError = "تعذر قراءة الملف (could not read file)" }
-                    } catch (e: Exception) {
-                        importError = "تعذر قراءة الملف (could not read file)"
-                    }
-                }
-            }
             val targetName = importTargetTpl?.name
             AlertDialog(
                 onDismissRequest = { showImportDialog = false; importTargetTpl = null },
@@ -801,6 +802,7 @@ CollapsibleSection(
             )
         }
     }
+}
 
     /** Cache of Compose FontFamilies built from bundled asset fonts (editor + preview). */
     private val editorFontFamilyCache = ConcurrentHashMap<String, FontFamily>()
@@ -905,11 +907,9 @@ CollapsibleSection(
             if (expanded) {
                 content()
             }
-        
-                }
-HorizontalDivider(color = bento.borderSubtle, modifier = Modifier.padding(vertical = 4.dp))
+            HorizontalDivider(color = bento.borderSubtle, modifier = Modifier.padding(vertical = 4.dp))
+        }
     }
-}
 
 @Composable
 fun SliderWithLabel(label: String, value: Float, range: ClosedFloatingPointRange<Float>, onValueChange: (Float) -> Unit) {

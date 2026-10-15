@@ -118,20 +118,6 @@ fun BroadcastControlScreen(
         val sp = uiState.ndiSourceSpecs[feedKey] ?: NdiNativeSender.defaultSpec(feedKey)
         "$tier • ${sp.width}×${sp.height} @ ${sp.fps}fps"
     }
-    val bento.bg = bento.bg
-    val bento.card = bento.card
-    val bento.surfaceContainer = bento.surfaceContainer
-    val bento.surfaceVariant = bento.surfaceVariant
-    val bento.border = bento.border
-    val bento.borderSubtle = bento.borderSubtle
-    val bento.textPrimary = bento.textPrimary
-    val bento.textSecondary = bento.textSecondary
-    val bento.primary = bento.primary
-    val bento.onPrimary = bento.onPrimary
-    val bento.primaryContainer = bento.primaryContainer
-    val bento.onPrimaryContainer = bento.onPrimaryContainer
-    val bento.secondary = bento.secondary
-    val bento.onSecondary = bento.onSecondary
 
     var copiedUrlType by remember { mutableStateOf<String?>(null) }
     var showHelpGuide by remember { mutableStateOf(false) }
@@ -1301,6 +1287,7 @@ private fun NdiSourceRow(
     textSecondary: Color,
     onToggle: (String) -> Unit
 ) {
+    val bento = LocalBentoColors.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1516,6 +1503,7 @@ private fun VMixSettingsCard(
     textPrimary: Color,
     textSecondary: Color
 ) {
+    val bento = LocalBentoColors.current
     val context = androidx.compose.ui.platform.LocalContext.current
     val prefs = remember {
         context.getSharedPreferences("vmix_prefs", Context.MODE_PRIVATE)

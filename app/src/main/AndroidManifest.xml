@@ -9,6 +9,9 @@
     <!-- Held while broadcasting: keeps Wi-Fi at full performance and allows
          multicast (NDI discovery) on devices with Wi-Fi power saving. -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- v1.9: NDI broadcast runs in a foreground service so it survives backgrounding. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
     <application
         android:allowBackup="true"
@@ -35,6 +38,18 @@
             android:name=".ui.FullscreenOverlayActivity"
             android:exported="false"
             android:theme="@style/Theme.MyApplication" />
+
+        <!-- v1.9: owns the NDI/HTTP broadcast server; keeps it alive in background.
+             specialUse covers the local-network broadcast use case (no built-in
+             type fits); the subtype property documents it for reviewers. -->
+        <service
+            android:name=".server.NdiService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Local-network NDI video broadcast server for live church production" />
+        </service>
     </application>
 
 </manifest>

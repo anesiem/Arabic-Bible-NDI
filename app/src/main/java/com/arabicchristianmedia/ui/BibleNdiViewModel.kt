@@ -17,6 +17,7 @@ import com.arabicchristianmedia.model.LanguageMode
 import com.arabicchristianmedia.model.LowerThirdTemplate
 import com.arabicchristianmedia.model.Testament
 import com.arabicchristianmedia.server.NdiBroadcastServer
+import com.arabicchristianmedia.server.NdiService
 import com.arabicchristianmedia.server.NdiErrorEvent
 import com.arabicchristianmedia.server.NdiNativeSender
 import com.arabicchristianmedia.server.NdiSourceSpec
@@ -98,7 +99,13 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
     }
 
     private val templateRepo = TemplateRepository(application)
-    private val broadcastServer = NdiBroadcastServer(application, 8080)
+    /**
+     * v1.9: the broadcast server is owned by [NdiService] (foreground service) so
+     * broadcasting survives backgrounding. Always resolve through the service
+     * holder — never keep a second instance.
+     */
+    private val broadcastServer: NdiBroadcastServer
+        get() = NdiService.ensureServer(application)
     private val nativeSender = NdiNativeSender()
 
     private val _uiState = MutableStateFlow(BibleNdiUiState())
@@ -284,29 +291,38 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
     fun startBroadcastServer(port: Int = 8080) {
         refreshNetworkInterfaces()
         _uiState.value = _uiState.value.copy(isNdiProtocolEnabled = true)
-        broadcastServer.start(
-            onStarted = { url ->
-                val ip = broadcastServer.getLocalIpAddress()
-                val streamUrl = broadcastServer.getStreamUrl()
-                
-                // Native Sender management
-                syncNativeSources()
+        // v1.9: run under the foreground service so the broadcast survives backgrounding.
+        NdiService.start(application)
+        val handleStarted: (String) -> Unit = { url ->
+            val ip = broadcastServer.getLocalIpAddress()
+            val streamUrl = broadcastServer.getStreamUrl()
 
-                _uiState.value = _uiState.value.copy(
-                    isServerRunning = true,
-                    isNdiProtocolEnabled = true,
-                    serverUrl = url,
-                    streamUrl = streamUrl,
-                    activeIpAddress = ip,
-                    serverPort = port,
-                    statusMessage = "Broadcast Server Active"
-                )
-            }
-        ) { err ->
+            // Native Sender management
+            syncNativeSources()
+
+            _uiState.value = _uiState.value.copy(
+                isServerRunning = true,
+                isNdiProtocolEnabled = true,
+                serverUrl = url,
+                streamUrl = streamUrl,
+                activeIpAddress = ip,
+                serverPort = port,
+                statusMessage = "Broadcast Server Active"
+            )
+        }
+        val handleError: (String) -> Unit = { err ->
             _uiState.value = _uiState.value.copy(
                 isServerRunning = false,
                 statusMessage = "Server Error: $err"
             )
+        }
+        if (broadcastServer.isRunning) {
+            // The service auto-resumed the server after an OS process kill:
+            // start() would no-op without firing callbacks, so run the
+            // post-start work directly (this restarts the NDI senders).
+            handleStarted(broadcastServer.getServerUrl())
+        } else {
+            broadcastServer.start(onStarted = handleStarted, onError = handleError)
         }
     }
 
@@ -319,6 +335,8 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         persistNdiEnabled(NdiNativeSender.FEED_FULL, true)
         syncNativeSources()
         triggerAllFrames()
+        // v1.9: keep the foreground notification's feed list truthful.
+        NdiService.refreshNotification(application)
         _uiState.value = _uiState.value.copy(statusMessage = "NDI Sources (Lower Third + Full Show) Started")
     }
 
@@ -335,6 +353,8 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             isNativeShowActive = false,
             statusMessage = "All NDI Sources Stopped"
         )
+        // v1.9: keep the foreground notification's feed list truthful.
+        NdiService.refreshNotification(application)
     }
 
     private fun applyNdiSource(spec: NdiSourceSpec, enabled: Boolean, isFullScreen: Boolean): Boolean {
@@ -491,6 +511,8 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         persistNdiEnabled(NdiNativeSender.FEED_FULL, s.ndiFullShowEnabled)
         syncNativeSources()
         triggerAllFrames()
+        // v1.9: keep the foreground notification's feed list truthful.
+        NdiService.refreshNotification(application)
     }
 
     private fun triggerAllFrames() {
@@ -500,7 +522,10 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
 
     fun stopBroadcastServer() {
         nativeSender.stopAll()
-        broadcastServer.stop()
+        try { broadcastServer.stop() } catch (e: Exception) { /* ignore */ }
+        // v1.9: clears the auto-resume flag, drops the foreground notification,
+        // and stops the service.
+        NdiService.stop(application)
         _uiState.value = _uiState.value.copy(
             isServerRunning = false,
             isNativeNdiActive = false,

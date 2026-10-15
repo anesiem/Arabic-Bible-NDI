@@ -8,7 +8,6 @@ import androidx.lifecycle.viewModelScope
 import com.arabicchristianmedia.data.BibleRepository
 import com.arabicchristianmedia.data.TemplateRepository
 import com.arabicchristianmedia.model.AppThemeMode
-import com.arabicchristianmedia.model.AnimatedBackgroundType
 import com.arabicchristianmedia.model.BibleBook
 import com.arabicchristianmedia.model.BibleVerse
 import com.arabicchristianmedia.model.BibleVersion
@@ -106,40 +105,22 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
      */
     private val broadcastServer: NdiBroadcastServer
         get() = NdiService.ensureServer(application)
-    private val nativeSender = NdiNativeSender()
+    /**
+     * v1.9: the NDI senders live in [NdiService] (foreground service) so the feeds
+     * survive backgrounding and OS-kill auto-resume. Always resolve through the
+     * service holder — never keep a second instance.
+     */
+    private val nativeSender: NdiNativeSender
+        get() = NdiService.ensureSender(application)
 
     private val _uiState = MutableStateFlow(BibleNdiUiState())
     val uiState: StateFlow<BibleNdiUiState> = _uiState.asStateFlow()
 
     init {
         BibleRepository.initialize(application)
-        nativeSender.setFrameProvider { isFullScreen ->
-            if (isFullScreen) {
-                // Use a different rendering context or the same broadcastServer with different template
-                // To keep it simple, I'll update the broadcastServer to support dual rendering if needed,
-                // or just swap templates temporarily.
-                // Better: broadcastServer.renderCurrentFrame(1920, 1080, tpl = _uiState.value.activeShowTemplate)
-                broadcastServer.renderCurrentFrame(1920, 1080, isForStream = false, overrideTemplate = _uiState.value.activeShowTemplate)
-            } else {
-                broadcastServer.renderCurrentFrame(1920, 1080, isForStream = false)
-            }
-        }
-        // Dirty-frame detection: NDI senders only push when the version changes.
-        nativeSender.setFrameVersionProvider { broadcastServer.frameVersion }
-        // Motion mode: force-rerender animated backgrounds on a capped tick, reusing
-        // dedicated bitmaps (no per-tick allocation). Only ticks when the current
-        // template actually has animated content.
-        nativeSender.setMotionFrameProvider { isFullScreen ->
-            if (isFullScreen) {
-                broadcastServer.renderMotionFrame(overrideTemplate = _uiState.value.activeShowTemplate)
-            } else {
-                broadcastServer.renderMotionFrame()
-            }
-        }
-        nativeSender.setMotionContentProvider { isFullScreen ->
-            val tpl = if (isFullScreen) _uiState.value.activeShowTemplate else _uiState.value.activeTemplate
-            tpl.animatedBackground != AnimatedBackgroundType.NONE
-        }
+        // v1.9: frame providers are wired by NdiService (they resolve the server
+        // lazily and capture no ViewModel state, so the feeds render headlessly
+        // after an OS process kill).
         loadInitialDataAsync()
         refreshNetworkInterfaces()
         // startBroadcastServer() // DO NOT auto-start as per request 8? 
@@ -282,10 +263,45 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         )
         loadPersistedNdiSpecs()
 
-        broadcastServer.currentVerse = null
-        broadcastServer.isLive = false // Ensure server starts off-air
-        broadcastServer.currentTemplate = lowerWorking
-        broadcastServer.currentShowTemplate = showWorking
+        // v1.9: if the service is mid auto-resume (flag set but the server isn't
+        // up yet — rehydration runs on its own thread), give it a moment to finish
+        // before deciding whether the server state below gets reset or kept.
+        // This runs on Dispatchers.IO; the wait is bounded and rare.
+        if (NdiService.isBroadcastActive(application) && !broadcastServer.isRunning) {
+            val deadline = android.os.SystemClock.uptimeMillis() + 3000
+            while (!broadcastServer.isRunning && android.os.SystemClock.uptimeMillis() < deadline) {
+                try { Thread.sleep(100) } catch (e: InterruptedException) { break }
+            }
+        }
+
+        if (broadcastServer.isRunning) {
+            // v1.9: the service auto-resumed the broadcast while the app was dead
+            // (verse/styles/live rehydrated). Keep the server's state — do NOT
+            // force off-air — and sync the UI from it so the screen matches the
+            // NDI output.
+            val resumedVerse = broadcastServer.currentVerse
+            val resumedBook = resumedVerse?.let { BibleRepository.getBookById(it.bookId) }
+            val resumedVerses = resumedVerse?.let {
+                try { BibleRepository.getVerses(it.bookId, it.chapter) } catch (e: Exception) { verses }
+            } ?: verses
+            _uiState.value = _uiState.value.copy(
+                activeTemplate = broadcastServer.currentTemplate,
+                activeShowTemplate = broadcastServer.currentShowTemplate,
+                activeVerse = resumedVerse,
+                isLiveOnAir = broadcastServer.isLive && resumedVerse != null,
+                selectedBook = resumedBook ?: initialBook,
+                selectedChapter = resumedVerse?.chapter ?: initialChapter,
+                displayedVerses = resumedVerses,
+                statusMessage = if (resumedVerse != null && broadcastServer.isLive)
+                    "Broadcast auto-resumed after restart."
+                else "Ready. Tap a verse to go LIVE."
+            )
+        } else {
+            broadcastServer.currentVerse = null
+            broadcastServer.isLive = false // Ensure server starts off-air
+            broadcastServer.currentTemplate = lowerWorking
+            broadcastServer.currentShowTemplate = showWorking
+        }
     }
 
     fun startBroadcastServer(port: Int = 8080) {
@@ -357,29 +373,12 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         NdiService.refreshNotification(application)
     }
 
-    private fun applyNdiSource(spec: NdiSourceSpec, enabled: Boolean, isFullScreen: Boolean): Boolean {
-        return if (enabled) {
-            nativeSender.startSource(spec.feedKey, isFullScreen, spec)
-        } else {
-            nativeSender.stopSource(spec.feedKey)
-            false
-        }
-    }
-
+    /**
+     * v1.9: the senders live in NdiService; this delegates the start/stop work
+     * there (from the persisted feed specs) and reflects the result in UI state.
+     */
     private fun syncNativeSources() {
-        val state = _uiState.value
-        val specs = state.ndiSourceSpecs
-        val lower = applyNdiSource(
-            specs[NdiNativeSender.FEED_LOWER]
-                ?: NdiNativeSender.defaultSpec(NdiNativeSender.FEED_LOWER),
-            state.ndiLowerEnabled, false
-        )
-        val full = applyNdiSource(
-            specs[NdiNativeSender.FEED_FULL]
-                ?: NdiNativeSender.defaultSpec(NdiNativeSender.FEED_FULL),
-            state.ndiFullShowEnabled, true
-        )
-
+        val (lower, full) = NdiService.syncNativeSources(application)
         _uiState.value = _uiState.value.copy(
             isNativeNdiActive = lower,
             isNativeShowActive = full
@@ -1084,7 +1083,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
 
     override fun onCleared() {
         super.onCleared()
-        nativeSender.stopAll()
-        broadcastServer.stop()
+        // v1.9: instances live in NdiService now; stop them without creating new ones.
+        NdiService.stopAllIfPresent()
     }
 }

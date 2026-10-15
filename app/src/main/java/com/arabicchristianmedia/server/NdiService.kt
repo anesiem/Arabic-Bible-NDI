@@ -7,11 +7,21 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.util.Log
 import com.arabicchristianmedia.MainActivity
 import com.arabicchristianmedia.R
+import com.arabicchristianmedia.data.BibleRepository
+import com.arabicchristianmedia.data.TemplateRepository
+import com.arabicchristianmedia.model.AnimatedBackgroundType
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 
 /**
  * Foreground service that owns the [NdiBroadcastServer] so NDI/HTTP broadcasting
@@ -21,12 +31,12 @@ import com.arabicchristianmedia.R
  * - The service goes foreground only while broadcasting. A foreground service is
  *   the last thing the OS kills, and START_STICKY restarts it after a kill.
  * - "Broadcast active" is persisted in [PREFS]. An OS process kill auto-resumes
- *   the HTTP server on restart; the NDI senders are ViewModel-owned and restart
- *   when the app next opens (ViewModel init re-syncs them because the server
- *   reports isRunning). This repeats until the user explicitly stops/closes.
+ *   everything: the verse/styles/live state is rehydrated, the HTTP server
+ *   restarts, and both NDI senders come back with the persisted feed specs.
+ *   This repeats until the user explicitly stops or closes the app.
  * - The user closing the app (task swiped away, [onTaskRemoved]) or the Stop
- *   action/notification button clears the flag, stops the server, and stops
- *   the service.
+ *   action/notification button clears the flag, stops the senders and server,
+ *   and stops the service.
  *
  * v1.9 — background NDI (approved).
  */
@@ -91,20 +101,126 @@ class NdiService : Service() {
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .getBoolean(KEY_BROADCAST_ACTIVE, false)
 
+        /**
+         * The single shared NDI sender. Owns both genuine senders (Lower Third
+         * and Full Show). Lives here — not in the ViewModel — so the feeds keep
+         * rendering while the app is backgrounded and can auto-resume after an
+         * OS process kill. Never nulled on stop: the frame providers below are
+         * wired once and resolve the server lazily.
+         */
+        @Volatile
+        var sender: NdiNativeSender? = null
+            private set
+
+        /**
+         * Returns the shared sender, creating it on first use. Safe from any thread.
+         * Frame providers are wired at creation so they exist before the instance
+         * can ever reach a caller — no start-then-wire race.
+         */
+        @Synchronized
+        fun ensureSender(context: Context): NdiNativeSender {
+            return sender ?: NdiNativeSender().also {
+                sender = it
+                wireFrameProviders(context.applicationContext, it)
+            }
+        }
+
+        /**
+         * Wires the NDI sender's frame providers to the broadcast server. The server
+         * is resolved lazily through the volatile holder on every call so the
+         * providers never go stale if the server is recreated (stop → start).
+         * No ViewModel state is captured — everything comes from the server, which
+         * is what lets the feeds render headlessly after an OS process kill.
+         */
+        private fun wireFrameProviders(appCtx: Context, snd: NdiNativeSender) {
+            snd.setFrameProvider { isFullScreen ->
+                val srv = server ?: ensureServer(appCtx)
+                if (isFullScreen) {
+                    srv.renderCurrentFrame(1920, 1080, isForStream = false, overrideTemplate = srv.currentShowTemplate)
+                } else {
+                    srv.renderCurrentFrame(1920, 1080, isForStream = false)
+                }
+            }
+            // Dirty-frame detection: NDI senders only push when the version changes.
+            snd.setFrameVersionProvider { server?.frameVersion ?: 0L }
+            // Motion mode: force-rerender animated backgrounds on a capped tick.
+            snd.setMotionFrameProvider { isFullScreen ->
+                val srv = server ?: ensureServer(appCtx)
+                if (isFullScreen) {
+                    srv.renderMotionFrame(overrideTemplate = srv.currentShowTemplate)
+                } else {
+                    srv.renderMotionFrame()
+                }
+            }
+            snd.setMotionContentProvider { isFullScreen ->
+                val srv = server ?: return@setMotionContentProvider false
+                val tpl = if (isFullScreen) srv.currentShowTemplate else srv.currentTemplate
+                tpl.animatedBackground != AnimatedBackgroundType.NONE
+            }
+        }
+
+        /**
+         * Starts/stops the two NDI senders from the persisted feed specs
+         * (resolution/fps/enabled/motion in `bible_ndi_source_specs`).
+         * Returns (lowerActive, fullActive) so callers can reflect the result.
+         */
+        fun syncNativeSources(context: Context): Pair<Boolean, Boolean> {
+            val appCtx = context.applicationContext
+            val prefs = appCtx.getSharedPreferences("bible_ndi_source_specs", Context.MODE_PRIVATE)
+            val snd = ensureSender(appCtx)
+            val lower = applySource(prefs, snd, NdiNativeSender.FEED_LOWER, isFullScreen = false)
+            val full = applySource(prefs, snd, NdiNativeSender.FEED_FULL, isFullScreen = true)
+            return lower to full
+        }
+
+        private fun applySource(
+            prefs: SharedPreferences,
+            snd: NdiNativeSender,
+            feedKey: String,
+            isFullScreen: Boolean
+        ): Boolean {
+            val d = NdiNativeSender.defaultSpec(feedKey)
+            val w = prefs.getInt("${feedKey}_w", d.width)
+            val h = prefs.getInt("${feedKey}_h", d.height)
+            val fps = prefs.getInt("${feedKey}_fps", d.fps)
+            val motion = prefs.getBoolean("${feedKey}_motion", d.motionEnabled)
+            // Same validation as the app's initial load: stale values fall back to defaults.
+            val res = NdiNativeSender.RESOLUTION_OPTIONS.firstOrNull { it.first == w && it.second == h }
+                ?: (d.width to d.height)
+            val validFps = if (NdiNativeSender.FPS_OPTIONS.contains(fps)) fps else d.fps
+            val spec = NdiSourceSpec(feedKey, res.first, res.second, validFps, motion)
+            return if (prefs.getBoolean("${feedKey}_enabled", true)) {
+                snd.startSource(feedKey, isFullScreen, spec)
+            } else {
+                try { snd.stopSource(feedKey) } catch (e: Exception) { /* ignore */ }
+                false
+            }
+        }
+
+        /** Stops senders + server if they exist, without creating them. */
+        fun stopAllIfPresent() {
+            try { sender?.stopAll() } catch (e: Exception) { /* ignore */ }
+            try { server?.stop() } catch (e: Exception) { /* ignore */ }
+        }
+
         private fun setBroadcastActive(context: Context, active: Boolean) {
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .edit().putBoolean(KEY_BROADCAST_ACTIVE, active).apply()
         }
     }
 
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
-        // Reuse the ViewModel-created instance when present (normal start);
+        // Reuse the ViewModel-created instances when present (normal start);
         // otherwise this is an OS restart after a process kill — create our own
-        // so auto-resume has a server to start.
+        // so auto-resume has a server and senders. ensureSender wires the frame
+        // providers at creation.
         ensureServer(this)
+        ensureSender(this)
         createNotificationChannel()
     }
 
@@ -112,6 +228,7 @@ class NdiService : Service() {
         when (intent?.action) {
             ACTION_STOP -> {
                 setBroadcastActive(this, false)
+                try { sender?.stopAll() } catch (e: Exception) { /* ignore */ }
                 try { server?.stop() } catch (e: Exception) { /* ignore */ }
                 server = null
                 stopForeground(STOP_FOREGROUND_REMOVE)
@@ -128,20 +245,39 @@ class NdiService : Service() {
                 return START_NOT_STICKY
             }
             else -> {
-                // ACTION_START, or an OS restart (null action) after a process kill.
+                // ACTION_START, or an OS restart (null/unknown action) after a process kill.
+                val isOsRestart = intent?.action != ACTION_START
                 if (intent?.action == ACTION_START) setBroadcastActive(this, true)
                 if (!isBroadcastActive(this)) {
                     stopSelf()
                     return START_NOT_STICKY
                 }
-                // Make sure the HTTP server is up (idempotent): this is the
-                // auto-resume path after an OS kill. The NDI senders are
-                // ViewModel-owned; they restart when the app next opens because
-                // the ViewModel sees the server already running and re-syncs them.
-                try {
-                    server?.let { if (!it.isRunning) it.start() }
-                } catch (e: Exception) { /* ignore: retried on next app open */ }
+                // Foreground first: the restart timeout is satisfied before any I/O.
                 startForegroundNow()
+                if (isOsRestart) {
+                    // v1.9: full NDI auto-resume — rehydrate the last verse/styles,
+                    // then bring the HTTP server and both NDI senders back, all off
+                    // the main thread. The notification is already up; refresh it
+                    // once the feeds are live again.
+                    serviceScope.launch {
+                        try {
+                            BibleRepository.initialize(this@NdiService)
+                            val srv = ensureServer(this@NdiService)
+                            srv.restorePersistedRenderState(TemplateRepository(this@NdiService))
+                            if (!srv.isRunning) srv.start()
+                            syncNativeSources(this@NdiService)
+                            refreshNotification(this@NdiService)
+                        } catch (e: Exception) {
+                            Log.e("NdiService", "Auto-resume failed", e)
+                        }
+                    }
+                } else {
+                    // User-driven start: the ViewModel drives state from here.
+                    // Make sure the HTTP server is up (idempotent).
+                    try {
+                        server?.let { if (!it.isRunning) it.start() }
+                    } catch (e: Exception) { /* ignore: retried on next app open */ }
+                }
                 return START_STICKY
             }
         }
@@ -150,6 +286,7 @@ class NdiService : Service() {
     override fun onTaskRemoved(rootIntent: Intent?) {
         // The user swiped the app away = "closed the application": stop everything.
         setBroadcastActive(this, false)
+        try { sender?.stopAll() } catch (e: Exception) { /* ignore */ }
         try { server?.stop() } catch (e: Exception) { /* ignore */ }
         server = null
         stopForeground(STOP_FOREGROUND_REMOVE)
@@ -158,8 +295,10 @@ class NdiService : Service() {
     }
 
     override fun onDestroy() {
+        serviceScope.cancel()
         // Defensive: the server releases its socket, SSE clients, video decoders,
         // and the Wi-Fi/multicast locks inside stop().
+        try { sender?.stopAll() } catch (e: Exception) { /* ignore */ }
         try { server?.stop() } catch (e: Exception) { /* ignore */ }
         super.onDestroy()
     }

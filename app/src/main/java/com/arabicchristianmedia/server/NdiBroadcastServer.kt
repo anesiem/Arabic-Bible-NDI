@@ -1,6 +1,7 @@
 package com.arabicchristianmedia.server
 
 import android.content.Context
+import android.content.SharedPreferences
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
@@ -26,6 +27,8 @@ import android.text.TextPaint
 import android.text.style.AbsoluteSizeSpan
 import android.text.style.ForegroundColorSpan
 import com.arabicchristianmedia.data.ArabicTextFormatter
+import com.arabicchristianmedia.data.BibleRepository
+import com.arabicchristianmedia.data.TemplateRepository
 import com.arabicchristianmedia.model.AnimatedBackgroundType
 import com.arabicchristianmedia.model.ArabicFonts
 import com.arabicchristianmedia.model.BibleVerse
@@ -44,7 +47,6 @@ import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.ByteArrayOutputStream
 import java.io.File
-import java.io.FileInputStream
 import java.io.InputStreamReader
 import java.io.OutputStream
 import java.io.PrintWriter
@@ -132,6 +134,70 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
     @Volatile
     var currentShowTemplate: LowerThirdTemplate = LowerThirdTemplate(id = "default_show", name = "Default Show", isFullScreen = true)
+
+    // v1.9: persisted verse/live state — the only render state not already persisted
+    // elsewhere (style IDs live in TemplateRepository, feed specs in
+    // bible_ndi_source_specs). Lets NdiService fully resume the NDI feeds
+    // (same verse, same ON AIR/standby) after an OS process kill.
+    private val verseStatePrefs: SharedPreferences by lazy {
+        context.getSharedPreferences("bible_ndi_render_state", Context.MODE_PRIVATE)
+    }
+
+    private fun persistVerseState() {
+        try {
+            verseStatePrefs.edit()
+                .putString("verse_book_id", currentVerse?.bookId)
+                .putInt("verse_chapter", currentVerse?.chapter ?: -1)
+                .putInt("verse_number", currentVerse?.verse ?: -1)
+                .putBoolean("is_live", isLive)
+                .apply()
+        } catch (e: Exception) {
+            // Best-effort: a failed write just means auto-resume falls back to standby.
+        }
+    }
+
+    /**
+     * Restores the last persisted verse/styles/live state for OS-kill auto-resume.
+     * Call off the main thread (reads the Bible DB); the caller must have run
+     * `BibleRepository.initialize(context)` first. Style IDs come from the
+     * already-persisted TemplateRepository highlights. Returns true if a verse
+     * was restored (live or standby); false when there is nothing to show.
+     * [verseLookup] is injectable for tests; production passes the real repository.
+     */
+    fun restorePersistedRenderState(
+        templates: TemplateRepository,
+        verseLookup: (bookId: String, chapter: Int) -> List<BibleVerse> =
+            { bookId, chapter -> BibleRepository.getVerses(bookId, chapter) }
+    ): Boolean {
+        return try {
+            val all = templates.getAllTemplates()
+            val lowerTpl = all.firstOrNull { it.id == templates.getActiveTemplateId() && !it.isFullScreen }
+                ?: all.firstOrNull { !it.isFullScreen }
+            val showTpl = all.firstOrNull { it.id == templates.getActiveShowTemplateId() && it.isFullScreen }
+                ?: all.firstOrNull { it.isFullScreen }
+            if (lowerTpl != null) updateTemplate(lowerTpl)
+            if (showTpl != null) updateShowTemplate(showTpl)
+
+            val bookId = verseStatePrefs.getString("verse_book_id", null)
+            val chapter = verseStatePrefs.getInt("verse_chapter", -1)
+            val verseNum = verseStatePrefs.getInt("verse_number", -1)
+            val live = verseStatePrefs.getBoolean("is_live", false)
+            val verse = if (bookId != null && chapter >= 0 && verseNum >= 0) {
+                try {
+                    verseLookup(bookId, chapter).firstOrNull { it.verse == verseNum }
+                } catch (e: Exception) { null }
+            } else null
+            if (verse != null) {
+                updateVerse(verse, live = live)
+                true
+            } else {
+                setLiveState(false)
+                false
+            }
+        } catch (e: Exception) {
+            false
+        }
+    }
 
     var customIpOverride: String? = null
 
@@ -249,6 +315,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         isLive = live
         invalidateBitmapCache()
         broadcastStateToClients()
+        persistVerseState()
     }
 
     private var lastTemplateUpdateMs = 0L
@@ -352,6 +419,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         isLive = live
         invalidateBitmapCache()
         broadcastStateToClients()
+        persistVerseState()
     }
 
     private fun broadcastStateToClients() {

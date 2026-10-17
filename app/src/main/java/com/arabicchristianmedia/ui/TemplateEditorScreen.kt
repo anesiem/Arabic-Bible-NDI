@@ -383,6 +383,23 @@ CollapsibleSection(
                         }
                     }
 
+                    // v1.9: Card padding — breathing room between the card edge
+                    // and the text, per side. Honored by NDI, HTTP and preview.
+                    Text("حشوة البطاقة (Card Padding)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
+                    Spacer(Modifier.height(4.dp))
+                    SliderWithLabel("علوي (Top)", editingTemplate.cardPaddingTopDp, 0f..120f) { onUpdate(editingTemplate.copy(cardPaddingTopDp = it)) }
+                    SliderWithLabel("سفلي (Bottom)", editingTemplate.cardPaddingBottomDp, 0f..120f) { onUpdate(editingTemplate.copy(cardPaddingBottomDp = it)) }
+                    SliderWithLabel("أيسر (Left)", editingTemplate.cardPaddingLeftDp, 0f..160f) { onUpdate(editingTemplate.copy(cardPaddingLeftDp = it)) }
+                    SliderWithLabel("أيمن (Right)", editingTemplate.cardPaddingRightDp, 0f..160f) { onUpdate(editingTemplate.copy(cardPaddingRightDp = it)) }
+
+                    // v1.9: Auto-fit — shrink a too-long verse (with its citation
+                    // and English section) to fit the text box instead of
+                    // overflowing the card or screen. Short verses are untouched.
+                    FeatureToggleRow("ملاءمة تلقائية للنص (Auto-fit text)", editingTemplate.autoFitText) { onUpdate(editingTemplate.copy(autoFitText = it)) }
+                    if (editingTemplate.autoFitText) {
+                        SliderWithLabel("أصغر حجم للنص (Min size)", editingTemplate.autoFitMinVerseSp.toFloat(), 10f..80f) { onUpdate(editingTemplate.copy(autoFitMinVerseSp = it.toInt())) }
+                    }
+
                 
                 }
 HorizontalDivider(color = bento.borderSubtle)
@@ -1216,6 +1233,19 @@ fun FeatureToggleRow(label: String, checked: Boolean, onCheckedChange: (Boolean)
 fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, previewBg: PreviewBackground) {
     val bento = LocalBentoColors.current
     val context = LocalContext.current
+    // v1.9: preview honors auto-fit (approximation of the NDI/HTTP shrink).
+    // Heuristic: ~45 chars per preview line; budget 6 lines (lower) / 10 (full).
+    val previewFitScale = remember(template, verse) {
+        if (!template.autoFitText || template.verseFontSize <= 0) 1f
+        else {
+            val minRatio = (template.autoFitMinVerseSp.toFloat() / template.verseFontSize).coerceIn(0.2f, 1f)
+            val totalChars = verse.arabicText.length +
+                (if (template.languageMode != com.arabicchristianmedia.model.LanguageMode.ARABIC_ONLY) verse.englishText.length else 0)
+            val estLines = totalChars / 45f
+            val maxLines = if (template.isFullScreen) 10f else 6f
+            if (estLines <= maxLines) 1f else (maxLines / estLines).coerceIn(minRatio, 1f)
+        }
+    }
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -1322,7 +1352,14 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
                 modifier = cardGlowModifier.then(if (isFS) Modifier.fillMaxSize() else Modifier.fillMaxWidth().padding(horizontal = 8.dp))
             ) {
                 Column(
-                    modifier = if (isFS) Modifier.fillMaxSize().padding(14.dp) else Modifier.padding(10.dp),
+                    // v1.9: preview honors the style's per-side card padding
+                    // (was hardcoded 14/10dp), like NDI and HTTP.
+                    modifier = (if (isFS) Modifier.fillMaxSize() else Modifier).padding(
+                        start = (template.cardPaddingLeftDp * 0.4f).dp,
+                        end = (template.cardPaddingRightDp * 0.4f).dp,
+                        top = (template.cardPaddingTopDp * 0.4f).dp,
+                        bottom = (template.cardPaddingBottomDp * 0.4f).dp
+                    ),
                     verticalArrangement = if (isFS) Arrangement.Center else Arrangement.Top,
                     horizontalAlignment = when (template.alignment) {
                         BroadcastTextAlignment.CENTER -> Alignment.CenterHorizontally
@@ -1350,7 +1387,7 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
                             text = if (template.languageMode != com.arabicchristianmedia.model.LanguageMode.ENGLISH_ONLY)
                                 verse.getFormattedArabicCitation(template.useEasternArabicNumerals)
                             else verse.getFormattedEnglishCitation(),
-                            fontSize = (template.referenceFontSize * 0.42f).sp,
+                            fontSize = (template.referenceFontSize * 0.42f * previewFitScale).sp,
                             fontWeight = if (template.referenceIsBold) FontWeight.Bold else FontWeight.Normal,
                             fontStyle = if (template.referenceIsItalic) FontStyle.Italic else FontStyle.Normal,
                             fontFamily = previewFontFamily,
@@ -1365,8 +1402,8 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
                     // Arabic Verse Text
                     Text(
                         text = verse.arabicText,
-                        fontSize = (template.verseFontSize * 0.42f).sp,
-                        lineHeight = (template.verseFontSize * 0.55f).sp,
+                        fontSize = (template.verseFontSize * 0.42f * previewFitScale).sp,
+                        lineHeight = (template.verseFontSize * 0.55f * previewFitScale).sp,
                         fontWeight = if (template.verseIsBold) FontWeight.Bold else FontWeight.Normal,
                         fontStyle = if (template.verseIsItalic) FontStyle.Italic else FontStyle.Normal,
                         fontFamily = previewFontFamily,
@@ -1391,7 +1428,7 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
                                     withStyle(
                                         SpanStyle(
                                             color = secRefCol,
-                                            fontSize = (template.secondaryReferenceFontSize * 0.38f).sp,
+                                            fontSize = (template.secondaryReferenceFontSize * 0.38f * previewFitScale).sp,
                                             fontWeight = if (template.secondaryReferenceIsBold) FontWeight.Bold else FontWeight.Normal,
                                             fontStyle = if (template.secondaryReferenceIsItalic) FontStyle.Italic else FontStyle.Normal
                                         )
@@ -1399,7 +1436,7 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
                                         append(" (${verse.getFormattedEnglishCitation()})")
                                     }
                                 },
-                                fontSize = (template.secondaryVerseFontSize * 0.4f).sp,
+                                fontSize = (template.secondaryVerseFontSize * 0.4f * previewFitScale).sp,
                                 fontWeight = if (template.secondaryVerseIsBold) FontWeight.Bold else FontWeight.Normal,
                                 fontStyle = if (template.secondaryVerseIsItalic) FontStyle.Italic else FontStyle.Normal,
                                 color = secTextCol,

@@ -162,7 +162,29 @@ class VideoBackgroundRenderer(
             val bmp = frameBitmap
             if (bmp == null || bmp.isRecycled) return
             drawPaint.alpha = a
-            canvas.drawBitmap(bmp, null, dst, drawPaint)
+            // v1.9: "cover" — center-crop the frame to the card's aspect ratio
+            // instead of stretching it (matches the HTTP overlay's
+            // object-fit: cover). drawBitmap with a null src rect stretches.
+            val src: Rect? = run {
+                val dw = dst.width().coerceAtLeast(1)
+                val dh = dst.height().coerceAtLeast(1)
+                val bw = bmp.width.coerceAtLeast(1)
+                val bh = bmp.height.coerceAtLeast(1)
+                val dstAspect = dw.toFloat() / dh
+                val srcAspect = bw.toFloat() / bh
+                if (srcAspect > dstAspect) {
+                    // Frame wider than the card: crop the sides.
+                    val w = (bh * dstAspect).toInt().coerceIn(1, bw)
+                    val x = ((bw - w) / 2).coerceAtLeast(0)
+                    Rect(x, 0, x + w, bh)
+                } else {
+                    // Frame taller than the card: crop top/bottom.
+                    val h = (bw / dstAspect).toInt().coerceIn(1, bh)
+                    val y = ((bh - h) / 2).coerceAtLeast(0)
+                    Rect(0, y, bw, y + h)
+                }
+            }
+            canvas.drawBitmap(bmp, src, dst, drawPaint)
         }
     }
 

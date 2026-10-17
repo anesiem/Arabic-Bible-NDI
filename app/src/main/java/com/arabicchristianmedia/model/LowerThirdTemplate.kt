@@ -91,11 +91,6 @@ data class LowerThirdTemplate(
     val transition: TransitionType = TransitionType.SLIDE_UP,
     val transitionDurationMs: Int = 400,
     val showAccentBorder: Boolean = false,
-    /**
-     * Legacy single shadow switch, kept only for one-time JSON migration.
-     * New code must use [textShadowEnabled]/[cardGlowEnabled] instead.
-     */
-    val showDropShadow: Boolean = true,
     /** Independent text shadow on verse/citation text. */
     val textShadowEnabled: Boolean = true,
     val textShadowColorHex: String = "#000000",
@@ -146,4 +141,23 @@ data class LowerThirdTemplate(
      */
     val motionSpeed: Float = 1.0f,
     val streamBackgroundMode: StreamBackgroundMode = StreamBackgroundMode.TRANSPARENT_ALPHA,
+    /**
+     * v1.9: per-side card padding (dp) — the breathing room between the card
+     * edge and the text. Replaces the old hardcoded 36/32 paddings; defaults
+     * reproduce the pre-v1.9 look so existing styles migrate unchanged.
+     */
+    val cardPaddingTopDp: Float = 32f,
+    val cardPaddingBottomDp: Float = 32f,
+    val cardPaddingLeftDp: Float = 36f,
+    val cardPaddingRightDp: Float = 36f,
+    /**
+     * v1.9: shrink-to-fit. When true, a verse too long for the text box shrinks
+     * (verse, citation and English section together, preserving their ratio)
+     * until it fits — never below [autoFitMinVerseSp]. Short verses always
+     * render at the selected size. Off = the pre-v1.9 behavior (text may
+     * overflow the card/screen).
+     */
+    val autoFitText: Boolean = true,
+    /** v1.9: floor for [autoFitText] shrinking (sp, applied to the verse size). */
+    val autoFitMinVerseSp: Int = 28,
 )

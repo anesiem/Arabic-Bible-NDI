@@ -259,4 +259,95 @@ class TemplateRepositoryTest {
         assertNotNull(legacyFalse)
         assertEquals("", legacyFalse!!.emblem)
     }
+
+    @Test
+    fun `v1_9 padding and auto-fit fields round-trip through JSON`() {
+        val tpl = baseTemplate("pad1", false).copy(
+            cardPaddingTopDp = 10f,
+            cardPaddingBottomDp = 20f,
+            cardPaddingLeftDp = 30f,
+            cardPaddingRightDp = 40f,
+            autoFitText = false,
+            autoFitMinVerseSp = 36
+        )
+        val imported = repo.templateFromJsonString(repo.templateToJsonString(tpl))
+        assertNotNull(imported)
+        assertEquals(10f, imported!!.cardPaddingTopDp, 0.001f)
+        assertEquals(20f, imported.cardPaddingBottomDp, 0.001f)
+        assertEquals(30f, imported.cardPaddingLeftDp, 0.001f)
+        assertEquals(40f, imported.cardPaddingRightDp, 0.001f)
+        assertFalse(imported.autoFitText)
+        assertEquals(36, imported.autoFitMinVerseSp)
+    }
+
+    @Test
+    fun `v1_9 missing keys migrate to current-behavior defaults`() {
+        // Old JSON without the v1.9 keys: padding matches the old hardcoded
+        // 36/32 look, auto-fit defaults on.
+        val imported = repo.templateFromJsonString("{\"id\":\"old1\",\"name\":\"Old\"}")
+        assertNotNull(imported)
+        assertEquals(32f, imported!!.cardPaddingTopDp, 0.001f)
+        assertEquals(32f, imported.cardPaddingBottomDp, 0.001f)
+        assertEquals(36f, imported.cardPaddingLeftDp, 0.001f)
+        assertEquals(36f, imported.cardPaddingRightDp, 0.001f)
+        assertTrue(imported.autoFitText)
+        assertEquals(28, imported.autoFitMinVerseSp)
+    }
+
+    @Test
+    fun `v1_9 factory templates carry explicit padding and auto-fit values`() {
+        for (tpl in TemplateRepository.DEFAULT_TEMPLATES) {
+            assertEquals(tpl.id, 32f, tpl.cardPaddingTopDp, 0.001f)
+            assertEquals(tpl.id, 32f, tpl.cardPaddingBottomDp, 0.001f)
+            assertEquals(tpl.id, 36f, tpl.cardPaddingLeftDp, 0.001f)
+            assertEquals(tpl.id, 36f, tpl.cardPaddingRightDp, 0.001f)
+            assertTrue(tpl.id, tpl.autoFitText)
+            assertEquals(tpl.id, 28, tpl.autoFitMinVerseSp)
+        }
+    }
+
+    @Test
+    fun `v1_9 bold italic fields round-trip through JSON`() {
+        val tpl = baseTemplate("bi1", false).copy(
+            verseIsBold = false,
+            verseIsItalic = true,
+            referenceIsBold = false,
+            referenceIsItalic = true,
+            secondaryVerseIsBold = true,
+            secondaryVerseIsItalic = true,
+            secondaryReferenceIsBold = false,
+            secondaryReferenceIsItalic = false
+        )
+        val imported = repo.templateFromJsonString(repo.templateToJsonString(tpl))
+        assertNotNull(imported)
+        assertFalse(imported!!.verseIsBold)
+        assertTrue(imported.verseIsItalic)
+        assertFalse(imported.referenceIsBold)
+        assertTrue(imported.referenceIsItalic)
+        assertTrue(imported.secondaryVerseIsBold)
+        assertTrue(imported.secondaryVerseIsItalic)
+        assertFalse(imported.secondaryReferenceIsBold)
+        assertFalse(imported.secondaryReferenceIsItalic)
+    }
+
+    @Test
+    fun `v1_9 seven vivid presets exist with animated transparent backgrounds`() {
+        val vivid = TemplateRepository.DEFAULT_TEMPLATES.filter { it.id.startsWith("tpl_vivid_") }
+        assertEquals(7, vivid.size)
+        val expectedAnims = mapOf(
+            "tpl_vivid_neon_night" to com.arabicchristianmedia.model.AnimatedBackgroundType.PARTICLE_STARS,
+            "tpl_vivid_sunset_glory" to com.arabicchristianmedia.model.AnimatedBackgroundType.GOLDEN_PARTICLES,
+            "tpl_vivid_ocean_depth" to com.arabicchristianmedia.model.AnimatedBackgroundType.ETHEREAL_BLUE_WAVES,
+            "tpl_vivid_royal_amethyst" to com.arabicchristianmedia.model.AnimatedBackgroundType.ROYAL_PURPLE_SILK,
+            "tpl_vivid_emerald_oasis" to com.arabicchristianmedia.model.AnimatedBackgroundType.EMERALD_GARDEN_WAVES,
+            "tpl_vivid_golden_sanctuary" to com.arabicchristianmedia.model.AnimatedBackgroundType.GOLDEN_DIVINE_RAYS,
+            "tpl_vivid_crimson_dawn" to com.arabicchristianmedia.model.AnimatedBackgroundType.ROSE_DAWN_GLOW
+        )
+        for (tpl in vivid) {
+            assertEquals(tpl.id, expectedAnims[tpl.id], tpl.animatedBackground)
+            assertTrue(tpl.id, tpl.isPureTransparentBackground)
+            assertFalse(tpl.id, tpl.isFullScreen)
+            assertTrue(tpl.id, tpl.textShadowEnabled)
+        }
+    }
 }

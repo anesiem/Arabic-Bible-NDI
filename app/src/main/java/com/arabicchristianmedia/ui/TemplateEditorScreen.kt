@@ -30,15 +30,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -1425,19 +1422,7 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
                         Spacer(Modifier.height((template.bilingualSpacing * 0.2f).dp))
                         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
                             Text(
-                                text = buildAnnotatedString {
-                                    append(verse.englishText)
-                                    withStyle(
-                                        SpanStyle(
-                                            color = secRefCol,
-                                            fontSize = (template.secondaryReferenceFontSize * 0.38f * previewFitScale).sp,
-                                            fontWeight = if (template.secondaryReferenceIsBold) FontWeight.Bold else FontWeight.Normal,
-                                            fontStyle = if (template.secondaryReferenceIsItalic) FontStyle.Italic else FontStyle.Normal
-                                        )
-                                    ) {
-                                        append(" (${verse.getFormattedEnglishCitation()})")
-                                    }
-                                },
+                                text = verse.englishText,
                                 fontSize = (template.secondaryVerseFontSize * 0.4f * previewFitScale).sp,
                                 fontWeight = if (template.secondaryVerseIsBold) FontWeight.Bold else FontWeight.Normal,
                                 fontStyle = if (template.secondaryVerseIsItalic) FontStyle.Italic else FontStyle.Normal,
@@ -1449,6 +1434,24 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
                                 },
                                 modifier = Modifier.fillMaxWidth()
                             )
+                            // v1.9: English citation on its own line (matches NDI + HTTP).
+                            // BOTH mode only — in ENGLISH_ONLY it's already in the main citation row.
+                            if (template.languageMode == com.arabicchristianmedia.model.LanguageMode.BOTH) {
+                                Text(
+                                    text = "(${verse.getFormattedEnglishCitation()})",
+                                    fontSize = (template.secondaryReferenceFontSize * 0.38f * previewFitScale).sp,
+                                    fontWeight = if (template.secondaryReferenceIsBold) FontWeight.Bold else FontWeight.Normal,
+                                    fontStyle = if (template.secondaryReferenceIsItalic) FontStyle.Italic else FontStyle.Normal,
+                                    fontFamily = previewFontFamily,
+                                    color = secRefCol,
+                                    style = TextStyle(shadow = previewShadow),
+                                    textAlign = when (template.alignment) {
+                                        BroadcastTextAlignment.CENTER -> TextAlign.Center
+                                        else -> TextAlign.Left
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
                         }
                     }
                 }

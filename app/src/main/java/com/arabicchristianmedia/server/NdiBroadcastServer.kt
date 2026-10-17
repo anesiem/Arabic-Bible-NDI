@@ -20,12 +20,9 @@ import android.os.Build
 import android.os.SystemClock
 import android.util.Log
 import android.text.Layout
-import android.text.SpannableString
 import android.text.Spanned
 import android.text.StaticLayout
 import android.text.TextPaint
-import android.text.style.AbsoluteSizeSpan
-import android.text.style.ForegroundColorSpan
 import com.arabicchristianmedia.data.ArabicTextFormatter
 import com.arabicchristianmedia.data.BibleRepository
 import com.arabicchristianmedia.data.TemplateRepository
@@ -1539,6 +1536,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     private data class FittedTextLayouts(
         val primary: StaticLayout,
         val bilingualSecondary: StaticLayout?,
+        val secondaryCitation: StaticLayout?,
         val secHeight: Float,
         val citationHeight: Float,
         val contentH: Float,
@@ -1651,12 +1649,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         
         // Calculate bilingual secondary text if needed
         var secondaryLayout: StaticLayout? = null
+        var secondaryCitationLayout: StaticLayout? = null
         if (showEnglish) {
             // v1.8: In ENGLISH_ONLY, the citation is already in the main citation row.
-            // Don't duplicate it here. In BOTH mode, include it with the English verse.
+            // Don't duplicate it here. In BOTH mode, the English citation gets its
+            // own line below the English verse (matches the HTTP overlay).
             val isEnglishOnly = tpl.languageMode == LanguageMode.ENGLISH_ONLY
-            val citationText = if (isEnglishOnly) "" else " (" + activeVerse.getFormattedEnglishCitation() + ")"
-            val fullSecondaryText = activeVerse.englishText + citationText
+            val fullSecondaryText = activeVerse.englishText
             
             val secondaryTextPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = try { Color.parseColor(tpl.secondaryTextColorHex) } catch (e: Exception) { Color.LTGRAY }
@@ -1676,40 +1675,51 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 if (tpl.secondaryVerseIsItalic) textSkewX = -0.25f
             }
             
-            // Use Spannable to apply different color and size to English citation if needed
-            val spannable = SpannableString(fullSecondaryText)
-            val secRefColor = try { Color.parseColor(tpl.secondaryReferenceColorHex) } catch (e: Exception) { Color.GRAY }
-            val secRefSize = (tpl.secondaryReferenceFontSize * 2f * scale * fitRatio).toInt().coerceAtLeast(14)
-            
-            spannable.setSpan(
-                ForegroundColorSpan(secRefColor),
-                activeVerse.englishText.length,
-                fullSecondaryText.length,
-                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
-            )
-            spannable.setSpan(
-                AbsoluteSizeSpan(secRefSize),
-                activeVerse.englishText.length,
-                fullSecondaryText.length,
-                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
-            )
-            
-            // v1.8: English stays visually left-aligned for LEFT and RIGHT;
-            // only CENTER centers it (matches HTTP overlay + Compose preview).
+            // v1.9: English citation on its own line below the verse (was appended
+            // inline). Matches the HTTP overlay's separate english-citation div.
             val secAlignment = when (tpl.alignment) {
                 BroadcastTextAlignment.CENTER -> Layout.Alignment.ALIGN_CENTER
                 else -> Layout.Alignment.ALIGN_NORMAL // LTR English: NORMAL = left
             }
-            
+
             secondaryLayout = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                StaticLayout.Builder.obtain(spannable, 0, spannable.length, secondaryTextPaint, contentWidth)
+                StaticLayout.Builder.obtain(fullSecondaryText, 0, fullSecondaryText.length, secondaryTextPaint, contentWidth)
                     .setAlignment(secAlignment)
                     .setLineSpacing(4f * scale * fitRatio, 1.15f)
                     .setIncludePad(true)
                     .build()
             } else {
                 @Suppress("DEPRECATION")
-                StaticLayout(spannable, secondaryTextPaint, contentWidth, secAlignment, 1.15f, 4f * scale * fitRatio, true)
+                StaticLayout(fullSecondaryText, secondaryTextPaint, contentWidth, secAlignment, 1.15f, 4f * scale * fitRatio, true)
+            }
+
+            if (!isEnglishOnly) {
+                val secCitationText = "(" + activeVerse.getFormattedEnglishCitation() + ")"
+                val secCitationPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = try { Color.parseColor(tpl.secondaryReferenceColorHex) } catch (e: Exception) { Color.GRAY }
+                    textSize = (tpl.secondaryReferenceFontSize * 2f * scale * fitRatio).coerceAtLeast(14f)
+                    var citStyle = Typeface.NORMAL
+                    if (tpl.secondaryReferenceIsBold && tpl.secondaryReferenceIsItalic) citStyle = Typeface.BOLD_ITALIC
+                    else if (tpl.secondaryReferenceIsBold) citStyle = Typeface.BOLD
+                    else if (tpl.secondaryReferenceIsItalic) citStyle = Typeface.ITALIC
+                    typeface = getBestTypeface(tpl.secondaryFontFamily, citStyle)
+                    if (tpl.textShadowEnabled) {
+                        val shadowCol = try { Color.parseColor(tpl.textShadowColorHex) } catch (e: Exception) { Color.BLACK }
+                        setShadowLayer(shadowBlur, shadowDx, shadowDy, shadowCol)
+                    }
+                    isFakeBoldText = tpl.secondaryReferenceIsBold
+                    if (tpl.secondaryReferenceIsItalic) textSkewX = -0.25f
+                }
+                secondaryCitationLayout = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    StaticLayout.Builder.obtain(secCitationText, 0, secCitationText.length, secCitationPaint, contentWidth)
+                        .setAlignment(secAlignment)
+                        .setLineSpacing(4f * scale * fitRatio, 1.15f)
+                        .setIncludePad(true)
+                        .build()
+                } else {
+                    @Suppress("DEPRECATION")
+                    StaticLayout(secCitationText, secCitationPaint, contentWidth, secAlignment, 1.15f, 4f * scale * fitRatio, true)
+                }
             }
         }
 
@@ -1719,9 +1729,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // when BOTH languages are shown.
         val primary = staticLayout ?: secondaryLayout ?: return null
         val bilingualSecondary = if (staticLayout != null) secondaryLayout else null
-        val secHeight = if (bilingualSecondary != null) bilingualSecondary.height + bilSpacing else 0f
+        val secondaryCitation = if (staticLayout != null) secondaryCitationLayout else null
+        val secCitHeight = (secondaryCitation?.height ?: 0) + (4f * scale * fitRatio)
+        val secHeight = if (bilingualSecondary != null) bilingualSecondary.height + secCitHeight + bilSpacing else 0f
         val contentH = primary.height + citationHeight + secHeight
-        return FittedTextLayouts(primary, bilingualSecondary, secHeight, citationHeight, contentH)
+        return FittedTextLayouts(primary, bilingualSecondary, secondaryCitation, secHeight, citationHeight, contentH)
     }
 
     private fun renderFrame(width: Int = 1920, height: Int = 1080, isForStream: Boolean = false, overrideTemplate: LowerThirdTemplate? = null, allowSharedCache: Boolean): Bitmap {
@@ -2211,6 +2223,15 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             canvas.translate(translateX, secY)
             bilingualSecondary.draw(canvas)
             canvas.restore()
+            // v1.9: English citation on its own line below the verse (matches HTTP).
+            val secCitation = layouts.secondaryCitation
+            if (secCitation != null) {
+                val citY = secY + bilingualSecondary.height + (4f * scale)
+                canvas.save()
+                canvas.translate(translateX, citY)
+                secCitation.draw(canvas)
+                canvas.restore()
+            }
         }
 
         if (!isLive && isForStream) {

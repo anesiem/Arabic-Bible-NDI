@@ -1286,7 +1286,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       }
 
       // 100% transparent toggle behaves like the transparent style (mirrors the NDI canvas).
-      if (data.style === 'TRANSPARENT_OUTLINE' || data.isPureTransparentBackground) {
+      if (data.isPureTransparentBackground) { // v1.9: toggle is the single authority (was: style check overrode it)
         cardBox.style.backgroundColor = 'transparent';
         cardBox.style.backdropFilter = 'none';
         cardBox.style.border = 'none';
@@ -1881,7 +1881,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // v1.8: Card glow drawn FIRST (behind video/card) so it appears as an
         // outer halo without covering the video. The glow expands beyond the
         // card bounds; drawing it first lets the video/card cover the inner part.
-        if (!tpl.isPureTransparentBackground && tpl.style != TemplateStyle.TRANSPARENT_OUTLINE) {
+        if (!tpl.isPureTransparentBackground) { // v1.9: toggle is the single authority (was: style check overrode it)
             if (tpl.cardGlowEnabled && !tpl.isFullScreen) {
                 val glowCol = try { Color.parseColor(tpl.cardGlowColorHex) } catch (e: Exception) { Color.BLACK }
                 val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -1931,7 +1931,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             synchronized(videoRenderers) { videoRenderers[isFull]?.pause() }
         }
 
-        if (!tpl.isPureTransparentBackground && tpl.style != TemplateStyle.TRANSPARENT_OUTLINE) {
+        if (!tpl.isPureTransparentBackground) { // v1.9: toggle is the single authority (was: style check overrode it)
             val bgAlpha = (tpl.bgOpacity * 255).toInt().coerceIn(0, 255)
             val baseBgCol = try { Color.parseColor(tpl.bgColorHex) } catch (e: Exception) { Color.DKGRAY }
 

@@ -465,7 +465,8 @@ CollapsibleSection(
                 }
 CollapsibleSection(
                     title = "تنسيق الخط الإنجليزي (English Typography)",
-                    initiallyExpanded = false
+                    initiallyExpanded = editingTemplate.languageMode != com.arabicchristianmedia.model.LanguageMode.ARABIC_ONLY,
+                    syncKey = editingTemplate.id to editingTemplate.languageMode
                 ) {
                     
                         // English Verse Controls
@@ -898,10 +899,14 @@ CollapsibleSection(
     fun CollapsibleSection(
         title: String,
         initiallyExpanded: Boolean = true,
+        syncKey: Any? = null,
         content: @Composable () -> Unit
     ) {
         val bento = LocalBentoColors.current
-        var expanded by remember { mutableStateOf(initiallyExpanded) }
+        // v1.9: syncKey re-seeds the expanded state when the template (or its
+        // language mode) changes — e.g. English Typography auto-expands when
+        // the style has English. Manual toggles are preserved otherwise.
+        var expanded by remember(syncKey) { mutableStateOf(initiallyExpanded) }
         Column {
             Row(
                 modifier = Modifier

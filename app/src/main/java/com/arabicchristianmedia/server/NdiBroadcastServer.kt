@@ -1131,7 +1131,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         cardBox.style.flexDirection = 'column';
         cardBox.style.justifyContent = 'center';
         cardBox.style.margin = '0 auto';
-        cardBox.style.padding = padT + 'px ' + padR + 'px ' + padB + 'px ' + padL + 'px';
+        cardBox.style.padding = padT + ' ' + padR + ' ' + padB + ' ' + padL;
         cardBox.style.width = '100%';
         cardBox.style.maxWidth = '100%';
         cardBox.style.height = '100%';
@@ -1250,7 +1250,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
       const radius = isFull ? '0' : (data.cornerRadiusDp || 16) + 'px';
       cardBox.style.borderRadius = radius;
-      if (!isFull) cardBox.style.padding = padT + 'px ' + padR + 'px ' + padB + 'px ' + padL + 'px';
+      if (!isFull) cardBox.style.padding = padT + ' ' + padR + ' ' + padB + ' ' + padL;
 
       // Independent card glow + text shadow (v1.6): each flag works on its own,
       // in both Lower Third and Full Show.

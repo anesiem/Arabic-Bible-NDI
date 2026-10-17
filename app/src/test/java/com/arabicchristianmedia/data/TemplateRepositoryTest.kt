@@ -147,7 +147,7 @@ class TemplateRepositoryTest {
     @Test
     fun `factory styles carry explicit safe shadow and glow values`() {
         val defaults = TemplateRepository.DEFAULT_TEMPLATES
-        assertEquals(11, defaults.size)
+        assertEquals(18, defaults.size)
         defaults.forEach { tpl ->
             assertTrue(tpl.textShadowEnabled)
             assertTrue(tpl.textShadowColorHex.isNotBlank())
@@ -284,7 +284,7 @@ class TemplateRepositoryTest {
     fun `v1_9 missing keys migrate to current-behavior defaults`() {
         // Old JSON without the v1.9 keys: padding matches the old hardcoded
         // 36/32 look, auto-fit defaults on.
-        val imported = repo.templateFromJsonString("{\"id\":\"old1\",\"name\":\"Old\"}")
+        val imported = repo.templateFromJsonString("{\"id\":\"old1\",\"name\":\"Old\",\"style\":\"CARD_OVERLAY\"}")
         assertNotNull(imported)
         assertEquals(32f, imported!!.cardPaddingTopDp, 0.001f)
         assertEquals(32f, imported.cardPaddingBottomDp, 0.001f)

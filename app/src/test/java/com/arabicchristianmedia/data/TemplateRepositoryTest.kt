@@ -147,7 +147,7 @@ class TemplateRepositoryTest {
     @Test
     fun `factory styles carry explicit safe shadow and glow values`() {
         val defaults = TemplateRepository.DEFAULT_TEMPLATES
-        assertEquals(18, defaults.size)
+        assertEquals(38, defaults.size)
         defaults.forEach { tpl ->
             assertTrue(tpl.textShadowEnabled)
             assertTrue(tpl.textShadowColorHex.isNotBlank())
@@ -284,7 +284,7 @@ class TemplateRepositoryTest {
     fun `v1_9 missing keys migrate to current-behavior defaults`() {
         // Old JSON without the v1.9 keys: padding matches the old hardcoded
         // 36/32 look, auto-fit defaults on.
-        val imported = repo.templateFromJsonString("{\"id\":\"old1\",\"name\":\"Old\",\"style\":\"CARD_OVERLAY\"}")
+        val imported = repo.templateFromJsonString("{\"id\":\"old1\",\"name\":\"Old\"}")
         assertNotNull(imported)
         assertEquals(32f, imported!!.cardPaddingTopDp, 0.001f)
         assertEquals(32f, imported.cardPaddingBottomDp, 0.001f)
@@ -331,8 +331,7 @@ class TemplateRepositoryTest {
     }
 
     @Test
-    fun `v1_9 seven vivid presets exist with animated transparent backgrounds`() {
-        val vivid = TemplateRepository.DEFAULT_TEMPLATES.filter { it.id.startsWith("tpl_vivid_") }
+    fun `v1_9 seven vivid presets exist with animated transparent backgrounds`() {        val vivid = TemplateRepository.DEFAULT_TEMPLATES.filter { it.id.startsWith("tpl_vivid_") }
         assertEquals(7, vivid.size)
         val expectedAnims = mapOf(
             "tpl_vivid_neon_night" to com.arabicchristianmedia.model.AnimatedBackgroundType.PARTICLE_STARS,
@@ -348,6 +347,28 @@ class TemplateRepositoryTest {
             assertTrue(tpl.id, tpl.isPureTransparentBackground)
             assertFalse(tpl.id, tpl.isFullScreen)
             assertTrue(tpl.id, tpl.textShadowEnabled)
+        }
+    }
+
+    @Test
+    fun `v1_9 twenty new presets cover both feeds with language mix`() {
+        val lt = TemplateRepository.DEFAULT_TEMPLATES.filter { it.id.startsWith("tpl_lt_") }
+        val fs = TemplateRepository.DEFAULT_TEMPLATES.filter { it.id.startsWith("tpl_fs_") }
+        assertEquals(10, lt.size)
+        assertEquals(10, fs.size)
+        for (tpl in lt) assertFalse(tpl.id, tpl.isFullScreen)
+        for (tpl in fs) assertTrue(tpl.id, tpl.isFullScreen)
+        // Language mix per feed: 4 Arabic-only, 3 English-only, 3 Both.
+        for ((group, label) in listOf(lt to "lt", fs to "fs")) {
+            val langs = group.groupingBy { it.languageMode }.eachCount()
+            assertEquals(label, 4, langs[com.arabicchristianmedia.model.LanguageMode.ARABIC_ONLY])
+            assertEquals(label, 3, langs[com.arabicchristianmedia.model.LanguageMode.ENGLISH_ONLY])
+            assertEquals(label, 3, langs[com.arabicchristianmedia.model.LanguageMode.BOTH])
+        }
+        // Full Show presets use large centered text.
+        for (tpl in fs) {
+            assertTrue(tpl.id, tpl.verseFontSize >= 56)
+            assertEquals(tpl.id, com.arabicchristianmedia.model.BroadcastTextAlignment.CENTER, tpl.alignment)
         }
     }
 }

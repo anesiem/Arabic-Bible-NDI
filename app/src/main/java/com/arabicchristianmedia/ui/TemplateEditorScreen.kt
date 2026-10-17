@@ -78,9 +78,10 @@ fun TemplateEditorScreen(
     onExportTemplate: (String) -> String?,
     onUpdateTemplateFromJson: (String, String, Boolean) -> Boolean,
     onImportNewTemplate: (String, Boolean) -> Boolean,
+    editorTab: Int,
+    onEditorTabChange: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var editorTab by remember { mutableIntStateOf(0) } // 0: Lower Third, 1: Full Show
     var showSaveDialog by remember { mutableStateOf(false) }
     var templateToDelete by remember { mutableStateOf<LowerThirdTemplate?>(null) }
     var styleMenuTpl by remember { mutableStateOf<LowerThirdTemplate?>(null) } // long-press actions menu
@@ -189,8 +190,8 @@ fun TemplateEditorScreen(
             modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
         )
         Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(bento.surfaceVariant).padding(4.dp)) {
-            EditorTabItem("طبقة البث السفلى (Lower Third)", editorTab == 0, { editorTab = 0 }, Modifier.weight(1f))
-            EditorTabItem("العرض الكامل (Full Show Projector)", editorTab == 1, { editorTab = 1 }, Modifier.weight(1f))
+            EditorTabItem("طبقة البث السفلى (Lower Third)", editorTab == 0, { onEditorTabChange(0) }, Modifier.weight(1f))
+            EditorTabItem("العرض الكامل (Full Show Projector)", editorTab == 1, { onEditorTabChange(1) }, Modifier.weight(1f))
         }
 
         Spacer(Modifier.height(12.dp))

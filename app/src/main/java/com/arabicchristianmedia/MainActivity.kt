@@ -57,6 +57,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -99,7 +100,10 @@ class MainActivity : ComponentActivity() {
             MyApplicationTheme(themeMode = uiState.appThemeMode) {
                 val bento = LocalBentoColors.current
                 val snackbarHostState = remember { SnackbarHostState() }
-                var selectedTab by remember { mutableIntStateOf(0) }
+                var selectedTab by rememberSaveable { mutableIntStateOf(0) }
+                // v1.9: editor sub-tab (Lower Third / Full Show) hoisted here so it
+                // survives both rotation and main-tab switches.
+                var editorTab by rememberSaveable { mutableIntStateOf(0) }
                 val context = LocalContext.current
 
                 LaunchedEffect(uiState.statusMessage) {
@@ -315,7 +319,9 @@ class MainActivity : ComponentActivity() {
                                 onDeleteTemplate = { id, isFull -> viewModel.deleteTemplate(id, isFull) },
                                 onExportTemplate = { id -> viewModel.exportTemplateJson(id) },
                                 onUpdateTemplateFromJson = { id, json, isFull -> viewModel.updateTemplateFromJson(id, json, isFull) },
-                                onImportNewTemplate = { json, isFull -> viewModel.importNewTemplate(json, isFull) }
+                                onImportNewTemplate = { json, isFull -> viewModel.importNewTemplate(json, isFull) },
+                                editorTab = editorTab,
+                                onEditorTabChange = { editorTab = it }
                             )
                             2 -> BroadcastControlScreen(
                                 uiState = uiState,

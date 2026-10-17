@@ -329,9 +329,6 @@ CollapsibleSection(
                         fontSize = 11.sp, color = bento.textSecondary
                     )
                     FeatureToggleRow("خلفية شفافة تماماً 100% Alpha", editingTemplate.isPureTransparentBackground) { onUpdate(editingTemplate.copy(isPureTransparentBackground = it)) }
-                    if (!editingTemplate.isPureTransparentBackground) {
-                        SliderWithLabel("درجة شفافية الكارت (Background Opacity)", editingTemplate.bgOpacity, 0f..1f) { onUpdate(editingTemplate.copy(bgOpacity = it)) }
-                    }
                     FontDropdown(
                         selected = editingTemplate.fontFamily,
                         onSelect = { onUpdate(editingTemplate.copy(fontFamily = it)) }

@@ -96,9 +96,6 @@ android {
   testOptions {
     unitTests {
       isIncludeAndroidResources = true
-      // v1.9: silence Robolectric's java.lang.System::load restricted-access
-      // warnings on newer JDKs (becomes a hard error in a future release).
-      all { jvmArgs("--enable-native-access=ALL-UNNAMED") }
     }
   }
   dependenciesInfo {
@@ -198,4 +195,8 @@ dependencies {
   debugImplementation(libs.androidx.compose.ui.tooling)
   "ksp"(libs.androidx.room.compiler)
   "ksp"(libs.moshi.kotlin.codegen)
+}
+
+tasks.withType<Test> {
+  jvmArgs("--enable-native-access=ALL-UNNAMED")
 }

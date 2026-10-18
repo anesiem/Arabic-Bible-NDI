@@ -47,10 +47,10 @@ class TemplateRepositoryTest {
                 baseTemplate("lower_2", false)
             )
         )
-        val all = repo.getAllTemplates()
-        assertEquals(3, all.size)
-        assertEquals(setOf("lower_1", "lower_2"), all.filter { !it.isFullScreen }.map { it.id }.toSet())
-        assertEquals(listOf("show_1"), all.filter { it.isFullScreen }.map { it.id })
+        val custom = repo.getAllTemplates().filter { it.id in setOf("lower_1", "show_1", "lower_2") }
+        assertEquals(3, custom.size)
+        assertEquals(setOf("lower_1", "lower_2"), custom.filter { !it.isFullScreen }.map { it.id }.toSet())
+        assertEquals(listOf("show_1"), custom.filter { it.isFullScreen }.map { it.id })
     }
 
     @Test

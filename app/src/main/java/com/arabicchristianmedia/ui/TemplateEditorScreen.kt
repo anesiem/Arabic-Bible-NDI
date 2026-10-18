@@ -157,7 +157,6 @@ fun TemplateEditorScreen(
         // 1. Header & Quick Actions (responsive: compact icon actions on narrow
         // screens so the title never crushes the buttons under large fonts)
         BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-            val compactHeader = maxWidth < 420.dp
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text("محرر القوالب والتصاميم (Template Editor)", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -165,15 +164,8 @@ fun TemplateEditorScreen(
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = { onResetDefaults(editorTab == 1) }) { Icon(Icons.Default.Refresh, "إعادة تعيين", tint = bento.primary) }
-                    if (compactHeader) {
-                        IconButton(onClick = { newTemplateName = "${editingTemplate.name} النسخة"; showSaveDialog = true }) {
-                            Icon(Icons.Default.Add, "حفظ كقالب جديد", tint = bento.primary)
-                        }
-                    } else {
-                        Button(onClick = { newTemplateName = "${editingTemplate.name} النسخة"; showSaveDialog = true }, colors = ButtonDefaults.buttonColors(containerColor = bento.primary)) {
-                            Icon(Icons.Default.Add, null, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(6.dp)); Text("حفظ كقالب جديد", fontSize = 12.sp, maxLines = 1)
-                        }
-                    }
+                    // v1.9: header save button removed — the single save action lives
+                    // in Quick Setup below, next to the style picker.
                 }
             }
         }
@@ -327,12 +319,8 @@ CollapsibleSection(
                         fontSize = 11.sp, color = bento.textSecondary
                     )
                     FeatureToggleRow("خلفية شفافة تماماً 100% Alpha", editingTemplate.isPureTransparentBackground) { onUpdate(editingTemplate.copy(isPureTransparentBackground = it)) }
-                    FontDropdown(
-                        selected = editingTemplate.fontFamily,
-                        onSelect = { onUpdate(editingTemplate.copy(fontFamily = it)) }
-                    )
-                    SliderWithLabel("حجم النص (Text Size)", editingTemplate.verseFontSize.toFloat(), 10f..180f) { onUpdate(editingTemplate.copy(verseFontSize = it.toInt())) }
-                    ColorGradePickerRow("لون النص (Text Color)", editingTemplate.textColorHex, { onUpdate(editingTemplate.copy(textColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
+                    // v1.9: font, size, color removed from Quick Setup (were duplicated
+                    // in Typography sections). Quick Setup = transparency + save only.
                     Button(
                         onClick = { newTemplateName = "${editingTemplate.name} النسخة"; showSaveDialog = true },
                         colors = ButtonDefaults.buttonColors(containerColor = bento.primary),

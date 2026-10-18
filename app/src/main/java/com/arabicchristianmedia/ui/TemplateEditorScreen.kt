@@ -1347,7 +1347,7 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
             Surface(
                 shape = RoundedCornerShape(if (isFS) 0.dp else (template.cornerRadiusDp * 0.6f).dp),
                 color = cardBg,
-                border = if (template.showAccentBorder) BorderStroke(1.5.dp, try { Color(android.graphics.Color.parseColor(template.accentColorHex)) } catch (e: Exception) { Color.Yellow }) else BorderStroke(1.dp, Color.White.copy(alpha = 0.25f)),
+                border = if (template.showAccentBorder) BorderStroke(1.5.dp, try { Color(android.graphics.Color.parseColor(template.accentColorHex)) } catch (e: Exception) { Color.Yellow }) else null,
                 shadowElevation = if (template.cardGlowEnabled && !isFS && hasVisibleCard) 12.dp else 0.dp,
                 modifier = cardGlowModifier.then(if (isFS) Modifier.fillMaxSize() else Modifier.fillMaxWidth().padding(horizontal = 8.dp))
             ) {

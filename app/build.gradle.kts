@@ -93,7 +93,14 @@ android {
     compose = true
     buildConfig = true
   }
-  testOptions { unitTests { isIncludeAndroidResources = true } }
+  testOptions {
+    unitTests {
+      isIncludeAndroidResources = true
+      // v1.9: silence Robolectric's java.lang.System::load restricted-access
+      // warnings on newer JDKs (becomes a hard error in a future release).
+      all { jvmArgs("--enable-native-access=ALL-UNNAMED") }
+    }
+  }
   dependenciesInfo {
     includeInApk = false
     includeInBundle = true

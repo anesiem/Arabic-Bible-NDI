@@ -1862,6 +1862,16 @@ class TemplateRepository(context: Context) {
                 list.add(tpl)
             }
             if (list.isEmpty()) return DEFAULT_TEMPLATES
+            // v1.9: merge in any factory presets added since the user last saved.
+            // Existing installs have a frozen snapshot; without this, new factory
+            // styles (e.g. Full Show presets) never appear. User-modified templates
+            // keep their IDs and are never overwritten — only missing IDs are added.
+            val savedIds = list.map { it.id }.toSet()
+            val missing = DEFAULT_TEMPLATES.filter { it.id !in savedIds }
+            if (missing.isNotEmpty()) {
+                list.addAll(missing)
+                migratedAny = true
+            }
             if (migratedAny) {
                 try { saveTemplates(list) } catch (e: Exception) {}
             }

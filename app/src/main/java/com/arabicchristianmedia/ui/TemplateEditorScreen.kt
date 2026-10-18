@@ -351,54 +351,6 @@ CollapsibleSection(
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
                 
                 // Style Preset Selector
-CollapsibleSection(
-                    title = "المظهر والتأطير (Design Style)",
-                    initiallyExpanded = true
-                ) {
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(TemplateStyle.entries) { style ->
-                            FilterChip(
-                                selected = editingTemplate.style == style,
-                                onClick = { onUpdate(editingTemplate.copy(style = style)) },
-                                label = { Text(style.displayName, fontSize = 11.sp) }
-                            )
-                        }
-                    }
-
-                    // Alignment
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                        Column(Modifier.weight(1f)) {
-                            Text("محاذاة النص (Alignment)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
-                            Spacer(Modifier.height(4.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                BroadcastTextAlignment.entries.forEach { align ->
-                                    FilterChip(selected = editingTemplate.alignment == align, onClick = { onUpdate(editingTemplate.copy(alignment = align)) }, label = { Text(align.displayName, fontSize = 10.sp) })
-                                }
-                            }
-                        }
-                    }
-
-                    // v1.9: Card padding — breathing room between the card edge
-                    // and the text, per side. Honored by NDI, HTTP and preview.
-                    Text("حشوة البطاقة (Card Padding)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
-                    Spacer(Modifier.height(4.dp))
-                    SliderWithLabel("علوي (Top)", editingTemplate.cardPaddingTopDp, 0f..120f) { onUpdate(editingTemplate.copy(cardPaddingTopDp = it)) }
-                    SliderWithLabel("سفلي (Bottom)", editingTemplate.cardPaddingBottomDp, 0f..120f) { onUpdate(editingTemplate.copy(cardPaddingBottomDp = it)) }
-                    SliderWithLabel("أيسر (Left)", editingTemplate.cardPaddingLeftDp, 0f..160f) { onUpdate(editingTemplate.copy(cardPaddingLeftDp = it)) }
-                    SliderWithLabel("أيمن (Right)", editingTemplate.cardPaddingRightDp, 0f..160f) { onUpdate(editingTemplate.copy(cardPaddingRightDp = it)) }
-
-                    // v1.9: Auto-fit — shrink a too-long verse (with its citation
-                    // and English section) to fit the text box instead of
-                    // overflowing the card or screen. Short verses are untouched.
-                    FeatureToggleRow("ملاءمة تلقائية للنص (Auto-fit text)", editingTemplate.autoFitText) { onUpdate(editingTemplate.copy(autoFitText = it)) }
-                    if (editingTemplate.autoFitText) {
-                        SliderWithLabel("أصغر حجم للنص (Min size)", editingTemplate.autoFitMinVerseSp.toFloat(), 10f..80f) { onUpdate(editingTemplate.copy(autoFitMinVerseSp = it.toInt())) }
-                    }
-
-                
-                }
-HorizontalDivider(color = bento.borderSubtle)
-
                 // Primary Typography (Arabic Verse & Citation)
 CollapsibleSection(
                     title = "تنسيق الخط العربي (Arabic Typography)",
@@ -496,6 +448,48 @@ CollapsibleSection(
                     title = "الخلفية والمؤثرات البصرية (Background & Effects)",
                     initiallyExpanded = true
                 ) {
+                    // v1.9: Card style + alignment (merged from the removed Design Style section)
+                    Text("نمط البطاقة (Card Style)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
+                    Spacer(Modifier.height(4.dp))
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(TemplateStyle.entries) { style ->
+                            FilterChip(
+                                selected = editingTemplate.style == style,
+                                onClick = { onUpdate(editingTemplate.copy(style = style)) },
+                                label = { Text(style.displayName, fontSize = 11.sp) }
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+
+                    // Alignment
+                    Text("محاذاة النص (Alignment)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
+                    Spacer(Modifier.height(4.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        BroadcastTextAlignment.entries.forEach { align ->
+                            FilterChip(selected = editingTemplate.alignment == align, onClick = { onUpdate(editingTemplate.copy(alignment = align)) }, label = { Text(align.displayName, fontSize = 10.sp) })
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+
+                    // v1.9: Card padding — breathing room between the card edge
+                    // and the text, per side. Honored by NDI, HTTP and preview.
+                    Text("حشوة البطاقة (Card Padding)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
+                    Spacer(Modifier.height(4.dp))
+                    SliderWithLabel("علوي (Top)", editingTemplate.cardPaddingTopDp, 0f..120f) { onUpdate(editingTemplate.copy(cardPaddingTopDp = it)) }
+                    SliderWithLabel("سفلي (Bottom)", editingTemplate.cardPaddingBottomDp, 0f..120f) { onUpdate(editingTemplate.copy(cardPaddingBottomDp = it)) }
+                    SliderWithLabel("أيسر (Left)", editingTemplate.cardPaddingLeftDp, 0f..160f) { onUpdate(editingTemplate.copy(cardPaddingLeftDp = it)) }
+                    SliderWithLabel("أيمن (Right)", editingTemplate.cardPaddingRightDp, 0f..160f) { onUpdate(editingTemplate.copy(cardPaddingRightDp = it)) }
+                    Spacer(Modifier.height(8.dp))
+
+                    // v1.9: Auto-fit — shrink a too-long verse (with its citation
+                    // and English section) to fit the text box instead of
+                    // overflowing the card or screen. Short verses are untouched.
+                    FeatureToggleRow("ملاءمة تلقائية للنص (Auto-fit text)", editingTemplate.autoFitText) { onUpdate(editingTemplate.copy(autoFitText = it)) }
+                    if (editingTemplate.autoFitText) {
+                        SliderWithLabel("أصغر حجم للنص (Min size)", editingTemplate.autoFitMinVerseSp.toFloat(), 10f..80f) { onUpdate(editingTemplate.copy(autoFitMinVerseSp = it.toInt())) }
+                    }
+                    Spacer(Modifier.height(8.dp))
                 
                     // Animated Motion Backgrounds (Layer 1: Bottom background layer)
                     Text("الخلفيات المتحركة (Motion Video Backgrounds) — طبقة الخلفية", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)

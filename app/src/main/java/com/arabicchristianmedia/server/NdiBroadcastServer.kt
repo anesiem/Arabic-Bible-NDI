@@ -1219,13 +1219,18 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       citationRow.style.fontStyle = data.referenceIsItalic ? 'italic' : 'normal';
       verseText.style.fontSize = scaledPx(data.verseFontSize || 26);
       citationRow.style.fontSize = scaledPx(data.referenceFontSize || 18);
+      // v1.9: reset the span too — the auto-fit loop shrinks citationText directly,
+      // so without this each applyData compounds the shrink.
+      citationText.style.fontSize = scaledPx(data.referenceFontSize || 18);
 
       // 6. Color Schemes & Container Styling
       const hex = data.bgColorHex || '#0A1128';
       const opacity = data.bgOpacity !== undefined ? data.bgOpacity : 0.85;
-      const r = parseInt(hex.slice(1,3), 16) || 10;
-      const g = parseInt(hex.slice(3,5), 16) || 17;
-      const b = parseInt(hex.slice(5,7), 16) || 40;
+      // v1.9: use isNaN, not || — parseInt('00',16) is 0 (falsy), and pure black
+      // #000000 must stay black, not fall through to the defaults.
+      const rv = parseInt(hex.slice(1,3), 16); const r = isNaN(rv) ? 10 : rv;
+      const gv = parseInt(hex.slice(3,5), 16); const g = isNaN(gv) ? 17 : gv;
+      const bv = parseInt(hex.slice(5,7), 16); const b = isNaN(bv) ? 40 : bv;
 
       const accent = data.accentColorHex || '#E5A93C';
       const textColor = data.textColorHex || '#FFFFFF';
@@ -2226,7 +2231,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             // v1.9: English citation on its own line below the verse (matches HTTP).
             val secCitation = layouts.secondaryCitation
             if (secCitation != null) {
-                val citY = secY + bilingualSecondary.height + (4f * scale)
+                // v1.9: gap matches the layout budget (4*scale*fitRatio).
+                val citY = secY + bilingualSecondary.height + (4f * scale * fitRatio)
                 canvas.save()
                 canvas.translate(translateX, citY)
                 secCitation.draw(canvas)

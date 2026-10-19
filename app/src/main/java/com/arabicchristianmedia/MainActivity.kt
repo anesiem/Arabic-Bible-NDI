@@ -265,7 +265,7 @@ class MainActivity : ComponentActivity() {
                                             contentDescription = "NDI & Broadcast Settings"
                                         )
                                     },
-                                    label = { Text("NDI Link (البث)", fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
+                                    label = { Text("الإعدادات (Setup)", fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
                                     colors = NavigationBarItemDefaults.colors(
                                         selectedIconColor = bento.onPrimaryContainer,
                                         selectedTextColor = bento.primary,

@@ -131,6 +131,47 @@ fun BroadcastControlScreen(
             .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        // v2.0: Tashkeel toggle at the top for visibility (moved from below).
+        Surface(
+            shape = RoundedCornerShape(24.dp),
+            color = bento.card,
+            border = androidx.compose.foundation.BorderStroke(1.dp, bento.border),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column {
+                        Text(
+                            text = "التشكيل (Tashkeel Diacritics)",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = bento.textPrimary
+                        )
+                        Text(
+                            text = "إظهار علامات التشكيل على النص العربي",
+                            fontSize = 11.sp,
+                            color = bento.textSecondary
+                        )
+                    }
+                }
+
+                Switch(
+                    checked = uiState.tashkeelEnabled,
+                    onCheckedChange = { onToggleTashkeel(it) },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Color.White,
+                        checkedTrackColor = bento.primary
+                    )
+                )
+            }
+        }
+
         // Card 1: NDI & Stream Server Status + Master Controls
         Surface(
             shape = RoundedCornerShape(24.dp),
@@ -815,20 +856,23 @@ fun BroadcastControlScreen(
             }
         }
 
-        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        // Card: All available URLs
-        AllUrlsCard(
-            baseUrl = uiState.serverUrl,
-            textPrimary = bento.textPrimary,
-            textSecondary = bento.textSecondary,
-            cardColor = bento.card,
-            borderColor = bento.border,
-            onCopy = { label, url ->
-                val clip = ClipData.newPlainText("URL", url)
-                clipboard.setPrimaryClip(clip)
-                Toast.makeText(context, "تم نسخ: $label", Toast.LENGTH_SHORT).show()
-            }
-        )
+        // v2.0: API URLs moved inside Advanced (was always visible).
+        if (uiState.showAdvancedNdi) {
+            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            // Card: All available URLs
+            AllUrlsCard(
+                baseUrl = uiState.serverUrl,
+                textPrimary = bento.textPrimary,
+                textSecondary = bento.textSecondary,
+                cardColor = bento.card,
+                borderColor = bento.border,
+                onCopy = { label, url ->
+                    val clip = ClipData.newPlainText("URL", url)
+                    clipboard.setPrimaryClip(clip)
+                    Toast.makeText(context, "تم نسخ: $label", Toast.LENGTH_SHORT).show()
+                }
+            )
+        }
 
         // v1.8: vMix SetText push settings (LAN-only).
         VMixSettingsCard(
@@ -890,47 +934,6 @@ fun BroadcastControlScreen(
                 Switch(
                     checked = uiState.isKeepScreenOn,
                     onCheckedChange = { onToggleKeepScreenOn() },
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = Color.White,
-                        checkedTrackColor = bento.primary
-                    )
-                )
-            }
-        }
-
-        // Card: Tashkeel (Arabic Diacritics) Toggle
-        Surface(
-            shape = RoundedCornerShape(24.dp),
-            color = bento.card,
-            border = androidx.compose.foundation.BorderStroke(1.dp, bento.border),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column {
-                        Text(
-                            text = "التشكيل (Tashkeel Diacritics)",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = bento.textPrimary
-                        )
-                        Text(
-                            text = "إظهار علامات التشكيل على النص العربي",
-                            fontSize = 11.sp,
-                            color = bento.textSecondary
-                        )
-                    }
-                }
-
-                Switch(
-                    checked = uiState.tashkeelEnabled,
-                    onCheckedChange = { onToggleTashkeel(it) },
                     colors = SwitchDefaults.colors(
                         checkedThumbColor = Color.White,
                         checkedTrackColor = bento.primary

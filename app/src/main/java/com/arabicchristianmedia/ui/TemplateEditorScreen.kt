@@ -68,37 +68,38 @@ enum class PreviewBackground(val displayNameAr: String) {
 data class BackgroundPairing(
     val style: TemplateStyle,
     val bgOpacity: Float,
-    val accentColorHex: String
+    val accentColorHex: String,
+    val isPureTransparentBackground: Boolean
 )
 
 fun getBackgroundPairing(type: AnimatedBackgroundType): BackgroundPairing? {
     return when (type) {
         AnimatedBackgroundType.PARTICLE_STARS -> BackgroundPairing(
-            TemplateStyle.TRANSPARENT_OUTLINE, 0.0f, "#FFFFFF"
+            TemplateStyle.TRANSPARENT_OUTLINE, 0.0f, "#FFFFFF", true
         )
         AnimatedBackgroundType.GOLDEN_PARTICLES -> BackgroundPairing(
-            TemplateStyle.TRANSPARENT_OUTLINE, 0.0f, "#F59E0B"
+            TemplateStyle.TRANSPARENT_OUTLINE, 0.0f, "#F59E0B", true
         )
         AnimatedBackgroundType.GOLDEN_DIVINE_RAYS -> BackgroundPairing(
-            TemplateStyle.MODERN_GLASS, 0.7f, "#F59E0B"
+            TemplateStyle.MODERN_GLASS, 0.7f, "#F59E0B", false
         )
         AnimatedBackgroundType.ETHEREAL_BLUE_WAVES -> BackgroundPairing(
-            TemplateStyle.MODERN_GLASS, 0.7f, "#3B82F6"
+            TemplateStyle.MODERN_GLASS, 0.7f, "#3B82F6", false
         )
         AnimatedBackgroundType.ROYAL_PURPLE_SILK -> BackgroundPairing(
-            TemplateStyle.ROYAL_LITURGICAL, 0.85f, "#F59E0B"
+            TemplateStyle.ROYAL_LITURGICAL, 0.85f, "#F59E0B", false
         )
         AnimatedBackgroundType.CANDLE_LITURGICAL_GLOW -> BackgroundPairing(
-            TemplateStyle.ROYAL_LITURGICAL, 0.85f, "#FBBF24"
+            TemplateStyle.ROYAL_LITURGICAL, 0.85f, "#FBBF24", false
         )
         AnimatedBackgroundType.EMERALD_GARDEN_WAVES -> BackgroundPairing(
-            TemplateStyle.MODERN_GLASS, 0.7f, "#10B981"
+            TemplateStyle.MODERN_GLASS, 0.7f, "#10B981", false
         )
         AnimatedBackgroundType.ROSE_DAWN_GLOW -> BackgroundPairing(
-            TemplateStyle.MINIMALIST_PILL, 0.75f, "#F472B6"
+            TemplateStyle.MINIMALIST_PILL, 0.75f, "#F472B6", false
         )
         AnimatedBackgroundType.CUSTOM_VIDEO -> BackgroundPairing(
-            TemplateStyle.TRANSPARENT_OUTLINE, 0.0f, "#FFFFFF"
+            TemplateStyle.TRANSPARENT_OUTLINE, 0.0f, "#FFFFFF", true
         )
         AnimatedBackgroundType.NONE -> null
     }
@@ -591,7 +592,8 @@ CollapsibleSection(
                                             animatedBackground = type,
                                             style = pairing.style,
                                             bgOpacity = pairing.bgOpacity,
-                                            accentColorHex = pairing.accentColorHex
+                                            accentColorHex = pairing.accentColorHex,
+                                            isPureTransparentBackground = pairing.isPureTransparentBackground
                                         )
                                     } else {
                                         editingTemplate.copy(animatedBackground = type)

@@ -645,6 +645,26 @@ CollapsibleSection(
                             onUpdate(editingTemplate.copy(motionSpeed = it))
                         }
                         Spacer(modifier = Modifier.height(4.dp))
+                        // v2.0: Video loop mode — after transparency and speed.
+                        if (editingTemplate.animatedBackground == AnimatedBackgroundType.CUSTOM_VIDEO) {
+                            Text(
+                                "طريقة تكرار الفيديو (Video loop)",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = bento.textPrimary
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                VideoLoopMode.values().forEach { mode ->
+                                    FilterChip(
+                                        selected = editingTemplate.videoLoopMode == mode,
+                                        onClick = { onUpdate(editingTemplate.copy(videoLoopMode = mode)) },
+                                        label = { Text(mode.displayName, fontSize = 12.sp) }
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                        }
                         if (editingTemplate.animatedBackground == AnimatedBackgroundType.CUSTOM_VIDEO &&
                             editingTemplate.customVideoId.isNotEmpty()) {
                             Row(

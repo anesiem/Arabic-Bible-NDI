@@ -191,8 +191,7 @@ fun BroadcastControlScreen(
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(
                         "asv" to "ASV",
-                        "kjv" to "KJV",
-                        "web" to "WEB"
+                        "kjv" to "KJV"
                     ).forEach { (id, label) ->
                         FilterChip(
                             selected = uiState.englishVersion == id,

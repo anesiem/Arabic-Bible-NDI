@@ -53,6 +53,10 @@ class VideoBackgroundRenderer(
     private val lock = Any()
 
     @Volatile private var alpha: Float = 1f
+    /** v2.0: Loop fade alpha (0-1). Updated by position monitor when loopMode is FADE. */
+    @Volatile private var loopFadeAlpha: Float = 1f
+    /** v2.0: Loop mode (CUT or FADE). Set by the caller. */
+    @Volatile var loopMode: String = "fade"
 
     // Decoder-thread state only (except where noted):
     private var eglDisplay: EGLDisplay? = null
@@ -156,7 +160,8 @@ class VideoBackgroundRenderer(
 
     /** Draws the latest frame into [dst] with the configured alpha. Thread-safe. */
     fun drawOnto(canvas: Canvas, dst: Rect) {
-        val a = (alpha.coerceIn(0f, 1f) * 255).toInt()
+        // v2.0: Multiply by loopFadeAlpha for smooth loop transitions.
+        val a = (alpha.coerceIn(0f, 1f) * loopFadeAlpha.coerceIn(0f, 1f) * 255).toInt()
         if (a <= 0) return
         synchronized(lock) {
             val bmp = frameBitmap
@@ -233,7 +238,11 @@ class VideoBackgroundRenderer(
                 setDataSource(file.absolutePath)
                 setSurface(surface)
                 isLooping = true
-                setOnPreparedListener { it.start() }
+                setOnPreparedListener {
+                    it.start()
+                    // v2.0: Start loop-fade monitor.
+                    startLoopFadeMonitor(it)
+                }
                 setOnErrorListener { _, what, extra ->
                     Log.w(TAG, "Player error what=$what extra=$extra file=${file.name}")
                     true
@@ -246,6 +255,47 @@ class VideoBackgroundRenderer(
             Log.w(TAG, "Cannot play video ${file.name}: ${e.message}")
             player = null
         }
+    }
+
+    /**
+     * v2.0: Monitors MediaPlayer position for smooth loop fading.
+     * When loopMode is FADE, fades out during the last 400ms and fades in
+     * during the first 400ms after the loop point.
+     */
+    private fun startLoopFadeMonitor(mp: MediaPlayer) {
+        val fadeMs = 400
+        handler.post(object : Runnable {
+            override fun run() {
+                try {
+                    val p = player
+                    if (p != null && p.isPlaying) {
+                        if (loopMode == "fade") {
+                            val duration = p.duration
+                            val position = p.currentPosition
+                            val fadeAlpha = when {
+                                duration <= 0 -> 1f
+                                position >= duration - fadeMs -> {
+                                    // Fading out near the end
+                                    (duration - position).toFloat() / fadeMs
+                                }
+                                position < fadeMs -> {
+                                    // Fading in after loop restart
+                                    position.toFloat() / fadeMs
+                                }
+                                else -> 1f
+                            }
+                            loopFadeAlpha = fadeAlpha.coerceIn(0f, 1f)
+                        } else {
+                            loopFadeAlpha = 1f
+                        }
+                    }
+                } catch (e: Exception) {
+                    // Player may be released; ignore
+                }
+                // Check again in 50ms
+                handler.postDelayed(this, 50)
+            }
+        })
     }
 
     private fun pausePlayer() {

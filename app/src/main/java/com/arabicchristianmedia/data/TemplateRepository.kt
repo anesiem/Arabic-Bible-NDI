@@ -8,6 +8,7 @@ import com.arabicchristianmedia.model.LanguageMode
 import com.arabicchristianmedia.model.LowerThirdTemplate
 import com.arabicchristianmedia.model.TemplateStyle
 import com.arabicchristianmedia.model.TransitionType
+import com.arabicchristianmedia.model.VideoLoopMode
 import androidx.core.content.edit
 import com.arabicchristianmedia.model.StreamBackgroundMode
 import org.json.JSONArray
@@ -2020,6 +2021,7 @@ class TemplateRepository(context: Context) {
             put("customVideoId", t.customVideoId)
             put("customVideoMuted", t.customVideoMuted)
             put("motionSpeed", t.motionSpeed)
+            put("videoLoopMode", t.videoLoopMode.id)
             put("streamBackgroundMode", t.streamBackgroundMode.name)
             put("cardPaddingTopDp", t.cardPaddingTopDp.toDouble())
             put("cardPaddingBottomDp", t.cardPaddingBottomDp.toDouble())
@@ -2111,6 +2113,7 @@ class TemplateRepository(context: Context) {
             customVideoId = obj.optString("customVideoId", ""),
             customVideoMuted = obj.optBoolean("customVideoMuted", true),
             motionSpeed = obj.optDouble("motionSpeed", 1.0).toFloat().coerceIn(0f, 3.0f),
+            videoLoopMode = VideoLoopMode.fromId(obj.optString("videoLoopMode", "fade")),
             streamBackgroundMode = try { com.arabicchristianmedia.model.StreamBackgroundMode.valueOf(obj.optString("streamBackgroundMode")) } catch (e: Exception) { com.arabicchristianmedia.model.StreamBackgroundMode.TRANSPARENT_ALPHA },
             cardPaddingTopDp = obj.optDouble("cardPaddingTopDp", 32.0).toFloat().coerceIn(0f, 200f),
             cardPaddingBottomDp = obj.optDouble("cardPaddingBottomDp", 32.0).toFloat().coerceIn(0f, 200f),

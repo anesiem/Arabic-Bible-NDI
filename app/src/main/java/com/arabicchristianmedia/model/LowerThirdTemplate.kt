@@ -34,6 +34,18 @@ enum class LanguageMode(val displayName: String) {
     BOTH("Arabic + English")
 }
 
+/**
+ * v2.0: How a custom background video loops.
+ * CUT = hard loop (visible cut); FADE = fade through black at the loop point.
+ */
+enum class VideoLoopMode(val id: String, val displayName: String) {
+    CUT("cut", "Cut"),
+    FADE("fade", "Crossfade");
+    companion object {
+        fun fromId(id: String): VideoLoopMode = values().find { it.id == id } ?: FADE
+    }
+}
+
 enum class AnimatedBackgroundType(val id: String, val displayNameAr: String, val description: String) {
     NONE("none", "بدون فيديو (شفاف / عادي)", "No animated video"),
     GOLDEN_DIVINE_RAYS("golden_rays", "أشعة ذهبية سماوية (Golden Rays)", "Gentle moving golden celestial rays"),
@@ -140,6 +152,8 @@ data class LowerThirdTemplate(
      * and procedural animations.
      */
     val motionSpeed: Float = 1.0f,
+    /** v2.0: How the custom video loops. Default FADE (crossfade through black). */
+    val videoLoopMode: VideoLoopMode = VideoLoopMode.FADE,
     val streamBackgroundMode: StreamBackgroundMode = StreamBackgroundMode.TRANSPARENT_ALPHA,
     /**
      * v1.9: per-side card padding (dp) — the breathing room between the card

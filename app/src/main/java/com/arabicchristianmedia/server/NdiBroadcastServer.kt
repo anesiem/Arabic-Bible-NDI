@@ -1986,6 +1986,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             videoRenderer.setAlpha(tpl.animatedBackgroundOpacity)
             videoRenderer.setMuted(tpl.customVideoMuted)
             videoRenderer.setSpeed(tpl.motionSpeed)
+            // v2.0: Apply the template's loop mode (fade or cut).
+            videoRenderer.loopMode = tpl.videoLoopMode.id
             if (isMotionTick || !videoRenderer.hasFrame()) videoRenderer.requestFrame()
             val videoRect = Rect(boxLeft.toInt(), boxTop.toInt(), boxRight.toInt(), boxBottom.toInt())
             if (radius > 0f) {

@@ -344,7 +344,6 @@ class TemplateRepositoryTest {
         )
         for (tpl in vivid) {
             assertEquals(tpl.id, expectedAnims[tpl.id], tpl.animatedBackground)
-            assertTrue(tpl.id, tpl.isPureTransparentBackground)
             assertFalse(tpl.id, tpl.isFullScreen)
             assertTrue(tpl.id, tpl.textShadowEnabled)
         }

@@ -82,10 +82,8 @@ object BibleRepository {
     private var dbHelper: BibleDatabaseHelper? = null
     private var appContext: Context? = null
 
-    companion object {
-        const val PREFS_NAME = "bible_prefs"
-        const val KEY_TASHKEEL_ENABLED = "arabic_tashkeel_enabled"
-    }
+    private const val PREFS_NAME = "bible_prefs"
+    private const val KEY_TASHKEEL_ENABLED = "arabic_tashkeel_enabled"
 
     fun initialize(context: Context) {
         if (dbHelper == null) {

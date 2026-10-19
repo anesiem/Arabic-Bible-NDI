@@ -343,7 +343,8 @@ class MainActivity : ComponentActivity() {
                                 onToggleAdvancedNdi = { viewModel.toggleAdvancedNdi() },
                                 onRefreshNdiDiagnostics = { viewModel.refreshNdiDiagnostics() },
                                 onClearNdiDiagnostics = { viewModel.clearNdiDiagnostics() },
-                                onToggleTashkeel = { viewModel.setTashkeelEnabled(it) }
+                                onToggleTashkeel = { viewModel.setTashkeelEnabled(it) },
+                                onSelectEnglishVersion = { viewModel.setEnglishVersion(it) }
                             )
                         }
                     }

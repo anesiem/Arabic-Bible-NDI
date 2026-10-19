@@ -34,6 +34,7 @@ data class BibleNdiUiState(
     val selectedChapter: Int = 3,
     val bibleVersion: BibleVersion = BibleVersion.ARABIC_SVD,
     val tashkeelEnabled: Boolean = false,
+    val englishVersion: String = "asv",
     val displayedVerses: List<BibleVerse> = emptyList(),
     val searchQuery: String = "",
     val searchResults: List<BibleVerse> = emptyList(),
@@ -119,9 +120,10 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
 
     init {
         BibleRepository.initialize(getApplication())
-        // v2.0: restore tashkeel preference
+        // v2.0: restore tashkeel and English version preferences
         _uiState.value = _uiState.value.copy(
-            tashkeelEnabled = BibleRepository.isTashkeelEnabled()
+            tashkeelEnabled = BibleRepository.isTashkeelEnabled(),
+            englishVersion = BibleRepository.getEnglishVersion()
         )
         // v1.9: frame providers are wired by NdiService (they resolve the server
         // lazily and capture no ViewModel state, so the feeds render headlessly
@@ -633,6 +635,16 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         BibleRepository.setTashkeelEnabled(enabled)
         _uiState.value = _uiState.value.copy(tashkeelEnabled = enabled)
         // Reload current chapter to reflect the change
+        selectChapter(_uiState.value.selectedChapter)
+    }
+
+    /**
+     * Set the English Bible version (asv/kjv/web). Persists and reloads
+     * the current chapter so verses update immediately.
+     */
+    fun setEnglishVersion(version: String) {
+        BibleRepository.setEnglishVersion(version)
+        _uiState.value = _uiState.value.copy(englishVersion = version)
         selectChapter(_uiState.value.selectedChapter)
     }
 

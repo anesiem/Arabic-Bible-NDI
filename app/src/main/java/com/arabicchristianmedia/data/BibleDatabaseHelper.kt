@@ -11,11 +11,13 @@ class BibleDatabaseHelper(private val context: Context) {
     companion object {
         const val ARABIC_DB = "arabic.db"
         const val ENGLISH_DB = "english_asv.db"
+        const val ENGLISH_KJV_DB = "english_kjv.db"
+        const val ENGLISH_WEB_DB = "english_web.db" // v2.0: reserved for future
         /**
          * Bump when the bundled database assets in assets/bible change: stale on-device
          * copies are recopied on the next launch.
          */
-        const val DATA_VERSION = 1
+        const val DATA_VERSION = 2 // v2.0: arabic.db has tashkeelWord column; added english_kjv.db
         private const val PREFS = "bible_db_prefs"
     }
 

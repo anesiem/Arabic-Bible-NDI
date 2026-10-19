@@ -84,6 +84,7 @@ object BibleRepository {
 
     private const val PREFS_NAME = "bible_prefs"
     private const val KEY_TASHKEEL_ENABLED = "arabic_tashkeel_enabled"
+    private const val KEY_ENGLISH_VERSION = "english_bible_version"
 
     fun initialize(context: Context) {
         if (dbHelper == null) {
@@ -106,6 +107,29 @@ object BibleRepository {
             ?.edit()?.putBoolean(KEY_TASHKEEL_ENABLED, enabled)?.apply()
     }
 
+    /** Returns the user's English version preference ("asv", "kjv", "web"). */
+    fun getEnglishVersion(): String {
+        return appContext?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            ?.getString(KEY_ENGLISH_VERSION, "asv") ?: "asv"
+    }
+
+    /** Returns the English DB file name based on the user's version preference. */
+    fun getEnglishDbName(): String {
+        val version = appContext?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            ?.getString(KEY_ENGLISH_VERSION, "asv") ?: "asv"
+        return when (version) {
+            "kjv" -> BibleDatabaseHelper.ENGLISH_KJV_DB
+            "web" -> BibleDatabaseHelper.ENGLISH_WEB_DB
+            else -> BibleDatabaseHelper.ENGLISH_DB // asv
+        }
+    }
+
+    /** Persist the English Bible version preference ("asv", "kjv", "web"). */
+    fun setEnglishVersion(version: String) {
+        appContext?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            ?.edit()?.putString(KEY_ENGLISH_VERSION, version)?.apply()
+    }
+
     fun getBookById(id: String): BibleBook? {
         return allBooks.firstOrNull { it.id.equals(id, ignoreCase = true) }
     }
@@ -116,7 +140,7 @@ object BibleRepository {
         val bookNum = allBooks.indexOf(book) + 1
 
         val arDb = helper.openDatabase(BibleDatabaseHelper.ARABIC_DB)
-        val enDb = helper.openDatabase(BibleDatabaseHelper.ENGLISH_DB)
+        val enDb = helper.openDatabase(getEnglishDbName())
 
         val verses = mutableListOf<BibleVerse>()
 

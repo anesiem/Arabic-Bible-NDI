@@ -110,6 +110,7 @@ fun BroadcastControlScreen(
     onRefreshNdiDiagnostics: () -> Unit = {},
     onClearNdiDiagnostics: () -> Unit = {},
     onToggleTashkeel: (Boolean) -> Unit = {},
+    onSelectEnglishVersion: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -168,6 +169,43 @@ fun BroadcastControlScreen(
                         checkedThumbColor = Color.White,
                         checkedTrackColor = bento.primary
                     )
+                )
+            }
+        }
+
+        // v2.0: English Bible version picker (KJV/ASV/WEB — all public domain).
+        Surface(
+            shape = RoundedCornerShape(24.dp),
+            color = bento.card,
+            border = androidx.compose.foundation.BorderStroke(1.dp, bento.border),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    text = "الترجمة الإنجليزية (English Bible Version)",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = bento.textPrimary
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(
+                        "asv" to "ASV",
+                        "kjv" to "KJV",
+                        "web" to "WEB"
+                    ).forEach { (id, label) ->
+                        FilterChip(
+                            selected = uiState.englishVersion == id,
+                            onClick = { onSelectEnglishVersion(id) },
+                            label = { Text(label, fontSize = 12.sp) }
+                        )
+                    }
+                }
+                Text(
+                    text = "All versions are public domain",
+                    fontSize = 10.sp,
+                    color = bento.textSecondary,
+                    modifier = Modifier.padding(top = 4.dp)
                 )
             }
         }

@@ -342,7 +342,8 @@ class MainActivity : ComponentActivity() {
                                 onToggleNdiMotion = { viewModel.toggleNdiMotion(it) },
                                 onToggleAdvancedNdi = { viewModel.toggleAdvancedNdi() },
                                 onRefreshNdiDiagnostics = { viewModel.refreshNdiDiagnostics() },
-                                onClearNdiDiagnostics = { viewModel.clearNdiDiagnostics() }
+                                onClearNdiDiagnostics = { viewModel.clearNdiDiagnostics() },
+                                onToggleTashkeel = { viewModel.setTashkeelEnabled(it) }
                             )
                         }
                     }

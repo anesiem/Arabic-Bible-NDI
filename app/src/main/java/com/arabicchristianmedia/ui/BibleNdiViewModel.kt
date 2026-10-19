@@ -33,6 +33,7 @@ data class BibleNdiUiState(
     val selectedBook: BibleBook = BibleRepository.getBookById("jhn") ?: BibleRepository.allBooks.first(),
     val selectedChapter: Int = 3,
     val bibleVersion: BibleVersion = BibleVersion.ARABIC_SVD,
+    val tashkeelEnabled: Boolean = false,
     val displayedVerses: List<BibleVerse> = emptyList(),
     val searchQuery: String = "",
     val searchResults: List<BibleVerse> = emptyList(),
@@ -118,6 +119,10 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
 
     init {
         BibleRepository.initialize(getApplication())
+        // v2.0: restore tashkeel preference
+        _uiState.value = _uiState.value.copy(
+            tashkeelEnabled = BibleRepository.isTashkeelEnabled()
+        )
         // v1.9: frame providers are wired by NdiService (they resolve the server
         // lazily and capture no ViewModel state, so the feeds render headlessly
         // after an OS process kill).
@@ -616,6 +621,17 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         if (newMode != _uiState.value.activeTemplate.languageMode) {
             updateActiveTemplate(_uiState.value.activeTemplate.copy(languageMode = newMode))
         }
+    }
+
+    /**
+     * Toggle tashkeel (Arabic diacritics) on/off. Persists the preference and
+     * reloads the current chapter so verses update immediately.
+     */
+    fun setTashkeelEnabled(enabled: Boolean) {
+        BibleRepository.setTashkeelEnabled(enabled)
+        _uiState.value = _uiState.value.copy(tashkeelEnabled = enabled)
+        // Reload current chapter to reflect the change
+        selectChapter(_uiState.value.selectedChapter)
     }
 
     fun onSearchQueryChanged(query: String) {

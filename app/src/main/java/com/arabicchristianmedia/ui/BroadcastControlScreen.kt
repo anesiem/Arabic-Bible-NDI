@@ -109,6 +109,7 @@ fun BroadcastControlScreen(
     onToggleAdvancedNdi: () -> Unit = {},
     onRefreshNdiDiagnostics: () -> Unit = {},
     onClearNdiDiagnostics: () -> Unit = {},
+    onToggleTashkeel: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -889,6 +890,47 @@ fun BroadcastControlScreen(
                 Switch(
                     checked = uiState.isKeepScreenOn,
                     onCheckedChange = { onToggleKeepScreenOn() },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Color.White,
+                        checkedTrackColor = bento.primary
+                    )
+                )
+            }
+        }
+
+        // Card: Tashkeel (Arabic Diacritics) Toggle
+        Surface(
+            shape = RoundedCornerShape(24.dp),
+            color = bento.card,
+            border = androidx.compose.foundation.BorderStroke(1.dp, bento.border),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column {
+                        Text(
+                            text = "التشكيل (Tashkeel Diacritics)",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = bento.textPrimary
+                        )
+                        Text(
+                            text = "إظهار علامات التشكيل على النص العربي",
+                            fontSize = 11.sp,
+                            color = bento.textSecondary
+                        )
+                    }
+                }
+
+                Switch(
+                    checked = uiState.tashkeelEnabled,
+                    onCheckedChange = { onToggleTashkeel(it) },
                     colors = SwitchDefaults.colors(
                         checkedThumbColor = Color.White,
                         checkedTrackColor = bento.primary

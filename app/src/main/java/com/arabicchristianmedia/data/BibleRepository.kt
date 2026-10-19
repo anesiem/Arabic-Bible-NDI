@@ -80,11 +80,32 @@ object BibleRepository {
     )
 
     private var dbHelper: BibleDatabaseHelper? = null
+    private var appContext: Context? = null
+
+    companion object {
+        const val PREFS_NAME = "bible_prefs"
+        const val KEY_TASHKEEL_ENABLED = "arabic_tashkeel_enabled"
+    }
 
     fun initialize(context: Context) {
         if (dbHelper == null) {
             dbHelper = BibleDatabaseHelper(context.applicationContext)
         }
+        if (appContext == null) {
+            appContext = context.applicationContext
+        }
+    }
+
+    /** True when the user has enabled tashkeel (diacritics) for Arabic text. */
+    fun isTashkeelEnabled(): Boolean {
+        return appContext?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            ?.getBoolean(KEY_TASHKEEL_ENABLED, false) ?: false
+    }
+
+    /** Persist the tashkeel preference. */
+    fun setTashkeelEnabled(enabled: Boolean) {
+        appContext?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            ?.edit()?.putBoolean(KEY_TASHKEEL_ENABLED, enabled)?.apply()
     }
 
     fun getBookById(id: String): BibleBook? {
@@ -116,8 +137,15 @@ object BibleRepository {
         }
 
         arDb?.let { db ->
+            // When tashkeel is enabled, prefer tashkeelWord; fall back to word
+            // for verses where tashkeel is missing (e.g. psalm headings).
+            val wordColumn = if (isTashkeelEnabled()) {
+                "COALESCE(NULLIF(tashkeelWord, ''), word)"
+            } else {
+                "word"
+            }
             val cursor = db.rawQuery(
-                "SELECT verseNum, word FROM words WHERE bookNum = ? AND chNum = ? ORDER BY verseNum",
+                "SELECT verseNum, $wordColumn FROM words WHERE bookNum = ? AND chNum = ? ORDER BY verseNum",
                 arrayOf(bookNum.toString(), chapter.toString())
             )
             if (cursor.moveToFirst()) {

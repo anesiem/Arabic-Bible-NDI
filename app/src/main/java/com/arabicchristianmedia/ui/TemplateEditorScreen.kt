@@ -90,6 +90,11 @@ fun TemplateEditorScreen(
     var newTemplateName by remember { mutableStateOf("") }
     var previewBg by remember { mutableStateOf(PreviewBackground.SIMULATED_STUDIO_CAMERA) }
     val context = LocalContext.current
+    // v1.9: How-it-works tips visibility, persisted. Shown expanded on first run,
+    // collapsible thereafter, with a "don't show again" option.
+    val tipsPrefs = remember { context.getSharedPreferences("editor_ui_prefs", android.content.Context.MODE_PRIVATE) }
+    var showHowItWorks by remember { mutableStateOf(tipsPrefs.getBoolean("show_how_it_works", true)) }
+    var howItWorksExpanded by rememberSaveable { mutableStateOf(tipsPrefs.getBoolean("show_how_it_works", true)) }
 
     // Dynamic Recent Colors with delete (x) button
     var recentColors by remember {
@@ -163,6 +168,14 @@ fun TemplateEditorScreen(
                     Text("تخصيص كامل وشامل لطبقات البث والعرض المباشر", fontSize = 12.sp, color = bento.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    // v1.9: info icon reopens the How-it-works tips when hidden.
+                    if (!showHowItWorks) {
+                        IconButton(onClick = {
+                            tipsPrefs.edit().putBoolean("show_how_it_works", true).apply()
+                            showHowItWorks = true
+                            howItWorksExpanded = true
+                        }) { Icon(Icons.Default.Info, "كيفية الاستخدام", tint = bento.primary) }
+                    }
                     IconButton(onClick = { onResetDefaults(editorTab == 1) }) { Icon(Icons.Default.Refresh, "إعادة تعيين", tint = bento.primary) }
                     // v1.9: header save button removed — the single save action lives
                     // in Quick Setup below, next to the style picker.
@@ -188,32 +201,49 @@ fun TemplateEditorScreen(
 
         Spacer(Modifier.height(12.dp))
 
-        // 2b. Workflow tips: how the style system works (each tab is independent).
-        Card(shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = bento.primaryContainer), modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("كيف يعمل المحرر (How it works)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = bento.onPrimaryContainer)
-                val tips = listOf(
-                    "اختر نمطاً من القائمة لتطبيقه فوراً على المعاينة والبث.",
-                    "أي تعديل يظهر مباشرة ويُحفظ تلقائياً — لا يوجد زر حفظ.",
-                    "التعديل بدون حفظ يمسح التمييز عن النمط ويظهر شارة «معدّل».",
-                    "«حفظ كقالب جديد» ينشئ نمطاً جديداً في قائمة هذا التبويب فقط.",
-                    "«إعادة التعيين» يرجع لآخر نمط محدد، أو للوضع الافتراضي.",
-                    "اضغط مطولاً على أي نمط لحذفه."
-                )
-                tips.forEach { tip ->
-                    Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("•", fontSize = 11.sp, color = bento.onPrimaryContainer, fontWeight = FontWeight.Bold)
-                        Text(tip, fontSize = 11.sp, color = bento.onPrimaryContainer)
+        // 2b. Workflow tips: collapsible, with "don't show again". Hidden entirely
+        // once dismissed (reopen via the ⓘ icon in the header).
+        if (showHowItWorks) {
+            Card(shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = bento.primaryContainer), modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text("كيف يعمل المحرر (How it works)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = bento.onPrimaryContainer)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            TextButton(onClick = {
+                                tipsPrefs.edit().putBoolean("show_how_it_works", false).apply()
+                                showHowItWorks = false
+                            }) {
+                                Text("عدم الإظهار مجدداً", fontSize = 10.sp, color = bento.onPrimaryContainer)
+                            }
+                            IconButton(onClick = { howItWorksExpanded = !howItWorksExpanded }) {
+                                Icon(if (howItWorksExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore, "طي/فتح", tint = bento.onPrimaryContainer)
+                            }
+                        }
+                    }
+                    if (howItWorksExpanded) {
+                        val tips = listOf(
+                            "اختر نمطاً من القائمة لتطبيقه فوراً على المعاينة والبث.",
+                            "أي تعديل يظهر مباشرة ويُحفظ تلقائياً — لا يوجد زر حفظ.",
+                            "التعديل بدون حفظ يمسح التمييز عن النمط ويظهر شارة «معدّل».",
+                            "«حفظ كقالب جديد» ينشئ نمطاً جديداً في قائمة هذا التبويب فقط.",
+                            "«إعادة التعيين» يرجع لآخر نمط محدد، أو للوضع الافتراضي.",
+                            "اضغط مطولاً على أي نمط لحذفه."
+                        )
+                        tips.forEach { tip ->
+                            Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text("•", fontSize = 11.sp, color = bento.onPrimaryContainer, fontWeight = FontWeight.Bold)
+                                Text(tip, fontSize = 11.sp, color = bento.onPrimaryContainer)
+                            }
+                        }
                     }
                 }
             }
+            Spacer(Modifier.height(12.dp))
         }
-
-        Spacer(Modifier.height(12.dp))
 
         // 3. Compact Live Preview Card with Functional Background Modes
         Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = bento.card), modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(14.dp)) {
+            Column(Modifier.padding(14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text(if (editorTab == 0) "معاينة البث (Lower Third Preview)" else "معاينة العرض (Full Show Preview)", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = bento.textPrimary)
                     
@@ -1231,6 +1261,8 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
     Box(
         modifier = Modifier
             .fillMaxWidth()
+            // v1.9: cap preview width on wide screens so it doesn't stretch edge-to-edge.
+            .widthIn(max = 720.dp)
             .aspectRatio(16f / 9f)
             .clip(RoundedCornerShape(14.dp))
             .border(1.5.dp, bento.border, RoundedCornerShape(14.dp))

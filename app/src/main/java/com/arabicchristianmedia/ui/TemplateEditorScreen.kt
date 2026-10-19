@@ -58,6 +58,52 @@ enum class PreviewBackground(val displayNameAr: String) {
     CHROMA_GREEN("كروما خضراء (Chroma Green)")
 }
 
+/**
+ * v2.0: Coordinated card style pairing for motion backgrounds.
+ * When the user picks a motion background, the card style, background opacity,
+ * and accent color are auto-coordinated. The user can still adjust everything
+ * after; the result saves with the style template.
+ * Returns null for NONE (leaves current style untouched).
+ */
+data class BackgroundPairing(
+    val style: TemplateStyle,
+    val bgOpacity: Float,
+    val accentColorHex: String
+)
+
+fun getBackgroundPairing(type: AnimatedBackgroundType): BackgroundPairing? {
+    return when (type) {
+        AnimatedBackgroundType.PARTICLE_STARS -> BackgroundPairing(
+            TemplateStyle.TRANSPARENT_OUTLINE, 0.0f, "#FFFFFF"
+        )
+        AnimatedBackgroundType.GOLDEN_PARTICLES -> BackgroundPairing(
+            TemplateStyle.TRANSPARENT_OUTLINE, 0.0f, "#F59E0B"
+        )
+        AnimatedBackgroundType.GOLDEN_DIVINE_RAYS -> BackgroundPairing(
+            TemplateStyle.MODERN_GLASS, 0.7f, "#F59E0B"
+        )
+        AnimatedBackgroundType.ETHEREAL_BLUE_WAVES -> BackgroundPairing(
+            TemplateStyle.MODERN_GLASS, 0.7f, "#3B82F6"
+        )
+        AnimatedBackgroundType.ROYAL_PURPLE_SILK -> BackgroundPairing(
+            TemplateStyle.ROYAL_LITURGICAL, 0.85f, "#F59E0B"
+        )
+        AnimatedBackgroundType.CANDLE_LITURGICAL_GLOW -> BackgroundPairing(
+            TemplateStyle.ROYAL_LITURGICAL, 0.85f, "#FBBF24"
+        )
+        AnimatedBackgroundType.EMERALD_GARDEN_WAVES -> BackgroundPairing(
+            TemplateStyle.MODERN_GLASS, 0.7f, "#10B981"
+        )
+        AnimatedBackgroundType.ROSE_DAWN_GLOW -> BackgroundPairing(
+            TemplateStyle.MINIMALIST_PILL, 0.75f, "#F472B6"
+        )
+        AnimatedBackgroundType.CUSTOM_VIDEO -> BackgroundPairing(
+            TemplateStyle.TRANSPARENT_OUTLINE, 0.0f, "#FFFFFF"
+        )
+        AnimatedBackgroundType.NONE -> null
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun TemplateEditorScreen(
@@ -467,19 +513,9 @@ CollapsibleSection(
                     title = "الخلفية والمؤثرات البصرية (Background & Effects)",
                     initiallyExpanded = true
                 ) {
-                    // v1.9: Card style + alignment (merged from the removed Design Style section)
-                    Text("نمط البطاقة (Card Style)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
-                    Spacer(Modifier.height(4.dp))
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(TemplateStyle.entries) { style ->
-                            FilterChip(
-                                selected = editingTemplate.style == style,
-                                onClick = { onUpdate(editingTemplate.copy(style = style)) },
-                                label = { Text(style.displayName, fontSize = 11.sp) }
-                            )
-                        }
-                    }
-                    Spacer(Modifier.height(8.dp))
+                    // v2.0: Card style is now auto-coordinated via motion background picker
+                    // (see getBackgroundPairing). The style field remains adjustable
+                    // via style presets; manual override UI removed for simplicity.
 
                     // Alignment
                     Text("محاذاة النص (Alignment)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
@@ -493,12 +529,43 @@ CollapsibleSection(
 
                     // v1.9: Card padding — breathing room between the card edge
                     // and the text, per side. Honored by NDI, HTTP and preview.
-                    Text("حشوة البطاقة (Card Padding)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
-                    Spacer(Modifier.height(4.dp))
-                    SliderWithLabel("علوي (Top)", editingTemplate.cardPaddingTopDp, 0f..120f) { onUpdate(editingTemplate.copy(cardPaddingTopDp = it)) }
-                    SliderWithLabel("سفلي (Bottom)", editingTemplate.cardPaddingBottomDp, 0f..120f) { onUpdate(editingTemplate.copy(cardPaddingBottomDp = it)) }
-                    SliderWithLabel("أيسر (Left)", editingTemplate.cardPaddingLeftDp, 0f..160f) { onUpdate(editingTemplate.copy(cardPaddingLeftDp = it)) }
-                    SliderWithLabel("أيمن (Right)", editingTemplate.cardPaddingRightDp, 0f..160f) { onUpdate(editingTemplate.copy(cardPaddingRightDp = it)) }
+                    // v2.0: Padding collapsed into expandable row to reduce clutter
+                    var paddingExpanded by remember { mutableStateOf(false) }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { paddingExpanded = !paddingExpanded }
+                            .padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "حشوة البطاقة (Card Padding)",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = bento.textSecondary
+                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                "${editingTemplate.cardPaddingTopDp.toInt()}/${editingTemplate.cardPaddingBottomDp.toInt()}/${editingTemplate.cardPaddingLeftDp.toInt()}/${editingTemplate.cardPaddingRightDp.toInt()}",
+                                fontSize = 11.sp,
+                                color = bento.textSecondary
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Icon(
+                                imageVector = if (paddingExpanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
+                                contentDescription = null,
+                                tint = bento.textSecondary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                    if (paddingExpanded) {
+                        SliderWithLabel("علوي (Top)", editingTemplate.cardPaddingTopDp, 0f..120f) { onUpdate(editingTemplate.copy(cardPaddingTopDp = it)) }
+                        SliderWithLabel("سفلي (Bottom)", editingTemplate.cardPaddingBottomDp, 0f..120f) { onUpdate(editingTemplate.copy(cardPaddingBottomDp = it)) }
+                        SliderWithLabel("أيسر (Left)", editingTemplate.cardPaddingLeftDp, 0f..160f) { onUpdate(editingTemplate.copy(cardPaddingLeftDp = it)) }
+                        SliderWithLabel("أيمن (Right)", editingTemplate.cardPaddingRightDp, 0f..160f) { onUpdate(editingTemplate.copy(cardPaddingRightDp = it)) }
+                    }
                     Spacer(Modifier.height(8.dp))
 
                     // v1.9: Auto-fit — shrink a too-long verse (with its citation
@@ -514,7 +581,25 @@ CollapsibleSection(
                     Text("الخلفيات المتحركة (Motion Video Backgrounds) — طبقة الخلفية", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(AnimatedBackgroundType.entries) { type ->
-                            FilterChip(selected = editingTemplate.animatedBackground == type, onClick = { onUpdate(editingTemplate.copy(animatedBackground = type)) }, label = { Text(type.displayNameAr, fontSize = 10.sp) })
+                            FilterChip(
+                                selected = editingTemplate.animatedBackground == type,
+                                onClick = {
+                                    // v2.0: apply coordinated card style pairing
+                                    val pairing = getBackgroundPairing(type)
+                                    val updated = if (pairing != null) {
+                                        editingTemplate.copy(
+                                            animatedBackground = type,
+                                            style = pairing.style,
+                                            bgOpacity = pairing.bgOpacity,
+                                            accentColorHex = pairing.accentColorHex
+                                        )
+                                    } else {
+                                        editingTemplate.copy(animatedBackground = type)
+                                    }
+                                    onUpdate(updated)
+                                },
+                                label = { Text(type.displayNameAr, fontSize = 10.sp) }
+                            )
                         }
                     }
                     if (editingTemplate.animatedBackground != AnimatedBackgroundType.NONE) {

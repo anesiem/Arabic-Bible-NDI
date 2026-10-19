@@ -673,10 +673,17 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             selectBook(book, verse.chapter)
         }
 
+        // v2.0: Use the tashkeel-aware verse from the loaded chapter if available.
+        // Search results carry plain text; the reloaded chapter respects the
+        // tashkeel setting, so prefer that version.
+        val displayVerse = _uiState.value.displayedVerses.find {
+            it.bookId == verse.bookId && it.chapter == verse.chapter && it.verse == verse.verse
+        } ?: verse
+
         _uiState.value = _uiState.value.copy(
-            activeVerse = verse,
+            activeVerse = displayVerse,
             isLiveOnAir = true,
-            statusMessage = "Cued & Live: ${verse.getFormattedArabicCitation()}",
+            statusMessage = "Cued & Live: ${displayVerse.getFormattedArabicCitation()}",
             isSearching = false // Close search view on click
         )
 

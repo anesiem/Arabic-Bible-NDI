@@ -211,8 +211,20 @@ object BibleRepository {
         return verses
     }
 
+    /**
+     * Strip Arabic diacritics (tashkeel) from text for search normalization.
+     * Allows users to find verses whether they type with or without marks.
+     */
+    fun stripTashkeel(text: String): String {
+        return text.filter { c ->
+            val code = c.code
+            code !in 0x064B..0x065F && code != 0x0670
+        }
+    }
+
     fun searchVerses(query: String): List<BibleVerse> {
-        val q = query.trim()
+        // v2.0: strip tashkeel from query so search works regardless of diacritics
+        val q = stripTashkeel(query.trim())
         if (q.isEmpty()) return emptyList()
         val helper = dbHelper ?: return emptyList()
 

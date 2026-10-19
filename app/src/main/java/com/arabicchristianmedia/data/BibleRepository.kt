@@ -212,13 +212,14 @@ object BibleRepository {
     }
 
     /**
-     * Strip Arabic diacritics (tashkeel) from text for search normalization.
-     * Allows users to find verses whether they type with or without marks.
+     * Strip Arabic diacritics (tashkeel) and tatweel (kashida) from text for
+     * search normalization. Allows users to find verses whether they type
+     * with or without marks, or paste text with elongation.
      */
     fun stripTashkeel(text: String): String {
         return text.filter { c ->
             val code = c.code
-            code !in 0x064B..0x065F && code != 0x0670
+            code !in 0x064B..0x065F && code != 0x0670 && code != 0x0640
         }
     }
 

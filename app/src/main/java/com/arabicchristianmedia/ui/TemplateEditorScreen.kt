@@ -376,7 +376,30 @@ fun TemplateEditorScreen(
                     )
                 ) {
                     Column(Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Box(Modifier.fillMaxWidth().height(42.dp).clip(RoundedCornerShape(8.dp)).background(try { Color(android.graphics.Color.parseColor(tpl.bgColorHex)) } catch (e: Exception) { Color.Black }).border(1.dp, bento.border, RoundedCornerShape(8.dp)))
+                        // v2.0: Miniature live preview — shows how the template looks
+                        // (bg + text colors + accent) in the same 42.dp space.
+                        Box(
+                            Modifier.fillMaxWidth().height(42.dp).clip(RoundedCornerShape(8.dp))
+                                .background(
+                                    try {
+                                        Color(android.graphics.Color.parseColor(tpl.bgColorHex)).copy(alpha = tpl.bgOpacity.coerceIn(0f, 1f))
+                                    } catch (e: Exception) { Color.Black }
+                                )
+                                .border(
+                                    width = if (tpl.showAccentBorder) 2.dp else 1.dp,
+                                    color = if (tpl.showAccentBorder) try { Color(android.graphics.Color.parseColor(tpl.accentColorHex)) } catch (e: Exception) { bento.border } else bento.border,
+                                    shape = RoundedCornerShape(8.dp)
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                "آية",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = try { Color(android.graphics.Color.parseColor(tpl.textColorHex)) } catch (e: Exception) { Color.White },
+                                maxLines = 1
+                            )
+                        }
                         Spacer(Modifier.height(6.dp))
                         Text(tpl.name, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }

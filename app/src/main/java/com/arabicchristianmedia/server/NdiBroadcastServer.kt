@@ -996,6 +996,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       <div id="card-box" class="card-content">
         <div id="animated-bg-layer" class="animated-bg-layer">
           <video id="custom-video-bg" style="display:none;" autoplay loop muted playsinline></video>
+          <canvas id="particle-canvas" style="display:none; position:absolute; inset:0; width:100%; height:100%; pointer-events:none;"></canvas>
         </div>
 
         <div class="card-inner-content">
@@ -1026,6 +1027,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     const cardBox = document.getElementById('card-box');
     const animBgLayer = document.getElementById('animated-bg-layer');
     const customVideoBg = document.getElementById('custom-video-bg');
+    const particleCanvas = document.getElementById('particle-canvas');
     const citationRow = document.getElementById('citation-row');
     const citationText = document.getElementById('citation-text');
     const verseText = document.getElementById('verse-text');
@@ -1033,6 +1035,56 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     const englishSection = document.getElementById('english-section');
     const englishText = document.getElementById('english-text');
     const englishCitation = document.getElementById('english-citation');
+
+    // v2.0: Real particle field on HTTP (mirrors NDI drawParticleField).
+    // Previously HTTP only pulsed a CSS glow; now draws actual particles.
+    let particleAnimId = null;
+    let particleColor = '#7DD3FC';
+    function startParticles(colorHex, opacity) {
+      stopParticles();
+      particleColor = colorHex;
+      const canvas = particleCanvas;
+      const ctx = canvas.getContext('2d');
+      const rect = animBgLayer.getBoundingClientRect();
+      canvas.width = Math.max(1, Math.floor(rect.width));
+      canvas.height = Math.max(1, Math.floor(rect.height));
+      canvas.style.display = 'block';
+      const count = Math.min(120, Math.max(30, Math.floor((canvas.width * canvas.height) / 15000)));
+      const particles = [];
+      for (let i = 0; i < count; i++) {
+        particles.push({
+          x: Math.random() * canvas.width,
+          y: Math.random() * canvas.height,
+          vx: (Math.random() - 0.5) * 0.4,
+          vy: -0.3 - Math.random() * 0.5,
+          r: 1 + Math.random() * 2.5,
+          tw: Math.random() * Math.PI * 2,
+          twSpeed: 0.02 + Math.random() * 0.05
+        });
+      }
+      const baseAlpha = Math.floor(opacity * 255);
+      function frame() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        for (const p of particles) {
+          p.x += p.vx; p.y += p.vy; p.tw += p.twSpeed;
+          if (p.y < -5) { p.y = canvas.height + 5; p.x = Math.random() * canvas.width; }
+          if (p.x < -5) p.x = canvas.width + 5;
+          if (p.x > canvas.width + 5) p.x = -5;
+          const twinkle = (Math.sin(p.tw) + 1) / 2;
+          const alpha = Math.floor(baseAlpha * (0.25 + 0.75 * twinkle));
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+          ctx.fillStyle = particleColor + alpha.toString(16).padStart(2, '0');
+          ctx.fill();
+        }
+        particleAnimId = requestAnimationFrame(frame);
+      }
+      frame();
+    }
+    function stopParticles() {
+      if (particleAnimId) { cancelAnimationFrame(particleAnimId); particleAnimId = null; }
+      if (particleCanvas) particleCanvas.style.display = 'none';
+    }
 
     /**
      * Main Renderer: Applies state data to the DOM elements
@@ -1320,6 +1372,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
       animBgLayer.className = 'animated-bg-layer';
       customVideoBg.style.display = 'none';
+      stopParticles();
 
       if (animType === 'golden_rays') {
         animBgLayer.classList.add('anim-golden-rays');
@@ -1342,9 +1395,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       } else if (animType === 'gold_particles') {
         animBgLayer.classList.add('anim-gold-particles');
         animBgLayer.style.opacity = animOpacity;
+        startParticles('#FCD34D', animOpacity);
       } else if (animType === 'particles') {
         animBgLayer.classList.add('anim-particles');
         animBgLayer.style.opacity = animOpacity;
+        startParticles('#7DD3FC', animOpacity);
       } else if (animType === 'custom_video' && data.customVideoId) {
         // v1.7: videos are served by opaque ID from private storage (never by path).
         const videoUrl = '/video?id=' + encodeURIComponent(data.customVideoId);

@@ -566,7 +566,9 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             selectedTestament = book.testament,
             activeVerse = null
         )
-        broadcastServer.setLiveState(false)
+        // v2.0: removed setLiveState(false) — browsing chapters must not take
+        // the broadcast off-air. Outputs hold the previous verse until a new
+        // one is tapped. Explicit off-air still via toggleLive()/clearBroadcast().
     }
 
     fun selectChapter(chapter: Int) {
@@ -577,7 +579,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             displayedVerses = verses,
             activeVerse = null
         )
-        broadcastServer.setLiveState(false)
+        // v2.0: removed setLiveState(false) — see selectBook above.
     }
 
     fun nextChapter() {

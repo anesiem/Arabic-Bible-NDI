@@ -357,30 +357,47 @@ class NdiNativeSender {
             triggerJobs[feedKey]?.cancel()
             triggerJobs[feedKey] = scope.launch {
                 delay(120) // debounce rapid font size / slider adjustments by 120ms
-                val session = synchronized(activeSenders) { activeSenders[feedKey] } ?: return@launch
-                try {
-                    // In motion mode render a fresh frame (current animation phase +
-                    // the new verse); in static mode reuse the cached bitmap.
-                    // Same per-feed lock as the send loop: render+send are atomic.
-                    // The closed flag guards the stop/restart race: the session may
-                    // have been torn down during the debounce delay above.
-                    val sent = synchronized(feedLock(feedKey)) {
-                        if (session.closed) {
-                            false
-                        } else {
-                            val bmp = if (isMotionActive(session)) motionFrameProvider?.invoke(isFullScreen)
-                                      else frameProvider?.invoke(isFullScreen)
-                            bmp != null && sendBitmapToPtr(session, bmp)
-                        }
-                    }
-                    if (sent) {
-                        session.lastSentVersion = frameVersionProvider?.invoke() ?: session.lastSentVersion
-                        session.lastSentAtMs = SystemClock.elapsedRealtime()
-                    }
-                } catch (e: Exception) {
-                    reportError(feedKey, "triggerFrame error: ${e.message}", throttleMs = 10_000L)
+                sendOneFrame(feedKey, isFullScreen)
+            }
+        }
+    }
+
+    /**
+     * v2.0: Push one frame WITHOUT the debounce delay. Used for discrete
+     * actions like style selection — the debounced triggerFrame can be
+     * cancelled/swallowed by a follow-up call, leaving NDI showing stale
+     * state until the send-loop poll catches up.
+     */
+    fun triggerFrameImmediate(feedKey: String, isFullScreen: Boolean) {
+        synchronized(triggerJobs) {
+            triggerJobs[feedKey]?.cancel()
+            scope.launch { sendOneFrame(feedKey, isFullScreen) }
+        }
+    }
+
+    private suspend fun sendOneFrame(feedKey: String, isFullScreen: Boolean) {
+        val session = synchronized(activeSenders) { activeSenders[feedKey] } ?: return
+        try {
+            // In motion mode render a fresh frame (current animation phase +
+            // the new verse); in static mode reuse the cached bitmap.
+            // Same per-feed lock as the send loop: render+send are atomic.
+            // The closed flag guards the stop/restart race: the session may
+            // have been torn down during the debounce delay above.
+            val sent = synchronized(feedLock(feedKey)) {
+                if (session.closed) {
+                    false
+                } else {
+                    val bmp = if (isMotionActive(session)) motionFrameProvider?.invoke(isFullScreen)
+                              else frameProvider?.invoke(isFullScreen)
+                    bmp != null && sendBitmapToPtr(session, bmp)
                 }
             }
+            if (sent) {
+                session.lastSentVersion = frameVersionProvider?.invoke() ?: session.lastSentVersion
+                session.lastSentAtMs = SystemClock.elapsedRealtime()
+            }
+        } catch (e: Exception) {
+            reportError(feedKey, "triggerFrame error: ${e.message}", throttleMs = 10_000L)
         }
     }
 

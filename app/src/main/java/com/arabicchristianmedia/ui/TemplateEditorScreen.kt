@@ -392,8 +392,10 @@ fun TemplateEditorScreen(
                                 ),
                             contentAlignment = Alignment.Center
                         ) {
+                            // v2.0: show the card background transparency % (reads the
+                            // template, so saved styles follow the same rule).
                             Text(
-                                "آية",
+                                "${(tpl.bgOpacity.coerceIn(0f, 1f) * 100).toInt()}%",
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = try { Color(android.graphics.Color.parseColor(tpl.textColorHex)) } catch (e: Exception) { Color.White },

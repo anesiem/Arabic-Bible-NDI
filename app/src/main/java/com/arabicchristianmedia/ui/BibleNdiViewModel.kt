@@ -539,6 +539,16 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         nativeSender.triggerFrame(NdiNativeSender.FEED_FULL, true)
     }
 
+    /**
+     * v2.0: Immediate (non-debounced) push for discrete actions like style
+     * selection — the debounced triggerFrame can be cancelled by a follow-up
+     * call, leaving NDI on stale state until the send-loop poll catches up.
+     */
+    private fun triggerAllFramesImmediate() {
+        nativeSender.triggerFrameImmediate(NdiNativeSender.FEED_LOWER, false)
+        nativeSender.triggerFrameImmediate(NdiNativeSender.FEED_FULL, true)
+    }
+
     fun stopBroadcastServer() {
         nativeSender.stopAll()
         try { broadcastServer.stop() } catch (e: Exception) { /* ignore */ }
@@ -871,7 +881,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         templateRepo.setActiveTemplateId(template.id)
         templateRepo.setWorkingDirty(false, false)
         broadcastServer.updateTemplate(working)
-        triggerAllFrames()
+        triggerAllFramesImmediate()
     }
 
     /**
@@ -889,7 +899,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         templateRepo.setActiveShowTemplateId(template.id)
         templateRepo.setWorkingDirty(true, false)
         broadcastServer.updateShowTemplate(working)
-        nativeSender.triggerFrame(NdiNativeSender.FEED_FULL, true)
+        nativeSender.triggerFrameImmediate(NdiNativeSender.FEED_FULL, true)
     }
 
     /**

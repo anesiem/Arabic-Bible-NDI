@@ -287,7 +287,7 @@ fun BibleReaderScreen(
                 if (showSearchBar) {
                     OutlinedTextField(
                         value = uiState.searchQuery, onValueChange = onSearchChanged,
-                        placeholder = { Text("بحث...") },
+                        placeholder = { Text("بحث…", maxLines = 1) },
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
                         shape = RoundedCornerShape(12.dp)
                     )

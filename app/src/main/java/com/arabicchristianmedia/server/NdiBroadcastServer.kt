@@ -692,6 +692,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             put("customVideoId", tpl.customVideoId)
             put("customVideoMuted", tpl.customVideoMuted)
             put("motionSpeed", tpl.motionSpeed)
+            put("videoLoopMode", tpl.videoLoopMode.id)
             put("cardPaddingTopDp", tpl.cardPaddingTopDp.toDouble())
             put("cardPaddingBottomDp", tpl.cardPaddingBottomDp.toDouble())
             put("cardPaddingLeftDp", tpl.cardPaddingLeftDp.toDouble())
@@ -1413,6 +1414,24 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         customVideoBg.style.display = 'block';
         customVideoBg.style.opacity = animOpacity;
         animBgLayer.style.opacity = '1';
+        // v2.0: Crossfade on HTTP — fade the video element near the loop point
+        // (matches the NDI draw-time fade). timeupdate fires ~4x/sec; enough
+        // for a 500ms fade window.
+        const wantFade = (data.videoLoopMode || 'fade') === 'fade';
+        if (wantFade) {
+          customVideoBg.ontimeupdate = function() {
+            const dur = customVideoBg.duration;
+            const pos = customVideoBg.currentTime;
+            if (!dur || dur <= 0) { customVideoBg.style.opacity = animOpacity; return; }
+            const fadeS = 0.5;
+            let f = 1;
+            if (pos >= dur - fadeS) f = Math.max(0, (dur - pos) / fadeS);
+            else if (pos < fadeS) f = Math.max(0, pos / fadeS);
+            customVideoBg.style.opacity = (animOpacity * f).toFixed(3);
+          };
+        } else {
+          customVideoBg.ontimeupdate = null;
+        }
       } else {
         animBgLayer.style.opacity = '0';
       }
@@ -1705,8 +1724,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         }
         } else null
 
-        val citationHeight = 44f * scale * fitRatio
-        
+        // v2.0: budget the citation at its TRUE drawn footprint — baseline at
+        // startY + textSize*0.9, primary text starts 16*scale below that. The
+        // old fixed 44*scale*fitRatio underestimated it, shifting everything
+        // below (Arabic, English) down and eating the bottom padding.
+        val citationHeight = (tpl.referenceFontSize * 2f * scale * fitRatio).coerceAtLeast(18f) * 0.9f + 16f * scale
+
         // Calculate bilingual secondary text if needed
         var secondaryLayout: StaticLayout? = null
         var secondaryCitationLayout: StaticLayout? = null
@@ -2115,14 +2138,6 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 canvas.drawRoundRect(rect, radius, radius, paint)
             }
 
-            if (tpl.showAccentBorder) {
-                val accCol = try { Color.parseColor(tpl.accentColorHex) } catch (e: Exception) { Color.YELLOW }
-                paint.color = accCol
-                paint.strokeWidth = 6f * scale
-                paint.style = Paint.Style.STROKE
-                canvas.drawRoundRect(rect, radius, radius, paint)
-                paint.style = Paint.Style.FILL
-            }
         } else if (tpl.animatedBackground != AnimatedBackgroundType.NONE && tpl.animatedBackground != AnimatedBackgroundType.CUSTOM_VIDEO) {
             // If Pure Transparent background with animated motion background is selected:
             // Draw a delicate, ethereal luminous motion glow directly behind the verse while maintaining 100% alpha transparency elsewhere!
@@ -2157,6 +2172,18 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 val pClock = (System.currentTimeMillis() % 60000L) / 1000f * tpl.motionSpeed
                 drawParticleField(canvas, boxLeft, boxTop, boxRight, boxBottom, radius, pClock, scale, pColor, animAlpha)
             }
+        }
+
+        // v2.0: Accent border for ALL background types (video, animated, plain).
+        // Was drawn only inside the animated-background branch, so plain and
+        // video styles never showed a border on NDI.
+        if (!tpl.isPureTransparentBackground && tpl.showAccentBorder) {
+            val accCol = try { Color.parseColor(tpl.accentColorHex) } catch (e: Exception) { Color.YELLOW }
+            paint.color = accCol
+            paint.strokeWidth = 6f * scale
+            paint.style = Paint.Style.STROKE
+            canvas.drawRoundRect(rect, radius, radius, paint)
+            paint.style = Paint.Style.FILL
         }
 
         // Draw Citation Badge

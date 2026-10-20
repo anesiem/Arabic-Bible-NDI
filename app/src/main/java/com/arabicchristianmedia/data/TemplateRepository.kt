@@ -63,7 +63,7 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 36f,
                 cardPaddingRightDp = 36f,
                 autoFitText = true,
-                autoFitMinVerseSp = 28,
+                autoFitMinVerseSp = 20,
             ),
             LowerThirdTemplate(
                 id = "tpl_modern_glass",
@@ -102,7 +102,7 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 36f,
                 cardPaddingRightDp = 36f,
                 autoFitText = true,
-                autoFitMinVerseSp = 28,
+                autoFitMinVerseSp = 17,
             ),
             LowerThirdTemplate(
                 id = "tpl_transparent_animated_video",
@@ -143,7 +143,7 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 36f,
                 cardPaddingRightDp = 36f,
                 autoFitText = true,
-                autoFitMinVerseSp = 28,
+                autoFitMinVerseSp = 19,
             ),
             LowerThirdTemplate(
                 id = "tpl_animated_gold",
@@ -184,7 +184,7 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 36f,
                 cardPaddingRightDp = 36f,
                 autoFitText = true,
-                autoFitMinVerseSp = 28,
+                autoFitMinVerseSp = 18,
             ),
             LowerThirdTemplate(
                 id = "tpl_classic_banner",
@@ -222,7 +222,7 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 36f,
                 cardPaddingRightDp = 36f,
                 autoFitText = true,
-                autoFitMinVerseSp = 28,
+                autoFitMinVerseSp = 16,
             ),
             LowerThirdTemplate(
                 id = "tpl_cathedral_gold",
@@ -260,7 +260,7 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 36f,
                 cardPaddingRightDp = 36f,
                 autoFitText = true,
-                autoFitMinVerseSp = 28,
+                autoFitMinVerseSp = 18,
             ),
             LowerThirdTemplate(
                 id = "tpl_bilingual_dual",
@@ -298,7 +298,7 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 36f,
                 cardPaddingRightDp = 36f,
                 autoFitText = true,
-                autoFitMinVerseSp = 28,
+                autoFitMinVerseSp = 15,
             ),
             // v1.8: Sanctuary Gold — charcoal card, gold citation, candle-glow motion.
             LowerThirdTemplate(
@@ -343,7 +343,7 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 36f,
                 cardPaddingRightDp = 36f,
                 autoFitText = true,
-                autoFitMinVerseSp = 28,
+                autoFitMinVerseSp = 18,
             ),
             // v1.8: Morning Mercy — warm off-white, soft, highly readable.
             LowerThirdTemplate(
@@ -388,7 +388,7 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 36f,
                 cardPaddingRightDp = 36f,
                 autoFitText = true,
-                autoFitMinVerseSp = 28,
+                autoFitMinVerseSp = 17,
             ),
             // v1.8: Upper Room — transparent, large centered text, minimal.
             LowerThirdTemplate(
@@ -528,7 +528,7 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 36f,
                 cardPaddingRightDp = 36f,
                 autoFitText = true,
-                autoFitMinVerseSp = 28,
+                autoFitMinVerseSp = 20,
             ),
             LowerThirdTemplate(
                 id = "tpl_vivid_sunset_glory",
@@ -578,7 +578,7 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 36f,
                 cardPaddingRightDp = 36f,
                 autoFitText = true,
-                autoFitMinVerseSp = 28,
+                autoFitMinVerseSp = 20,
             ),
             LowerThirdTemplate(
                 id = "tpl_vivid_ocean_depth",
@@ -628,7 +628,7 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 36f,
                 cardPaddingRightDp = 36f,
                 autoFitText = true,
-                autoFitMinVerseSp = 28,
+                autoFitMinVerseSp = 20,
             ),
             LowerThirdTemplate(
                 id = "tpl_vivid_royal_amethyst",
@@ -678,7 +678,7 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 36f,
                 cardPaddingRightDp = 36f,
                 autoFitText = true,
-                autoFitMinVerseSp = 28,
+                autoFitMinVerseSp = 20,
             ),
             LowerThirdTemplate(
                 id = "tpl_vivid_emerald_oasis",
@@ -728,7 +728,7 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 36f,
                 cardPaddingRightDp = 36f,
                 autoFitText = true,
-                autoFitMinVerseSp = 28,
+                autoFitMinVerseSp = 20,
             ),
             LowerThirdTemplate(
                 id = "tpl_vivid_golden_sanctuary",
@@ -778,7 +778,7 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 36f,
                 cardPaddingRightDp = 36f,
                 autoFitText = true,
-                autoFitMinVerseSp = 28,
+                autoFitMinVerseSp = 20,
             ),
             LowerThirdTemplate(
                 id = "tpl_vivid_crimson_dawn",
@@ -828,7 +828,7 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 36f,
                 cardPaddingRightDp = 36f,
                 autoFitText = true,
-                autoFitMinVerseSp = 28,
+                autoFitMinVerseSp = 20,
             ),
             // v1.9: 10 additional Lower Third presets — transparent/simple, vivid,
             // elegant. Coordinated palettes per preset; language mix 4 Arabic / 3 English / 3 Both.
@@ -880,7 +880,7 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 36f,
                 cardPaddingRightDp = 36f,
                 autoFitText = true,
-                autoFitMinVerseSp = 28,
+                autoFitMinVerseSp = 20,
             ),
             LowerThirdTemplate(
                 id = "tpl_lt_clear_light",
@@ -930,7 +930,7 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 36f,
                 cardPaddingRightDp = 36f,
                 autoFitText = true,
-                autoFitMinVerseSp = 28,
+                autoFitMinVerseSp = 20,
             ),
             LowerThirdTemplate(
                 id = "tpl_lt_crimson",
@@ -980,7 +980,7 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 36f,
                 cardPaddingRightDp = 36f,
                 autoFitText = true,
-                autoFitMinVerseSp = 28,
+                autoFitMinVerseSp = 20,
             ),
             LowerThirdTemplate(
                 id = "tpl_lt_azure",
@@ -1030,7 +1030,7 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 36f,
                 cardPaddingRightDp = 36f,
                 autoFitText = true,
-                autoFitMinVerseSp = 28,
+                autoFitMinVerseSp = 20,
             ),
             LowerThirdTemplate(
                 id = "tpl_lt_trumpet",
@@ -1080,7 +1080,7 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 36f,
                 cardPaddingRightDp = 36f,
                 autoFitText = true,
-                autoFitMinVerseSp = 28,
+                autoFitMinVerseSp = 20,
             ),
             LowerThirdTemplate(
                 id = "tpl_lt_coral",
@@ -1130,7 +1130,7 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 36f,
                 cardPaddingRightDp = 36f,
                 autoFitText = true,
-                autoFitMinVerseSp = 28,
+                autoFitMinVerseSp = 20,
             ),
             LowerThirdTemplate(
                 id = "tpl_lt_midnight",
@@ -1180,7 +1180,7 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 36f,
                 cardPaddingRightDp = 36f,
                 autoFitText = true,
-                autoFitMinVerseSp = 28,
+                autoFitMinVerseSp = 20,
             ),
             LowerThirdTemplate(
                 id = "tpl_lt_pearl",
@@ -1230,7 +1230,7 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 36f,
                 cardPaddingRightDp = 36f,
                 autoFitText = true,
-                autoFitMinVerseSp = 28,
+                autoFitMinVerseSp = 20,
             ),
             LowerThirdTemplate(
                 id = "tpl_lt_sage",
@@ -1280,7 +1280,7 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 36f,
                 cardPaddingRightDp = 36f,
                 autoFitText = true,
-                autoFitMinVerseSp = 28,
+                autoFitMinVerseSp = 20,
             ),
             LowerThirdTemplate(
                 id = "tpl_lt_velvet",
@@ -1330,7 +1330,7 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 36f,
                 cardPaddingRightDp = 36f,
                 autoFitText = true,
-                autoFitMinVerseSp = 28,
+                autoFitMinVerseSp = 20,
             ),
             // v1.9: 10 Full Show presets — large centered text for the audience.
             // Same categories: transparent/simple, vivid, elegant. 4 Arabic / 3 English / 3 Both.

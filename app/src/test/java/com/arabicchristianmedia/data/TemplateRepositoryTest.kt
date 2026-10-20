@@ -102,9 +102,17 @@ class TemplateRepositoryTest {
     }
 
     @Test
-    fun `legacy tpl_modern_glass migrates to transparent default`() {
+    fun `legacy tpl_modern_glass migrates to its redesigned successor`() {
         repo.setActiveTemplateId("tpl_modern_glass")
-        assertEquals("tpl_transparent_alpha", repo.getActiveTemplateId())
+        assertEquals("tpl_lt_broadcast_glass", repo.getActiveTemplateId())
+    }
+
+    @Test
+    fun `any other legacy factory id migrates to the pure-word default`() {
+        repo.setActiveTemplateId("tpl_vivid_neon_night")
+        assertEquals("tpl_lt_pure_word", repo.getActiveTemplateId())
+        repo.setActiveTemplateId("tpl_lt_golden_glory")
+        assertEquals("tpl_lt_golden_glory", repo.getActiveTemplateId())
     }
 
     @Test
@@ -153,20 +161,31 @@ class TemplateRepositoryTest {
             assertTrue(tpl.textShadowColorHex.isNotBlank())
             assertTrue(tpl.cardGlowColorHex.isNotBlank())
         }
-        // The two transparent styles must not glow: there is no card, and the
-        // feeds promise 100% transparency. The card styles keep the glow.
-        assertFalse(defaults.first { it.id == "tpl_transparent_alpha" }.cardGlowEnabled)
-        assertFalse(defaults.first { it.id == "tpl_transparent_animated_video" }.cardGlowEnabled)
-        assertFalse(defaults.first { it.id == "tpl_transparent_alpha_full" }.cardGlowEnabled)
-        assertTrue(defaults.first { it.id == "tpl_transparent_alpha_full" }.isFullScreen)
-        assertFalse(defaults.first { it.id == "tpl_upper_room" }.cardGlowEnabled)
-        assertTrue(defaults.first { it.id == "tpl_modern_glass" }.cardGlowEnabled)
-        assertTrue(defaults.first { it.id == "tpl_animated_gold" }.cardGlowEnabled)
-        assertTrue(defaults.first { it.id == "tpl_classic_banner" }.cardGlowEnabled)
-        assertTrue(defaults.first { it.id == "tpl_cathedral_gold" }.cardGlowEnabled)
-        assertTrue(defaults.first { it.id == "tpl_bilingual_dual" }.cardGlowEnabled)
-        assertTrue(defaults.first { it.id == "tpl_sanctuary_gold" }.cardGlowEnabled)
-        assertTrue(defaults.first { it.id == "tpl_morning_mercy" }.cardGlowEnabled)
+        // Transparent styles must not glow: there is no card, and the feeds
+        // promise 100% transparency. Card styles keep the glow.
+        val transparentIds = listOf(
+            "tpl_lt_golden_trumpet", "tpl_lt_azure_heaven", "tpl_lt_neon_night",
+            "tpl_lt_velvet_worship", "tpl_lt_garden_peace", "tpl_lt_rose_sharon",
+            "tpl_lt_pure_word", "tpl_lt_crystal_english",
+            "tpl_fs_starlit_heaven", "tpl_fs_pure_word"
+        )
+        transparentIds.forEach { id ->
+            val tpl = defaults.first { it.id == id }
+            assertFalse(tpl.cardGlowEnabled, "$id should not glow")
+            assertTrue(tpl.isPureTransparentBackground, "$id should be pure transparent")
+            assertEquals(0.0f, tpl.bgOpacity, "$id should be 100% transparent")
+        }
+        val cardIds = listOf(
+            "tpl_lt_golden_glory", "tpl_lt_sanctuary_gold", "tpl_lt_broadcast_glass",
+            "tpl_lt_classic_banner", "tpl_lt_cathedral_gold", "tpl_lt_bilingual_harmony",
+            "tpl_fs_glory_revealed"
+        )
+        cardIds.forEach { id ->
+            assertTrue(defaults.first { it.id == id }.cardGlowEnabled, "$id should glow")
+        }
+        assertTrue(defaults.first { it.id == "tpl_fs_pure_word" }.isFullScreen)
+        assertEquals(27, defaults.count { !it.isFullScreen })
+        assertEquals(11, defaults.count { it.isFullScreen })
     }
 
     @Test

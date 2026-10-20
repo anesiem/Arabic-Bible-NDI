@@ -99,14 +99,14 @@ class RenderStatePersistenceTest {
 
     @Test
     fun `restores the persisted active styles`() {
-        repo.setActiveTemplateId("tpl_transparent_alpha")
-        repo.setActiveShowTemplateId("tpl_transparent_alpha_full")
+        repo.setActiveTemplateId("tpl_lt_pure_word")
+        repo.setActiveShowTemplateId("tpl_fs_pure_word")
 
         val server = NdiBroadcastServer(context, 8091)
         server.restorePersistedRenderState(repo) { _, _ -> emptyList() }
 
-        assertEquals("tpl_transparent_alpha", server.currentTemplate.id)
-        assertEquals("tpl_transparent_alpha_full", server.currentShowTemplate.id)
+        assertEquals("tpl_lt_pure_word", server.currentTemplate.id)
+        assertEquals("tpl_fs_pure_word", server.currentShowTemplate.id)
     }
 
     @Test

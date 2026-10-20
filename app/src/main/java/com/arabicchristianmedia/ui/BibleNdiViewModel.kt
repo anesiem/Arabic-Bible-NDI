@@ -268,7 +268,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         // fresh install (no working template ever saved) falls back to the default.
         val hasLowerWorking = templateRepo.getWorkingTemplate(false) != null
         val lowerHighlightId = templateRepo.getActiveTemplateId()
-            ?: if (!hasLowerWorking) "tpl_transparent_alpha" else null
+            ?: if (!hasLowerWorking) "tpl_lt_pure_word" else null
         val lowerStyle = allTpls.firstOrNull { it.id == lowerHighlightId && !it.isFullScreen }
         val lowerWorking = (templateRepo.getWorkingTemplate(false)
             ?: lowerStyle

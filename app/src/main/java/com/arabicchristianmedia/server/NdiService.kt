@@ -160,6 +160,11 @@ class NdiService : Service() {
                 val tpl = if (isFullScreen) srv.currentShowTemplate else srv.currentTemplate
                 tpl.animatedBackground != AnimatedBackgroundType.NONE
             }
+            // v2.0: verse-change transitions always pump (like the HTTP
+            // overlay), independent of the feed's Motion toggle.
+            snd.setTransitionProvider { isFullScreen ->
+                server?.isTransitionActiveFor(isFullScreen) == true
+            }
         }
 
         /**

@@ -224,10 +224,22 @@ class NdiNativeSender {
         motionContentProvider = provider
     }
 
+    /**
+     * v2.0: reports whether a verse-change transition is animating for the
+     * feed. Transitions pump regardless of the feed's Motion toggle (the
+     * toggle gates animated backgrounds only), mirroring the HTTP overlay.
+     */
+    private var transitionProvider: ((Boolean) -> Boolean)? = null
+    fun setTransitionProvider(provider: (Boolean) -> Boolean) {
+        transitionProvider = provider
+    }
+
     /** True when this session should render motion ticks right now. */
-    private fun isMotionActive(session: SenderSession): Boolean =
-        session.spec.motionEnabled &&
+    private fun isMotionActive(session: SenderSession): Boolean {
+        if (transitionProvider?.invoke(session.isFullScreen) == true) return true
+        return session.spec.motionEnabled &&
             (motionContentProvider?.invoke(session.isFullScreen) == true)
+    }
 
     fun isSourceActive(feedKey: String): Boolean =
         synchronized(activeSenders) { activeSenders.containsKey(feedKey) }

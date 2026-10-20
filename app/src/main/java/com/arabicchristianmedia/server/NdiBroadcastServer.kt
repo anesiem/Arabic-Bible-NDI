@@ -34,6 +34,7 @@ import com.arabicchristianmedia.model.LanguageMode
 import com.arabicchristianmedia.model.LowerThirdTemplate
 import com.arabicchristianmedia.model.StreamBackgroundMode
 import com.arabicchristianmedia.model.TemplateStyle
+import com.arabicchristianmedia.model.TransitionType
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -311,6 +312,43 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     private var cachedLowerBitmap: Bitmap? = null
     private var cachedShowBitmap: Bitmap? = null
 
+    /**
+     * v2.0: NDI verse-change transitions. [updateVerse] snapshots the verse
+     * being replaced; while a transition is active, drawFrameInto crossfades
+     * the old frame into the new one over the style's transitionDurationMs
+     * (FADE and both SLIDE_* use a crossfade on NDI; CUT = instant).
+     * The motion pump stays on during the window so static styles still
+     * animate (see [isTransitionActiveFor]).
+     */
+    @Volatile private var transitionPrevVerse: BibleVerse? = null
+    @Volatile private var transitionStartMs: Long = 0L
+
+    /** True while a verse-change crossfade is still animating for this feed. */
+    fun isTransitionActiveFor(isFull: Boolean): Boolean {
+        if (transitionPrevVerse == null) return false
+        if (!isLive) return false
+        val tpl = if (isFull) currentShowTemplate else currentTemplate
+        val dur = tpl.transitionDurationMs
+        if (tpl.transition == TransitionType.CUT || dur <= 0) return false
+        val elapsed = SystemClock.elapsedRealtime() - transitionStartMs
+        if (elapsed >= dur) {
+            // Finished: clear state and refresh the static cache, so the
+            // sender's heartbeat/static sends serve the NEW verse instead
+            // of the pre-change frame still sitting in the cache.
+            transitionPrevVerse = null
+            invalidateBitmapCache()
+            return false
+        }
+        return true
+    }
+
+    fun transitionProgressFor(isFull: Boolean): Float {
+        if (!isTransitionActiveFor(isFull)) return 1f
+        val tpl = if (isFull) currentShowTemplate else currentTemplate
+        val dur = tpl.transitionDurationMs.coerceAtLeast(1)
+        return ((SystemClock.elapsedRealtime() - transitionStartMs).toFloat() / dur).coerceIn(0f, 1f)
+    }
+
     fun invalidateBitmapCache() {
         isCacheDirtyLower = true
         isCacheDirtyShow = true
@@ -318,8 +356,15 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     }
 
     fun updateVerse(verse: BibleVerse, live: Boolean = true) {
+        val prev = currentVerse
         currentVerse = verse
         isLive = live
+        // v2.0: snapshot the replaced verse so the next frames can crossfade
+        // (only on a real verse change, and only when going live with content).
+        if (prev != null && prev.id != verse.id && isLive && live) {
+            transitionPrevVerse = prev
+            transitionStartMs = SystemClock.elapsedRealtime()
+        }
         invalidateBitmapCache()
         broadcastStateToClients()
         persistVerseState()
@@ -1165,7 +1210,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         englishCitation.style.fontWeight = data.secondaryReferenceIsBold ? 'bold' : 'normal';
         englishCitation.style.fontStyle = data.secondaryReferenceIsItalic ? 'italic' : 'normal';
         const spacing = data.showBilingualSpacing ? (data.bilingualSpacing || 20) : 0;
-        englishSection.style.marginTop = spacing + 'px';
+        // v2.0: scale like every other measurement (NDI: spacing x frame
+        // scale). Raw px made the gap proportionally bigger than NDI at any
+        // window size other than exactly 1920 wide.
+        englishSection.style.marginTop = (spacing * getStageScale()) + 'px';
       } else {
         englishSection.style.display = 'none';
       }
@@ -1210,8 +1258,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         englishSection.style.textAlign = enAlignCss;
         // v1.8: honor the bilingualSpacing setting (was hardcoded 10px,
         // overwriting the marginTop set above).
+        // v2.0: scaled by stageScale like NDI (see lower-third branch).
         const fsSpacing = data.showBilingualSpacing ? (data.bilingualSpacing || 20) : 0;
-        englishSection.style.margin = fsSpacing + 'px auto 0 auto';
+        englishSection.style.margin = (fsSpacing * getStageScale()) + 'px auto 0 auto';
         englishText.style.width = '100%';
         englishText.style.textAlign = enAlignCss;
       } else {
@@ -1306,7 +1355,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         crossEmblem.style.display = 'none';
       }
 
-      const radius = isFull ? '0' : (data.cornerRadiusDp || 16) + 'px';
+      // v2.0: scaled like the fonts (NDI: cornerRadiusDp x 2 x frame scale).
+      // Raw px made HTTP corners half as round as NDI at full size, drifting
+      // further as the window shrank.
+      const radius = isFull ? '0' : scaledPx(data.cornerRadiusDp || 16);
       cardBox.style.borderRadius = radius;
       if (!isFull) cardBox.style.padding = padT + ' ' + padR + ' ' + padB + ' ' + padL;
 
@@ -1335,9 +1387,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         var dist = (data.textShadowOffsetDp !== undefined) ? data.textShadowOffsetDp : 4;
         var angDeg = (data.textShadowAngleDeg !== undefined) ? data.textShadowAngleDeg : 90;
         var ang = angDeg * Math.PI / 180;
-        var dx = (Math.cos(ang) * dist).toFixed(1);
-        var dy = (Math.sin(ang) * dist).toFixed(1);
-        return dx + 'px ' + dy + 'px ' + blur + 'px ' + col;
+        // v2.0: scale offset + blur by stageScale (NDI: value x frame scale);
+        // raw px made the shadow proportionally heavier than NDI at any
+        // window size other than exactly 1920 wide.
+        var ss = getStageScale();
+        var dx = (Math.cos(ang) * dist * ss).toFixed(1);
+        var dy = (Math.sin(ang) * dist * ss).toFixed(1);
+        return dx + 'px ' + dy + 'px ' + (blur * ss).toFixed(1) + 'px ' + col;
       }
 
       // 100% transparent toggle behaves like the transparent style (mirrors the NDI canvas).
@@ -1348,18 +1404,20 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         cardBox.style.boxShadow = 'none';
       } else if (data.style === 'CLASSIC_BANNER') {
         cardBox.style.backgroundColor = 'rgba(' + r + ',' + g + ',' + b + ',' + opacity + ')';
-        cardBox.style.borderRight = data.showAccentBorder ? '6px solid ' + accent : 'none';
+        // v2.0: border width scaled (NDI stroke: 6 x frame scale); the
+        // corner radius keeps the scaled value set above (NDI honors the
+        // style's cornerRadiusDp for the banner too — was hardcoded 4px).
+        cardBox.style.borderRight = data.showAccentBorder ? (6 * getStageScale()) + 'px solid ' + accent : 'none';
         cardBox.style.borderLeft = 'none';
-        cardBox.style.borderRadius = isFull ? '0' : '4px';
         cardBox.style.boxShadow = cardGlowShadow('0 12px 36px', 0.6);
       } else if (data.style === 'ROYAL_LITURGICAL') {
         cardBox.style.background = 'linear-gradient(135deg, rgba(' + r + ',' + g + ',' + b + ',' + opacity + ') 0%, rgba(20,20,35,' + opacity + ') 100%)';
-        cardBox.style.border = data.showAccentBorder ? '2px solid ' + accent : 'none';
+        cardBox.style.border = data.showAccentBorder ? (2 * getStageScale()) + 'px solid ' + accent : 'none';
         cardBox.style.boxShadow = cardGlowShadow('0 10px 40px', 0.7);
       } else {
         cardBox.style.backgroundColor = 'rgba(' + r + ',' + g + ',' + b + ',' + opacity + ')';
         cardBox.style.backdropFilter = 'blur(16px)';
-        cardBox.style.border = data.showAccentBorder ? '1.5px solid ' + accent + '77' : 'none';
+        cardBox.style.border = data.showAccentBorder ? (1.5 * getStageScale()) + 'px solid ' + accent + '77' : 'none';
         cardBox.style.boxShadow = cardGlowShadow('0 16px 40px', 0.55);
       }
 
@@ -1473,22 +1531,41 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       // loop only runs while the content overflows its budget.
       if (data.autoFitText !== false) {
         const minVersePx = (data.autoFitMinVerseSp || 28) * 2 * getStageScale();
-        // Lower third must not swallow the screen; full show must stay inside
-        // the 16:9 stage.
-        const maxCardH = isFull ? stage.clientHeight : stage.clientHeight * 0.5;
         const baseVerse = parseFloat(verseText.style.fontSize) || minVersePx;
         const baseCite = parseFloat(citationText.style.fontSize) || baseVerse * 0.6;
         const baseEnV = parseFloat(englishText.style.fontSize) || baseVerse * 0.7;
         const baseEnC = parseFloat(englishCitation.style.fontSize) || baseVerse * 0.55;
         const minRatio = Math.min(1, minVersePx / baseVerse);
-        let ratio = 1;
-        let guard = 0;
-        while (guard++ < 25 && ratio > minRatio && cardBox.scrollHeight > maxCardH + 1) {
-          ratio = Math.max(minRatio, ratio - 0.05);
-          verseText.style.fontSize = (baseVerse * ratio) + 'px';
-          citationText.style.fontSize = (baseCite * ratio) + 'px';
-          englishText.style.fontSize = (baseEnV * ratio) + 'px';
-          englishCitation.style.fontSize = (baseEnC * ratio) + 'px';
+        // v2.0: SAME budget as the NDI renderer, measured the SAME way —
+        // content only (card padding excluded). NDI: lower third content
+        // budget = 45% of frame height minus pads and the citation gap;
+        // full show = frame height minus pads. The old code capped the
+        // whole card (padding included) at 50%, so mid-length verses
+        // shrank on NDI but not on HTTP and sizes never matched.
+        const ss = getStageScale();
+        const padTopPx = parseFloat(padT) || 0;
+        const padBotPx = parseFloat(padB) || 0;
+        function contentHeight() { return cardBox.scrollHeight - padTopPx - padBotPx; }
+        const maxContentH = isFull
+          ? (stage.clientHeight - padTopPx - padBotPx)
+          : (stage.clientHeight * 0.45 - padTopPx - padBotPx - 16 * ss);
+        function applyRatio(r) {
+          verseText.style.fontSize = (baseVerse * r) + 'px';
+          citationText.style.fontSize = (baseCite * r) + 'px';
+          englishText.style.fontSize = (baseEnV * r) + 'px';
+          englishCitation.style.fontSize = (baseEnC * r) + 'px';
+        }
+        const cH = contentHeight();
+        if (cH > maxContentH && maxContentH > 0) {
+          // One exact step (NDI's computeFitRatio), then one corrective
+          // pass because line wrapping makes height non-linear.
+          let ratio = Math.max(minRatio, Math.min(1, maxContentH / cH));
+          applyRatio(ratio);
+          const cH2 = contentHeight();
+          if (cH2 > maxContentH && ratio > minRatio) {
+            ratio = Math.max(minRatio, ratio * (maxContentH / cH2));
+            applyRatio(ratio);
+          }
         }
       }
     }
@@ -1717,6 +1794,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 .setAlignment(alignment)
                 .setLineSpacing(6f * scale * fitRatio, 1.25f)
                 .setIncludePad(true)
+                // v2.0: greedy line breaking like the browser (HTTP overlay).
+                // The default HIGH_QUALITY balances lines (breaks early), so
+                // the same verse took more, shorter lines on NDI than on HTTP.
+                .setBreakStrategy(Layout.BREAK_STRATEGY_SIMPLE)
                 .build()
         } else {
             @Suppress("DEPRECATION")
@@ -1770,6 +1851,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                     .setAlignment(secAlignment)
                     .setLineSpacing(4f * scale * fitRatio, 1.15f)
                     .setIncludePad(true)
+                    .setBreakStrategy(Layout.BREAK_STRATEGY_SIMPLE)
                     .build()
             } else {
                 @Suppress("DEPRECATION")
@@ -1798,6 +1880,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                         .setAlignment(secAlignment)
                         .setLineSpacing(4f * scale * fitRatio, 1.15f)
                         .setIncludePad(true)
+                        .setBreakStrategy(Layout.BREAK_STRATEGY_SIMPLE)
                         .build()
                 } else {
                     @Suppress("DEPRECATION")
@@ -1824,7 +1907,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         val isFull = tpl.isFullScreen
 
         // Fast Path: Return cached Bitmap if state hasn't changed (0ms allocation-free)
-        if (allowSharedCache && !isForStream && overrideTemplate == null && width == 1920 && height == 1080) {
+        // v2.0: never serve the cache mid verse-transition — the crossfade
+        // must be re-rendered every frame until it completes.
+        if (allowSharedCache && !isForStream && overrideTemplate == null && width == 1920 && height == 1080 && !isTransitionActiveFor(isFull)) {
             if (isFull && !isCacheDirtyShow && cachedShowBitmap != null && !cachedShowBitmap!!.isRecycled) {
                 return cachedShowBitmap!!
             }
@@ -1862,7 +1947,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
      * dedicated reused bitmaps (see [renderMotionFrame]) so the static cache is
      * never redrawn in place — static readers can never observe a half-drawn frame.
      */
-    private fun drawFrameInto(bitmap: Bitmap, width: Int, height: Int, isForStream: Boolean, tpl: LowerThirdTemplate, isFull: Boolean, isMotionTick: Boolean = false) {
+    private fun drawFrameInto(bitmap: Bitmap, width: Int, height: Int, isForStream: Boolean, tpl: LowerThirdTemplate, isFull: Boolean, isMotionTick: Boolean = false, verseOverride: BibleVerse? = null, isTransitionSnapshot: Boolean = false) {
         // v1.9: frame-timing instrumentation (replaces the GPU investigation).
         val drawStartNs = System.nanoTime()
         val canvas = Canvas(bitmap)
@@ -1871,7 +1956,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
 
         // v1.8: no verse selected on launch — blank frame (cleared above; no text).
-        val activeVerse = currentVerse ?: return
+        // v2.0: verseOverride renders a specific verse (transition snapshots).
+        val activeVerse = verseOverride ?: currentVerse ?: return
 
         // Video Stream Background: Since JPEG encoders have no alpha channel,
         // provide keyable broadcast background (Chroma Green #00FF00, Luma Black, or Studio)
@@ -1890,6 +1976,30 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // as the projector usually remains active with a background or current verse.
         if (!isLive && !isForStream && !tpl.isFullScreen) {
             return
+        }
+
+        // v2.0: verse-change crossfade. The OLD verse's finished frame is
+        // laid down fading out; everything below (the new frame) is drawn
+        // into a layer at fade-in alpha, so the pair composite to exactly
+        // the finished frames at progress 0 and 1. Snapshot renders (the
+        // recursive call that produces the old frame) skip this block.
+        var transitionScratch: Bitmap? = null
+        var transitionLayer = -1
+        if (!isTransitionSnapshot && isTransitionActiveFor(isFull)) {
+            val prevVerse = transitionPrevVerse
+            if (prevVerse != null) {
+                val p = transitionProgressFor(isFull)
+                try {
+                    val scratch = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                    drawFrameInto(scratch, width, height, isForStream, tpl, isFull, verseOverride = prevVerse, isTransitionSnapshot = true)
+                    val outPaint = Paint().apply { alpha = ((1f - p) * 255f).toInt().coerceIn(0, 255) }
+                    canvas.drawBitmap(scratch, 0f, 0f, outPaint)
+                    transitionScratch = scratch
+                } catch (_: OutOfMemoryError) { /* fall through: plain fade-in */
+                } catch (_: Exception) { /* fall through: plain fade-in */ }
+                val layerPaint = Paint().apply { alpha = (p * 255f).toInt().coerceIn(0, 255) }
+                transitionLayer = canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), layerPaint)
+            }
         }
 
         val scale = width / 1920f
@@ -2170,7 +2280,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 val pColor = if (tpl.animatedBackground == AnimatedBackgroundType.PARTICLE_STARS)
                     Color.rgb(125, 211, 252) else Color.rgb(252, 211, 77)
                 val pClock = (System.currentTimeMillis() % 60000L) / 1000f * tpl.motionSpeed
-                drawParticleField(canvas, boxLeft, boxTop, boxRight, boxBottom, radius, pClock, scale, pColor, animAlpha)
+                // v2.0: particles need full-range alpha like HTTP (opacity*255);
+                // the delicate animAlpha (~45) belongs to the glow gradient only.
+                val particleAlpha = (tpl.animatedBackgroundOpacity * 255).toInt().coerceIn(25, 255)
+                drawParticleField(canvas, boxLeft, boxTop, boxRight, boxBottom, radius, pClock, scale, pColor, particleAlpha)
             }
         }
 
@@ -2284,15 +2397,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         val translateX = if (tpl.alignment == BroadcastTextAlignment.CENTER) {
             (width - contentWidth) / 2f
         } else if (tpl.alignment == BroadcastTextAlignment.RIGHT) {
-            // v1.8: Right-align the verse layout with the citation (account for emblem).
-            // The citation's right edge is at boxRight - padR - emblemW - emblemGap.
-            // Use a temporary paint for measurement (emblemPaint is defined later).
-            val tmpPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                textSize = 24f * scale
-            }
-            val emblemW = tmpPaint.measureText(tpl.emblem)
-            val emblemGap = 16f * scale
-            boxRight - padR - emblemW - emblemGap - contentWidth
+            // v2.0: the verse/English block's right edge sits at the padding
+            // edge (boxRight - padR) exactly like the HTTP overlay. The
+            // emblem space (emblemW + emblemGap) belongs ONLY to the citation
+            // row, which lays it out separately above — it was wrongly
+            // shrinking the verse block and shifting it left ~40dp at 1080p.
+            boxRight - padR - contentWidth
         } else {
             boxLeft + padL
         }
@@ -2346,6 +2456,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             canvas.drawRoundRect(badgeRect, 14f * scale, 14f * scale, standbyBgPaint)
             canvas.drawRoundRect(badgeRect, 14f * scale, 14f * scale, standbyBorderPaint)
             canvas.drawText("وضع الاستعداد • STANDBY (اضغط على الهواء للبث)", width / 2f, 35f * scale + (badgeH * 0.65f), standbyTextPaint)
+        }
+
+        // v2.0: close the verse-transition layer (see prologue) before timing.
+        if (transitionLayer >= 0) {
+            canvas.restoreToCount(transitionLayer)
+            transitionScratch?.recycle()
         }
 
         recordDrawTiming(isFull, System.nanoTime() - drawStartNs)

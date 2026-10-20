@@ -22,3 +22,8 @@ debug.keystore
 *.keystore
 *.jks
 *.p12
+
+# Repo cleanup (2026-10-20): build outputs and IDE state stay local
+/app/release/
+**/mapping.txt
+.idea/

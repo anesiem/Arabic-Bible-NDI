@@ -142,8 +142,8 @@ Application ID: `com.arabicchristianmedia`
 ## 🛠️ Developers
 
 See [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) for architecture, build
-instructions, and development preferences. Release details live in
-[RELEASE_NOTES_v1.9.md](RELEASE_NOTES_v1.9.md) and the Releases page.
+instructions, and development preferences. Release details live on the
+[Releases page](https://github.com/anesiem/Arabic-Bible-NDI/releases).
 
 ## 🙏 Support Through Prayer
 

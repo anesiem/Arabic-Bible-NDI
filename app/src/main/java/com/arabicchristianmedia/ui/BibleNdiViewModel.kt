@@ -78,7 +78,12 @@ data class BibleNdiUiState(
     val readerFontSize: Int = 18,
     val isKeepScreenOn: Boolean = true,
     // True while the Bible databases are being copied/loaded on first launch.
-    val isLoadingBible: Boolean = false
+    val isLoadingBible: Boolean = false,
+    // v2.0: sermon playlist built from text shared from other apps
+    // (Google Keep notes, Bible apps) — see handleSharedText.
+    val sermonPlaylist: List<BibleVerse> = emptyList(),
+    // v2.0: bumped on every successful share so MainActivity opens the list tab.
+    val sermonListNonce: Long = 0
 )
 
 class BibleNdiViewModel(application: Application) : AndroidViewModel(application) {
@@ -787,6 +792,53 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         } catch (e: Exception) {
             false
         }
+    }
+
+    /**
+     * v2.0: text shared from another app (Google Keep, Bible apps) via
+     * ACTION_SEND / ACTION_PROCESS_TEXT. Scans the text for references
+     * (ReferenceScanner — book-name anchored, ranges supported), expands
+     * them against the database, replaces the sermon playlist, and puts
+     * the FIRST verse on air through the same path as /api/trigger.
+     * Canonical text always comes from the app's own database (so the
+     * tashkeel setting applies); the shared text is only the carrier.
+     */
+    fun handleSharedText(text: String) {
+        val refs = com.arabicchristianmedia.model.ReferenceScanner.scan(text, BibleRepository.allBooks)
+        val verses = mutableListOf<BibleVerse>()
+        for (ref in refs) {
+            val chapterVerses = BibleRepository.getVerses(ref.book.id, ref.chapter)
+            if (chapterVerses.isEmpty()) continue
+            val selected = when {
+                ref.wholeChapter -> chapterVerses
+                ref.endVerse != null -> chapterVerses.filter { it.verse in ref.verse..ref.endVerse }
+                else -> chapterVerses.filter { it.verse == ref.verse }
+            }
+            verses.addAll(selected)
+        }
+        if (verses.isEmpty()) {
+            _uiState.value = _uiState.value.copy(
+                statusMessage = "لم يتم العثور على مرجع كتابي في النص المشارَك (No verse reference found in the shared text)"
+            )
+            return
+        }
+        val first = verses.first()
+        triggerVerseByReference(first.bookId, first.chapter, first.verse, "both")
+        _uiState.value = _uiState.value.copy(
+            sermonPlaylist = verses,
+            sermonListNonce = _uiState.value.sermonListNonce + 1,
+            statusMessage = "قائمة الخدمة: ${verses.size} آية — الأولى على الهواء الآن"
+        )
+    }
+
+    /** v2.0: put a sermon-playlist verse on air (tap in the list). */
+    fun showSermonVerse(verse: BibleVerse) {
+        triggerVerseByReference(verse.bookId, verse.chapter, verse.verse, "both")
+    }
+
+    /** v2.0: empty the sermon playlist. */
+    fun clearSermonPlaylist() {
+        _uiState.value = _uiState.value.copy(sermonPlaylist = emptyList())
     }
 
     /**

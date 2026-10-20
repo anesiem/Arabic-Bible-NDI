@@ -31,6 +31,12 @@ class ReferenceParserTest {
             id = "psa", arabicName = "المزامير", englishName = "Psalms",
             arabicAbbreviation = "مز", englishAbbreviation = "Ps",
             testament = Testament.OLD_TESTAMENT, totalChapters = 150
+        ),
+        // Real-style name WITH prefix, for short-name and range tests.
+        BibleBook(
+            id = "heb", arabicName = "رسالة العبرانيين", englishName = "Hebrews",
+            arabicAbbreviation = "عب", englishAbbreviation = "Heb",
+            testament = Testament.NEW_TESTAMENT, totalChapters = 13
         )
     )
 
@@ -133,5 +139,78 @@ class ReferenceParserTest {
         val book = ReferenceParser.findBook("Ps", books)
         assertNotNull(book)
         assertEquals("psa", book!!.id)
+    }
+
+    // ---- v2.0: ranges, short Arabic names, whole chapters ----
+
+    @Test
+    fun parseRangeWestern() {
+        val result = ReferenceParser.parse("John 3:16-18", books)
+        assertNotNull(result)
+        assertEquals("jhn", result!!.book.id)
+        assertEquals(3, result.chapter)
+        assertEquals(16, result.verse)
+        assertEquals(18, result.endVerse)
+    }
+
+    @Test
+    fun parseRangeArabicEasternWithSpaces() {
+        // Ashraf's exact Keep format: short name, Eastern digits, spaced colon.
+        val result = ReferenceParser.parse("العبرانيين ٩: ٧-٩", books)
+        assertNotNull(result)
+        assertEquals("heb", result!!.book.id)
+        assertEquals(9, result.chapter)
+        assertEquals(7, result.verse)
+        assertEquals(9, result.endVerse)
+    }
+
+    @Test
+    fun parseShortArabicNameWithoutPrefix() {
+        val result = ReferenceParser.parse("العبرانيين 9:11", books)
+        assertNotNull(result)
+        assertEquals("heb", result!!.book.id)
+        assertEquals(9, result.chapter)
+        assertEquals(11, result.verse)
+    }
+
+    @Test
+    fun parseRangeEndBeforeStartIsInvalid() {
+        assertNull(ReferenceParser.parse("John 3:18-16", books))
+    }
+
+    @Test
+    fun parseBareChapterStaysNullForVerseParse() {
+        // The /api/trigger contract: a bare chapter is not a verse reference.
+        assertNull(ReferenceParser.parse("John 3", books))
+    }
+
+    @Test
+    fun parseChapterOnlyWestern() {
+        val result = ReferenceParser.parseChapterOnly("Psalm 23", books)
+        assertNotNull(result)
+        assertEquals("psa", result!!.book.id)
+        assertEquals(23, result.chapter)
+        assertEquals(true, result.wholeChapter)
+    }
+
+    @Test
+    fun parseChapterOnlyArabicEastern() {
+        val result = ReferenceParser.parseChapterOnly("المزامير ٢٣", books)
+        assertNotNull(result)
+        assertEquals("psa", result!!.book.id)
+        assertEquals(23, result.chapter)
+        assertEquals(true, result.wholeChapter)
+    }
+
+    @Test
+    fun parseChapterOnlyRejectsVerseForm() {
+        assertNull(ReferenceParser.parseChapterOnly("Psalm 23:1", books))
+    }
+
+    @Test
+    fun stripArabicPrefix() {
+        assertEquals("العبرانيين", ReferenceParser.stripArabicPrefix("رسالة العبرانيين"))
+        assertEquals("التكوين", ReferenceParser.stripArabicPrefix("سفر التكوين"))
+        assertEquals("المزامير", ReferenceParser.stripArabicPrefix("المزامير"))
     }
 }

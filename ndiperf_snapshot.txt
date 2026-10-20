@@ -1,2 +1,0 @@
-10-16 14:13:57.428 13884 13916 D NdiPerf : send Bible-NDI-Lower: downscale avg 0.00 ms, ndi-encode avg 17.96 ms over 300 frames
-10-16 14:13:57.454 13884 13916 D NdiPerf : draw lower: avg 8.72 ms over 300 frames

@@ -1,90 +1,158 @@
-# Arabic Bible NDI (Version 1.8 - Latest Release)
+# Arabic Bible NDI
 
-Professional Arabic/English Bible broadcast controller for Android. Transform your tablet or phone into a high-quality NDI 6 source and HTTP overlay server optimized for church presentations, live streaming, and OBS/vMix broadcast integration.
+**Professional Arabic/English Bible broadcast control for Android.**
 
-**Fully offline** — no internet needed at the venue. Fonts, Bible data, and all resources are bundled; your media comes from the device.
+Turn your tablet or phone into a broadcast studio source: put any verse on air in
+seconds — beautifully styled, in Arabic and English — over **NDI®**, **HTTP
+overlays for OBS & vMix**, and a full remote-control API. Built for churches,
+ministries, and live production. **Fully offline** — fonts, Bible texts, and
+every resource are bundled on the device; no internet is needed at the venue.
 
----
-
-## 🚀 What's New in Version 1.8 (Latest Release)
-
-* 🗣️ **Three-way language mode**: Arabic / English / Both (replaces the bilingual toggle).
-* 🌐 **Clean HTTP API**: `/lower`, `/full`, `/api/*` — industry-standard REST URIs (no `/ndi` prefix).
-* 🎬 **vMix integration**: `/bibleshow.xml` feed + SetText push to your vMix titles over LAN.
-* 📱 **Remote control page** (`/remote`): phone-friendly, one-handed, follows device theme.
-* ✨ **Three new factory styles**: Sanctuary Gold, Morning Mercy, Upper Room.
-* 🎨 **8 animated backgrounds**: from dark reverent to light joyful, all with transparency.
-* 🎚️ **Motion speed slider**: 0.00–3.00 with decimal precision (0 pauses).
-* 🔧 **NDI color fix**: red/blue channel swap corrected (RGBA FourCC).
-* 💡 **Directional text shadows**: thickness, distance, and 8-direction compass.
-
-See [RELEASE_NOTES_v1.8.md](RELEASE_NOTES_v1.8.md) for the full list.
-
-## 🚀 What's New in Version 1.7
-
-* 😊 **Custom emoji/symbol emblem**: the old cross toggle is now a free text field — type any emoji or symbol (empty = none). Saved per style, in style exports, rendered on NDI, HTTP, preview, and fullscreen.
-* 🎬 **Real animated video backgrounds on NDI**: pick a local MP4 and it loops *behind* the card and text on the NDI canvas — fully animated, per-feed decoders. Motion ON animates (up to 30fps); Motion OFF freezes the frame. Videos are stored privately and served to browsers by secure ID (the old `?path=` file endpoint is removed).
-* ⚡ **Motion cap raised to 30fps** (was 15).
-* ↔️ **Direction-aware alignment**: Full Show no longer force-centers — LEFT/CENTER/RIGHT is obeyed everywhere, and English text is now bidi-correct.
-* 🎨 **Better color chips** (larger swatch + hex on the chip) and **compact-phone / large-font layout fixes** across the editor and top bar.
-* 🔍 **Filtered sub-1080p NDI** downscaling — no more blocky 720p/480p feeds.
-* 🛡 **Under the hood**: race-free NDI teardown, truly persistent SSE overlays, atomic Bible DB install with background loading, Wi-Fi/multicast locks while broadcasting.
-
-See [RELEASE_NOTES_v1.7.md](RELEASE_NOTES_v1.7.md) for the full list.
-
-## 🚀 What's New in Version 1.6
-
-* 📺 **Two genuine NDI sources**: exactly `… - Bible-NDI-Lower` (Lower Third) and `… - Bible-NDI-Full` (Full Show). The previous "HX" tiers were **not** genuine NDI|HX encoding (that requires the paid NDI Advanced SDK, which this project does not use) — they were smaller plain-NDI streams with a misleading name, so they were removed.
-* 🛰 **Fake discovery removed**: the in-app mDNS/UDP/TCP "discovery beacon" never spoke the real NDI discovery protocol. Genuine NDI discovery is handled by the NDI 6 runtime itself — the fake beacon is deleted, and the two real senders appear in NDI Studio Monitor by device model name (e.g. `SM-X238U - Bible-NDI-Lower`).
-* 🎞 **Per-feed Motion toggle**: each feed can continuously re-render animated template backgrounds (capped at 15fps internally to save battery; the NDI metadata still reports your chosen frame rate). Motion off (default) keeps zero-bandwidth dirty-frame sending + 2s heartbeat.
-* 🎨 **Independent style collections**: Lower Third and Full Show now have completely separate style lists. Selecting a style restores all its saved values; editing without saving shows a "Modified" badge and clears the highlight; **Save As New** never overwrites; long-press deletes with confirmation. Each tab's working values persist across restarts.
-* ✨ **Text shadow & card glow are independent**: separate on/off switches and colors (both default black). Card glow only applies where a card exists (never on full-bleed Full Show).
-* 🔄 **Trailing-edge SSE**: template slider drags now always deliver the final state to HTTP overlays (~100ms after the last change), and every SSE message carries a monotonic `stateVersion` so browser sources re-sync correctly after reconnects.
-* ⚙️ **More resolutions & frame rates**: 1920×1080, 1600×900, 1360×768, 1280×720, 960×540, 854×480, 640×360 (all 16:9) and 60, 50, 30, 25, 24, 15, 10, 5 fps — per feed, independently persisted.
-* 🧵 **Thread-safe sending**: per-feed locks serialize render+send so the send loop and verse-change triggers can never draw into / recycle the same bitmap concurrently.
+> 📲 **Coming soon to Google Play.** Today, download the signed APK from the
+> [Releases page](https://github.com/anesiem/Arabic-Bible-NDI/releases).
 
 ---
 
-## 📺 Core Features
+## ✨ What It Does
 
-### 📺 Two NDI 6 Native Outputs
-* **Lower Third Feed** (`… - Bible-NDI-Lower`): optimized for broadcast streaming (OBS/vMix) with automatic RTL Arabic support and LTR English alignment.
-* **Full Show Feed** (`… - Bible-NDI-Full`): dedicated full-screen output for projectors with vertical and horizontal centering.
-* **Zero Interference**: independent native buffer pools and per-feed locks let both feeds run simultaneously without flashing or torn frames.
-* **Discovery**: the NDI 6 runtime advertises both sources under your device model name — look for them directly in NDI Studio Monitor, OBS, or vMix.
+You prepare the service. During the service, one tap puts the verse on the
+projector, the stream, or both — in a designed lower-third or a full-screen
+show, with motion backgrounds, your church's colors, and your choice of Arabic
+calligraphy. Switch verses live, in reading order, without ever touching the
+production computer.
 
-### 🌐 HTTP Overlays (for OBS / vMix browser sources)
-* `/lower` — Lower Third overlay, `/full` — Full Show overlay, plus MJPEG stream (`/stream`), snapshots, remote API, and vMix XML feed.
-* Live updates over Server-Sent Events with reconnect-safe state versions.
-* **v1.8**: Remote trigger API (`/api/trigger?ref=John+3:16`), phone-friendly `/remote` control page, and `/bibleshow.xml` vMix feed.
+---
 
-### 📝 Sermon Notes Sharing (share → on air)
-* Prepare your service in **Google Keep** (or any notes/Bible app): write references the way you naturally do — `العبرانيين ٩: ١١`, ranges like `العبرانيين ٩: ٧-٩`, or a whole chapter (`المزامير ٢٣`). Short Arabic names (without سفر/رسالة), Eastern numerals, and English names/abbreviations all work.
-* **Share** the note to **Bible NDI** — or select the text and tap **Bible NDI** in the text-selection toolbar. The app scans every reference in order (verse numbers inside quoted text are ignored), builds your **Sermon list** (قائمة الخدمة) tab, and puts the **first verse on air immediately** on both feeds. Tap any row to show that verse.
-* Text always comes from the app's own database, so your tashkeel setting and styles apply exactly as if you had tapped the verse in the reader. The same reference formats (ranges included) also work in `/api/trigger`.
+## 📺 Broadcast Outputs
 
-### ⚙️ Per-Source Customization (Broadcast tab)
-Each NDI source is independently configurable from dropdown lists:
-* **Enabled** on/off, **Resolution** (7 options up to 1080p, all 16:9, filtered downscaling below 1080p), **Frame rate** (8 integer rates), **Motion** on/off (up to 30fps).
-* Changing any setting restarts that source immediately; settings persist across restarts.
+### Two genuine NDI® 6 sources
+- **`… - Bible-NDI-Lower`** — a designed lower third for streams and IMAG.
+- **`… - Bible-NDI-Full`** — a full-screen show for projectors and screens.
+- Both run **simultaneously and independently**: separate styles, resolutions
+  (up to **1080p**, all 16:9), frame rates (60/50/30/25/24/15/10/5 fps), and
+  Motion settings per feed.
+- Real NDI discovery: the sources appear under your device's name in NDI Studio
+  Monitor, OBS, vMix, and any NDI receiver on your network.
 
-### 🎨 Template Editor
-* Separate Lower Third / Full Show tabs, each with its own style collection and working values.
-* Live preview (16:9), workflow tips, modified badge, Save As New, long-press delete, per-tab reset.
-* **Style sharing:** long-press any style for Export (share sheet), Update from import (paste JSON or pick a .json file), or Delete; an Import button in the style header imports shared JSON as a brand-new style. Full control, device-to-device.
-* Independent text shadow and card glow controls with full color pickers; custom emoji/symbol emblem; bilingual Arabic/English typography with direction-aware alignment; animated motion backgrounds; custom looping video backgrounds with opacity control.
-* **57 bundled Arabic Google Fonts** (SIL Open Font License) in a dropdown — the same TTFs render on the NDI canvas, the HTTP overlays, and the editor preview, fully offline. No internet needed at the venue.
+### HTTP overlays for OBS & vMix
+- `/lower` and `/full` — transparent browser-source overlays that match the NDI
+  feeds pixel-for-purpose, updated live over SSE with reconnect-safe state.
+- `/stream` — an MJPEG stream output with selectable stream backgrounds
+  (transparent, chroma green, black, dark studio) for keying anywhere.
+- `/remote` — a phone-friendly remote control page: trigger verses from
+  anywhere in the room.
+- `/bibleshow.xml` + **vMix SetText push** — verse text flows straight into
+  your vMix GT titles over the LAN.
+
+### Background broadcasting
+Broadcasting runs in a foreground service: it continues with the screen off or
+the app minimized, and **auto-resumes after an OS process kill** — server, both
+NDI senders, and the last live verse come back on their own. Stop it from the
+persistent notification or by swiping the app away.
+
+---
+
+## 📝 From Sermon Notes to On Air
+
+Prepare your sermon the way you already do — in **Google Keep** or any Bible
+app — then:
+
+1. Write your references naturally: `العبرانيين ٩: ١١`, a range
+   `العبرانيين ٩: ٧-٩`, or a whole chapter `المزامير ٢٣`. Short Arabic names,
+   Eastern numerals, and English names/abbreviations all work.
+2. **Share** the note to Arabic Bible NDI (or select text → the app appears in
+   the text-selection toolbar).
+3. Every reference becomes your **Sermon list**, in order, ranges expanded
+   verse by verse — and the **first verse is already live**. Tap any row to
+   put that verse on air.
+
+Text always comes from the app's own database, so your styles and tashkeel
+setting apply exactly as if you'd tapped the verse in the reader.
+
+---
+
+## 📖 The Bible Library — Fully Offline
+
+- Complete Arabic Bible with **optional tashkeel (diacritics)** — one toggle;
+  31,101 verses carry full vocalization. Search stays diacritic-proof either
+  way.
+- **Two English translations bundled**: ASV and KJV.
+- Fast offline search across the whole text, with Arabic normalization
+  (alef forms, tashkeel and tatweel stripped from queries).
+- Arabic + English shown together, each in its own typography, with
+  direction-aware (RTL/LTR) layout done correctly.
+
+---
+
+## 🎨 A Design Studio in Your Pocket
+
+- **38 professionally designed styles** ship with the app — motion-first
+  families (Gold & Glory, Heavens & Waters, Night & Stars, Royal Purple,
+  Garden & Peace, Dawn & Rose, Candlelight, Broadcast & Clean): 27 lower
+  thirds + 11 full shows, 30 of them animated.
+- **Every one of the 61 style settings is editable**: card style and opacity,
+  per-side padding, auto-fit text with a minimum size, text shadow and card
+  glow, accent colors, borders, emblem (any emoji or symbol), alignment,
+  transitions (fade/slide/cut, 0–2000 ms), and more.
+- **Animated motion backgrounds** — divine rays, waves, silk, particle fields,
+  candle glow — plus **your own looping video** backgrounds (CUT/FADE loop
+  modes, opacity control). Picking a motion background auto-coordinates the
+  card, opacity, and accent; adjust anything afterward.
+- **69+ bundled fonts, zero downloads**: 57 Arabic display fonts (Aref Ruqaa,
+  Katibeh, El Messiri, Scheherazade, Kufi…) and 12 classic Latin families
+  (Cinzel, Playfair Display, Lora, EB Garamond…) — the same type renders on
+  NDI, HTTP, and the editor preview.
+- **Style sharing**: export/import styles as JSON, device to device;
+  long-press any style to export, update from an import, or delete.
+- What you see is what goes out: the editor preview, NDI, and HTTP render the
+  same design — same fit, same wrapping, same spacing.
+
+---
+
+## 🎛️ Control & Integration
+
+- **HTTP API** for automation: `/api/trigger?ref=John+3:16` (Arabic refs too,
+  ranges included), `/api/verse`, `/api/clear`, `/api/status`, `/api/videos`.
+- **Sermon list** — the service order, built from your notes or by hand,
+  advanced with a tap.
+- Per-feed settings persist across restarts; tab and editor state survive
+  rotation; large system font sizes are fully supported.
+
+---
+
+## 🔮 Coming Soon
+
+- **Chromecast broadcasting** — send the show straight to any Chromecast or
+  Google TV in the room.
+- **Apple AirPlay broadcasting** — mirror the output to Apple TV and
+  AirPlay-enabled screens.
+- **Hardwired HDMI output** — a direct wired display feed for zero-latency,
+  network-free projection.
 
 ---
 
 ## 📲 Install
 
-Requires Android 7.0+. Download the APK from the [Releases page](https://github.com/anesiem/Arabic-Bible-NDI/releases) and install.
+Requires **Android 7.0+**. Download the signed APK from the
+[Releases page](https://github.com/anesiem/Arabic-Bible-NDI/releases/latest)
+and install. Google Play availability is coming soon.
 
-> **Note:** v1.5 changed the application ID to `com.arabicchristianmedia`, so it installs as a separate app from v1.4 and earlier (templates do not migrate automatically). v1.8 (versionCode 8) installs cleanly over v1.5/v1.6/v1.7.
+Application ID: `com.arabicchristianmedia`
 
----
+## 🛠️ Developers
 
-## ❤️ Sponsor
+See [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) for architecture, build
+instructions, and development preferences. Release details live in
+[RELEASE_NOTES_v1.9.md](RELEASE_NOTES_v1.9.md) and the Releases page.
 
-Arabic Bible NDI is built for churches and ministries. If it serves your congregation, consider sponsoring its continued development — sponsor links will appear here.
+## 🙏 Support Through Prayer
+
+Arabic Bible NDI is built for churches and ministries, freely given for the
+work of the Kingdom. There is no donation link — the best way to support this
+project is to **pray for it**: for the churches that use it, the services it
+serves, and its continued development. Prayers are deeply appreciated.
+
+*“Freely you have received; freely give.” — Matthew 10:8*
+
+*NDI® is a registered trademark of Vizrt NDI AB. This project uses the NDI 6
+runtime; it is not affiliated with or endorsed by Vizrt.*

@@ -97,6 +97,28 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
                 alignment = BroadcastTextAlignment.CENTER,
                 isPureTransparentBackground = false
             )
+
+        /**
+         * "Simple" reset target (Ashraf's spec): 100% transparent background,
+         * no motion, no custom video, no text shadow, no accent border, no card
+         * glow — everything else at data-class defaults. Not a saved style:
+         * pressing Reset clears the style highlight and marks the tab modified.
+         */
+        fun simpleDefaultTemplate(isFullScreen: Boolean): LowerThirdTemplate =
+            LowerThirdTemplate(
+                id = "simple_default",
+                name = "Simple",
+                isFullScreen = isFullScreen,
+                style = com.arabicchristianmedia.model.TemplateStyle.TRANSPARENT_OUTLINE,
+                textShadowEnabled = false,
+                cardGlowEnabled = false
+            ).let {
+                if (isFullScreen) it.copy(
+                    verseFontSize = 65,
+                    referenceFontSize = 40,
+                    alignment = BroadcastTextAlignment.CENTER
+                ) else it
+            }
     }
 
     private val templateRepo = TemplateRepository(getApplication())
@@ -1078,34 +1100,36 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
     }
 
     /**
-     * Reset for the selected tab only. If a style is highlighted, the working
-     * values revert to that style's saved values (same as re-tapping the style)
-     * and the highlight stays. If no style is highlighted, the working values
-     * revert to the factory defaults for that tab.
+     * Reset for the selected tab only. Resets to the "simple" template per
+     * Ashraf's spec: 100% transparent, no motion, no custom video, no text
+     * shadow, no accent border, no card glow. Clears the style highlight
+     * (the simple template is not a saved style) and marks the tab modified.
      */
     fun resetTemplate(isFullScreen: Boolean) {
+        // Ashraf's spec: Reset = "simple" — 100% transparent, no motion, no video,
+        // no shadow, no border, no glow. Clears the style highlight (the simple
+        // template is not a saved style) and marks the tab modified.
+        val working = simpleDefaultTemplate(isFullScreen)
         if (isFullScreen) {
-            val highlightId = _uiState.value.highlightedShowStyleId
-            val savedStyle = _uiState.value.templates.firstOrNull { it.id == highlightId && it.isFullScreen }
-            val working = (savedStyle ?: defaultShowTemplate()).copy(isFullScreen = true)
             _uiState.value = _uiState.value.copy(
                 activeShowTemplate = working,
-                showWorkingDirty = false
+                highlightedShowStyleId = null,
+                showWorkingDirty = true
             )
+            templateRepo.setActiveShowTemplateId(null)
             templateRepo.saveWorkingTemplate(working)
-            templateRepo.setWorkingDirty(true, false)
+            templateRepo.setWorkingDirty(true, true)
             broadcastServer.updateShowTemplate(working)
             nativeSender.triggerFrame(NdiNativeSender.FEED_FULL, true)
         } else {
-            val highlightId = _uiState.value.highlightedLowerStyleId
-            val savedStyle = _uiState.value.templates.firstOrNull { it.id == highlightId && !it.isFullScreen }
-            val working = (savedStyle ?: TemplateRepository.DEFAULT_TEMPLATES[0]).copy(isFullScreen = false)
             _uiState.value = _uiState.value.copy(
                 activeTemplate = working,
-                lowerWorkingDirty = false
+                highlightedLowerStyleId = null,
+                lowerWorkingDirty = true
             )
+            templateRepo.setActiveTemplateId(null)
             templateRepo.saveWorkingTemplate(working)
-            templateRepo.setWorkingDirty(false, false)
+            templateRepo.setWorkingDirty(false, true)
             broadcastServer.updateTemplate(working)
             triggerAllFrames()
         }

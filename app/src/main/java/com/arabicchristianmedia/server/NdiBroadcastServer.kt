@@ -27,7 +27,7 @@ import com.arabicchristianmedia.data.ArabicTextFormatter
 import com.arabicchristianmedia.data.BibleRepository
 import com.arabicchristianmedia.data.TemplateRepository
 import com.arabicchristianmedia.model.AnimatedBackgroundType
-import com.arabicchristianmedia.model.ArabicFonts
+import com.arabicchristianmedia.model.BundledFonts
 import com.arabicchristianmedia.model.BibleVerse
 import com.arabicchristianmedia.model.BroadcastTextAlignment
 import com.arabicchristianmedia.model.LanguageMode
@@ -2443,7 +2443,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         val cacheKey = "$family|$textStyle"
         typefaceCache[cacheKey]?.let { return it }
         val result = try {
-            val bundled = ArabicFonts.find(family)
+            val bundled = BundledFonts.find(family)
             if (bundled != null) {
                 // Bundled Google Font (assets/fonts, fully offline). Prefer the true
                 // bold file when bold was requested; synthesize italic (Arabic has no
@@ -2476,7 +2476,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     /** @font-face rules for every bundled Arabic font, served from this tablet (fully offline). */
     private fun buildFontFaceCss(): String {
         val sb = StringBuilder(8192)
-        for (f in ArabicFonts.all) {
+        for (f in BundledFonts.all) {
             val f400 = f.asset400.substringAfterLast('/')
             sb.append("@font-face{font-family:'").append(f.family)
                 .append("';font-style:normal;font-weight:400;font-display:swap;src:url('/fonts/")
@@ -2494,7 +2494,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
     /** Exact allowlist of servable font files, derived from the registry (no path traversal). */
     private val fontAssetFiles: Set<String> by lazy {
-        ArabicFonts.all.flatMap {
+        BundledFonts.all.flatMap {
             listOfNotNull(it.asset400.substringAfterLast('/'), it.asset700?.substringAfterLast('/'))
         }.toSet()
     }

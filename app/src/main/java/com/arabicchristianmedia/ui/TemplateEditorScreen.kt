@@ -467,6 +467,7 @@ CollapsibleSection(
                     }
                     ColorGradePickerRow("لون الشاهد العربي (Citation Color)", editingTemplate.referenceColorHex, { onUpdate(editingTemplate.copy(referenceColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
                     SliderWithLabel("حجم الشاهد العربي", editingTemplate.referenceFontSize.toFloat(), 10f..120f) { onUpdate(editingTemplate.copy(referenceFontSize = it.toInt())) }
+                    FeatureToggleRow("علامات الترقيم العربية (Use Arabic punctuation ، ؛ ؟)", editingTemplate.useArabicPunctuation) { onUpdate(editingTemplate.copy(useArabicPunctuation = it)) }
 
                     // v1.8: Three-way language mode (replaces the bilingual toggle).
                 
@@ -511,6 +512,10 @@ CollapsibleSection(
                 ) {
                     
                         // English Verse Controls
+                        LatinFontDropdown(
+                            selected = editingTemplate.secondaryFontFamily,
+                            onSelect = { onUpdate(editingTemplate.copy(secondaryFontFamily = it)) }
+                        )
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             Text("الآية الإنجليزية:", fontSize = 11.sp, color = bento.textSecondary)
                             StyleToggle("B", editingTemplate.secondaryVerseIsBold) { onUpdate(editingTemplate.copy(secondaryVerseIsBold = it)) }
@@ -529,6 +534,7 @@ CollapsibleSection(
                         SliderWithLabel("حجم الشاهد الإنجليزي", editingTemplate.secondaryReferenceFontSize.toFloat(), 8f..100f) { onUpdate(editingTemplate.copy(secondaryReferenceFontSize = it.toInt())) }
 
                         SliderWithLabel("المسافة الفاصلة بين اللغتين", editingTemplate.bilingualSpacing.toFloat(), 0f..150f) { onUpdate(editingTemplate.copy(bilingualSpacing = it.toInt())) }
+                        FeatureToggleRow("إظهار المسافة بين اللغتين (Show spacing)", editingTemplate.showBilingualSpacing) { onUpdate(editingTemplate.copy(showBilingualSpacing = it)) }
                     }
 
                     // Background layers: motion backgrounds (Layer 1, bottom) + card/transparency/accents (Layer 2, above video)
@@ -767,6 +773,35 @@ CollapsibleSection(
                     }
                     // Independent text shadow and card glow (v1.6). Card glow only
                     // applies where a card exists — not on full-bleed Full Show.
+                    // v1.9: verse-change transition (HTTP overlays animate with this;
+                    // NDI applies the frame immediately).
+                    Text("حركة انتقال الآية (Transition)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
+                    Spacer(Modifier.height(4.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                        TransitionType.entries.forEach { t ->
+                            FilterChip(
+                                selected = editingTemplate.transition == t,
+                                onClick = { onUpdate(editingTemplate.copy(transition = t)) },
+                                label = { Text(t.displayName, fontSize = 10.sp) }
+                            )
+                        }
+                    }
+                    SliderWithLabel("مدة الانتقال (Duration ms)", editingTemplate.transitionDurationMs.toFloat(), 0f..2000f) { onUpdate(editingTemplate.copy(transitionDurationMs = it.toInt())) }
+                    Spacer(Modifier.height(4.dp))
+                    // v1.9: stream background — what fills the space around the card
+                    // (chroma/luma keys, dark studio, or full transparency).
+                    Text("خلفية البث (Stream Background)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
+                    Spacer(Modifier.height(4.dp))
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        StreamBackgroundMode.entries.forEach { mode ->
+                            FilterChip(
+                                selected = editingTemplate.streamBackgroundMode == mode,
+                                onClick = { onUpdate(editingTemplate.copy(streamBackgroundMode = mode)) },
+                                label = { Text(mode.displayNameAr, fontSize = 10.sp) }
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
                 
                 }
 CollapsibleSection(
@@ -972,7 +1007,7 @@ CollapsibleSection(
     private fun bundledFontFamily(context: Context, family: String): FontFamily {
         if (family == ArabicFonts.SYSTEM) return FontFamily.Default
         return editorFontFamilyCache.getOrPut(family) {
-            val bundled = ArabicFonts.find(family) ?: return FontFamily.Default
+            val bundled = BundledFonts.find(family) ?: return FontFamily.Default
             try {
                 FontFamily(android.graphics.Typeface.createFromAsset(context.assets, bundled.asset400))
             } catch (_: Exception) {
@@ -1010,6 +1045,45 @@ CollapsibleSection(
                 onDismissRequest = { expanded = false }
             ) {
                 ArabicFonts.displayNames.forEach { name ->
+                    val itemFamily = remember(name) { bundledFontFamily(context, name) }
+                    DropdownMenuItem(
+                        text = { Text(name, fontFamily = itemFamily, fontSize = 14.sp) },
+                        onClick = { onSelect(name); expanded = false }
+                    )
+                }
+            }
+        }
+    }
+
+    /**
+     * Dropdown listing every bundled Latin (English) font (plus System), each item
+     * rendered in its own typeface. Mirrors [FontDropdown] for the Arabic font.
+     */
+    @OptIn(ExperimentalMaterial3Api::class)
+    @Composable
+    private fun LatinFontDropdown(selected: String, onSelect: (String) -> Unit) {
+        val context = LocalContext.current
+        var expanded by remember { mutableStateOf(false) }
+        val selectedFamily = remember(selected) { bundledFontFamily(context, selected) }
+        ExposedDropdownMenuBox(
+            expanded = expanded,
+            onExpandedChange = { expanded = !expanded }
+        ) {
+            TextField(
+                value = selected,
+                onValueChange = {},
+                readOnly = true,
+                label = { Text("الخط الإنجليزي (English Font)", fontSize = 10.sp) },
+                textStyle = TextStyle(fontFamily = selectedFamily, fontSize = 14.sp),
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable).fillMaxWidth(),
+                singleLine = true
+            )
+            ExposedDropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false }
+            ) {
+                LatinFonts.displayNames.forEach { name ->
                     val itemFamily = remember(name) { bundledFontFamily(context, name) }
                     DropdownMenuItem(
                         text = { Text(name, fontFamily = itemFamily, fontSize = 14.sp) },

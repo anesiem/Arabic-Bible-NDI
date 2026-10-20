@@ -8,7 +8,6 @@ import androidx.lifecycle.viewModelScope
 import com.arabicchristianmedia.data.BibleRepository
 import com.arabicchristianmedia.data.TemplateRepository
 import com.arabicchristianmedia.model.AppThemeMode
-import com.arabicchristianmedia.model.AnimatedBackgroundType
 import com.arabicchristianmedia.model.BibleBook
 import com.arabicchristianmedia.model.BibleVerse
 import com.arabicchristianmedia.model.BibleVersion
@@ -17,6 +16,7 @@ import com.arabicchristianmedia.model.LanguageMode
 import com.arabicchristianmedia.model.LowerThirdTemplate
 import com.arabicchristianmedia.model.Testament
 import com.arabicchristianmedia.server.NdiBroadcastServer
+import com.arabicchristianmedia.server.NdiService
 import com.arabicchristianmedia.server.NdiErrorEvent
 import com.arabicchristianmedia.server.NdiNativeSender
 import com.arabicchristianmedia.server.NdiSourceSpec
@@ -33,6 +33,8 @@ data class BibleNdiUiState(
     val selectedBook: BibleBook = BibleRepository.getBookById("jhn") ?: BibleRepository.allBooks.first(),
     val selectedChapter: Int = 3,
     val bibleVersion: BibleVersion = BibleVersion.ARABIC_SVD,
+    val tashkeelEnabled: Boolean = false,
+    val englishVersion: String = "asv",
     val displayedVerses: List<BibleVerse> = emptyList(),
     val searchQuery: String = "",
     val searchResults: List<BibleVerse> = emptyList(),
@@ -76,7 +78,12 @@ data class BibleNdiUiState(
     val readerFontSize: Int = 18,
     val isKeepScreenOn: Boolean = true,
     // True while the Bible databases are being copied/loaded on first launch.
-    val isLoadingBible: Boolean = false
+    val isLoadingBible: Boolean = false,
+    // v2.0: sermon playlist built from text shared from other apps
+    // (Google Keep notes, Bible apps) — see handleSharedText.
+    val sermonPlaylist: List<BibleVerse> = emptyList(),
+    // v2.0: bumped on every successful share so MainActivity opens the list tab.
+    val sermonListNonce: Long = 0
 )
 
 class BibleNdiViewModel(application: Application) : AndroidViewModel(application) {
@@ -95,43 +102,71 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
                 alignment = BroadcastTextAlignment.CENTER,
                 isPureTransparentBackground = false
             )
+
+        /**
+         * "Simple" reset target (Ashraf's spec): 100% transparent background,
+         * no motion, no custom video, no text shadow, no accent border, no card
+         * glow — everything else at data-class defaults. Not a saved style:
+         * pressing Reset clears the style highlight and marks the tab modified.
+         */
+        fun simpleDefaultTemplate(isFullScreen: Boolean): LowerThirdTemplate =
+            LowerThirdTemplate(
+                id = "simple_default",
+                name = "Simple",
+                isFullScreen = isFullScreen,
+                style = com.arabicchristianmedia.model.TemplateStyle.TRANSPARENT_OUTLINE,
+                textShadowEnabled = false,
+                cardGlowEnabled = false
+            ).let {
+                if (isFullScreen) it.copy(
+                    verseFontSize = 65,
+                    referenceFontSize = 40,
+                    alignment = BroadcastTextAlignment.CENTER
+                ) else it
+            }
     }
 
-    private val templateRepo = TemplateRepository(application)
-    private val broadcastServer = NdiBroadcastServer(application, 8080)
-    private val nativeSender = NdiNativeSender()
+    private val templateRepo = TemplateRepository(getApplication())
+    /**
+     * v1.9: the broadcast server is owned by [NdiService] (foreground service) so
+     * broadcasting survives backgrounding. Always resolve through the service
+     * holder — never keep a second instance.
+     */
+    private val broadcastServer: NdiBroadcastServer
+        get() = NdiService.ensureServer(getApplication())
+    /**
+     * v1.9: the NDI senders live in [NdiService] (foreground service) so the feeds
+     * survive backgrounding and OS-kill auto-resume. Always resolve through the
+     * service holder — never keep a second instance.
+     */
+    private val nativeSender: NdiNativeSender
+        get() = NdiService.ensureSender(getApplication())
 
     private val _uiState = MutableStateFlow(BibleNdiUiState())
     val uiState: StateFlow<BibleNdiUiState> = _uiState.asStateFlow()
 
     init {
-        BibleRepository.initialize(application)
-        nativeSender.setFrameProvider { isFullScreen ->
-            if (isFullScreen) {
-                // Use a different rendering context or the same broadcastServer with different template
-                // To keep it simple, I'll update the broadcastServer to support dual rendering if needed,
-                // or just swap templates temporarily.
-                // Better: broadcastServer.renderCurrentFrame(1920, 1080, tpl = _uiState.value.activeShowTemplate)
-                broadcastServer.renderCurrentFrame(1920, 1080, isForStream = false, overrideTemplate = _uiState.value.activeShowTemplate)
-            } else {
-                broadcastServer.renderCurrentFrame(1920, 1080, isForStream = false)
+        BibleRepository.initialize(getApplication())
+        // v2.0: restore tashkeel and English version preferences
+        _uiState.value = _uiState.value.copy(
+            tashkeelEnabled = BibleRepository.isTashkeelEnabled(),
+            englishVersion = BibleRepository.getEnglishVersion()
+        )
+        // v1.9: frame providers are wired by NdiService (they resolve the server
+        // lazily and capture no ViewModel state, so the feeds render headlessly
+        // after an OS process kill).
+        // v1.9: if the broadcast is stopped from the notification while the app
+        // is open, the service tells us here so the UI doesn't stay stale.
+        viewModelScope.launch {
+            NdiService.externalStopEvents.collect {
+                _uiState.value = _uiState.value.copy(
+                    isServerRunning = false,
+                    isNativeNdiActive = false,
+                    isNativeShowActive = false,
+                    isLiveOnAir = false,
+                    statusMessage = "NDI Server Stopped"
+                )
             }
-        }
-        // Dirty-frame detection: NDI senders only push when the version changes.
-        nativeSender.setFrameVersionProvider { broadcastServer.frameVersion }
-        // Motion mode: force-rerender animated backgrounds on a capped tick, reusing
-        // dedicated bitmaps (no per-tick allocation). Only ticks when the current
-        // template actually has animated content.
-        nativeSender.setMotionFrameProvider { isFullScreen ->
-            if (isFullScreen) {
-                broadcastServer.renderMotionFrame(overrideTemplate = _uiState.value.activeShowTemplate)
-            } else {
-                broadcastServer.renderMotionFrame()
-            }
-        }
-        nativeSender.setMotionContentProvider { isFullScreen ->
-            val tpl = if (isFullScreen) _uiState.value.activeShowTemplate else _uiState.value.activeTemplate
-            tpl.animatedBackground != AnimatedBackgroundType.NONE
         }
         loadInitialDataAsync()
         refreshNetworkInterfaces()
@@ -238,7 +273,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         // fresh install (no working template ever saved) falls back to the default.
         val hasLowerWorking = templateRepo.getWorkingTemplate(false) != null
         val lowerHighlightId = templateRepo.getActiveTemplateId()
-            ?: if (!hasLowerWorking) "tpl_transparent_alpha" else null
+            ?: if (!hasLowerWorking) "tpl_lt_pure_word" else null
         val lowerStyle = allTpls.firstOrNull { it.id == lowerHighlightId && !it.isFullScreen }
         val lowerWorking = (templateRepo.getWorkingTemplate(false)
             ?: lowerStyle
@@ -275,38 +310,82 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         )
         loadPersistedNdiSpecs()
 
-        broadcastServer.currentVerse = null
-        broadcastServer.isLive = false // Ensure server starts off-air
-        broadcastServer.currentTemplate = lowerWorking
-        broadcastServer.currentShowTemplate = showWorking
+        // v1.9: if the service is mid auto-resume (flag set but the server isn't
+        // up yet — rehydration runs on its own thread), give it a moment to finish
+        // before deciding whether the server state below gets reset or kept.
+        // This runs on Dispatchers.IO; the wait is bounded and rare.
+        if (NdiService.isBroadcastActive(getApplication()) && !broadcastServer.isRunning) {
+            val deadline = android.os.SystemClock.uptimeMillis() + 3000
+            while (!broadcastServer.isRunning && android.os.SystemClock.uptimeMillis() < deadline) {
+                try { Thread.sleep(100) } catch (e: InterruptedException) { break }
+            }
+        }
+
+        if (broadcastServer.isRunning) {
+            // v1.9: the service auto-resumed the broadcast while the app was dead
+            // (verse/styles/live rehydrated). Keep the server's state — do NOT
+            // force off-air — and sync the UI from it so the screen matches the
+            // NDI output.
+            val resumedVerse = broadcastServer.currentVerse
+            val resumedBook = resumedVerse?.let { BibleRepository.getBookById(it.bookId) }
+            val resumedVerses = resumedVerse?.let {
+                try { BibleRepository.getVerses(it.bookId, it.chapter) } catch (e: Exception) { verses }
+            } ?: verses
+            _uiState.value = _uiState.value.copy(
+                activeTemplate = broadcastServer.currentTemplate,
+                activeShowTemplate = broadcastServer.currentShowTemplate,
+                activeVerse = resumedVerse,
+                isLiveOnAir = broadcastServer.isLive && resumedVerse != null,
+                selectedBook = resumedBook ?: initialBook,
+                selectedChapter = resumedVerse?.chapter ?: initialChapter,
+                displayedVerses = resumedVerses,
+                statusMessage = if (resumedVerse != null && broadcastServer.isLive)
+                    "Broadcast auto-resumed after restart."
+                else "Ready. Tap a verse to go LIVE."
+            )
+        } else {
+            broadcastServer.currentVerse = null
+            broadcastServer.isLive = false // Ensure server starts off-air
+            broadcastServer.currentTemplate = lowerWorking
+            broadcastServer.currentShowTemplate = showWorking
+        }
     }
 
     fun startBroadcastServer(port: Int = 8080) {
         refreshNetworkInterfaces()
         _uiState.value = _uiState.value.copy(isNdiProtocolEnabled = true)
-        broadcastServer.start(
-            onStarted = { url ->
-                val ip = broadcastServer.getLocalIpAddress()
-                val streamUrl = broadcastServer.getStreamUrl()
-                
-                // Native Sender management
-                syncNativeSources()
+        // v1.9: run under the foreground service so the broadcast survives backgrounding.
+        NdiService.start(getApplication())
+        val handleStarted: (String) -> Unit = { url ->
+            val ip = broadcastServer.getLocalIpAddress()
+            val streamUrl = broadcastServer.getStreamUrl()
 
-                _uiState.value = _uiState.value.copy(
-                    isServerRunning = true,
-                    isNdiProtocolEnabled = true,
-                    serverUrl = url,
-                    streamUrl = streamUrl,
-                    activeIpAddress = ip,
-                    serverPort = port,
-                    statusMessage = "Broadcast Server Active"
-                )
-            }
-        ) { err ->
+            // Native Sender management
+            syncNativeSources()
+
+            _uiState.value = _uiState.value.copy(
+                isServerRunning = true,
+                isNdiProtocolEnabled = true,
+                serverUrl = url,
+                streamUrl = streamUrl,
+                activeIpAddress = ip,
+                serverPort = port,
+                statusMessage = "Broadcast Server Active"
+            )
+        }
+        val handleError: (String) -> Unit = { err ->
             _uiState.value = _uiState.value.copy(
                 isServerRunning = false,
                 statusMessage = "Server Error: $err"
             )
+        }
+        if (broadcastServer.isRunning) {
+            // The service auto-resumed the server after an OS process kill:
+            // start() would no-op without firing callbacks, so run the
+            // post-start work directly (this restarts the NDI senders).
+            handleStarted(broadcastServer.getServerUrl())
+        } else {
+            broadcastServer.start(onStarted = handleStarted, onError = handleError)
         }
     }
 
@@ -319,6 +398,8 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         persistNdiEnabled(NdiNativeSender.FEED_FULL, true)
         syncNativeSources()
         triggerAllFrames()
+        // v1.9: keep the foreground notification's feed list truthful.
+        NdiService.refreshNotification(getApplication())
         _uiState.value = _uiState.value.copy(statusMessage = "NDI Sources (Lower Third + Full Show) Started")
     }
 
@@ -335,31 +416,16 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             isNativeShowActive = false,
             statusMessage = "All NDI Sources Stopped"
         )
+        // v1.9: keep the foreground notification's feed list truthful.
+        NdiService.refreshNotification(getApplication())
     }
 
-    private fun applyNdiSource(spec: NdiSourceSpec, enabled: Boolean, isFullScreen: Boolean): Boolean {
-        return if (enabled) {
-            nativeSender.startSource(spec.feedKey, isFullScreen, spec)
-        } else {
-            nativeSender.stopSource(spec.feedKey)
-            false
-        }
-    }
-
+    /**
+     * v1.9: the senders live in NdiService; this delegates the start/stop work
+     * there (from the persisted feed specs) and reflects the result in UI state.
+     */
     private fun syncNativeSources() {
-        val state = _uiState.value
-        val specs = state.ndiSourceSpecs
-        val lower = applyNdiSource(
-            specs[NdiNativeSender.FEED_LOWER]
-                ?: NdiNativeSender.defaultSpec(NdiNativeSender.FEED_LOWER),
-            state.ndiLowerEnabled, false
-        )
-        val full = applyNdiSource(
-            specs[NdiNativeSender.FEED_FULL]
-                ?: NdiNativeSender.defaultSpec(NdiNativeSender.FEED_FULL),
-            state.ndiFullShowEnabled, true
-        )
-
+        val (lower, full) = NdiService.syncNativeSources(getApplication())
         _uiState.value = _uiState.value.copy(
             isNativeNdiActive = lower,
             isNativeShowActive = full
@@ -491,6 +557,8 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         persistNdiEnabled(NdiNativeSender.FEED_FULL, s.ndiFullShowEnabled)
         syncNativeSources()
         triggerAllFrames()
+        // v1.9: keep the foreground notification's feed list truthful.
+        NdiService.refreshNotification(getApplication())
     }
 
     private fun triggerAllFrames() {
@@ -498,9 +566,22 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         nativeSender.triggerFrame(NdiNativeSender.FEED_FULL, true)
     }
 
+    /**
+     * v2.0: Immediate (non-debounced) push for discrete actions like style
+     * selection — the debounced triggerFrame can be cancelled by a follow-up
+     * call, leaving NDI on stale state until the send-loop poll catches up.
+     */
+    private fun triggerAllFramesImmediate() {
+        nativeSender.triggerFrameImmediate(NdiNativeSender.FEED_LOWER, false)
+        nativeSender.triggerFrameImmediate(NdiNativeSender.FEED_FULL, true)
+    }
+
     fun stopBroadcastServer() {
         nativeSender.stopAll()
-        broadcastServer.stop()
+        try { broadcastServer.stop() } catch (e: Exception) { /* ignore */ }
+        // v1.9: clears the auto-resume flag, drops the foreground notification,
+        // and stops the service.
+        NdiService.stop(getApplication())
         _uiState.value = _uiState.value.copy(
             isServerRunning = false,
             isNativeNdiActive = false,
@@ -524,7 +605,9 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             selectedTestament = book.testament,
             activeVerse = null
         )
-        broadcastServer.setLiveState(false)
+        // v2.0: removed setLiveState(false) — browsing chapters must not take
+        // the broadcast off-air. Outputs hold the previous verse until a new
+        // one is tapped. Explicit off-air still via toggleLive()/clearBroadcast().
     }
 
     fun selectChapter(chapter: Int) {
@@ -535,7 +618,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             displayedVerses = verses,
             activeVerse = null
         )
-        broadcastServer.setLiveState(false)
+        // v2.0: removed setLiveState(false) — see selectBook above.
     }
 
     fun nextChapter() {
@@ -581,6 +664,27 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    /**
+     * Toggle tashkeel (Arabic diacritics) on/off. Persists the preference and
+     * reloads the current chapter so verses update immediately.
+     */
+    fun setTashkeelEnabled(enabled: Boolean) {
+        BibleRepository.setTashkeelEnabled(enabled)
+        _uiState.value = _uiState.value.copy(tashkeelEnabled = enabled)
+        // Reload current chapter to reflect the change
+        selectChapter(_uiState.value.selectedChapter)
+    }
+
+    /**
+     * Set the English Bible version (asv/kjv/web). Persists and reloads
+     * the current chapter so verses update immediately.
+     */
+    fun setEnglishVersion(version: String) {
+        BibleRepository.setEnglishVersion(version)
+        _uiState.value = _uiState.value.copy(englishVersion = version)
+        selectChapter(_uiState.value.selectedChapter)
+    }
+
     fun onSearchQueryChanged(query: String) {
         if (query.isBlank()) {
             _uiState.value = _uiState.value.copy(
@@ -620,10 +724,17 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             selectBook(book, verse.chapter)
         }
 
+        // v2.0: Use the tashkeel-aware verse from the loaded chapter if available.
+        // Search results carry plain text; the reloaded chapter respects the
+        // tashkeel setting, so prefer that version.
+        val displayVerse = _uiState.value.displayedVerses.find {
+            it.bookId == verse.bookId && it.chapter == verse.chapter && it.verse == verse.verse
+        } ?: verse
+
         _uiState.value = _uiState.value.copy(
-            activeVerse = verse,
+            activeVerse = displayVerse,
             isLiveOnAir = true,
-            statusMessage = "Cued & Live: ${verse.getFormattedArabicCitation()}",
+            statusMessage = "Cued & Live: ${displayVerse.getFormattedArabicCitation()}",
             isSearching = false // Close search view on click
         )
 
@@ -681,6 +792,53 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         } catch (e: Exception) {
             false
         }
+    }
+
+    /**
+     * v2.0: text shared from another app (Google Keep, Bible apps) via
+     * ACTION_SEND / ACTION_PROCESS_TEXT. Scans the text for references
+     * (ReferenceScanner — book-name anchored, ranges supported), expands
+     * them against the database, replaces the sermon playlist, and puts
+     * the FIRST verse on air through the same path as /api/trigger.
+     * Canonical text always comes from the app's own database (so the
+     * tashkeel setting applies); the shared text is only the carrier.
+     */
+    fun handleSharedText(text: String) {
+        val refs = com.arabicchristianmedia.model.ReferenceScanner.scan(text, BibleRepository.allBooks)
+        val verses = mutableListOf<BibleVerse>()
+        for (ref in refs) {
+            val chapterVerses = BibleRepository.getVerses(ref.book.id, ref.chapter)
+            if (chapterVerses.isEmpty()) continue
+            val selected = when {
+                ref.wholeChapter -> chapterVerses
+                ref.endVerse != null -> chapterVerses.filter { it.verse in ref.verse..ref.endVerse }
+                else -> chapterVerses.filter { it.verse == ref.verse }
+            }
+            verses.addAll(selected)
+        }
+        if (verses.isEmpty()) {
+            _uiState.value = _uiState.value.copy(
+                statusMessage = "لم يتم العثور على مرجع كتابي في النص المشارَك (No verse reference found in the shared text)"
+            )
+            return
+        }
+        val first = verses.first()
+        triggerVerseByReference(first.bookId, first.chapter, first.verse, "both")
+        _uiState.value = _uiState.value.copy(
+            sermonPlaylist = verses,
+            sermonListNonce = _uiState.value.sermonListNonce + 1,
+            statusMessage = "قائمة الخدمة: ${verses.size} آية — الأولى على الهواء الآن"
+        )
+    }
+
+    /** v2.0: put a sermon-playlist verse on air (tap in the list). */
+    fun showSermonVerse(verse: BibleVerse) {
+        triggerVerseByReference(verse.bookId, verse.chapter, verse.verse, "both")
+    }
+
+    /** v2.0: empty the sermon playlist. */
+    fun clearSermonPlaylist() {
+        _uiState.value = _uiState.value.copy(sermonPlaylist = emptyList())
     }
 
     /**
@@ -797,7 +955,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         templateRepo.setActiveTemplateId(template.id)
         templateRepo.setWorkingDirty(false, false)
         broadcastServer.updateTemplate(working)
-        triggerAllFrames()
+        triggerAllFramesImmediate()
     }
 
     /**
@@ -815,7 +973,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         templateRepo.setActiveShowTemplateId(template.id)
         templateRepo.setWorkingDirty(true, false)
         broadcastServer.updateShowTemplate(working)
-        nativeSender.triggerFrame(NdiNativeSender.FEED_FULL, true)
+        nativeSender.triggerFrameImmediate(NdiNativeSender.FEED_FULL, true)
     }
 
     /**
@@ -994,34 +1152,36 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
     }
 
     /**
-     * Reset for the selected tab only. If a style is highlighted, the working
-     * values revert to that style's saved values (same as re-tapping the style)
-     * and the highlight stays. If no style is highlighted, the working values
-     * revert to the factory defaults for that tab.
+     * Reset for the selected tab only. Resets to the "simple" template per
+     * Ashraf's spec: 100% transparent, no motion, no custom video, no text
+     * shadow, no accent border, no card glow. Clears the style highlight
+     * (the simple template is not a saved style) and marks the tab modified.
      */
     fun resetTemplate(isFullScreen: Boolean) {
+        // Ashraf's spec: Reset = "simple" — 100% transparent, no motion, no video,
+        // no shadow, no border, no glow. Clears the style highlight (the simple
+        // template is not a saved style) and marks the tab modified.
+        val working = simpleDefaultTemplate(isFullScreen)
         if (isFullScreen) {
-            val highlightId = _uiState.value.highlightedShowStyleId
-            val savedStyle = _uiState.value.templates.firstOrNull { it.id == highlightId && it.isFullScreen }
-            val working = (savedStyle ?: defaultShowTemplate()).copy(isFullScreen = true)
             _uiState.value = _uiState.value.copy(
                 activeShowTemplate = working,
-                showWorkingDirty = false
+                highlightedShowStyleId = null,
+                showWorkingDirty = true
             )
+            templateRepo.setActiveShowTemplateId(null)
             templateRepo.saveWorkingTemplate(working)
-            templateRepo.setWorkingDirty(true, false)
+            templateRepo.setWorkingDirty(true, true)
             broadcastServer.updateShowTemplate(working)
             nativeSender.triggerFrame(NdiNativeSender.FEED_FULL, true)
         } else {
-            val highlightId = _uiState.value.highlightedLowerStyleId
-            val savedStyle = _uiState.value.templates.firstOrNull { it.id == highlightId && !it.isFullScreen }
-            val working = (savedStyle ?: TemplateRepository.DEFAULT_TEMPLATES[0]).copy(isFullScreen = false)
             _uiState.value = _uiState.value.copy(
                 activeTemplate = working,
-                lowerWorkingDirty = false
+                highlightedLowerStyleId = null,
+                lowerWorkingDirty = true
             )
+            templateRepo.setActiveTemplateId(null)
             templateRepo.saveWorkingTemplate(working)
-            templateRepo.setWorkingDirty(false, false)
+            templateRepo.setWorkingDirty(false, true)
             broadcastServer.updateTemplate(working)
             triggerAllFrames()
         }
@@ -1059,7 +1219,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
 
     override fun onCleared() {
         super.onCleared()
-        nativeSender.stopAll()
-        broadcastServer.stop()
+        // v1.9: instances live in NdiService now; stop them without creating new ones.
+        NdiService.stopAllIfPresent()
     }
 }

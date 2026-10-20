@@ -34,6 +34,18 @@ enum class LanguageMode(val displayName: String) {
     BOTH("Arabic + English")
 }
 
+/**
+ * v2.0: How a custom background video loops.
+ * CUT = hard loop (visible cut); FADE = fade through black at the loop point.
+ */
+enum class VideoLoopMode(val id: String, val displayName: String) {
+    CUT("cut", "Cut"),
+    FADE("fade", "Crossfade");
+    companion object {
+        fun fromId(id: String): VideoLoopMode = values().find { it.id == id } ?: FADE
+    }
+}
+
 enum class AnimatedBackgroundType(val id: String, val displayNameAr: String, val description: String) {
     NONE("none", "بدون فيديو (شفاف / عادي)", "No animated video"),
     GOLDEN_DIVINE_RAYS("golden_rays", "أشعة ذهبية سماوية (Golden Rays)", "Gentle moving golden celestial rays"),
@@ -91,11 +103,6 @@ data class LowerThirdTemplate(
     val transition: TransitionType = TransitionType.SLIDE_UP,
     val transitionDurationMs: Int = 400,
     val showAccentBorder: Boolean = false,
-    /**
-     * Legacy single shadow switch, kept only for one-time JSON migration.
-     * New code must use [textShadowEnabled]/[cardGlowEnabled] instead.
-     */
-    val showDropShadow: Boolean = true,
     /** Independent text shadow on verse/citation text. */
     val textShadowEnabled: Boolean = true,
     val textShadowColorHex: String = "#000000",
@@ -145,5 +152,26 @@ data class LowerThirdTemplate(
      * and procedural animations.
      */
     val motionSpeed: Float = 1.0f,
+    /** v2.0: How the custom video loops. Default FADE (crossfade through black). */
+    val videoLoopMode: VideoLoopMode = VideoLoopMode.FADE,
     val streamBackgroundMode: StreamBackgroundMode = StreamBackgroundMode.TRANSPARENT_ALPHA,
+    /**
+     * v1.9: per-side card padding (dp) — the breathing room between the card
+     * edge and the text. Replaces the old hardcoded 36/32 paddings; defaults
+     * reproduce the pre-v1.9 look so existing styles migrate unchanged.
+     */
+    val cardPaddingTopDp: Float = 32f,
+    val cardPaddingBottomDp: Float = 32f,
+    val cardPaddingLeftDp: Float = 36f,
+    val cardPaddingRightDp: Float = 36f,
+    /**
+     * v1.9: shrink-to-fit. When true, a verse too long for the text box shrinks
+     * (verse, citation and English section together, preserving their ratio)
+     * until it fits — never below [autoFitMinVerseSp]. Short verses always
+     * render at the selected size. Off = the pre-v1.9 behavior (text may
+     * overflow the card/screen).
+     */
+    val autoFitText: Boolean = true,
+    /** v1.9: floor for [autoFitText] shrinking (sp, applied to the verse size). */
+    val autoFitMinVerseSp: Int = 28,
 )

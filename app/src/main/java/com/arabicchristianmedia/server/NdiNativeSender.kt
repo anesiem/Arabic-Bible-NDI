@@ -224,10 +224,22 @@ class NdiNativeSender {
         motionContentProvider = provider
     }
 
+    /**
+     * v2.0: reports whether a verse-change transition is animating for the
+     * feed. Transitions pump regardless of the feed's Motion toggle (the
+     * toggle gates animated backgrounds only), mirroring the HTTP overlay.
+     */
+    private var transitionProvider: ((Boolean) -> Boolean)? = null
+    fun setTransitionProvider(provider: (Boolean) -> Boolean) {
+        transitionProvider = provider
+    }
+
     /** True when this session should render motion ticks right now. */
-    private fun isMotionActive(session: SenderSession): Boolean =
-        session.spec.motionEnabled &&
+    private fun isMotionActive(session: SenderSession): Boolean {
+        if (transitionProvider?.invoke(session.isFullScreen) == true) return true
+        return session.spec.motionEnabled &&
             (motionContentProvider?.invoke(session.isFullScreen) == true)
+    }
 
     fun isSourceActive(feedKey: String): Boolean =
         synchronized(activeSenders) { activeSenders.containsKey(feedKey) }
@@ -357,30 +369,47 @@ class NdiNativeSender {
             triggerJobs[feedKey]?.cancel()
             triggerJobs[feedKey] = scope.launch {
                 delay(120) // debounce rapid font size / slider adjustments by 120ms
-                val session = synchronized(activeSenders) { activeSenders[feedKey] } ?: return@launch
-                try {
-                    // In motion mode render a fresh frame (current animation phase +
-                    // the new verse); in static mode reuse the cached bitmap.
-                    // Same per-feed lock as the send loop: render+send are atomic.
-                    // The closed flag guards the stop/restart race: the session may
-                    // have been torn down during the debounce delay above.
-                    val sent = synchronized(feedLock(feedKey)) {
-                        if (session.closed) {
-                            false
-                        } else {
-                            val bmp = if (isMotionActive(session)) motionFrameProvider?.invoke(isFullScreen)
-                                      else frameProvider?.invoke(isFullScreen)
-                            bmp != null && sendBitmapToPtr(session, bmp)
-                        }
-                    }
-                    if (sent) {
-                        session.lastSentVersion = frameVersionProvider?.invoke() ?: session.lastSentVersion
-                        session.lastSentAtMs = SystemClock.elapsedRealtime()
-                    }
-                } catch (e: Exception) {
-                    reportError(feedKey, "triggerFrame error: ${e.message}", throttleMs = 10_000L)
+                sendOneFrame(feedKey, isFullScreen)
+            }
+        }
+    }
+
+    /**
+     * v2.0: Push one frame WITHOUT the debounce delay. Used for discrete
+     * actions like style selection — the debounced triggerFrame can be
+     * cancelled/swallowed by a follow-up call, leaving NDI showing stale
+     * state until the send-loop poll catches up.
+     */
+    fun triggerFrameImmediate(feedKey: String, isFullScreen: Boolean) {
+        synchronized(triggerJobs) {
+            triggerJobs[feedKey]?.cancel()
+            scope.launch { sendOneFrame(feedKey, isFullScreen) }
+        }
+    }
+
+    private suspend fun sendOneFrame(feedKey: String, isFullScreen: Boolean) {
+        val session = synchronized(activeSenders) { activeSenders[feedKey] } ?: return
+        try {
+            // In motion mode render a fresh frame (current animation phase +
+            // the new verse); in static mode reuse the cached bitmap.
+            // Same per-feed lock as the send loop: render+send are atomic.
+            // The closed flag guards the stop/restart race: the session may
+            // have been torn down during the debounce delay above.
+            val sent = synchronized(feedLock(feedKey)) {
+                if (session.closed) {
+                    false
+                } else {
+                    val bmp = if (isMotionActive(session)) motionFrameProvider?.invoke(isFullScreen)
+                              else frameProvider?.invoke(isFullScreen)
+                    bmp != null && sendBitmapToPtr(session, bmp)
                 }
             }
+            if (sent) {
+                session.lastSentVersion = frameVersionProvider?.invoke() ?: session.lastSentVersion
+                session.lastSentAtMs = SystemClock.elapsedRealtime()
+            }
+        } catch (e: Exception) {
+            reportError(feedKey, "triggerFrame error: ${e.message}", throttleMs = 10_000L)
         }
     }
 
@@ -391,6 +420,8 @@ class NdiNativeSender {
                 return false
             }
             val spec = session.spec
+            // v1.9: frame-timing instrumentation (pairs with NdiBroadcastServer draw timing).
+            val sendStartNs = System.nanoTime()
             val targetBitmap = if (bitmap.width == spec.width && bitmap.height == spec.height) {
                 bitmap
             } else {
@@ -413,13 +444,38 @@ class NdiNativeSender {
                 )
                 scaled
             }
+            val downscaleNs = System.nanoTime() - sendStartNs
 
             val ok = nativeSendVideoBitmap(session.ptr, targetBitmap, spec.width, spec.height)
+            recordSendTiming(spec.feedKey, downscaleNs, System.nanoTime() - sendStartNs - downscaleNs)
             if (!ok) reportError(spec.feedKey, "nativeSendVideoBitmap returned false", throttleMs = 10_000L)
             ok
         } catch (e: Exception) {
             reportError(session.spec.feedKey, "Error sending frame: ${e.message}", throttleMs = 10_000L)
             false
+        }
+    }
+
+    // v1.9: per-feed send timing (downscale vs NDI encode). 1-line log per feed every
+    // 300 frames. Sender threads converge here — guard the accumulator.
+    private val sendTimingLock = Any()
+    private val sendTimingNs = ConcurrentHashMap<String, LongArray>() // feedKey -> [downscaleNs, sendNs]
+    private val sendTimingFrames = ConcurrentHashMap<String, Int>()
+    private fun recordSendTiming(feedKey: String, downscaleNs: Long, sendNs: Long) {
+        synchronized(sendTimingLock) {
+            val frames = (sendTimingFrames[feedKey] ?: 0) + 1
+            sendTimingFrames[feedKey] = frames
+            val acc = sendTimingNs.getOrPut(feedKey) { LongArray(2) }
+            acc[0] += downscaleNs
+            acc[1] += sendNs
+            if (frames >= 300) {
+                val dMs = acc[0] / 1_000_000.0 / frames
+                val sMs = acc[1] / 1_000_000.0 / frames
+                Log.d("NdiPerf", "send $feedKey: downscale avg ${"%.2f".format(dMs)} ms, ndi-encode avg ${"%.2f".format(sMs)} ms over $frames frames")
+                sendTimingFrames[feedKey] = 0
+                acc[0] = 0L
+                acc[1] = 0L
+            }
         }
     }
 

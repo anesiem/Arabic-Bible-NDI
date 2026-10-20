@@ -80,11 +80,54 @@ object BibleRepository {
     )
 
     private var dbHelper: BibleDatabaseHelper? = null
+    private var appContext: Context? = null
+
+    private const val PREFS_NAME = "bible_prefs"
+    private const val KEY_TASHKEEL_ENABLED = "arabic_tashkeel_enabled"
+    private const val KEY_ENGLISH_VERSION = "english_bible_version"
 
     fun initialize(context: Context) {
         if (dbHelper == null) {
             dbHelper = BibleDatabaseHelper(context.applicationContext)
         }
+        if (appContext == null) {
+            appContext = context.applicationContext
+        }
+    }
+
+    /** True when the user has enabled tashkeel (diacritics) for Arabic text. */
+    fun isTashkeelEnabled(): Boolean {
+        return appContext?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            ?.getBoolean(KEY_TASHKEEL_ENABLED, false) ?: false
+    }
+
+    /** Persist the tashkeel preference. */
+    fun setTashkeelEnabled(enabled: Boolean) {
+        appContext?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            ?.edit()?.putBoolean(KEY_TASHKEEL_ENABLED, enabled)?.apply()
+    }
+
+    /** Returns the user's English version preference ("asv", "kjv", "web"). */
+    fun getEnglishVersion(): String {
+        return appContext?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            ?.getString(KEY_ENGLISH_VERSION, "asv") ?: "asv"
+    }
+
+    /** Returns the English DB file name based on the user's version preference. */
+    fun getEnglishDbName(): String {
+        val version = appContext?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            ?.getString(KEY_ENGLISH_VERSION, "asv") ?: "asv"
+        return when (version) {
+            "kjv" -> BibleDatabaseHelper.ENGLISH_KJV_DB
+            "web" -> BibleDatabaseHelper.ENGLISH_WEB_DB
+            else -> BibleDatabaseHelper.ENGLISH_DB // asv
+        }
+    }
+
+    /** Persist the English Bible version preference ("asv", "kjv", "web"). */
+    fun setEnglishVersion(version: String) {
+        appContext?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            ?.edit()?.putString(KEY_ENGLISH_VERSION, version)?.apply()
     }
 
     fun getBookById(id: String): BibleBook? {
@@ -97,7 +140,7 @@ object BibleRepository {
         val bookNum = allBooks.indexOf(book) + 1
 
         val arDb = helper.openDatabase(BibleDatabaseHelper.ARABIC_DB)
-        val enDb = helper.openDatabase(BibleDatabaseHelper.ENGLISH_DB)
+        val enDb = helper.openDatabase(getEnglishDbName())
 
         val verses = mutableListOf<BibleVerse>()
 
@@ -116,8 +159,15 @@ object BibleRepository {
         }
 
         arDb?.let { db ->
+            // When tashkeel is enabled, prefer tashkeelWord; fall back to word
+            // for verses where tashkeel is missing (e.g. psalm headings).
+            val wordColumn = if (isTashkeelEnabled()) {
+                "COALESCE(NULLIF(tashkeelWord, ''), word)"
+            } else {
+                "word"
+            }
             val cursor = db.rawQuery(
-                "SELECT verseNum, word FROM words WHERE bookNum = ? AND chNum = ? ORDER BY verseNum",
+                "SELECT verseNum, $wordColumn FROM words WHERE bookNum = ? AND chNum = ? ORDER BY verseNum",
                 arrayOf(bookNum.toString(), chapter.toString())
             )
             if (cursor.moveToFirst()) {
@@ -185,8 +235,21 @@ object BibleRepository {
         return verses
     }
 
+    /**
+     * Strip Arabic diacritics (tashkeel) and tatweel (kashida) from text for
+     * search normalization. Allows users to find verses whether they type
+     * with or without marks, or paste text with elongation.
+     */
+    fun stripTashkeel(text: String): String {
+        return text.filter { c ->
+            val code = c.code
+            code !in 0x064B..0x065F && code != 0x0670 && code != 0x0640
+        }
+    }
+
     fun searchVerses(query: String): List<BibleVerse> {
-        val q = query.trim()
+        // v2.0: strip tashkeel from query so search works regardless of diacritics
+        val q = stripTashkeel(query.trim())
         if (q.isEmpty()) return emptyList()
         val helper = dbHelper ?: return emptyList()
 

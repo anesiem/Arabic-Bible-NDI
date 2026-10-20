@@ -33,11 +33,13 @@ import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.Cast
 import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.Radio
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Palette
+import androidx.compose.material.icons.outlined.PlaylistPlay
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -57,6 +59,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -72,6 +75,7 @@ import com.arabicchristianmedia.ui.BibleNdiViewModel
 import com.arabicchristianmedia.ui.BibleReaderScreen
 import com.arabicchristianmedia.ui.BroadcastControlScreen
 import com.arabicchristianmedia.ui.FullscreenOverlayActivity
+import com.arabicchristianmedia.ui.SermonListScreen
 import com.arabicchristianmedia.ui.TemplateEditorScreen
 import com.arabicchristianmedia.ui.theme.LocalBentoColors
 import com.arabicchristianmedia.ui.theme.MyApplicationTheme
@@ -80,10 +84,34 @@ class MainActivity : ComponentActivity() {
 
     private val viewModel: BibleNdiViewModel by viewModels()
 
+    /**
+     * v2.0: shared-text entry points — ACTION_SEND (share sheet: Google
+     * Keep, Bible apps, ...) and ACTION_PROCESS_TEXT (the text-selection
+     * toolbar item). Both hand the text to the ViewModel's sermon-playlist
+     * flow; the list tab opens via the sermonListNonce effect below.
+     */
+    private fun handleShareIntent(intent: Intent?) {
+        val text = when (intent?.action) {
+            Intent.ACTION_SEND -> intent.getStringExtra(Intent.EXTRA_TEXT)
+            Intent.ACTION_PROCESS_TEXT -> intent.getStringExtra(Intent.EXTRA_PROCESS_TEXT)
+            else -> null
+        }
+        if (!text.isNullOrBlank()) {
+            viewModel.handleSharedText(text)
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleShareIntent(intent)
+    }
+
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        handleShareIntent(intent)
 
         setContent {
             val uiState by viewModel.uiState.collectAsState()
@@ -99,7 +127,15 @@ class MainActivity : ComponentActivity() {
             MyApplicationTheme(themeMode = uiState.appThemeMode) {
                 val bento = LocalBentoColors.current
                 val snackbarHostState = remember { SnackbarHostState() }
-                var selectedTab by remember { mutableIntStateOf(0) }
+                var selectedTab by rememberSaveable { mutableIntStateOf(0) }
+                // v2.0: a successful share (sermonListNonce bump) opens the
+                // sermon list tab so the operator lands on the verses.
+                LaunchedEffect(uiState.sermonListNonce) {
+                    if (uiState.sermonListNonce > 0) selectedTab = 3
+                }
+                // v1.9: editor sub-tab (Lower Third / Full Show) hoisted here so it
+                // survives both rotation and main-tab switches.
+                var editorTab by rememberSaveable { mutableIntStateOf(0) }
                 val context = LocalContext.current
 
                 LaunchedEffect(uiState.statusMessage) {
@@ -261,7 +297,7 @@ class MainActivity : ComponentActivity() {
                                             contentDescription = "NDI & Broadcast Settings"
                                         )
                                     },
-                                    label = { Text("NDI Link (البث)", fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
+                                    label = { Text("الإعدادات (Setup)", fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
                                     colors = NavigationBarItemDefaults.colors(
                                         selectedIconColor = bento.onPrimaryContainer,
                                         selectedTextColor = bento.primary,
@@ -270,6 +306,26 @@ class MainActivity : ComponentActivity() {
                                         unselectedTextColor = bento.textSecondary
                                     ),
                                     modifier = Modifier.testTag("tab_broadcast")
+                                )
+
+                                NavigationBarItem(
+                                    selected = selectedTab == 3,
+                                    onClick = { selectedTab = 3 },
+                                    icon = {
+                                        Icon(
+                                            imageVector = if (selectedTab == 3) Icons.Filled.PlaylistPlay else Icons.Outlined.PlaylistPlay,
+                                            contentDescription = "Sermon list (verses shared from notes)"
+                                        )
+                                    },
+                                    label = { Text("Sermon (القائمة)", fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
+                                    colors = NavigationBarItemDefaults.colors(
+                                        selectedIconColor = bento.onPrimaryContainer,
+                                        selectedTextColor = bento.primary,
+                                        indicatorColor = bento.primaryContainer,
+                                        unselectedIconColor = bento.textSecondary,
+                                        unselectedTextColor = bento.textSecondary
+                                    ),
+                                    modifier = Modifier.testTag("tab_sermon")
                                 )
                             }
                         }
@@ -315,7 +371,9 @@ class MainActivity : ComponentActivity() {
                                 onDeleteTemplate = { id, isFull -> viewModel.deleteTemplate(id, isFull) },
                                 onExportTemplate = { id -> viewModel.exportTemplateJson(id) },
                                 onUpdateTemplateFromJson = { id, json, isFull -> viewModel.updateTemplateFromJson(id, json, isFull) },
-                                onImportNewTemplate = { json, isFull -> viewModel.importNewTemplate(json, isFull) }
+                                onImportNewTemplate = { json, isFull -> viewModel.importNewTemplate(json, isFull) },
+                                editorTab = editorTab,
+                                onEditorTabChange = { editorTab = it }
                             )
                             2 -> BroadcastControlScreen(
                                 uiState = uiState,
@@ -336,7 +394,14 @@ class MainActivity : ComponentActivity() {
                                 onToggleNdiMotion = { viewModel.toggleNdiMotion(it) },
                                 onToggleAdvancedNdi = { viewModel.toggleAdvancedNdi() },
                                 onRefreshNdiDiagnostics = { viewModel.refreshNdiDiagnostics() },
-                                onClearNdiDiagnostics = { viewModel.clearNdiDiagnostics() }
+                                onClearNdiDiagnostics = { viewModel.clearNdiDiagnostics() },
+                                onToggleTashkeel = { viewModel.setTashkeelEnabled(it) },
+                                onSelectEnglishVersion = { viewModel.setEnglishVersion(it) }
+                            )
+                            3 -> SermonListScreen(
+                                uiState = uiState,
+                                onShowVerse = { viewModel.showSermonVerse(it) },
+                                onClear = { viewModel.clearSermonPlaylist() }
                             )
                         }
                     }

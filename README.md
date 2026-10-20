@@ -58,6 +58,11 @@ See [RELEASE_NOTES_v1.7.md](RELEASE_NOTES_v1.7.md) for the full list.
 * Live updates over Server-Sent Events with reconnect-safe state versions.
 * **v1.8**: Remote trigger API (`/api/trigger?ref=John+3:16`), phone-friendly `/remote` control page, and `/bibleshow.xml` vMix feed.
 
+### 📝 Sermon Notes Sharing (share → on air)
+* Prepare your service in **Google Keep** (or any notes/Bible app): write references the way you naturally do — `العبرانيين ٩: ١١`, ranges like `العبرانيين ٩: ٧-٩`, or a whole chapter (`المزامير ٢٣`). Short Arabic names (without سفر/رسالة), Eastern numerals, and English names/abbreviations all work.
+* **Share** the note to **Bible NDI** — or select the text and tap **Bible NDI** in the text-selection toolbar. The app scans every reference in order (verse numbers inside quoted text are ignored), builds your **Sermon list** (قائمة الخدمة) tab, and puts the **first verse on air immediately** on both feeds. Tap any row to show that verse.
+* Text always comes from the app's own database, so your tashkeel setting and styles apply exactly as if you had tapped the verse in the reader. The same reference formats (ranges included) also work in `/api/trigger`.
+
 ### ⚙️ Per-Source Customization (Broadcast tab)
 Each NDI source is independently configurable from dropdown lists:
 * **Enabled** on/off, **Resolution** (7 options up to 1080p, all 16:9, filtered downscaling below 1080p), **Frame rate** (8 integer rates), **Motion** on/off (up to 30fps).

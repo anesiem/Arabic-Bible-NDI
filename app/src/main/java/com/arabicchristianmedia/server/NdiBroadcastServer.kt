@@ -1,6 +1,7 @@
 package com.arabicchristianmedia.server
 
 import android.content.Context
+import android.content.SharedPreferences
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
@@ -19,21 +20,21 @@ import android.os.Build
 import android.os.SystemClock
 import android.util.Log
 import android.text.Layout
-import android.text.SpannableString
 import android.text.Spanned
 import android.text.StaticLayout
 import android.text.TextPaint
-import android.text.style.AbsoluteSizeSpan
-import android.text.style.ForegroundColorSpan
 import com.arabicchristianmedia.data.ArabicTextFormatter
+import com.arabicchristianmedia.data.BibleRepository
+import com.arabicchristianmedia.data.TemplateRepository
 import com.arabicchristianmedia.model.AnimatedBackgroundType
-import com.arabicchristianmedia.model.ArabicFonts
+import com.arabicchristianmedia.model.BundledFonts
 import com.arabicchristianmedia.model.BibleVerse
 import com.arabicchristianmedia.model.BroadcastTextAlignment
 import com.arabicchristianmedia.model.LanguageMode
 import com.arabicchristianmedia.model.LowerThirdTemplate
 import com.arabicchristianmedia.model.StreamBackgroundMode
 import com.arabicchristianmedia.model.TemplateStyle
+import com.arabicchristianmedia.model.TransitionType
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -44,7 +45,6 @@ import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.ByteArrayOutputStream
 import java.io.File
-import java.io.FileInputStream
 import java.io.InputStreamReader
 import java.io.OutputStream
 import java.io.PrintWriter
@@ -55,6 +55,16 @@ import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.sin
 import kotlin.math.cos
+
+/**
+ * v1.9 auto-fit math (pure, unit-tested): how much to shrink text so a content
+ * block of [contentH] fits in [maxContentH]. Returns 1f when no shrink is
+ * needed; never below [minRatio] (the user's minimum-size floor).
+ */
+internal fun computeFitRatio(contentH: Float, maxContentH: Float, minRatio: Float): Float {
+    if (contentH <= maxContentH || maxContentH <= 0f) return 1f
+    return (maxContentH / contentH).coerceIn(minRatio, 1f)
+}
 
 class NdiBroadcastServer(private val context: Context, private var port: Int = 8080) {
 
@@ -132,6 +142,70 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
     @Volatile
     var currentShowTemplate: LowerThirdTemplate = LowerThirdTemplate(id = "default_show", name = "Default Show", isFullScreen = true)
+
+    // v1.9: persisted verse/live state — the only render state not already persisted
+    // elsewhere (style IDs live in TemplateRepository, feed specs in
+    // bible_ndi_source_specs). Lets NdiService fully resume the NDI feeds
+    // (same verse, same ON AIR/standby) after an OS process kill.
+    private val verseStatePrefs: SharedPreferences by lazy {
+        context.getSharedPreferences("bible_ndi_render_state", Context.MODE_PRIVATE)
+    }
+
+    private fun persistVerseState() {
+        try {
+            verseStatePrefs.edit()
+                .putString("verse_book_id", currentVerse?.bookId)
+                .putInt("verse_chapter", currentVerse?.chapter ?: -1)
+                .putInt("verse_number", currentVerse?.verse ?: -1)
+                .putBoolean("is_live", isLive)
+                .apply()
+        } catch (e: Exception) {
+            // Best-effort: a failed write just means auto-resume falls back to standby.
+        }
+    }
+
+    /**
+     * Restores the last persisted verse/styles/live state for OS-kill auto-resume.
+     * Call off the main thread (reads the Bible DB); the caller must have run
+     * `BibleRepository.initialize(context)` first. Style IDs come from the
+     * already-persisted TemplateRepository highlights. Returns true if a verse
+     * was restored (live or standby); false when there is nothing to show.
+     * [verseLookup] is injectable for tests; production passes the real repository.
+     */
+    fun restorePersistedRenderState(
+        templates: TemplateRepository,
+        verseLookup: (bookId: String, chapter: Int) -> List<BibleVerse> =
+            { bookId, chapter -> BibleRepository.getVerses(bookId, chapter) }
+    ): Boolean {
+        return try {
+            val all = templates.getAllTemplates()
+            val lowerTpl = all.firstOrNull { it.id == templates.getActiveTemplateId() && !it.isFullScreen }
+                ?: all.firstOrNull { !it.isFullScreen }
+            val showTpl = all.firstOrNull { it.id == templates.getActiveShowTemplateId() && it.isFullScreen }
+                ?: all.firstOrNull { it.isFullScreen }
+            if (lowerTpl != null) updateTemplate(lowerTpl)
+            if (showTpl != null) updateShowTemplate(showTpl)
+
+            val bookId = verseStatePrefs.getString("verse_book_id", null)
+            val chapter = verseStatePrefs.getInt("verse_chapter", -1)
+            val verseNum = verseStatePrefs.getInt("verse_number", -1)
+            val live = verseStatePrefs.getBoolean("is_live", false)
+            val verse = if (bookId != null && chapter >= 0 && verseNum >= 0) {
+                try {
+                    verseLookup(bookId, chapter).firstOrNull { it.verse == verseNum }
+                } catch (e: Exception) { null }
+            } else null
+            if (verse != null) {
+                updateVerse(verse, live = live)
+                true
+            } else {
+                setLiveState(false)
+                false
+            }
+        } catch (e: Exception) {
+            false
+        }
+    }
 
     var customIpOverride: String? = null
 
@@ -238,6 +312,43 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     private var cachedLowerBitmap: Bitmap? = null
     private var cachedShowBitmap: Bitmap? = null
 
+    /**
+     * v2.0: NDI verse-change transitions. [updateVerse] snapshots the verse
+     * being replaced; while a transition is active, drawFrameInto crossfades
+     * the old frame into the new one over the style's transitionDurationMs
+     * (FADE and both SLIDE_* use a crossfade on NDI; CUT = instant).
+     * The motion pump stays on during the window so static styles still
+     * animate (see [isTransitionActiveFor]).
+     */
+    @Volatile private var transitionPrevVerse: BibleVerse? = null
+    @Volatile private var transitionStartMs: Long = 0L
+
+    /** True while a verse-change crossfade is still animating for this feed. */
+    fun isTransitionActiveFor(isFull: Boolean): Boolean {
+        if (transitionPrevVerse == null) return false
+        if (!isLive) return false
+        val tpl = if (isFull) currentShowTemplate else currentTemplate
+        val dur = tpl.transitionDurationMs
+        if (tpl.transition == TransitionType.CUT || dur <= 0) return false
+        val elapsed = SystemClock.elapsedRealtime() - transitionStartMs
+        if (elapsed >= dur) {
+            // Finished: clear state and refresh the static cache, so the
+            // sender's heartbeat/static sends serve the NEW verse instead
+            // of the pre-change frame still sitting in the cache.
+            transitionPrevVerse = null
+            invalidateBitmapCache()
+            return false
+        }
+        return true
+    }
+
+    fun transitionProgressFor(isFull: Boolean): Float {
+        if (!isTransitionActiveFor(isFull)) return 1f
+        val tpl = if (isFull) currentShowTemplate else currentTemplate
+        val dur = tpl.transitionDurationMs.coerceAtLeast(1)
+        return ((SystemClock.elapsedRealtime() - transitionStartMs).toFloat() / dur).coerceIn(0f, 1f)
+    }
+
     fun invalidateBitmapCache() {
         isCacheDirtyLower = true
         isCacheDirtyShow = true
@@ -245,10 +356,18 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     }
 
     fun updateVerse(verse: BibleVerse, live: Boolean = true) {
+        val prev = currentVerse
         currentVerse = verse
         isLive = live
+        // v2.0: snapshot the replaced verse so the next frames can crossfade
+        // (only on a real verse change, and only when going live with content).
+        if (prev != null && prev.id != verse.id && isLive && live) {
+            transitionPrevVerse = prev
+            transitionStartMs = SystemClock.elapsedRealtime()
+        }
         invalidateBitmapCache()
         broadcastStateToClients()
+        persistVerseState()
     }
 
     private var lastTemplateUpdateMs = 0L
@@ -352,6 +471,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         isLive = live
         invalidateBitmapCache()
         broadcastStateToClients()
+        persistVerseState()
     }
 
     private fun broadcastStateToClients() {
@@ -591,7 +711,6 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             put("transition", tpl.transition.name)
             put("transitionDurationMs", tpl.transitionDurationMs)
             put("showAccentBorder", tpl.showAccentBorder)
-            put("showDropShadow", tpl.showDropShadow)
             put("textShadowEnabled", tpl.textShadowEnabled)
             put("textShadowColorHex", tpl.textShadowColorHex)
             put("textShadowBlurDp", tpl.textShadowBlurDp)
@@ -618,6 +737,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             put("customVideoId", tpl.customVideoId)
             put("customVideoMuted", tpl.customVideoMuted)
             put("motionSpeed", tpl.motionSpeed)
+            put("videoLoopMode", tpl.videoLoopMode.id)
+            put("cardPaddingTopDp", tpl.cardPaddingTopDp.toDouble())
+            put("cardPaddingBottomDp", tpl.cardPaddingBottomDp.toDouble())
+            put("cardPaddingLeftDp", tpl.cardPaddingLeftDp.toDouble())
+            put("cardPaddingRightDp", tpl.cardPaddingRightDp.toDouble())
+            put("autoFitText", tpl.autoFitText)
+            put("autoFitMinVerseSp", tpl.autoFitMinVerseSp)
         }
         return root.toString()
     }
@@ -714,8 +840,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
     /* Full Show Mode Container */
     #lowerthird-container.mode-full-show {
-      width: 100vw !important;
-      height: 100vh !important;
+      /* v1.9: fill the 16:9 stage, not the viewport (was 100vw/100vh). */
+      width: 100% !important;
+      height: 100% !important;
       margin: 0 !important;
       display: flex !important;
       flex-direction: column !important;
@@ -747,14 +874,15 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
     /* Card Box in Full Show Mode (Flex-centered vertically in middle of screen) */
     .card-content.mode-full-show {
-      width: 100vw !important;
-      height: 100vh !important;
-      max-width: 100vw !important;
+      /* v1.9: fill the 16:9 stage, not the viewport (was 100vw/100vh). */
+      width: 100% !important;
+      height: 100% !important;
+      max-width: 100% !important;
       display: flex !important;
       flex-direction: column !important;
       justify-content: center !important;
       align-items: center !important;
-      padding: 6vh 6vw !important;
+      /* v1.9: padding is set inline from the style's card padding (was 6vh 6vw). */
       border-radius: 0 !important;
       margin: 0 !important;
       text-align: center !important;
@@ -914,6 +1042,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       <div id="card-box" class="card-content">
         <div id="animated-bg-layer" class="animated-bg-layer">
           <video id="custom-video-bg" style="display:none;" autoplay loop muted playsinline></video>
+          <canvas id="particle-canvas" style="display:none; position:absolute; inset:0; width:100%; height:100%; pointer-events:none;"></canvas>
         </div>
 
         <div class="card-inner-content">
@@ -944,6 +1073,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     const cardBox = document.getElementById('card-box');
     const animBgLayer = document.getElementById('animated-bg-layer');
     const customVideoBg = document.getElementById('custom-video-bg');
+    const particleCanvas = document.getElementById('particle-canvas');
     const citationRow = document.getElementById('citation-row');
     const citationText = document.getElementById('citation-text');
     const verseText = document.getElementById('verse-text');
@@ -951,6 +1081,56 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     const englishSection = document.getElementById('english-section');
     const englishText = document.getElementById('english-text');
     const englishCitation = document.getElementById('english-citation');
+
+    // v2.0: Real particle field on HTTP (mirrors NDI drawParticleField).
+    // Previously HTTP only pulsed a CSS glow; now draws actual particles.
+    let particleAnimId = null;
+    let particleColor = '#7DD3FC';
+    function startParticles(colorHex, opacity) {
+      stopParticles();
+      particleColor = colorHex;
+      const canvas = particleCanvas;
+      const ctx = canvas.getContext('2d');
+      const rect = animBgLayer.getBoundingClientRect();
+      canvas.width = Math.max(1, Math.floor(rect.width));
+      canvas.height = Math.max(1, Math.floor(rect.height));
+      canvas.style.display = 'block';
+      const count = Math.min(120, Math.max(30, Math.floor((canvas.width * canvas.height) / 15000)));
+      const particles = [];
+      for (let i = 0; i < count; i++) {
+        particles.push({
+          x: Math.random() * canvas.width,
+          y: Math.random() * canvas.height,
+          vx: (Math.random() - 0.5) * 0.4,
+          vy: -0.3 - Math.random() * 0.5,
+          r: 1 + Math.random() * 2.5,
+          tw: Math.random() * Math.PI * 2,
+          twSpeed: 0.02 + Math.random() * 0.05
+        });
+      }
+      const baseAlpha = Math.floor(opacity * 255);
+      function frame() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        for (const p of particles) {
+          p.x += p.vx; p.y += p.vy; p.tw += p.twSpeed;
+          if (p.y < -5) { p.y = canvas.height + 5; p.x = Math.random() * canvas.width; }
+          if (p.x < -5) p.x = canvas.width + 5;
+          if (p.x > canvas.width + 5) p.x = -5;
+          const twinkle = (Math.sin(p.tw) + 1) / 2;
+          const alpha = Math.floor(baseAlpha * (0.25 + 0.75 * twinkle));
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+          ctx.fillStyle = particleColor + alpha.toString(16).padStart(2, '0');
+          ctx.fill();
+        }
+        particleAnimId = requestAnimationFrame(frame);
+      }
+      frame();
+    }
+    function stopParticles() {
+      if (particleAnimId) { cancelAnimationFrame(particleAnimId); particleAnimId = null; }
+      if (particleCanvas) particleCanvas.style.display = 'none';
+    }
 
     /**
      * Main Renderer: Applies state data to the DOM elements
@@ -971,6 +1151,14 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       }
 
       const isFull = data.isFullScreen || $forceFullScreen;
+
+      // v1.9: per-side card padding (design dp at 1920, same basis as the NDI
+      // renderer) — replaces the old hardcoded paddings.
+      function padPx(dp) { return (dp * getStageScale()) + 'px'; }
+      const padT = padPx(data.cardPaddingTopDp ?? 32);
+      const padB = padPx(data.cardPaddingBottomDp ?? 32);
+      const padL = padPx(data.cardPaddingLeftDp ?? 36);
+      const padR = padPx(data.cardPaddingRightDp ?? 36);
 
       // v1.8: viewport-relative font sizing — the style's font sizes are
       // designed for a 1920-wide canvas (like NDI); scale to the actual
@@ -1022,7 +1210,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         englishCitation.style.fontWeight = data.secondaryReferenceIsBold ? 'bold' : 'normal';
         englishCitation.style.fontStyle = data.secondaryReferenceIsItalic ? 'italic' : 'normal';
         const spacing = data.showBilingualSpacing ? (data.bilingualSpacing || 20) : 0;
-        englishSection.style.marginTop = spacing + 'px';
+        // v2.0: scale like every other measurement (NDI: spacing x frame
+        // scale). Raw px made the gap proportionally bigger than NDI at any
+        // window size other than exactly 1920 wide.
+        englishSection.style.marginTop = (spacing * getStageScale()) + 'px';
       } else {
         englishSection.style.display = 'none';
       }
@@ -1032,16 +1223,19 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         container.style.marginBottom = '0';
         container.style.marginLeft = '0';
         container.style.marginRight = '0';
-        container.style.width = '100vw';
-        container.style.height = '100vh';
+        // v1.9: fill the 16:9 stage, not the viewport — 100vw/100vh stretched
+        // the video background on non-16:9 windows while NDI stayed 16:9.
+        container.style.width = '100%';
+        container.style.height = '100%';
 
         cardBox.style.display = 'flex';
         cardBox.style.flexDirection = 'column';
         cardBox.style.justifyContent = 'center';
         cardBox.style.margin = '0 auto';
-        cardBox.style.padding = '6vh 6vw';
-        cardBox.style.width = '100vw';
-        cardBox.style.maxWidth = '100vw';
+        cardBox.style.padding = padT + ' ' + padR + ' ' + padB + ' ' + padL;
+        cardBox.style.width = '100%';
+        cardBox.style.maxWidth = '100%';
+        cardBox.style.height = '100%';
         // v1.7: Full Show obeys the user's alignment — no forced centering.
         // Bidi-aware: LEFT/RIGHT mean visual left/right for both scripts.
         const align = data.alignment || 'RIGHT';
@@ -1064,8 +1258,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         englishSection.style.textAlign = enAlignCss;
         // v1.8: honor the bilingualSpacing setting (was hardcoded 10px,
         // overwriting the marginTop set above).
+        // v2.0: scaled by stageScale like NDI (see lower-third branch).
         const fsSpacing = data.showBilingualSpacing ? (data.bilingualSpacing || 20) : 0;
-        englishSection.style.margin = fsSpacing + 'px auto 0 auto';
+        englishSection.style.margin = (fsSpacing * getStageScale()) + 'px auto 0 auto';
         englishText.style.width = '100%';
         englishText.style.textAlign = enAlignCss;
       } else {
@@ -1079,6 +1274,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
           container.style.direction = 'rtl';
           cardBox.style.textAlign = 'center';
           cardBox.style.display = 'block';
+          cardBox.style.width = '100%';
           cardBox.style.margin = '0 auto';
           citationRow.style.display = 'flex';
           citationRow.style.width = '100%';
@@ -1088,7 +1284,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         } else if (data.alignment === 'LEFT') {
           container.style.direction = 'ltr';
           cardBox.style.textAlign = 'left';
-          cardBox.style.display = 'inline-block';
+          // v1.9: full-width card like the NDI feed (was inline-block,
+          // which shrink-wrapped the card to the text length).
+          cardBox.style.display = 'block';
+          cardBox.style.width = '100%';
           cardBox.style.margin = '0';
           citationRow.style.display = 'flex';
           citationRow.style.width = '100%';
@@ -1098,7 +1297,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         } else {
           container.style.direction = 'rtl';
           cardBox.style.textAlign = 'right';
-          cardBox.style.display = 'inline-block';
+          // v1.9: full-width card like the NDI feed (was inline-block,
+          // which shrink-wrapped the card to the text length).
+          cardBox.style.display = 'block';
+          cardBox.style.width = '100%';
           cardBox.style.margin = '0';
           citationRow.style.display = 'flex';
           citationRow.style.width = '100%';
@@ -1119,13 +1321,18 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       citationRow.style.fontStyle = data.referenceIsItalic ? 'italic' : 'normal';
       verseText.style.fontSize = scaledPx(data.verseFontSize || 26);
       citationRow.style.fontSize = scaledPx(data.referenceFontSize || 18);
+      // v1.9: reset the span too — the auto-fit loop shrinks citationText directly,
+      // so without this each applyData compounds the shrink.
+      citationText.style.fontSize = scaledPx(data.referenceFontSize || 18);
 
       // 6. Color Schemes & Container Styling
       const hex = data.bgColorHex || '#0A1128';
       const opacity = data.bgOpacity !== undefined ? data.bgOpacity : 0.85;
-      const r = parseInt(hex.slice(1,3), 16) || 10;
-      const g = parseInt(hex.slice(3,5), 16) || 17;
-      const b = parseInt(hex.slice(5,7), 16) || 40;
+      // v1.9: use isNaN, not || — parseInt('00',16) is 0 (falsy), and pure black
+      // #000000 must stay black, not fall through to the defaults.
+      const rv = parseInt(hex.slice(1,3), 16); const r = isNaN(rv) ? 10 : rv;
+      const gv = parseInt(hex.slice(3,5), 16); const g = isNaN(gv) ? 17 : gv;
+      const bv = parseInt(hex.slice(5,7), 16); const b = isNaN(bv) ? 40 : bv;
 
       const accent = data.accentColorHex || '#E5A93C';
       const textColor = data.textColorHex || '#FFFFFF';
@@ -1148,9 +1355,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         crossEmblem.style.display = 'none';
       }
 
-      const radius = isFull ? '0' : (data.cornerRadiusDp || 16) + 'px';
+      // v2.0: scaled like the fonts (NDI: cornerRadiusDp x 2 x frame scale).
+      // Raw px made HTTP corners half as round as NDI at full size, drifting
+      // further as the window shrank.
+      const radius = isFull ? '0' : scaledPx(data.cornerRadiusDp || 16);
       cardBox.style.borderRadius = radius;
-      if (!isFull) cardBox.style.padding = '18px 26px';
+      if (!isFull) cardBox.style.padding = padT + ' ' + padR + ' ' + padB + ' ' + padL;
 
       // Independent card glow + text shadow (v1.6): each flag works on its own,
       // in both Lower Third and Full Show.
@@ -1177,31 +1387,37 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         var dist = (data.textShadowOffsetDp !== undefined) ? data.textShadowOffsetDp : 4;
         var angDeg = (data.textShadowAngleDeg !== undefined) ? data.textShadowAngleDeg : 90;
         var ang = angDeg * Math.PI / 180;
-        var dx = (Math.cos(ang) * dist).toFixed(1);
-        var dy = (Math.sin(ang) * dist).toFixed(1);
-        return dx + 'px ' + dy + 'px ' + blur + 'px ' + col;
+        // v2.0: scale offset + blur by stageScale (NDI: value x frame scale);
+        // raw px made the shadow proportionally heavier than NDI at any
+        // window size other than exactly 1920 wide.
+        var ss = getStageScale();
+        var dx = (Math.cos(ang) * dist * ss).toFixed(1);
+        var dy = (Math.sin(ang) * dist * ss).toFixed(1);
+        return dx + 'px ' + dy + 'px ' + (blur * ss).toFixed(1) + 'px ' + col;
       }
 
       // 100% transparent toggle behaves like the transparent style (mirrors the NDI canvas).
-      if (data.style === 'TRANSPARENT_OUTLINE' || data.isPureTransparentBackground) {
+      if (data.isPureTransparentBackground) { // v1.9: toggle is the single authority (was: style check overrode it)
         cardBox.style.backgroundColor = 'transparent';
         cardBox.style.backdropFilter = 'none';
         cardBox.style.border = 'none';
         cardBox.style.boxShadow = 'none';
       } else if (data.style === 'CLASSIC_BANNER') {
         cardBox.style.backgroundColor = 'rgba(' + r + ',' + g + ',' + b + ',' + opacity + ')';
-        cardBox.style.borderRight = data.showAccentBorder ? '6px solid ' + accent : 'none';
+        // v2.0: border width scaled (NDI stroke: 6 x frame scale); the
+        // corner radius keeps the scaled value set above (NDI honors the
+        // style's cornerRadiusDp for the banner too — was hardcoded 4px).
+        cardBox.style.borderRight = data.showAccentBorder ? (6 * getStageScale()) + 'px solid ' + accent : 'none';
         cardBox.style.borderLeft = 'none';
-        cardBox.style.borderRadius = isFull ? '0' : '4px';
         cardBox.style.boxShadow = cardGlowShadow('0 12px 36px', 0.6);
       } else if (data.style === 'ROYAL_LITURGICAL') {
         cardBox.style.background = 'linear-gradient(135deg, rgba(' + r + ',' + g + ',' + b + ',' + opacity + ') 0%, rgba(20,20,35,' + opacity + ') 100%)';
-        cardBox.style.border = data.showAccentBorder ? '2px solid ' + accent : 'none';
+        cardBox.style.border = data.showAccentBorder ? (2 * getStageScale()) + 'px solid ' + accent : 'none';
         cardBox.style.boxShadow = cardGlowShadow('0 10px 40px', 0.7);
       } else {
         cardBox.style.backgroundColor = 'rgba(' + r + ',' + g + ',' + b + ',' + opacity + ')';
         cardBox.style.backdropFilter = 'blur(16px)';
-        cardBox.style.border = data.showAccentBorder ? '1.5px solid ' + accent + '77' : 'none';
+        cardBox.style.border = data.showAccentBorder ? (1.5 * getStageScale()) + 'px solid ' + accent + '77' : 'none';
         cardBox.style.boxShadow = cardGlowShadow('0 16px 40px', 0.55);
       }
 
@@ -1215,6 +1431,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
       animBgLayer.className = 'animated-bg-layer';
       customVideoBg.style.display = 'none';
+      stopParticles();
 
       if (animType === 'golden_rays') {
         animBgLayer.classList.add('anim-golden-rays');
@@ -1237,9 +1454,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       } else if (animType === 'gold_particles') {
         animBgLayer.classList.add('anim-gold-particles');
         animBgLayer.style.opacity = animOpacity;
+        startParticles('#FCD34D', animOpacity);
       } else if (animType === 'particles') {
         animBgLayer.classList.add('anim-particles');
         animBgLayer.style.opacity = animOpacity;
+        startParticles('#7DD3FC', animOpacity);
       } else if (animType === 'custom_video' && data.customVideoId) {
         // v1.7: videos are served by opaque ID from private storage (never by path).
         const videoUrl = '/video?id=' + encodeURIComponent(data.customVideoId);
@@ -1253,8 +1472,45 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         customVideoBg.style.display = 'block';
         customVideoBg.style.opacity = animOpacity;
         animBgLayer.style.opacity = '1';
+        // v2.0: Crossfade on HTTP — fade the video element near the loop point
+        // (matches the NDI draw-time fade). timeupdate fires ~4x/sec; enough
+        // for a 500ms fade window.
+        const wantFade = (data.videoLoopMode || 'fade') === 'fade';
+        if (wantFade) {
+          customVideoBg.ontimeupdate = function() {
+            const dur = customVideoBg.duration;
+            const pos = customVideoBg.currentTime;
+            if (!dur || dur <= 0) { customVideoBg.style.opacity = animOpacity; return; }
+            const fadeS = 0.5;
+            let f = 1;
+            if (pos >= dur - fadeS) f = Math.max(0, (dur - pos) / fadeS);
+            else if (pos < fadeS) f = Math.max(0, pos / fadeS);
+            customVideoBg.style.opacity = (animOpacity * f).toFixed(3);
+          };
+        } else {
+          customVideoBg.ontimeupdate = null;
+        }
       } else {
         animBgLayer.style.opacity = '0';
+      }
+
+      // v1.9: motion speed scales procedural animations too (was custom-video
+      // only). Base durations match the CSS keyframes above.
+      const animBaseDurations = {
+        'golden_rays': 15, 'blue_waves': 20, 'candle_glow': 5, 'purple_silk': 18,
+        'emerald_waves': 20, 'rose_glow': 8, 'gold_particles': 15, 'particles': 10
+      };
+      const animSpeed = data.motionSpeed === undefined ? 1.0 : parseFloat(data.motionSpeed);
+      if (animType !== 'none' && animType !== 'custom_video' && animBaseDurations[animType]) {
+        if (!(animSpeed > 0)) {
+          animBgLayer.style.animationPlayState = 'paused';
+        } else {
+          animBgLayer.style.animationPlayState = 'running';
+          animBgLayer.style.animationDuration = (animBaseDurations[animType] / animSpeed) + 's';
+        }
+      } else {
+        animBgLayer.style.animationPlayState = 'running';
+        animBgLayer.style.animationDuration = '';
       }
 
       // 8. Entry Transitions
@@ -1269,6 +1525,49 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       requestAnimationFrame(() => {
         container.classList.add('visible');
       });
+
+      // v1.9: auto-fit — shrink verse/citation/English together until the card
+      // fits (or the minimum size is reached). Short verses are untouched: the
+      // loop only runs while the content overflows its budget.
+      if (data.autoFitText !== false) {
+        const minVersePx = (data.autoFitMinVerseSp || 28) * 2 * getStageScale();
+        const baseVerse = parseFloat(verseText.style.fontSize) || minVersePx;
+        const baseCite = parseFloat(citationText.style.fontSize) || baseVerse * 0.6;
+        const baseEnV = parseFloat(englishText.style.fontSize) || baseVerse * 0.7;
+        const baseEnC = parseFloat(englishCitation.style.fontSize) || baseVerse * 0.55;
+        const minRatio = Math.min(1, minVersePx / baseVerse);
+        // v2.0: SAME budget as the NDI renderer, measured the SAME way —
+        // content only (card padding excluded). NDI: lower third content
+        // budget = 45% of frame height minus pads and the citation gap;
+        // full show = frame height minus pads. The old code capped the
+        // whole card (padding included) at 50%, so mid-length verses
+        // shrank on NDI but not on HTTP and sizes never matched.
+        const ss = getStageScale();
+        const padTopPx = parseFloat(padT) || 0;
+        const padBotPx = parseFloat(padB) || 0;
+        function contentHeight() { return cardBox.scrollHeight - padTopPx - padBotPx; }
+        const maxContentH = isFull
+          ? (stage.clientHeight - padTopPx - padBotPx)
+          : (stage.clientHeight * 0.45 - padTopPx - padBotPx - 16 * ss);
+        function applyRatio(r) {
+          verseText.style.fontSize = (baseVerse * r) + 'px';
+          citationText.style.fontSize = (baseCite * r) + 'px';
+          englishText.style.fontSize = (baseEnV * r) + 'px';
+          englishCitation.style.fontSize = (baseEnC * r) + 'px';
+        }
+        const cH = contentHeight();
+        if (cH > maxContentH && maxContentH > 0) {
+          // One exact step (NDI's computeFitRatio), then one corrective
+          // pass because line wrapping makes height non-linear.
+          let ratio = Math.max(minRatio, Math.min(1, maxContentH / cH));
+          applyRatio(ratio);
+          const cH2 = contentHeight();
+          if (cH2 > maxContentH && ratio > minRatio) {
+            ratio = Math.max(minRatio, ratio * (maxContentH / cH2));
+            applyRatio(ratio);
+          }
+        }
+      }
     }
 
     // Connect Server-Sent Events (SSE)
@@ -1278,6 +1577,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       const sseUrl = '/events' + (isShow ? '?show=1' : '');
       
       const evtSource = new EventSource(sseUrl);
+      // v1.9: the server's stateVersion (frameVersion) resets to 0 on every
+      // process restart (in-memory counter). A fresh SSE connection must accept
+      // the current state unconditionally, or every update after an OS-kill
+      // auto-resume is dropped as "stale" and the overlay freezes on the
+      // pre-crash verse until a manual page refresh.
+      evtSource.onopen = function() { lastStateVersion = -1; };
       evtSource.onmessage = function(e) {
         try {
           applyData(JSON.parse(e.data));
@@ -1377,12 +1682,234 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         return bmp
     }
 
+    /**
+     * v1.9: builds the verse/citation/English text layouts at [fitRatio] of the
+     * selected text sizes. Auto-fit measures at full size first, then rebuilds
+     * once at a reduced ratio so long verses reflow (not just shrink) into the
+     * available content height instead of overflowing the card or screen.
+     * Returns null when there is no verse text to lay out.
+     */
+    private data class FittedTextLayouts(
+        val primary: StaticLayout,
+        val bilingualSecondary: StaticLayout?,
+        val secondaryCitation: StaticLayout?,
+        val secHeight: Float,
+        val citationHeight: Float,
+        val contentH: Float,
+    )
+
+    /**
+     * v1.9: true particle field on NDI (matches the HTTP overlay's particle
+     * animations — previously a plain moving gradient). Stateless and
+     * time-driven: each particle's position and twinkle derive from its index
+     * and the animation clock, so no cross-frame state is needed and
+     * motion-speed scaling applies automatically. [baseAlpha] ties the
+     * particles to the style's animation opacity.
+     */
+    private fun drawParticleField(
+        canvas: Canvas,
+        boxLeft: Float, boxTop: Float, boxRight: Float, boxBottom: Float,
+        radius: Float,
+        clockSec: Float,
+        scale: Float,
+        particleColor: Int,
+        baseAlpha: Int,
+    ) {
+        val w = boxRight - boxLeft
+        val h = boxBottom - boxTop
+        if (w <= 1f || h <= 1f) return
+        val count = ((w * h) / (1920f * 1080f) * 120f).toInt().coerceIn(30, 150)
+        fun posMod(v: Float, m: Float): Float = ((v % m) + m) % m
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+        canvas.save()
+        if (radius > 0f) {
+            canvas.clipPath(Path().apply {
+                addRoundRect(RectF(boxLeft, boxTop, boxRight, boxBottom), radius, radius, Path.Direction.CW)
+            })
+        }
+        for (i in 0 until count) {
+            // Deterministic pseudo-random per particle — stable across frames.
+            val r1 = ((i * 2654435761L + 1013904223L) % 1000L).toFloat() / 1000f
+            val r2 = ((i * 40503L + 2246822519L) % 1000L).toFloat() / 1000f
+            val r3 = ((i * 65599L + 3266489917L) % 1000L).toFloat() / 1000f
+            // Slow drift (upward + sideways), wrapping around the box.
+            val x = boxLeft + posMod(r1 * w + clockSec * (6f + r2 * 18f) * scale, w)
+            val y = boxTop + posMod(r2 * h - clockSec * (10f + r3 * 22f) * scale, h)
+            // Twinkle.
+            val tw = (sin((clockSec * (0.8f + r3 * 2.2f) + r1 * 6.2831f).toDouble()).toFloat() + 1f) / 2f
+            val alpha = (baseAlpha * (0.25f + 0.75f * tw)).toInt().coerceIn(0, 255)
+            val size = (1.2f + r2 * 2.8f) * scale
+            paint.color = Color.argb(alpha, Color.red(particleColor), Color.green(particleColor), Color.blue(particleColor))
+            canvas.drawCircle(x, y, size, paint)
+        }
+        canvas.restore()
+    }
+
+    private fun buildFittedTextLayouts(
+        tpl: LowerThirdTemplate,
+        verseText: String,
+        activeVerse: BibleVerse,
+        contentWidth: Int,
+        scale: Float,
+        shadowBlur: Float,
+        shadowDx: Float,
+        shadowDy: Float,
+        showArabic: Boolean,
+        showEnglish: Boolean,
+        fitRatio: Float,
+    ): FittedTextLayouts? {
+        // Setup TextPaint for multi-line wrapped text
+        val verseTextPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = try { Color.parseColor(tpl.textColorHex) } catch (e: Exception) { Color.WHITE }
+            textSize = (tpl.verseFontSize * 2f * scale * fitRatio).coerceAtLeast(24f)
+            
+            var textStyle = Typeface.NORMAL
+            if (tpl.verseIsBold && tpl.verseIsItalic) textStyle = Typeface.BOLD_ITALIC
+            else if (tpl.verseIsBold) textStyle = Typeface.BOLD
+            else if (tpl.verseIsItalic) textStyle = Typeface.ITALIC
+            
+            typeface = getBestTypeface(tpl.fontFamily, textStyle)
+            if (tpl.textShadowEnabled) {
+                val shadowCol = try { Color.parseColor(tpl.textShadowColorHex) } catch (e: Exception) { Color.BLACK }
+                setShadowLayer(shadowBlur, shadowDx, shadowDy, shadowCol)
+            }
+            isFakeBoldText = tpl.verseIsBold
+        }
+
+        // Fix alignment: ALIGN_NORMAL is Start (Right for RTL Arabic)
+        val alignment = when (tpl.alignment) {
+            BroadcastTextAlignment.CENTER -> Layout.Alignment.ALIGN_CENTER
+            BroadcastTextAlignment.LEFT -> Layout.Alignment.ALIGN_OPPOSITE // For RTL text, Opposite is Left
+            BroadcastTextAlignment.RIGHT -> Layout.Alignment.ALIGN_NORMAL   // For RTL text, Normal is Right
+        }
+
+        // Apply Italic if requested via a Custom Typeface Wrapper or just skewed
+        if (tpl.verseIsItalic) {
+            verseTextPaint.textSkewX = -0.25f
+        }
+
+        val staticLayout: StaticLayout? = if (showArabic) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            StaticLayout.Builder.obtain(verseText, 0, verseText.length, verseTextPaint, contentWidth)
+                .setAlignment(alignment)
+                .setLineSpacing(6f * scale * fitRatio, 1.25f)
+                .setIncludePad(true)
+                // v2.0: greedy line breaking like the browser (HTTP overlay).
+                // The default HIGH_QUALITY balances lines (breaks early), so
+                // the same verse took more, shorter lines on NDI than on HTTP.
+                .setBreakStrategy(Layout.BREAK_STRATEGY_SIMPLE)
+                .build()
+        } else {
+            @Suppress("DEPRECATION")
+            StaticLayout(verseText, verseTextPaint, contentWidth, alignment, 1.25f, 6f * scale * fitRatio, true)
+        }
+        } else null
+
+        // v2.0: budget the citation at its TRUE drawn footprint — baseline at
+        // startY + textSize*0.9, primary text starts 16*scale below that. The
+        // old fixed 44*scale*fitRatio underestimated it, shifting everything
+        // below (Arabic, English) down and eating the bottom padding.
+        val citationHeight = (tpl.referenceFontSize * 2f * scale * fitRatio).coerceAtLeast(18f) * 0.9f + 16f * scale
+
+        // Calculate bilingual secondary text if needed
+        var secondaryLayout: StaticLayout? = null
+        var secondaryCitationLayout: StaticLayout? = null
+        if (showEnglish) {
+            // v1.8: In ENGLISH_ONLY, the citation is already in the main citation row.
+            // Don't duplicate it here. In BOTH mode, the English citation gets its
+            // own line below the English verse (matches the HTTP overlay).
+            val isEnglishOnly = tpl.languageMode == LanguageMode.ENGLISH_ONLY
+            val fullSecondaryText = activeVerse.englishText
+            
+            val secondaryTextPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = try { Color.parseColor(tpl.secondaryTextColorHex) } catch (e: Exception) { Color.LTGRAY }
+                textSize = (tpl.secondaryVerseFontSize * 2f * scale * fitRatio).coerceAtLeast(18f)
+                
+                var secStyle = Typeface.NORMAL
+                if (tpl.secondaryVerseIsBold && tpl.secondaryVerseIsItalic) secStyle = Typeface.BOLD_ITALIC
+                else if (tpl.secondaryVerseIsBold) secStyle = Typeface.BOLD
+                else if (tpl.secondaryVerseIsItalic) secStyle = Typeface.ITALIC
+
+                typeface = getBestTypeface(tpl.secondaryFontFamily, secStyle)
+                if (tpl.textShadowEnabled) {
+                    val shadowCol = try { Color.parseColor(tpl.textShadowColorHex) } catch (e: Exception) { Color.BLACK }
+                    setShadowLayer(shadowBlur, shadowDx, shadowDy, shadowCol)
+                }
+                isFakeBoldText = tpl.secondaryVerseIsBold
+                if (tpl.secondaryVerseIsItalic) textSkewX = -0.25f
+            }
+            
+            // v1.9: English citation on its own line below the verse (was appended
+            // inline). Matches the HTTP overlay's separate english-citation div.
+            val secAlignment = when (tpl.alignment) {
+                BroadcastTextAlignment.CENTER -> Layout.Alignment.ALIGN_CENTER
+                else -> Layout.Alignment.ALIGN_NORMAL // LTR English: NORMAL = left
+            }
+
+            secondaryLayout = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                StaticLayout.Builder.obtain(fullSecondaryText, 0, fullSecondaryText.length, secondaryTextPaint, contentWidth)
+                    .setAlignment(secAlignment)
+                    .setLineSpacing(4f * scale * fitRatio, 1.15f)
+                    .setIncludePad(true)
+                    .setBreakStrategy(Layout.BREAK_STRATEGY_SIMPLE)
+                    .build()
+            } else {
+                @Suppress("DEPRECATION")
+                StaticLayout(fullSecondaryText, secondaryTextPaint, contentWidth, secAlignment, 1.15f, 4f * scale * fitRatio, true)
+            }
+
+            if (!isEnglishOnly) {
+                val secCitationText = "(" + activeVerse.getFormattedEnglishCitation() + ")"
+                val secCitationPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = try { Color.parseColor(tpl.secondaryReferenceColorHex) } catch (e: Exception) { Color.GRAY }
+                    textSize = (tpl.secondaryReferenceFontSize * 2f * scale * fitRatio).coerceAtLeast(14f)
+                    var citStyle = Typeface.NORMAL
+                    if (tpl.secondaryReferenceIsBold && tpl.secondaryReferenceIsItalic) citStyle = Typeface.BOLD_ITALIC
+                    else if (tpl.secondaryReferenceIsBold) citStyle = Typeface.BOLD
+                    else if (tpl.secondaryReferenceIsItalic) citStyle = Typeface.ITALIC
+                    typeface = getBestTypeface(tpl.secondaryFontFamily, citStyle)
+                    if (tpl.textShadowEnabled) {
+                        val shadowCol = try { Color.parseColor(tpl.textShadowColorHex) } catch (e: Exception) { Color.BLACK }
+                        setShadowLayer(shadowBlur, shadowDx, shadowDy, shadowCol)
+                    }
+                    isFakeBoldText = tpl.secondaryReferenceIsBold
+                    if (tpl.secondaryReferenceIsItalic) textSkewX = -0.25f
+                }
+                secondaryCitationLayout = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    StaticLayout.Builder.obtain(secCitationText, 0, secCitationText.length, secCitationPaint, contentWidth)
+                        .setAlignment(secAlignment)
+                        .setLineSpacing(4f * scale * fitRatio, 1.15f)
+                        .setIncludePad(true)
+                        .setBreakStrategy(Layout.BREAK_STRATEGY_SIMPLE)
+                        .build()
+                } else {
+                    @Suppress("DEPRECATION")
+                    StaticLayout(secCitationText, secCitationPaint, contentWidth, secAlignment, 1.15f, 4f * scale * fitRatio, true)
+                }
+            }
+        }
+
+        val bilSpacing = if (tpl.showBilingualSpacing) tpl.bilingualSpacing * scale else 0f
+        // v1.8: primary content drives sizing/positioning — Arabic when shown,
+        // else English (ENGLISH_ONLY). The offset secondary block only exists
+        // when BOTH languages are shown.
+        val primary = staticLayout ?: secondaryLayout ?: return null
+        val bilingualSecondary = if (staticLayout != null) secondaryLayout else null
+        val secondaryCitation = if (staticLayout != null) secondaryCitationLayout else null
+        val secCitHeight = (secondaryCitation?.height ?: 0) + (4f * scale * fitRatio)
+        val secHeight = if (bilingualSecondary != null) bilingualSecondary.height + secCitHeight + bilSpacing else 0f
+        val contentH = primary.height + citationHeight + secHeight
+        return FittedTextLayouts(primary, bilingualSecondary, secondaryCitation, secHeight, citationHeight, contentH)
+    }
+
     private fun renderFrame(width: Int = 1920, height: Int = 1080, isForStream: Boolean = false, overrideTemplate: LowerThirdTemplate? = null, allowSharedCache: Boolean): Bitmap {
         val tpl = overrideTemplate ?: currentTemplate
         val isFull = tpl.isFullScreen
 
         // Fast Path: Return cached Bitmap if state hasn't changed (0ms allocation-free)
-        if (allowSharedCache && !isForStream && overrideTemplate == null && width == 1920 && height == 1080) {
+        // v2.0: never serve the cache mid verse-transition — the crossfade
+        // must be re-rendered every frame until it completes.
+        if (allowSharedCache && !isForStream && overrideTemplate == null && width == 1920 && height == 1080 && !isTransitionActiveFor(isFull)) {
             if (isFull && !isCacheDirtyShow && cachedShowBitmap != null && !cachedShowBitmap!!.isRecycled) {
                 return cachedShowBitmap!!
             }
@@ -1420,14 +1947,17 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
      * dedicated reused bitmaps (see [renderMotionFrame]) so the static cache is
      * never redrawn in place — static readers can never observe a half-drawn frame.
      */
-    private fun drawFrameInto(bitmap: Bitmap, width: Int, height: Int, isForStream: Boolean, tpl: LowerThirdTemplate, isFull: Boolean, isMotionTick: Boolean = false) {
+    private fun drawFrameInto(bitmap: Bitmap, width: Int, height: Int, isForStream: Boolean, tpl: LowerThirdTemplate, isFull: Boolean, isMotionTick: Boolean = false, verseOverride: BibleVerse? = null, isTransitionSnapshot: Boolean = false) {
+        // v1.9: frame-timing instrumentation (replaces the GPU investigation).
+        val drawStartNs = System.nanoTime()
         val canvas = Canvas(bitmap)
 
         // 100% Pure transparent alpha canvas by default
         canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
 
         // v1.8: no verse selected on launch — blank frame (cleared above; no text).
-        val activeVerse = currentVerse ?: return
+        // v2.0: verseOverride renders a specific verse (transition snapshots).
+        val activeVerse = verseOverride ?: currentVerse ?: return
 
         // Video Stream Background: Since JPEG encoders have no alpha channel,
         // provide keyable broadcast background (Chroma Green #00FF00, Luma Black, or Studio)
@@ -1446,6 +1976,30 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // as the projector usually remains active with a background or current verse.
         if (!isLive && !isForStream && !tpl.isFullScreen) {
             return
+        }
+
+        // v2.0: verse-change crossfade. The OLD verse's finished frame is
+        // laid down fading out; everything below (the new frame) is drawn
+        // into a layer at fade-in alpha, so the pair composite to exactly
+        // the finished frames at progress 0 and 1. Snapshot renders (the
+        // recursive call that produces the old frame) skip this block.
+        var transitionScratch: Bitmap? = null
+        var transitionLayer = -1
+        if (!isTransitionSnapshot && isTransitionActiveFor(isFull)) {
+            val prevVerse = transitionPrevVerse
+            if (prevVerse != null) {
+                val p = transitionProgressFor(isFull)
+                try {
+                    val scratch = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                    drawFrameInto(scratch, width, height, isForStream, tpl, isFull, verseOverride = prevVerse, isTransitionSnapshot = true)
+                    val outPaint = Paint().apply { alpha = ((1f - p) * 255f).toInt().coerceIn(0, 255) }
+                    canvas.drawBitmap(scratch, 0f, 0f, outPaint)
+                    transitionScratch = scratch
+                } catch (_: OutOfMemoryError) { /* fall through: plain fade-in */
+                } catch (_: Exception) { /* fall through: plain fade-in */ }
+                val layerPaint = Paint().apply { alpha = (p * 255f).toInt().coerceIn(0, 255) }
+                transitionLayer = canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), layerPaint)
+            }
         }
 
         val scale = width / 1920f
@@ -1472,132 +2026,52 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         val citation = if (showArabic) activeVerse.getFormattedArabicCitation(tpl.useEasternArabicNumerals)
                        else activeVerse.getFormattedEnglishCitation()
 
-        // Setup TextPaint for multi-line wrapped text
-        val verseTextPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = try { Color.parseColor(tpl.textColorHex) } catch (e: Exception) { Color.WHITE }
-            textSize = (tpl.verseFontSize * 2f * scale).coerceAtLeast(24f)
-            
-            var textStyle = Typeface.NORMAL
-            if (tpl.verseIsBold && tpl.verseIsItalic) textStyle = Typeface.BOLD_ITALIC
-            else if (tpl.verseIsBold) textStyle = Typeface.BOLD
-            else if (tpl.verseIsItalic) textStyle = Typeface.ITALIC
-            
-            typeface = getBestTypeface(tpl.fontFamily, textStyle)
-            if (tpl.textShadowEnabled) {
-                val shadowCol = try { Color.parseColor(tpl.textShadowColorHex) } catch (e: Exception) { Color.BLACK }
-                setShadowLayer(shadowBlur, shadowDx, shadowDy, shadowCol)
-            }
-            isFakeBoldText = tpl.verseIsBold
-        }
+        // v1.9: per-side card padding from the style (was hardcoded 36/32).
+        val padL = tpl.cardPaddingLeftDp * scale
+        val padR = tpl.cardPaddingRightDp * scale
+        val padT = tpl.cardPaddingTopDp * scale
+        val padB = tpl.cardPaddingBottomDp * scale
+        val contentWidth = (boxWidth - padL - padR).toInt().coerceAtLeast(200)
 
-        val paddingH = 36f * scale
-        val paddingV = 32f * scale
-        val contentWidth = (boxWidth - (2 * paddingH)).toInt().coerceAtLeast(200)
-
-        // Fix alignment: ALIGN_NORMAL is Start (Right for RTL Arabic)
-        val alignment = when (tpl.alignment) {
-            BroadcastTextAlignment.CENTER -> Layout.Alignment.ALIGN_CENTER
-            BroadcastTextAlignment.LEFT -> Layout.Alignment.ALIGN_OPPOSITE // For RTL text, Opposite is Left
-            BroadcastTextAlignment.RIGHT -> Layout.Alignment.ALIGN_NORMAL   // For RTL text, Normal is Right
-        }
-
-        // Apply Italic if requested via a Custom Typeface Wrapper or just skewed
-        if (tpl.verseIsItalic) {
-            verseTextPaint.textSkewX = -0.25f
-        }
-
-        val staticLayout: StaticLayout? = if (showArabic) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            StaticLayout.Builder.obtain(verseText, 0, verseText.length, verseTextPaint, contentWidth)
-                .setAlignment(alignment)
-                .setLineSpacing(6f * scale, 1.25f)
-                .setIncludePad(true)
-                .build()
-        } else {
-            @Suppress("DEPRECATION")
-            StaticLayout(verseText, verseTextPaint, contentWidth, alignment, 1.25f, 6f * scale, true)
-        }
-        } else null
-
-        val citationHeight = 44f * scale
-        
-        // Calculate bilingual secondary text if needed
-        var secondaryLayout: StaticLayout? = null
-        if (showEnglish) {
-            // v1.8: In ENGLISH_ONLY, the citation is already in the main citation row.
-            // Don't duplicate it here. In BOTH mode, include it with the English verse.
-            val isEnglishOnly = tpl.languageMode == LanguageMode.ENGLISH_ONLY
-            val citationText = if (isEnglishOnly) "" else " (" + activeVerse.getFormattedEnglishCitation() + ")"
-            val fullSecondaryText = activeVerse.englishText + citationText
-            
-            val secondaryTextPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = try { Color.parseColor(tpl.secondaryTextColorHex) } catch (e: Exception) { Color.LTGRAY }
-                textSize = (tpl.secondaryVerseFontSize * 2f * scale).coerceAtLeast(18f)
-                
-                var secStyle = Typeface.NORMAL
-                if (tpl.secondaryVerseIsBold && tpl.secondaryVerseIsItalic) secStyle = Typeface.BOLD_ITALIC
-                else if (tpl.secondaryVerseIsBold) secStyle = Typeface.BOLD
-                else if (tpl.secondaryVerseIsItalic) secStyle = Typeface.ITALIC
-
-                typeface = getBestTypeface(tpl.secondaryFontFamily, secStyle)
-                if (tpl.textShadowEnabled) {
-                    val shadowCol = try { Color.parseColor(tpl.textShadowColorHex) } catch (e: Exception) { Color.BLACK }
-                    setShadowLayer(shadowBlur, shadowDx, shadowDy, shadowCol)
-                }
-                isFakeBoldText = tpl.secondaryVerseIsBold
-                if (tpl.secondaryVerseIsItalic) textSkewX = -0.25f
-            }
-            
-            // Use Spannable to apply different color and size to English citation if needed
-            val spannable = SpannableString(fullSecondaryText)
-            val secRefColor = try { Color.parseColor(tpl.secondaryReferenceColorHex) } catch (e: Exception) { Color.GRAY }
-            val secRefSize = (tpl.secondaryReferenceFontSize * 2f * scale).toInt().coerceAtLeast(14)
-            
-            spannable.setSpan(
-                ForegroundColorSpan(secRefColor),
-                activeVerse.englishText.length,
-                fullSecondaryText.length,
-                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
-            )
-            spannable.setSpan(
-                AbsoluteSizeSpan(secRefSize),
-                activeVerse.englishText.length,
-                fullSecondaryText.length,
-                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
-            )
-            
-            // v1.8: English stays visually left-aligned for LEFT and RIGHT;
-            // only CENTER centers it (matches HTTP overlay + Compose preview).
-            val secAlignment = when (tpl.alignment) {
-                BroadcastTextAlignment.CENTER -> Layout.Alignment.ALIGN_CENTER
-                else -> Layout.Alignment.ALIGN_NORMAL // LTR English: NORMAL = left
-            }
-            
-            secondaryLayout = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                StaticLayout.Builder.obtain(spannable, 0, spannable.length, secondaryTextPaint, contentWidth)
-                    .setAlignment(secAlignment)
-                    .setLineSpacing(4f * scale, 1.15f)
-                    .setIncludePad(true)
-                    .build()
+        // v1.9 auto-fit: build layouts at full size, then rebuild once at a
+        // reduced scale when the content exceeds its height budget, so long
+        // verses reflow into the card (lower third) or screen (full show)
+        // instead of overflowing. Short verses always render at the selected size.
+        val minFitRatio = if (tpl.verseFontSize > 0)
+            (tpl.autoFitMinVerseSp.toFloat() / tpl.verseFontSize).coerceIn(0.2f, 1f)
+        else 1f
+        var fitRatio = 1f
+        var layouts = buildFittedTextLayouts(
+            tpl, verseText, activeVerse, contentWidth, scale,
+            shadowBlur, shadowDx, shadowDy, showArabic, showEnglish, fitRatio
+        ) ?: return
+        if (tpl.autoFitText) {
+            val maxContentH = if (tpl.isFullScreen) {
+                height - padT - padB
             } else {
-                @Suppress("DEPRECATION")
-                StaticLayout(spannable, secondaryTextPaint, contentWidth, secAlignment, 1.15f, 4f * scale, true)
+                // Lower third must not swallow the screen.
+                height * 0.45f - padT - padB - 16f * scale
+            }
+            if (layouts.contentH > maxContentH && maxContentH > 0) {
+                fitRatio = computeFitRatio(layouts.contentH, maxContentH, minFitRatio)
+                if (fitRatio < 1f) {
+                    layouts = buildFittedTextLayouts(
+                        tpl, verseText, activeVerse, contentWidth, scale,
+                        shadowBlur, shadowDx, shadowDy, showArabic, showEnglish, fitRatio
+                    ) ?: return
+                }
             }
         }
-
-        val bilSpacing = if (tpl.showBilingualSpacing) tpl.bilingualSpacing * scale else 0f
-        // v1.8: primary content drives sizing/positioning — Arabic when shown,
-        // else English (ENGLISH_ONLY). The offset secondary block only exists
-        // when BOTH languages are shown.
-        val primaryLayout = staticLayout ?: secondaryLayout ?: return
-        val bilingualSecondary = if (staticLayout != null) secondaryLayout else null
-        val secHeight = if (bilingualSecondary != null) bilingualSecondary.height + bilSpacing else 0f
+        val primaryLayout = layouts.primary
+        val bilingualSecondary = layouts.bilingualSecondary
+        val secHeight = layouts.secHeight
+        val citationHeight = layouts.citationHeight
         
         // Full screen check for projector/full show mode
         val boxHeight = if (tpl.isFullScreen) {
             height.toFloat() 
         } else {
-            (primaryLayout.height + citationHeight + secHeight + (paddingV * 2) + 16f * scale).coerceAtLeast(140f * scale)
+            (layouts.contentH + padT + padB + 16f * scale).coerceAtLeast(140f * scale)
         }
 
         val boxTop = if (tpl.isFullScreen) 0f else (height - marginB - boxHeight)
@@ -1612,7 +2086,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // v1.8: Card glow drawn FIRST (behind video/card) so it appears as an
         // outer halo without covering the video. The glow expands beyond the
         // card bounds; drawing it first lets the video/card cover the inner part.
-        if (!tpl.isPureTransparentBackground && tpl.style != TemplateStyle.TRANSPARENT_OUTLINE) {
+        if (!tpl.isPureTransparentBackground) { // v1.9: toggle is the single authority (was: style check overrode it)
             if (tpl.cardGlowEnabled && !tpl.isFullScreen) {
                 val glowCol = try { Color.parseColor(tpl.cardGlowColorHex) } catch (e: Exception) { Color.BLACK }
                 val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -1645,6 +2119,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             videoRenderer.setAlpha(tpl.animatedBackgroundOpacity)
             videoRenderer.setMuted(tpl.customVideoMuted)
             videoRenderer.setSpeed(tpl.motionSpeed)
+            // v2.0: Apply the template's loop mode (fade or cut).
+            videoRenderer.loopMode = tpl.videoLoopMode.id
             if (isMotionTick || !videoRenderer.hasFrame()) videoRenderer.requestFrame()
             val videoRect = Rect(boxLeft.toInt(), boxTop.toInt(), boxRight.toInt(), boxBottom.toInt())
             if (radius > 0f) {
@@ -1662,7 +2138,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             synchronized(videoRenderers) { videoRenderers[isFull]?.pause() }
         }
 
-        if (!tpl.isPureTransparentBackground && tpl.style != TemplateStyle.TRANSPARENT_OUTLINE) {
+        if (!tpl.isPureTransparentBackground) { // v1.9: toggle is the single authority (was: style check overrode it)
             val bgAlpha = (tpl.bgOpacity * 255).toInt().coerceIn(0, 255)
             val baseBgCol = try { Color.parseColor(tpl.bgColorHex) } catch (e: Exception) { Color.DKGRAY }
 
@@ -1671,7 +2147,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 // above) — skip the normal fill so it stays visible.
             } else if (tpl.animatedBackground != AnimatedBackgroundType.NONE) {
                 val timeSec = (System.currentTimeMillis() % 12000L) / 1000f
-                val phase = (sin(timeSec.toDouble() * 1.5).toFloat() + 1f) / 2f
+                // v1.9: motion speed scales procedural animations too (was fixed speed;
+                // only custom video responded). 0 = paused (frozen mid-phase).
+                val phase = (sin(timeSec.toDouble() * 1.5 * tpl.motionSpeed).toFloat() + 1f) / 2f
                 val shader: Shader? = when (tpl.animatedBackground) {
                     AnimatedBackgroundType.GOLDEN_DIVINE_RAYS -> {
                         val c1 = Color.argb(bgAlpha, 217, 119, 6)
@@ -1695,7 +2173,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                         val c1 = Color.argb(bgAlpha, 120, 53, 15)
                         val c2 = Color.argb(bgAlpha, 245, 158, 11)
                         RadialGradient(
-                            boxRight - (paddingH * 2f), boxTop + (boxHeight / 2f),
+                            boxRight - (padR * 2f), boxTop + (boxHeight / 2f),
                             (boxHeight * 1.4f) * (0.8f + 0.3f * phase),
                             intArrayOf(c2, c1), floatArrayOf(0f, 1f), Shader.TileMode.CLAMP
                         )
@@ -1740,7 +2218,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                         val c1 = Color.argb(bgAlpha, 15, 23, 42)
                         val c2 = Color.argb(bgAlpha, 56, 189, 248)
                         LinearGradient(
-                            boxLeft, boxTop,
+                            boxLeft + (boxWidth * phase), boxTop,
                             boxRight, boxBottom,
                             intArrayOf(c1, c2, c1), null, Shader.TileMode.CLAMP
                         )
@@ -1756,25 +2234,27 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                     paint.color = Color.argb(bgAlpha, Color.red(baseBgCol), Color.green(baseBgCol), Color.blue(baseBgCol))
                     canvas.drawRoundRect(rect, radius, radius, paint)
                 }
+                // v1.9: true particle field over the card base (matches HTTP —
+                // previously these two types were a plain gradient).
+                if (tpl.animatedBackground == AnimatedBackgroundType.PARTICLE_STARS ||
+                    tpl.animatedBackground == AnimatedBackgroundType.GOLDEN_PARTICLES) {
+                    val pColor = if (tpl.animatedBackground == AnimatedBackgroundType.PARTICLE_STARS)
+                        Color.rgb(125, 211, 252) else Color.rgb(252, 211, 77)
+                    val pClock = (System.currentTimeMillis() % 60000L) / 1000f * tpl.motionSpeed
+                    drawParticleField(canvas, boxLeft, boxTop, boxRight, boxBottom, radius, pClock, scale, pColor, bgAlpha)
+                }
             } else {
                 paint.color = Color.argb(bgAlpha, Color.red(baseBgCol), Color.green(baseBgCol), Color.blue(baseBgCol))
                 canvas.drawRoundRect(rect, radius, radius, paint)
             }
 
-            if (tpl.showAccentBorder) {
-                val accCol = try { Color.parseColor(tpl.accentColorHex) } catch (e: Exception) { Color.YELLOW }
-                paint.color = accCol
-                paint.strokeWidth = 6f * scale
-                paint.style = Paint.Style.STROKE
-                canvas.drawRoundRect(rect, radius, radius, paint)
-                paint.style = Paint.Style.FILL
-            }
         } else if (tpl.animatedBackground != AnimatedBackgroundType.NONE && tpl.animatedBackground != AnimatedBackgroundType.CUSTOM_VIDEO) {
             // If Pure Transparent background with animated motion background is selected:
             // Draw a delicate, ethereal luminous motion glow directly behind the verse while maintaining 100% alpha transparency elsewhere!
             val animAlpha = (tpl.animatedBackgroundOpacity * 75).toInt().coerceIn(15, 120)
             val timeSec = (System.currentTimeMillis() % 12000L) / 1000f
-            val phase = (sin(timeSec.toDouble() * 1.5).toFloat() + 1f) / 2f
+            // v1.9: motion speed scales procedural animations too (was fixed speed).
+            val phase = (sin(timeSec.toDouble() * 1.5 * tpl.motionSpeed).toFloat() + 1f) / 2f
             val glowColor = when (tpl.animatedBackground) {
                 AnimatedBackgroundType.GOLDEN_DIVINE_RAYS -> Color.argb(animAlpha, 251, 191, 36)
                 AnimatedBackgroundType.ETHEREAL_BLUE_WAVES -> Color.argb(animAlpha, 56, 189, 248)
@@ -1794,6 +2274,29 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             paint.shader = glowShader
             canvas.drawRoundRect(rect, radius, radius, paint)
             paint.shader = null
+            // v1.9: true particle field over the glow (matches HTTP).
+            if (tpl.animatedBackground == AnimatedBackgroundType.PARTICLE_STARS ||
+                tpl.animatedBackground == AnimatedBackgroundType.GOLDEN_PARTICLES) {
+                val pColor = if (tpl.animatedBackground == AnimatedBackgroundType.PARTICLE_STARS)
+                    Color.rgb(125, 211, 252) else Color.rgb(252, 211, 77)
+                val pClock = (System.currentTimeMillis() % 60000L) / 1000f * tpl.motionSpeed
+                // v2.0: particles need full-range alpha like HTTP (opacity*255);
+                // the delicate animAlpha (~45) belongs to the glow gradient only.
+                val particleAlpha = (tpl.animatedBackgroundOpacity * 255).toInt().coerceIn(25, 255)
+                drawParticleField(canvas, boxLeft, boxTop, boxRight, boxBottom, radius, pClock, scale, pColor, particleAlpha)
+            }
+        }
+
+        // v2.0: Accent border for ALL background types (video, animated, plain).
+        // Was drawn only inside the animated-background branch, so plain and
+        // video styles never showed a border on NDI.
+        if (!tpl.isPureTransparentBackground && tpl.showAccentBorder) {
+            val accCol = try { Color.parseColor(tpl.accentColorHex) } catch (e: Exception) { Color.YELLOW }
+            paint.color = accCol
+            paint.strokeWidth = 6f * scale
+            paint.style = Paint.Style.STROKE
+            canvas.drawRoundRect(rect, radius, radius, paint)
+            paint.style = Paint.Style.FILL
         }
 
         // Draw Citation Badge
@@ -1801,7 +2304,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             // v1.8: In ENGLISH_ONLY, use the English citation color for clear design.
             val refColorHex = if (tpl.languageMode == LanguageMode.ENGLISH_ONLY) tpl.secondaryReferenceColorHex else tpl.referenceColorHex
             color = try { Color.parseColor(refColorHex) } catch (e: Exception) { Color.YELLOW }
-            textSize = (tpl.referenceFontSize * 2f * scale).coerceAtLeast(18f)
+            textSize = (tpl.referenceFontSize * 2f * scale * fitRatio).coerceAtLeast(18f)
             
             var refStyle = Typeface.NORMAL
             if (tpl.referenceIsBold && tpl.referenceIsItalic) refStyle = Typeface.BOLD_ITALIC
@@ -1821,7 +2324,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         val startY = if (tpl.isFullScreen) {
             (height - contentTotalHeight) / 2f
         } else {
-            boxTop + paddingV
+            boxTop + padT
         }
 
         val citationY = startY + (refPaint.textSize * 0.9f)
@@ -1863,13 +2366,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                     }
                     BroadcastTextAlignment.LEFT -> {
                         refPaint.textAlign = Paint.Align.LEFT
-                        canvas.drawText(citation, boxLeft + paddingH + emblemW + emblemGap, citationY, refPaint)
-                        drawEmblemAt(boxLeft + paddingH, Paint.Align.LEFT)
+                        canvas.drawText(citation, boxLeft + padL + emblemW + emblemGap, citationY, refPaint)
+                        drawEmblemAt(boxLeft + padL, Paint.Align.LEFT)
                     }
                     BroadcastTextAlignment.RIGHT -> {
                         refPaint.textAlign = Paint.Align.RIGHT
-                        canvas.drawText(citation, boxRight - paddingH - emblemW - emblemGap, citationY, refPaint)
-                        drawEmblemAt(boxRight - paddingH, Paint.Align.RIGHT)
+                        canvas.drawText(citation, boxRight - padR - emblemW - emblemGap, citationY, refPaint)
+                        drawEmblemAt(boxRight - padR, Paint.Align.RIGHT)
                     }
             }
         } else {
@@ -1881,11 +2384,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 }
                 BroadcastTextAlignment.LEFT -> {
                     refPaint.textAlign = Paint.Align.LEFT
-                    canvas.drawText(citation, boxLeft + paddingH, citationY, refPaint)
+                    canvas.drawText(citation, boxLeft + padL, citationY, refPaint)
                 }
                 BroadcastTextAlignment.RIGHT -> {
                     refPaint.textAlign = Paint.Align.RIGHT
-                    canvas.drawText(citation, boxRight - paddingH, citationY, refPaint)
+                    canvas.drawText(citation, boxRight - padR, citationY, refPaint)
                 }
             }
         }
@@ -1894,17 +2397,14 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         val translateX = if (tpl.alignment == BroadcastTextAlignment.CENTER) {
             (width - contentWidth) / 2f
         } else if (tpl.alignment == BroadcastTextAlignment.RIGHT) {
-            // v1.8: Right-align the verse layout with the citation (account for emblem).
-            // The citation's right edge is at boxRight - paddingH - emblemW - emblemGap.
-            // Use a temporary paint for measurement (emblemPaint is defined later).
-            val tmpPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                textSize = 24f * scale
-            }
-            val emblemW = tmpPaint.measureText(tpl.emblem)
-            val emblemGap = 16f * scale
-            boxRight - paddingH - emblemW - emblemGap - contentWidth
+            // v2.0: the verse/English block's right edge sits at the padding
+            // edge (boxRight - padR) exactly like the HTTP overlay. The
+            // emblem space (emblemW + emblemGap) belongs ONLY to the citation
+            // row, which lays it out separately above — it was wrongly
+            // shrinking the verse block and shifting it left ~40dp at 1080p.
+            boxRight - padR - contentWidth
         } else {
-            boxLeft + paddingH
+            boxLeft + padL
         }
 
         // Draw Multi-line Verse Text wrapped smoothly
@@ -1922,6 +2422,16 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             canvas.translate(translateX, secY)
             bilingualSecondary.draw(canvas)
             canvas.restore()
+            // v1.9: English citation on its own line below the verse (matches HTTP).
+            val secCitation = layouts.secondaryCitation
+            if (secCitation != null) {
+                // v1.9: gap matches the layout budget (4*scale*fitRatio).
+                val citY = secY + bilingualSecondary.height + (4f * scale * fitRatio)
+                canvas.save()
+                canvas.translate(translateX, citY)
+                secCitation.draw(canvas)
+                canvas.restore()
+            }
         }
 
         if (!isLive && isForStream) {
@@ -1948,6 +2458,32 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             canvas.drawText("وضع الاستعداد • STANDBY (اضغط على الهواء للبث)", width / 2f, 35f * scale + (badgeH * 0.65f), standbyTextPaint)
         }
 
+        // v2.0: close the verse-transition layer (see prologue) before timing.
+        if (transitionLayer >= 0) {
+            canvas.restoreToCount(transitionLayer)
+            transitionScratch?.recycle()
+        }
+
+        recordDrawTiming(isFull, System.nanoTime() - drawStartNs)
+    }
+
+    // v1.9: frame-timing instrumentation — finds the real bottleneck (canvas draw vs
+    // downscale vs NDI encode) with a 1-line log per feed every 300 frames. Keeps log
+    // spam and hot-path overhead negligible; informs whether a GPU path is ever worth it.
+    // v1.9: ConcurrentHashMap — the two sender threads write their own feed keys
+    // concurrently; a plain mutableMapOf risks lost updates/corruption.
+    private val drawTimingNs = ConcurrentHashMap<Boolean, Long>()
+    private val drawTimingFrames = ConcurrentHashMap<Boolean, Int>()
+    private fun recordDrawTiming(isFull: Boolean, ns: Long) {
+        val frames = (drawTimingFrames[isFull] ?: 0) + 1
+        drawTimingFrames[isFull] = frames
+        drawTimingNs[isFull] = (drawTimingNs[isFull] ?: 0L) + ns
+        if (frames >= 300) {
+            val avgMs = (drawTimingNs[isFull] ?: 0L) / 1_000_000.0 / frames
+            Log.d("NdiPerf", "draw ${if (isFull) "full" else "lower"}: avg ${"%.2f".format(avgMs)} ms over $frames frames")
+            drawTimingFrames[isFull] = 0
+            drawTimingNs[isFull] = 0L
+        }
     }
 
     /**
@@ -2023,7 +2559,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         val cacheKey = "$family|$textStyle"
         typefaceCache[cacheKey]?.let { return it }
         val result = try {
-            val bundled = ArabicFonts.find(family)
+            val bundled = BundledFonts.find(family)
             if (bundled != null) {
                 // Bundled Google Font (assets/fonts, fully offline). Prefer the true
                 // bold file when bold was requested; synthesize italic (Arabic has no
@@ -2056,7 +2592,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     /** @font-face rules for every bundled Arabic font, served from this tablet (fully offline). */
     private fun buildFontFaceCss(): String {
         val sb = StringBuilder(8192)
-        for (f in ArabicFonts.all) {
+        for (f in BundledFonts.all) {
             val f400 = f.asset400.substringAfterLast('/')
             sb.append("@font-face{font-family:'").append(f.family)
                 .append("';font-style:normal;font-weight:400;font-display:swap;src:url('/fonts/")
@@ -2074,7 +2610,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
     /** Exact allowlist of servable font files, derived from the registry (no path traversal). */
     private val fontAssetFiles: Set<String> by lazy {
-        ArabicFonts.all.flatMap {
+        BundledFonts.all.flatMap {
             listOfNotNull(it.asset400.substringAfterLast('/'), it.asset700?.substringAfterLast('/'))
         }.toSet()
     }

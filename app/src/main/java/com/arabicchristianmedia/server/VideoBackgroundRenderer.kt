@@ -53,6 +53,8 @@ class VideoBackgroundRenderer(
     private val lock = Any()
 
     @Volatile private var alpha: Float = 1f
+    /** v2.0: Loop mode (CUT or FADE). Set by the caller. */
+    @Volatile var loopMode: String = "fade"
 
     // Decoder-thread state only (except where noted):
     private var eglDisplay: EGLDisplay? = null
@@ -156,13 +158,36 @@ class VideoBackgroundRenderer(
 
     /** Draws the latest frame into [dst] with the configured alpha. Thread-safe. */
     fun drawOnto(canvas: Canvas, dst: Rect) {
-        val a = (alpha.coerceIn(0f, 1f) * 255).toInt()
+        // v2.0 (rework): loop fade computed here, at draw time (was a monitor thread).
+        val a = (alpha.coerceIn(0f, 1f) * currentLoopFadeAlpha() * 255).toInt()
         if (a <= 0) return
         synchronized(lock) {
             val bmp = frameBitmap
             if (bmp == null || bmp.isRecycled) return
             drawPaint.alpha = a
-            canvas.drawBitmap(bmp, null, dst, drawPaint)
+            // v1.9: "cover" — center-crop the frame to the card's aspect ratio
+            // instead of stretching it (matches the HTTP overlay's
+            // object-fit: cover). drawBitmap with a null src rect stretches.
+            val src: Rect? = run {
+                val dw = dst.width().coerceAtLeast(1)
+                val dh = dst.height().coerceAtLeast(1)
+                val bw = bmp.width.coerceAtLeast(1)
+                val bh = bmp.height.coerceAtLeast(1)
+                val dstAspect = dw.toFloat() / dh
+                val srcAspect = bw.toFloat() / bh
+                if (srcAspect > dstAspect) {
+                    // Frame wider than the card: crop the sides.
+                    val w = (bh * dstAspect).toInt().coerceIn(1, bw)
+                    val x = ((bw - w) / 2).coerceAtLeast(0)
+                    Rect(x, 0, x + w, bh)
+                } else {
+                    // Frame taller than the card: crop top/bottom.
+                    val h = (bw / dstAspect).toInt().coerceIn(1, bh)
+                    val y = ((bh - h) / 2).coerceAtLeast(0)
+                    Rect(0, y, bw, y + h)
+                }
+            }
+            canvas.drawBitmap(bmp, src, dst, drawPaint)
         }
     }
 
@@ -223,6 +248,29 @@ class VideoBackgroundRenderer(
         } catch (e: Exception) {
             Log.w(TAG, "Cannot play video ${file.name}: ${e.message}")
             player = null
+        }
+    }
+
+    /**
+     * v2.0 (rework): Computes the loop fade alpha AT DRAW TIME instead of a
+     * background monitor thread. Deterministic — no thread races between the
+     * monitor and the render. Called from drawOnto on every frame.
+     */
+    private fun currentLoopFadeAlpha(): Float {
+        if (loopMode != "fade") return 1f
+        val p = player ?: return 1f
+        return try {
+            val duration = p.duration
+            val position = p.currentPosition
+            if (duration <= 0) return 1f
+            val fadeMs = 500
+            when {
+                position >= duration - fadeMs -> ((duration - position).toFloat() / fadeMs).coerceIn(0f, 1f)
+                position < fadeMs -> (position.toFloat() / fadeMs).coerceIn(0f, 1f)
+                else -> 1f
+            }
+        } catch (e: Exception) {
+            1f
         }
     }
 

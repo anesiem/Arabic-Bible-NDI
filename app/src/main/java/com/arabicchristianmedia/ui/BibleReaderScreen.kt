@@ -125,13 +125,15 @@ fun BibleReaderScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Box(modifier = Modifier.size(9.dp).clip(CircleShape).background(if (uiState.isLiveOnAir && uiState.activeVerse != null) bento.liveRedBright else bento.textSecondary))
-                        Text(
-                            text = if (uiState.isLiveOnAir && uiState.activeVerse != null) "NDI ON AIR" else "NDI STANDBY",
-                            fontSize = 11.sp, fontWeight = FontWeight.Bold, color = if (uiState.isLiveOnAir && uiState.activeVerse != null) bento.liveRed else bento.textPrimary
-                        )
-                    }
+                    // v1.9: compact status dot only (no text row) — red = ON AIR, green = standby.
+                    // Beside the expand control; the whole header stays tappable to expand.
+                    val isOnAir = uiState.isLiveOnAir && uiState.activeVerse != null
+                    Box(
+                        modifier = Modifier
+                            .size(12.dp)
+                            .clip(CircleShape)
+                            .background(if (isOnAir) bento.liveRedBright else bento.green)
+                    )
                     IconButton(onClick = { outputOptionsExpanded = !outputOptionsExpanded }, modifier = Modifier.size(24.dp)) {
                         Icon(if (outputOptionsExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown, null, tint = bento.primary)
                     }
@@ -285,7 +287,7 @@ fun BibleReaderScreen(
                 if (showSearchBar) {
                     OutlinedTextField(
                         value = uiState.searchQuery, onValueChange = onSearchChanged,
-                        placeholder = { Text("بحث...") },
+                        placeholder = { Text("بحث…", maxLines = 1) },
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
                         shape = RoundedCornerShape(12.dp)
                     )

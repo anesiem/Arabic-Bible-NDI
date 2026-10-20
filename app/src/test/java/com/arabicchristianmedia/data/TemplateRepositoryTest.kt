@@ -47,10 +47,10 @@ class TemplateRepositoryTest {
                 baseTemplate("lower_2", false)
             )
         )
-        val all = repo.getAllTemplates()
-        assertEquals(3, all.size)
-        assertEquals(setOf("lower_1", "lower_2"), all.filter { !it.isFullScreen }.map { it.id }.toSet())
-        assertEquals(listOf("show_1"), all.filter { it.isFullScreen }.map { it.id })
+        val custom = repo.getAllTemplates().filter { it.id in setOf("lower_1", "show_1", "lower_2") }
+        assertEquals(3, custom.size)
+        assertEquals(setOf("lower_1", "lower_2"), custom.filter { !it.isFullScreen }.map { it.id }.toSet())
+        assertEquals(listOf("show_1"), custom.filter { it.isFullScreen }.map { it.id })
     }
 
     @Test
@@ -102,9 +102,17 @@ class TemplateRepositoryTest {
     }
 
     @Test
-    fun `legacy tpl_modern_glass migrates to transparent default`() {
+    fun `legacy tpl_modern_glass migrates to its redesigned successor`() {
         repo.setActiveTemplateId("tpl_modern_glass")
-        assertEquals("tpl_transparent_alpha", repo.getActiveTemplateId())
+        assertEquals("tpl_lt_broadcast_glass", repo.getActiveTemplateId())
+    }
+
+    @Test
+    fun `any other legacy factory id migrates to the pure-word default`() {
+        repo.setActiveTemplateId("tpl_vivid_neon_night")
+        assertEquals("tpl_lt_pure_word", repo.getActiveTemplateId())
+        repo.setActiveTemplateId("tpl_lt_golden_glory")
+        assertEquals("tpl_lt_golden_glory", repo.getActiveTemplateId())
     }
 
     @Test
@@ -147,24 +155,37 @@ class TemplateRepositoryTest {
     @Test
     fun `factory styles carry explicit safe shadow and glow values`() {
         val defaults = TemplateRepository.DEFAULT_TEMPLATES
-        assertEquals(10, defaults.size)
+        assertEquals(38, defaults.size)
         defaults.forEach { tpl ->
             assertTrue(tpl.textShadowEnabled)
             assertTrue(tpl.textShadowColorHex.isNotBlank())
             assertTrue(tpl.cardGlowColorHex.isNotBlank())
         }
-        // The two transparent styles must not glow: there is no card, and the
-        // feeds promise 100% transparency. The card styles keep the glow.
-        assertFalse(defaults.first { it.id == "tpl_transparent_alpha" }.cardGlowEnabled)
-        assertFalse(defaults.first { it.id == "tpl_transparent_animated_video" }.cardGlowEnabled)
-        assertFalse(defaults.first { it.id == "tpl_upper_room" }.cardGlowEnabled)
-        assertTrue(defaults.first { it.id == "tpl_modern_glass" }.cardGlowEnabled)
-        assertTrue(defaults.first { it.id == "tpl_animated_gold" }.cardGlowEnabled)
-        assertTrue(defaults.first { it.id == "tpl_classic_banner" }.cardGlowEnabled)
-        assertTrue(defaults.first { it.id == "tpl_cathedral_gold" }.cardGlowEnabled)
-        assertTrue(defaults.first { it.id == "tpl_bilingual_dual" }.cardGlowEnabled)
-        assertTrue(defaults.first { it.id == "tpl_sanctuary_gold" }.cardGlowEnabled)
-        assertTrue(defaults.first { it.id == "tpl_morning_mercy" }.cardGlowEnabled)
+        // Transparent styles must not glow: there is no card, and the feeds
+        // promise 100% transparency. Card styles keep the glow.
+        val transparentIds = listOf(
+            "tpl_lt_golden_trumpet", "tpl_lt_azure_heaven", "tpl_lt_neon_night",
+            "tpl_lt_velvet_worship", "tpl_lt_garden_peace", "tpl_lt_rose_sharon",
+            "tpl_lt_pure_word", "tpl_lt_crystal_english",
+            "tpl_fs_starlit_heaven", "tpl_fs_pure_word"
+        )
+        transparentIds.forEach { id ->
+            val tpl = defaults.first { it.id == id }
+            assertFalse("$id should not glow", tpl.cardGlowEnabled)
+            assertTrue("$id should be pure transparent", tpl.isPureTransparentBackground)
+            assertEquals("$id should be 100% transparent", 0.0f, tpl.bgOpacity, 0.001f)
+        }
+        val cardIds = listOf(
+            "tpl_lt_golden_glory", "tpl_lt_sanctuary_gold", "tpl_lt_broadcast_glass",
+            "tpl_lt_classic_banner", "tpl_lt_cathedral_gold", "tpl_lt_bilingual_harmony",
+            "tpl_fs_glory_revealed"
+        )
+        cardIds.forEach { id ->
+            assertTrue("$id should glow", defaults.first { it.id == id }.cardGlowEnabled)
+        }
+        assertTrue(defaults.first { it.id == "tpl_fs_pure_word" }.isFullScreen)
+        assertEquals(27, defaults.count { !it.isFullScreen })
+        assertEquals(11, defaults.count { it.isFullScreen })
     }
 
     @Test
@@ -256,5 +277,74 @@ class TemplateRepositoryTest {
         )
         assertNotNull(legacyFalse)
         assertEquals("", legacyFalse!!.emblem)
+    }
+
+    @Test
+    fun `v1_9 padding and auto-fit fields round-trip through JSON`() {
+        val tpl = baseTemplate("pad1", false).copy(
+            cardPaddingTopDp = 10f,
+            cardPaddingBottomDp = 20f,
+            cardPaddingLeftDp = 30f,
+            cardPaddingRightDp = 40f,
+            autoFitText = false,
+            autoFitMinVerseSp = 36
+        )
+        val imported = repo.templateFromJsonString(repo.templateToJsonString(tpl))
+        assertNotNull(imported)
+        assertEquals(10f, imported!!.cardPaddingTopDp, 0.001f)
+        assertEquals(20f, imported.cardPaddingBottomDp, 0.001f)
+        assertEquals(30f, imported.cardPaddingLeftDp, 0.001f)
+        assertEquals(40f, imported.cardPaddingRightDp, 0.001f)
+        assertFalse(imported.autoFitText)
+        assertEquals(36, imported.autoFitMinVerseSp)
+    }
+
+    @Test
+    fun `v1_9 missing keys migrate to current-behavior defaults`() {
+        // Old JSON without the v1.9 keys: padding matches the old hardcoded
+        // 36/32 look, auto-fit defaults on.
+        val imported = repo.templateFromJsonString("{\"id\":\"old1\",\"name\":\"Old\",\"style\":\"CARD_OVERLAY\"}")
+        assertNotNull(imported)
+        assertEquals(32f, imported!!.cardPaddingTopDp, 0.001f)
+        assertEquals(32f, imported.cardPaddingBottomDp, 0.001f)
+        assertEquals(36f, imported.cardPaddingLeftDp, 0.001f)
+        assertEquals(36f, imported.cardPaddingRightDp, 0.001f)
+        assertTrue(imported.autoFitText)
+        assertEquals(28, imported.autoFitMinVerseSp)
+    }
+
+    @Test
+    fun `v1_9 factory templates carry explicit padding and auto-fit values`() {
+        for (tpl in TemplateRepository.DEFAULT_TEMPLATES) {
+            assertTrue(tpl.id, tpl.cardPaddingTopDp >= 0f)
+            assertTrue(tpl.id, tpl.cardPaddingBottomDp >= 0f)
+            assertTrue(tpl.id, tpl.cardPaddingLeftDp >= 0f)
+            assertTrue(tpl.id, tpl.cardPaddingRightDp >= 0f)
+            assertTrue(tpl.id, tpl.autoFitMinVerseSp > 0)
+        }
+    }
+
+    @Test
+    fun `v1_9 bold italic fields round-trip through JSON`() {
+        val tpl = baseTemplate("bi1", false).copy(
+            verseIsBold = false,
+            verseIsItalic = true,
+            referenceIsBold = false,
+            referenceIsItalic = true,
+            secondaryVerseIsBold = true,
+            secondaryVerseIsItalic = true,
+            secondaryReferenceIsBold = false,
+            secondaryReferenceIsItalic = false
+        )
+        val imported = repo.templateFromJsonString(repo.templateToJsonString(tpl))
+        assertNotNull(imported)
+        assertFalse(imported!!.verseIsBold)
+        assertTrue(imported.verseIsItalic)
+        assertFalse(imported.referenceIsBold)
+        assertTrue(imported.referenceIsItalic)
+        assertTrue(imported.secondaryVerseIsBold)
+        assertTrue(imported.secondaryVerseIsItalic)
+        assertFalse(imported.secondaryReferenceIsBold)
+        assertFalse(imported.secondaryReferenceIsItalic)
     }
 }

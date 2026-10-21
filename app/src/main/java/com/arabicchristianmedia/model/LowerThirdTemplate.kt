@@ -60,7 +60,7 @@ enum class AnimatedBackgroundType(val id: String, val displayNameAr: String, val
 }
 
 enum class StreamBackgroundMode(val displayNameAr: String, val colorHex: String) {
-    TRANSPARENT_ALPHA("خلفية شفافة تماماً (100% Alpha Transparency)", "#00000000"),
+    TRANSPARENT_ALPHA("خلفية شفافة تماماً (100% Alpha — تظهر خضراء في بث MJPEG)", "#00000000"),
     CHROMA_GREEN("خلفية خضراء للتفريغ (Chroma Green)", "#00FF00"),
     PURE_BLACK("خلفية سوداء مفرغة (Luma Black)", "#000000"),
     DARK_STUDIO("استوديو كنسي داكن (Dark Studio)", "#0A1128")

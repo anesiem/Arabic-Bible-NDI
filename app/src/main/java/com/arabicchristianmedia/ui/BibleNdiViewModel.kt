@@ -1369,8 +1369,8 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
      */
     fun updateStyleInPlace(isFullScreen: Boolean) {
         val state = _uiState.value
-        val highlightId = if (isFullScreen) state.highlightedShowStyleId else state.highlightedLowerStyleId
-            ?: return
+        val highlightId = (if (isFullScreen) state.highlightedShowStyleId
+                           else state.highlightedLowerStyleId) ?: return
         val saved = state.templates.firstOrNull {
             it.id == highlightId && it.isFullScreen == isFullScreen
         } ?: return

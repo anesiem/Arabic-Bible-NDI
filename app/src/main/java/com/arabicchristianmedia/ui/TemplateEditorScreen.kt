@@ -837,16 +837,33 @@ CollapsibleSection(
                     Spacer(Modifier.height(4.dp))
                     // v1.9: stream background — what fills the space around the card
                     // (chroma/luma keys, dark studio, or full transparency).
+                    // v1.9.1: this setting is read ONLY by the MJPEG /stream
+                    // renderer, which always renders the LOWER THIRD template —
+                    // so the chips live in the Lower tab only. In the Full Show
+                    // tab this is an explanatory note instead of a dead control
+                    // (Ashraf's bug report: changing it in Full changed nothing).
                     Text("خلفية البث (Stream Background)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
                     Spacer(Modifier.height(4.dp))
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        StreamBackgroundMode.entries.forEach { mode ->
-                            FilterChip(
-                                selected = editingTemplate.streamBackgroundMode == mode,
-                                onClick = { onUpdate(editingTemplate.copy(streamBackgroundMode = mode)) },
-                                label = { Text(mode.displayNameAr, fontSize = 10.sp) }
-                            )
+                    if (editorTab == 0) {
+                        Text(
+                            "تؤثر فقط في بث MJPEG ‏(/stream) حول تصميم الثلث السفلي — لا تؤثر في NDI ولا في صفحات /lower و/full.",
+                            fontSize = 10.sp, color = bento.textSecondary
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            StreamBackgroundMode.entries.forEach { mode ->
+                                FilterChip(
+                                    selected = editingTemplate.streamBackgroundMode == mode,
+                                    onClick = { onUpdate(editingTemplate.copy(streamBackgroundMode = mode)) },
+                                    label = { Text(mode.displayNameAr, fontSize = 10.sp) }
+                                )
+                            }
                         }
+                    } else {
+                        Text(
+                            "تُضبط خلفية البث من تبويب الثلث السفلي (Lower Third) — فبث MJPEG ‏(/stream) يعرض دائماً تصميم الثلث السفلي.",
+                            fontSize = 10.sp, color = bento.textSecondary
+                        )
                     }
                     Spacer(Modifier.height(8.dp))
                 

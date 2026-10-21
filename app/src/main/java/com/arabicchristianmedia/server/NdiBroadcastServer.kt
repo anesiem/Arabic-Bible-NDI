@@ -128,6 +128,32 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
     @Volatile
     var isRunning = false
+
+    // v1.9.1: /debug instrumentation — per-action timings (diagnostics only;
+    // volatile counters, read by /api/debug).
+    private class ActionStat {
+        @Volatile var count: Int = 0
+        @Volatile var lastMs: Double = 0.0
+        @Volatile var maxMs: Double = 0.0
+        @Volatile var totalMs: Double = 0.0
+        fun record(ms: Double) {
+            count++; lastMs = ms; totalMs += ms
+            if (ms > maxMs) maxMs = ms
+        }
+        fun avgMs(): Double = if (count == 0) 0.0 else totalMs / count
+    }
+    private val statStateBuild = ActionStat()
+    private val statBroadcast = ActionStat()
+    private val statVerseApi = ActionStat()
+    private val statTrigger = ActionStat()
+    @Volatile private var serverStartTimeMs: Long = 0L
+
+    // v1.9.1: last self-report received from each overlay page (raw JSON,
+    // validated at ingestion), shown by /api/debug as overlayClients.
+    @Volatile private var clientStatLower: String? = null
+    @Volatile private var clientStatLowerAtMs: Long = 0L
+    @Volatile private var clientStatFull: String? = null
+    @Volatile private var clientStatFullAtMs: Long = 0L
         private set
 
     @Volatile
@@ -222,6 +248,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 bind(java.net.InetSocketAddress(port))
             }
             isRunning = true
+            serverStartTimeMs = System.currentTimeMillis()
             val ip = getLocalIpAddress()
             val url = "http://$ip:$port/lower"
             onStarted(url)
@@ -476,6 +503,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     }
 
     private fun broadcastStateToClients() {
+        val broadcastT0 = System.nanoTime()
         val lowerPayload = buildJsonState(false)
         val showPayload = buildJsonState(true)
 
@@ -503,6 +531,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             sseClients.removeAll(deadClients.toSet())
             deadClients.forEach { (writer, _) -> try { writer.close() } catch (e: Exception) {} }
         }
+        statBroadcast.record((System.nanoTime() - broadcastT0) / 1_000_000.0)
     }
 
     private fun handleClient(socket: Socket) {
@@ -622,6 +651,15 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 cleanPath == "/remote" -> {
                     serveRemotePage(out)
                 }
+                cleanPath == "/api/debug" -> {
+                    serveApiDebug(out)
+                }
+                cleanPath == "/api/clientstat" -> {
+                    serveApiClientStat(out, fullPath)
+                }
+                cleanPath == "/debug" -> {
+                    serveDebugPage(out)
+                }
                 cleanPath == "/bibleshow.xml" -> {
                     serveBibleShowXml(out)
                 }
@@ -660,7 +698,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     }
 
     private fun serveJsonState(out: OutputStream, isShow: Boolean = false) {
+        val apiT0 = System.nanoTime()
         val json = buildJsonState(isShow)
+        statVerseApi.record((System.nanoTime() - apiT0) / 1_000_000.0)
         val bytes = json.toByteArray(Charsets.UTF_8)
         val writer = PrintWriter(out)
         writer.print("HTTP/1.1 200 OK\r\n")
@@ -674,6 +714,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     }
 
     private fun buildJsonState(isShow: Boolean = false): String {
+        val buildT0 = System.nanoTime()
         val tpl = if (isShow) currentShowTemplate else currentTemplate
         val verse = currentVerse
 
@@ -693,6 +734,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             // Monotonic state version: browser sources re-sync on SSE reconnect
             // by comparing against the last version they applied.
             put("stateVersion", frameVersion)
+            put("serverTimeMs", System.currentTimeMillis())
             put("isLive", isLive && verse != null)
             put("arabicText", formattedVerseText)
             put("arabicCitation", formattedCitation)
@@ -758,7 +800,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             put("autoFitText", tpl.autoFitText)
             put("autoFitMinVerseSp", tpl.autoFitMinVerseSp)
         }
-        return root.toString()
+        val built = root.toString()
+        statStateBuild.record((System.nanoTime() - buildT0) / 1_000_000.0)
+        return built
     }
 
     private fun serveNdiHtmlOverlay(out: OutputStream, isFullScreen: Boolean = false) {
@@ -989,14 +1033,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       animation: smoothFlow 15s linear infinite;
     }
 
-    /* Card-safe variants of the breathing radial gradients: same paints,
-       no opacity/transform keyframes (those must never animate the card). */
-    .anim-candle-glow-still {
-      background: radial-gradient(circle at 50% 50%, rgba(245, 158, 11, 1) 0%, rgba(120, 53, 15, 1) 70%);
-    }
-    .anim-rose-glow-still {
-      background: radial-gradient(circle at 50% 50%, rgba(251, 113, 133, 1) 0%, rgba(136, 19, 55, 1) 100%);
-    }
+    /* v1.9.1: animation utilities for INLINE animated gradients (the
+       gradient itself is written per-apply from the payload — see
+       section 7 — these only supply the motion). */
+    .bg-flow { animation: smoothFlow 15s linear infinite; }
+    .bg-breath { animation: candleBreath 5s ease-in-out infinite alternate; }
     @keyframes particleBreath {
       0% { filter: brightness(0.8); }
       100% { filter: brightness(1.3); }
@@ -1165,7 +1206,30 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     let revealToken = 0;
     let lastFitFn = null;
     let activeParticleKey = null;
-    let cardAnimClass = null; // v1.9.1 (#13): gradient class currently on the card (Lower placement)
+    let cardGradOn = false; // v1.9.1: an inline animated gradient currently sits on the card (Lower placement)
+    // v1.9.1: overlay self-diagnostics \u2014 the page times its own receive
+    // -> apply -> fit path and reports it to /api/clientstat every 10s; the
+    // /debug page shows it beside the server timings (deep HTTP analysis).
+    const diagPage = (location.pathname.indexOf('full') >= 0 || location.search.indexOf('show=1') >= 0) ? 'full' : 'lower';
+    const diag = { msgs: 0, applies: 0, opens: 0, reconnects: 0, lastVersion: 0, lastApplyMs: 0, maxApplyMs: 0, lastFitMs: 0, events: [] };
+    let applyT0 = 0;
+    function diagEvent(kind, info) {
+      diag.events.push({ t: Math.round(performance.now()), kind: kind, info: info || '' });
+      if (diag.events.length > 40) diag.events.shift();
+    }
+    function sendDiag() {
+      try {
+        const payload = encodeURIComponent(JSON.stringify({
+          page: diagPage, ua: navigator.userAgent, version: diag.lastVersion,
+          msgs: diag.msgs, applies: diag.applies, reconnects: diag.reconnects,
+          lastApplyMs: Math.round(diag.lastApplyMs * 10) / 10,
+          maxApplyMs: Math.round(diag.maxApplyMs * 10) / 10,
+          lastFitMs: Math.round(diag.lastFitMs * 10) / 10,
+          events: diag.events
+        }));
+        fetch('/api/clientstat?page=' + diagPage + '&data=' + payload, { keepalive: true }).catch(function() {});
+      } catch (e) { /* diagnostics must never break the overlay */ }
+    }
     let lastSseSeen = Date.now();
     let sseWatchdog = null;
 
@@ -1195,6 +1259,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         if (data.stateVersion <= lastStateVersion) return;
         lastStateVersion = data.stateVersion;
       }
+      diag.lastVersion = data.stateVersion || diag.lastVersion;
+      applyT0 = performance.now();
       if (!data.isLive || !data.arabicText) {
         container.classList.remove('visible');
         // v1.9.1: cancel any pending font-gated reveal and force the next
@@ -1211,7 +1277,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       const styleKey = JSON.stringify(data, function(k, v) {
         return (k === 'arabicText' || k === 'englishText' || k === 'arabicCitation' ||
                 k === 'englishCitation' || k === 'stateVersion' || k === 'bookId' ||
-                k === 'chapterNum' || k === 'verseNum') ? undefined : v;
+                k === 'chapterNum' || k === 'verseNum' || k === 'serverTimeMs') ? undefined : v;
       });
 
       const isFull = data.isFullScreen || $forceFullScreen;
@@ -1457,7 +1523,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         const finish = function() {
           if (finished || token !== revealToken) return;
           finished = true;
+          const fitT = performance.now();
           doFit();
+          diag.lastFitMs = performance.now() - fitT;
           if (!wasVisible) {
             requestAnimationFrame(function() {
               if (token === revealToken) container.classList.add('visible');
@@ -1468,6 +1536,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
               if (token === revealToken && lastFitFn === doFit) doFit();
             });
           }
+          diag.applies++;
+          diag.lastApplyMs = performance.now() - applyT0;
+          if (diag.lastApplyMs > diag.maxApplyMs) diag.maxApplyMs = diag.lastApplyMs;
+          diagEvent('apply', 'v' + (data.stateVersion || '?') + ' ' + diag.lastApplyMs.toFixed(1) + 'ms fit ' + diag.lastFitMs.toFixed(1) + 'ms');
         };
         if (!document.fonts || !document.fonts.load || faces.length === 0) { finish(); return; }
         let allReady = false;
@@ -1479,6 +1551,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
           try { return Promise.resolve(document.fonts.load(f, 'A\u0627')).catch(function() { return []; }); }
           catch (e) { return Promise.resolve([]); }
         });
+        diagEvent('font-gate', faces.length + ' faces');
         Promise.race([
           Promise.all(loads),
           new Promise(function(res) { setTimeout(res, 150); })
@@ -1697,57 +1770,83 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         animBgLayer.style.animationDuration = '';
       }
 
-      // v1.9.1 (#13): animated backgrounds at NATIVE strength and placement.
-      // The NDI renderer paints the animated gradient AS the background —
-      // the type's two colors at bgOpacity, replacing the flat fill (Full:
-      // the whole frame; Lower: inside the card only). The CSS stops above
-      // are now the same full-strength colors; here the gradient is placed
-      // where NDI paints it instead of sitting as a wash behind a flat card.
-      const gradClassFor = {
-        golden_rays: 'anim-golden-rays', blue_waves: 'anim-blue-waves',
-        candle_glow: 'anim-candle-glow', purple_silk: 'anim-purple-silk',
-        emerald_waves: 'anim-emerald-waves', rose_glow: 'anim-rose-glow',
-        gold_particles: 'anim-gold-particles', particles: 'anim-particles'
-      }[animType];
-      // Breathing radial keyframes animate opacity/transform — safe on the
-      // full-frame layer, never on the card; the card gets the still twin.
-      const cardClassFor = {
-        candle_glow: 'anim-candle-glow-still', rose_glow: 'anim-rose-glow-still'
-      }[animType] || gradClassFor;
-      if (cardAnimClass && cardAnimClass !== cardClassFor) {
-        cardBox.classList.remove(cardAnimClass);
-        cardBox.style.animationPlayState = '';
-        cardBox.style.animationDuration = '';
-        cardAnimClass = null;
+      // v1.9.1 (#13 + F4): animated backgrounds at NATIVE strength and
+      // placement, written INLINE from the payload on every apply. The NDI
+      // renderer paints the animated gradient AS the background — the
+      // type's two colors at the style's bgOpacity (Full: the whole frame;
+      // Lower: inside the card only) — and the 100%-transparent toggle
+      // suppresses it entirely. The first version of this fix used CSS
+      // classes for the gradient: a class left on the card survived toggle
+      // flips (HTTP appeared to ignore the Edit tab until the background
+      // was cycled None -> chosen) and the card gradient ignored
+      // bgOpacity. Inline styles rewritten from the payload each apply
+      // cannot go stale: what the editor says is what paints.
+      const GRAD_COLORS = {
+        golden_rays: [[217,119,6],[251,191,36]],
+        blue_waves: [[30,58,138],[14,165,233]],
+        candle_glow: [[120,53,15],[245,158,11]],
+        purple_silk: [[88,28,135],[192,132,252]],
+        emerald_waves: [[6,78,59],[52,211,153]],
+        rose_glow: [[136,19,55],[251,113,133]],
+        gold_particles: [[120,53,15],[252,211,77]],
+        particles: [[15,23,42],[56,189,248]]
+      };
+      const grad = GRAD_COLORS[animType];
+      const gradIsRadial = animType === 'candle_glow' || animType === 'rose_glow';
+      function rgbaStr(c, a) { return 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + a + ')'; }
+      function gradCss(alpha) {
+        if (gradIsRadial) {
+          return 'radial-gradient(circle at 50% 50%, ' + rgbaStr(grad[1], alpha) + ' 0%, ' + rgbaStr(grad[0], alpha) + ' 100%)';
+        }
+        return 'linear-gradient(135deg, ' + rgbaStr(grad[0], alpha) + ' 0%, ' + rgbaStr(grad[1], alpha) + ' 50%, ' + rgbaStr(grad[0], alpha) + ' 100%)';
       }
-      if (gradClassFor && data.isPureTransparentBackground) {
-        // Toggle on = no background at all (native paints none either).
-        animBgLayer.style.opacity = '0';
+      function clearGrad(el) {
+        el.style.backgroundImage = 'none';
+        el.style.backgroundSize = '';
+        el.classList.remove('bg-flow');
+        el.classList.remove('bg-breath');
+        el.style.animationPlayState = '';
+        el.style.animationDuration = '';
       }
-      if (gradClassFor && !data.isPureTransparentBackground) {
+      function applyGrad(el, breath) {
         const bgOp = data.bgOpacity !== undefined ? data.bgOpacity : 0.85;
+        el.style.backgroundImage = gradCss(bgOp);
+        el.style.backgroundSize = '400% 400%';
+        el.classList.add(breath ? 'bg-breath' : 'bg-flow');
+        const dur = animBaseDurations[animType];
+        if (dur) {
+          if (!(animSpeed > 0)) el.style.animationPlayState = 'paused';
+          else { el.style.animationPlayState = 'running'; el.style.animationDuration = (dur / animSpeed) + 's'; }
+        }
+      }
+      if (cardGradOn) { clearGrad(cardBox); cardGradOn = false; }
+      if (grad && !data.isPureTransparentBackground) {
         if (isFull) {
           // The layer IS the frame background; the card goes clear so the
           // gradient is not buried under the flat fill.
-          animBgLayer.style.opacity = bgOp;
+          animBgLayer.className = 'animated-bg-layer';
+          applyGrad(animBgLayer, gradIsRadial);
+          animBgLayer.style.opacity = '1';
           cardBox.style.backgroundColor = 'transparent';
-          cardBox.style.backgroundImage = 'none';
-        } else if (cardClassFor) {
+        } else {
+          // Lower: the gradient belongs INSIDE the card (native paints
+          // the card box only) — inline on the card, layer emptied.
           animBgLayer.className = 'animated-bg-layer';
           animBgLayer.style.opacity = '0';
-          cardBox.style.background = '';
-          cardBox.style.backgroundColor = '';
-          cardBox.classList.add(cardClassFor);
-          cardAnimClass = cardClassFor;
-          if (animBaseDurations[animType]) {
-            if (!(animSpeed > 0)) {
-              cardBox.style.animationPlayState = 'paused';
-            } else {
-              cardBox.style.animationPlayState = 'running';
-              cardBox.style.animationDuration = (animBaseDurations[animType] / animSpeed) + 's';
-            }
-          }
+          clearGrad(animBgLayer);
+          applyGrad(cardBox, false);
+          cardGradOn = true;
         }
+      } else if (animType !== 'custom_video') {
+        // No animated gradient for this payload (or the transparent
+        // toggle is on): the layer must carry nothing.
+        animBgLayer.className = 'animated-bg-layer';
+        animBgLayer.style.opacity = '0';
+        clearGrad(animBgLayer);
+      } else {
+        // custom_video: the chain above owns the layer; just drop any
+        // inline gradient left from a previous animated style.
+        animBgLayer.style.backgroundImage = 'none';
       }
 
       // 8. Entry Transitions
@@ -1782,9 +1881,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       // the current state unconditionally, or every update after an OS-kill
       // auto-resume is dropped as "stale" and the overlay freezes on the
       // pre-crash verse until a manual page refresh.
-      evtSource.onopen = function() { lastStateVersion = -1; lastSseSeen = Date.now(); };
+      evtSource.onopen = function() { lastStateVersion = -1; lastSseSeen = Date.now(); diag.opens++; diag.reconnects = Math.max(0, diag.opens - 1); diagEvent('sse-open', ''); };
       evtSource.onmessage = function(e) {
         lastSseSeen = Date.now();
+        diag.msgs++;
         try {
           applyData(JSON.parse(e.data));
         } catch (err) {
@@ -1800,6 +1900,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       if (sseWatchdog) clearInterval(sseWatchdog);
       sseWatchdog = setInterval(function() {
         if (Date.now() - lastSseSeen > 35000) {
+          diagEvent('watchdog', 'silence>35s, reconnecting');
           try { evtSource.close(); } catch (e) { /* ignore */ }
           clearInterval(sseWatchdog);
           sseWatchdog = null;
@@ -1832,6 +1933,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       }
     } catch (e) { /* best-effort */ }
 
+    setInterval(sendDiag, 10000);
+    document.addEventListener('visibilitychange', function() { if (document.visibilityState === 'hidden') sendDiag(); });
     connectSse();
   </script>
 </body>
@@ -3318,9 +3421,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             bookId = book.id
         }
 
+        val trigT0 = System.nanoTime()
         val ok = try {
             onTriggerVerse?.invoke(bookId!!, chapter!!, verseNum!!, target) ?: false
         } catch (e: Exception) { false }
+        statTrigger.record((System.nanoTime() - trigT0) / 1_000_000.0)
 
         if (ok) {
             sendJson(out, 200, """{"ok":true,"bookId":"${jsonEscape(bookId!!)}","chapter":$chapter,"verse":$verseNum,"target":"$target"}""")
@@ -3510,6 +3615,333 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     }
 
     /**
+     * GET /api/clientstat?page=lower|full&data=<urlencoded JSON> — the
+     * overlay pages report their own receive/apply timings here (see the
+     * self-diagnostics block in the overlay script). Stored raw (after a
+     * JSON validity check) and surfaced by /api/debug.
+     */
+    private fun serveApiClientStat(out: OutputStream, fullPath: String) {
+        val params = parseQueryParams(fullPath)
+        val page = params["page"]
+        val data = params["data"]
+        var stored = false
+        if ((page == "lower" || page == "full") && data != null && data.length <= 16384) {
+            try {
+                // Validate before storing: /api/debug embeds this verbatim.
+                val checked = org.json.JSONObject(data).toString()
+                if (page == "lower") {
+                    clientStatLower = checked; clientStatLowerAtMs = System.currentTimeMillis()
+                } else {
+                    clientStatFull = checked; clientStatFullAtMs = System.currentTimeMillis()
+                }
+                stored = true
+            } catch (e: Exception) { /* malformed report: drop it */ }
+        }
+        sendJson(out, 200, "{\"ok\":$stored}")
+    }
+
+    /**
+     * GET /api/debug — full diagnostics snapshot (config, device, live
+     * state, per-action server timings) for the /debug page. Built for
+     * advanced troubleshooting of the HTTP path.
+     */
+    private fun serveApiDebug(out: OutputStream) {
+        val pi = try { context.packageManager.getPackageInfo(context.packageName, 0) } catch (e: Exception) { null }
+        val versionName = pi?.versionName ?: "?"
+        val versionCode = try { pi?.longVersionCode ?: -1L } catch (e: Exception) { -1L }
+        val deviceName = try { android.provider.Settings.Global.getString(context.contentResolver, "device_name") ?: "" } catch (e: Exception) { "" }
+        val rt = Runtime.getRuntime()
+        val usedMb = (rt.totalMemory() - rt.freeMemory()) / 1048576
+        val maxMb = rt.maxMemory() / 1048576
+        val verse = currentVerse
+        val bookNum = if (verse != null) {
+            try { com.arabicchristianmedia.data.BibleRepository.allBooks.indexOfFirst { it.id == verse.bookId } + 1 } catch (e: Exception) { 0 }
+        } else 0
+        fun fmt(x: Double): String = String.format(java.util.Locale.US, "%.2f", x)
+        fun statJson(st: ActionStat): String =
+            "{\"count\":${st.count},\"lastMs\":${fmt(st.lastMs)},\"avgMs\":${fmt(st.avgMs())},\"maxMs\":${fmt(st.maxMs)}}"
+        fun tplJson(t: LowerThirdTemplate): String =
+            "{\"name\":\"${jsonEscape(t.name)}\"," +
+            "\"style\":\"${t.style.name}\"," +
+            "\"animatedBackground\":\"${t.animatedBackground.id}\"," +
+            "\"animatedBackgroundOpacity\":${t.animatedBackgroundOpacity}," +
+            "\"bgOpacity\":${t.bgOpacity}," +
+            "\"pureTransparent\":${t.isPureTransparentBackground}," +
+            "\"transition\":\"${t.transition.name}\"," +
+            "\"transitionDurationMs\":${t.transitionDurationMs}," +
+            "\"verseFontSize\":${t.verseFontSize}," +
+            "\"referenceFontSize\":${t.referenceFontSize}," +
+            "\"autoFitText\":${t.autoFitText}," +
+            "\"autoFitMinVerseSp\":${t.autoFitMinVerseSp}," +
+            "\"languageMode\":\"${t.languageMode.name}\"," +
+            "\"fontFamily\":\"${jsonEscape(t.fontFamily)}\"}"
+        val up = if (serverStartTimeMs == 0L) 0 else System.currentTimeMillis() - serverStartTimeMs
+        val sb = StringBuilder()
+        sb.append("{\"ok\":true,")
+        sb.append("\"app\":{\"versionName\":\"${jsonEscape(versionName)}\","\"versionCode\":$versionCode},")
+        sb.append("\"device\":{\"manufacturer\":\"${jsonEscape(android.os.Build.MANUFACTURER)}\","\"model\":\"${jsonEscape(android.os.Build.MODEL)}\","\"deviceName\":\"${jsonEscape(deviceName)}\","\"android\":\"${android.os.Build.VERSION.RELEASE}\","\"sdk\":${android.os.Build.VERSION.SDK_INT}},")
+        sb.append("\"server\":{\"running\":$isRunning,\"port\":$port,\"ip\":\"${getLocalIpAddress()}\","\"uptimeMs\":$up,\"frameVersion\":$frameVersion,\"isLive\":$isLive,\"sseClients\":${sseClients.size}},")
+        sb.append("\"current\":{\"bookId\":\"${verse?.bookId ?: ""}\","\"bookNum\":$bookNum,\"chapter\":${verse?.chapter ?: 0},\"verse\":${verse?.verse ?: 0},\"citation\":\"${jsonEscape(verse?.getFormattedEnglishCitation() ?: "")}\"},")
+        sb.append("\"lower\":${tplJson(currentTemplate)},")
+        sb.append("\"full\":${tplJson(currentShowTemplate)},")
+        sb.append("\"timings\":{\"stateBuild\":${statJson(statStateBuild)},\"broadcast\":${statJson(statBroadcast)},\"verseApi\":${statJson(statVerseApi)},\"trigger\":${statJson(statTrigger)}},")
+        sb.append("\"overlayClients\":{")
+        sb.append("\"lower\":${clientStatLower ?: "null"},\"lowerAgeMs\":${if (clientStatLowerAtMs == 0L) -1 else System.currentTimeMillis() - clientStatLowerAtMs},")
+        sb.append("\"full\":${clientStatFull ?: "null"},\"fullAgeMs\":${if (clientStatFullAtMs == 0L) -1 else System.currentTimeMillis() - clientStatFullAtMs}")
+        sb.append("},")
+        sb.append("\"memory\":{\"usedMb\":$usedMb,\"maxMb\":$maxMb}")
+        sb.append("}")
+        sendJson(out, 200, sb.toString())
+    }
+
+/**
+     * GET /debug — HTTP diagnostics page (v1.9.1): full configuration,
+     * device info, server-side per-action timings, and browser-side
+     * latency tests (ping RTT + tap-to-screen over SSE), with a
+     * copy-able report for advanced troubleshooting.
+     */
+    private fun serveDebugPage(out: OutputStream) {
+        val html = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Bible NDI — HTTP Debug</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 0; padding: 16px; background: Canvas; color: CanvasText; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h2 { font-size: 15px; margin: 20px 0 6px; }
+  .sub { opacity: 0.7; font-size: 13px; }
+  table { border-collapse: collapse; width: 100%; max-width: 720px; }
+  td, th { border: 1px solid rgba(128,128,128,0.35); padding: 5px 8px; font-size: 13px; text-align: left; vertical-align: top; }
+  td.k { font-weight: 600; white-space: nowrap; width: 190px; }
+  button { padding: 10px 14px; font-size: 14px; font-weight: 700; border-radius: 10px; border: 1px solid rgba(128,128,128,0.5); background: transparent; color: inherit; cursor: pointer; margin: 4px 4px 4px 0; }
+  button:active { transform: scale(0.97); }
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  pre, textarea { font-family: ui-monospace, monospace; font-size: 12px; }
+  textarea { width: 100%; max-width: 720px; height: 180px; }
+  .out { white-space: pre-wrap; font-family: ui-monospace, monospace; font-size: 12.5px; background: rgba(128,128,128,0.12); border-radius: 10px; padding: 10px; max-width: 720px; min-height: 20px; }
+</style>
+</head>
+<body>
+<h1>🛠 Bible NDI — HTTP Debug</h1>
+<div class="sub">Live diagnostics from the tablet. Timings are measured where they happen: server actions on the tablet, network + display in this browser.</div>
+<div class="row">
+  <button onclick="loadDebug()">↻ Refresh</button>
+  <label><input type="checkbox" id="autoChk"> Auto-refresh (3s)</label>
+  <button onclick="copyReport()">📋 Copy report</button>
+</div>
+
+<h2>Server &amp; device</h2>
+<div id="serverSec">Loading…</div>
+
+<h2>Active templates</h2>
+<div id="tplSec">—</div>
+
+<h2>Server action timings (ms)</h2>
+<div id="timeSec">—</div>
+
+<h2>Overlay pages — self-reported (browser side)</h2>
+<div id="clientStatSec">—</div>
+
+<h2>This browser</h2>
+<div id="clientSec">—</div>
+
+<h2>Latency tests</h2>
+<div class="row">
+  <button onclick="pingTest()">Run ping test (10 × /api/verse)</button>
+  <button onclick="tapTest()">Run tap-to-screen test (SSE)</button>
+</div>
+<div class="sub">Tap-to-screen re-airs the current verse and measures trigger → SSE arrival in this browser, on one clock. It changes what is on air.</div>
+<div class="out" id="testOut">No tests run yet.</div>
+
+<h2>Report</h2>
+<textarea id="report" readonly></textarea>
+
+<script>
+  var lastDebug = null;
+  var testLog = '';
+  function esc(t) { return String(t == null ? '' : t).replace(/&/g, '&amp;').replace(/</g, '&lt;'); }
+  function table(pairs) {
+    var h = '<table>';
+    for (var i = 0; i < pairs.length; i++) h += '<tr><td class="k">' + esc(pairs[i][0]) + '</td><td>' + esc(pairs[i][1]) + '</td></tr>';
+    return h + '</table>';
+  }
+  function loadDebug() {
+    fetch('/api/debug').then(function(r) { return r.json(); }).then(function(j) {
+      lastDebug = j;
+      var up = Math.round((j.server.uptimeMs || 0) / 1000);
+      document.getElementById('serverSec').innerHTML = table([
+        ['App', j.app.versionName + ' (' + j.app.versionCode + ')'],
+        ['Device', j.device.manufacturer + ' ' + j.device.model],
+        ['Device name', j.device.deviceName],
+        ['Android', j.device.android + ' (SDK ' + j.device.sdk + ')'],
+        ['Server', (j.server.running ? 'running' : 'STOPPED') + ' · ' + j.server.ip + ':' + j.server.port],
+        ['Uptime', up + ' s'],
+        ['State version', j.server.frameVersion],
+        ['On air', j.server.isLive],
+        ['SSE clients (overlays)', j.server.sseClients],
+        ['Current verse', (j.current.citation || '—') + ' [book ' + j.current.bookNum + ' ' + j.current.chapter + ':' + j.current.verse + ']'],
+        ['App memory', j.memory.usedMb + ' MB used / ' + j.memory.maxMb + ' MB max']
+      ]);
+      function tplPairs(t) {
+        return [
+          ['Name / style', t.name + ' / ' + t.style],
+          ['Animated background', t.animatedBackground + ' @ ' + t.animatedBackgroundOpacity],
+          ['Background opacity', t.bgOpacity],
+          ['100% transparent', t.pureTransparent],
+          ['Transition', t.transition + ' · ' + t.transitionDurationMs + ' ms'],
+          ['Verse / citation size', t.verseFontSize + ' / ' + t.referenceFontSize],
+          ['Auto-fit', t.autoFitText + ' · min verse ' + t.autoFitMinVerseSp],
+          ['Language / font', t.languageMode + ' / ' + t.fontFamily]
+        ];
+      }
+      document.getElementById('tplSec').innerHTML =
+        '<div class="sub">LOWER</div>' + table(tplPairs(j.lower)) +
+        '<div class="sub" style="margin-top:8px">FULL</div>' + table(tplPairs(j.full));
+      function statRow(label, st) { return [label, 'count ' + st.count + ' · last ' + st.lastMs + ' · avg ' + st.avgMs + ' · max ' + st.maxMs]; }
+      document.getElementById('timeSec').innerHTML = table([
+        statRow('State JSON build', j.timings.stateBuild),
+        statRow('Broadcast to SSE clients', j.timings.broadcast),
+        statRow('/api/verse answer', j.timings.verseApi),
+        statRow('/api/trigger handling', j.timings.trigger)
+      ]);
+      var oc = j.overlayClients || {};
+      function ocText(name, stat, ageMs) {
+        if (!stat) return name + ': no report yet (open the overlay page, wait up to 10 s)';
+        var ev = (stat.events || []).map(function(e) { return e.t + 'ms ' + e.kind + ' ' + e.info; }).join(' | ');
+        return name + ' · report age ' + Math.round(ageMs / 1000) + ' s · state v' + stat.version +
+          ' · msgs ' + stat.msgs + ' · applies ' + stat.applies + ' · reconnects ' + stat.reconnects +
+          ' · last apply ' + stat.lastApplyMs + ' ms · max apply ' + stat.maxApplyMs + ' ms · last fit ' + stat.lastFitMs + ' ms' +
+          '\n  events: ' + ev +
+          '\n  ua: ' + stat.ua;
+      }
+      document.getElementById('clientStatSec').innerHTML =
+        '<div class="out">' + esc(ocText('LOWER', oc.lower, oc.lowerAgeMs || 0)) + '</div>' +
+        '<div class="out" style="margin-top:6px">' + esc(ocText('FULL', oc.full, oc.fullAgeMs || 0)) + '</div>';
+      renderClient();
+      buildReport();
+    }).catch(function(e) {
+      document.getElementById('serverSec').textContent = 'Failed to load /api/debug: ' + e;
+    });
+  }
+  function renderClient() {
+    var c = (navigator.connection || {});
+    document.getElementById('clientSec').innerHTML = table([
+      ['User agent', navigator.userAgent],
+      ['Screen', window.screen.width + ' × ' + window.screen.height + ' · DPR ' + window.devicePixelRatio],
+      ['Window', window.innerWidth + ' × ' + window.innerHeight],
+      ['Connection', (c.effectiveType || '?') + ' · downlink ' + (c.downlink || '?') + ' Mb/s · rtt ' + (c.rtt || '?') + ' ms'],
+      ['Page loaded in', Math.round(performance.now()) + ' ms']
+    ]);
+  }
+  function logTest(line) {
+    testLog += line + '\n';
+    document.getElementById('testOut').textContent = testLog;
+    buildReport();
+  }
+  function pingTest() {
+    logTest('— Ping test —');
+    var times = [];
+    var offsetShown = false;
+    var chain = Promise.resolve();
+    function one(i) {
+      return function() {
+        var t0 = performance.now();
+        return fetch('/api/verse').then(function(r) { return r.json(); }).then(function(j) {
+          var t1 = performance.now();
+          var ms = t1 - t0;
+          times.push(ms);
+          if (!offsetShown && j.serverTimeMs) {
+            offsetShown = true;
+            var offset = Math.round(j.serverTimeMs - (Date.now() - ms / 2));
+            logTest('Server clock minus browser clock ≈ ' + offset + ' ms (for comparing timestamps)');
+          }
+          logTest('ping ' + (i + 1) + ': ' + ms.toFixed(1) + ' ms');
+        }).catch(function(e) { logTest('ping ' + (i + 1) + ': ERROR ' + e); });
+      };
+    }
+    for (var i = 0; i < 10; i++) chain = chain.then(one(i));
+    chain.then(function() {
+      if (times.length) {
+        var sum = 0, mx = 0;
+        for (var k = 0; k < times.length; k++) { sum += times[k]; if (times[k] > mx) mx = times[k]; }
+        logTest('Ping avg ' + (sum / times.length).toFixed(1) + ' ms · max ' + mx.toFixed(1) + ' ms');
+      }
+    });
+  }
+  function tapTest() {
+    if (!lastDebug || !lastDebug.current.bookNum) { logTest('Tap test: no current verse to re-air.'); return; }
+    var cur = lastDebug.current;
+    logTest('— Tap-to-screen test —');
+    fetch('/api/verse').then(function(r) { return r.json(); }).then(function(j) {
+      var v0 = j.stateVersion;
+      var es = new EventSource('/events');
+      var done = false;
+      var t0 = 0;
+      var to = setTimeout(function() {
+        if (!done) { done = true; es.close(); logTest('Tap test: NO event within 10 s — SSE delivery is stuck.'); }
+      }, 10000);
+      es.onmessage = function(e) {
+        try {
+          var d = JSON.parse(e.data);
+          if (!done && t0 && d.stateVersion > v0) {
+            done = true;
+            clearTimeout(to);
+            es.close();
+            logTest('Tap → screen event: ' + (performance.now() - t0).toFixed(1) + ' ms (state ' + v0 + ' → ' + d.stateVersion + ')');
+          }
+        } catch (err) {}
+      };
+      es.onopen = function() {
+        t0 = performance.now();
+        fetch('/api/trigger?book=' + cur.bookNum + '&chapter=' + cur.chapter + '&verse=' + cur.verse)
+          .then(function(r) { return r.json(); })
+          .then(function(j) { if (!j.ok) logTest('Tap test: trigger failed: ' + (j.error || '')); })
+          .catch(function(e) { logTest('Tap test: trigger error ' + e); });
+      };
+    }).catch(function(e) { logTest('Tap test: setup error ' + e); });
+  }
+  function buildReport() {
+    if (!lastDebug) return;
+    var txt = 'BIBLE NDI HTTP DEBUG REPORT\n' + JSON.stringify(lastDebug, null, 2) +
+      '\n\nBROWSER: ' + navigator.userAgent +
+      '\nSCREEN: ' + window.screen.width + 'x' + window.screen.height + ' DPR ' + window.devicePixelRatio +
+      '\n\nTESTS:\n' + (testLog || '(none run)');
+    document.getElementById('report').value = txt;
+  }
+  function copyReport() {
+    var ta = document.getElementById('report');
+    ta.select();
+    try { document.execCommand('copy'); } catch (e) {}
+    if (navigator.clipboard) { try { navigator.clipboard.writeText(ta.value); } catch (e) {} }
+  }
+  document.getElementById('autoChk').addEventListener('change', function() {
+    if (this.checked) { window._dbgTimer = setInterval(loadDebug, 3000); }
+    else if (window._dbgTimer) { clearInterval(window._dbgTimer); window._dbgTimer = null; }
+  });
+  loadDebug();
+</script>
+</body>
+</html>
+        """.trimIndent()
+
+        val bytes = html.toByteArray(Charsets.UTF_8)
+        val writer = PrintWriter(out)
+        writer.print("HTTP/1.1 200 OK\r\n")
+        writer.print("Content-Type: text/html; charset=utf-8\r\n")
+        writer.print("Content-Length: " + bytes.size + "\r\n")
+        writer.print("Cache-Control: no-cache\r\n")
+        writer.print("Connection: close\r\n\r\n")
+        writer.flush()
+        out.write(bytes)
+        out.flush()
+    }
+
+
+    /**
      * GET /remote — the web REMOTE DEVICE (v1.9.1, reworked from the v1.8
      * reference-typer). A Bible browser (book → chapter → tap a verse) plus
      * an ON AIR button mirroring the master, exactly like a native remote:
@@ -3553,7 +3985,15 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     .chips button.active { background: #f1f5f9; color: #0f172a; border-color: transparent; }
     .vrow { border-color: #334155; }
   }
-  header { padding: 16px 20px 8px; font-size: 20px; font-weight: 700; }
+  header { padding: 16px 20px 8px; font-size: 20px; font-weight: 700; display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+  /* The live reference rides in the header as a slim pill \u2014 information
+     only, zero extra layout space. */
+  .livepill { display: inline-flex; align-items: center; gap: 6px; max-width: 55%; flex: none;
+    background: rgba(127,127,127,0.16); border: 1px solid rgba(127,127,127,0.45); border-radius: 999px;
+    padding: 5px 11px; font-size: 12.5px; font-weight: 600; margin-top: 2px; }
+  .livepill .dot { width: 8px; height: 8px; border-radius: 50%; background: #9ca3af; flex: none; }
+  .livepill.on .dot { background: #22c55e; box-shadow: 0 0 6px #22c55e; }
+  .livepill .ref { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   header .sub { font-size: 13px; font-weight: 400; opacity: 0.7; margin-top: 2px; }
   main { flex: 1; padding: 8px 16px 16px; display: flex; flex-direction: column; gap: 12px; max-width: 640px; width: 100%; margin: 0 auto; }
   .card { border: 1px solid; border-radius: 16px; padding: 16px; }
@@ -3581,13 +4021,33 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   .status.ok { color: #16a34a; }
   .status.err { color: #dc2626; }
   .hint { font-size: 12px; margin-top: 8px; line-height: 1.5; }
-  .now { font-size: 15px; text-align: center; padding: 4px 0; opacity: 0.85; }
   .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
   .chips button {
     width: 46px; padding: 9px 0; font-size: 15px; font-weight: 600;
     border: 1px solid; border-radius: 10px; background: transparent; cursor: pointer;
   }
+  .selrow { display: flex; gap: 8px; }
+  .selrow #bookSel { flex: 2; }
+  .selrow #chSel { flex: 1; }
   .vlist { margin-top: 8px; max-height: 52vh; overflow-y: auto; }
+  /* Desktop / wide tablet: two columns — controls left, Bible browser
+     right with a tall verse list. Narrow screens keep the stacked
+     one-hand layout above. */
+  @media (min-width: 900px) {
+    main {
+      max-width: 1180px;
+      display: grid;
+      grid-template-columns: 340px 1fr;
+      grid-template-areas: "onair browse" "ref browse" "go browse" "status browse";
+      align-items: start;
+    }
+    #onAirBtn { grid-area: onair; }
+    #browseCard { grid-area: browse; }
+    #refCard { grid-area: ref; }
+    #goBtn { grid-area: go; }
+    .status { grid-area: status; }
+    .vlist { max-height: 66vh; }
+  }
   .vrow { display: flex; gap: 10px; padding: 10px 8px; border-bottom: 1px solid; cursor: pointer; align-items: flex-start; }
   .vrow:active { opacity: 0.7; }
   .vrow.live { background: rgba(22,163,74,0.18); border-radius: 10px; }
@@ -3598,19 +4058,22 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 </head>
 <body>
 <header>
-  📖 Bible Remote
-  <div class="sub">Arabic Bible NDI — remote device: tap a verse to show it</div>
+  <div>📖 Bible Remote
+    <div class="sub">Arabic Bible NDI — remote device: tap a verse to show it</div>
+  </div>
+  <span class="livepill" id="livePill"><span class="dot"></span><span class="ref" id="liveRef">—</span></span>
 </header>
 <main>
-  <div class="now" id="now">—</div>
   <button class="onair off" id="onAirBtn" onclick="toggleOnAir()">OFF AIR</button>
-  <div class="card">
+  <div class="card" id="browseCard">
     <label for="bookSel">Browse the Bible — اختر سفراً</label>
-    <select id="bookSel"><option value="">Loading books…</option></select>
-    <div class="chips" id="chChips"></div>
+    <div class="selrow">
+      <select id="bookSel"><option value="">Loading books…</option></select>
+      <select id="chSel" aria-label="Chapter"></select>
+    </div>
     <div class="vlist" id="vList"></div>
   </div>
-  <div class="card">
+  <div class="card" id="refCard">
     <label for="ref">Quick reference</label>
     <input id="ref" type="text" inputmode="text" autocomplete="off"
            placeholder="John 3:16  •  يوحنا 3:16  •  Jn 3:16"
@@ -3627,7 +4090,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   var live = { onAir: false, bookId: '', chapter: 0, verse: 0 };
 
   var bookSel = document.getElementById('bookSel');
-  var chChips = document.getElementById('chChips');
+  var chSel = document.getElementById('chSel');
   var vList = document.getElementById('vList');
   var refInput = document.getElementById('ref');
   refInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') triggerRef(); });
@@ -3636,8 +4099,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     var i = parseInt(bookSel.value, 10);
     if (isNaN(i) || !books[i]) return;
     curBookIdx = i;
-    renderChapters(books[i]);
+    fillChapters(books[i]);
     loadChapter(1);
+  });
+  chSel.addEventListener('change', function() {
+    var c = parseInt(chSel.value, 10);
+    if (!isNaN(c)) loadChapter(c);
   });
 
   function setStatus(msg, cls) {
@@ -3658,35 +4125,25 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       if (books.length) {
         curBookIdx = 0;
         bookSel.value = '0';
-        renderChapters(books[0]);
+        fillChapters(books[0]);
         loadChapter(1);
       }
     }).catch(function() { setStatus('Network error loading books', 'err'); });
   }
 
-  function renderChapters(book) {
+  function fillChapters(book) {
     var html = '';
     for (var c = 1; c <= book.chapters; c++) {
-      html += '<button data-ch="' + c + '">' + c + '</button>';
+      html += '<option value="' + c + '">' + c + '</option>';
     }
-    chChips.innerHTML = html;
-    var btns = chChips.querySelectorAll('button');
-    for (var k = 0; k < btns.length; k++) {
-      btns[k].addEventListener('click', function() { loadChapter(parseInt(this.getAttribute('data-ch'), 10)); });
-    }
-  }
-
-  function markChapter() {
-    var btns = chChips.querySelectorAll('button');
-    for (var k = 0; k < btns.length; k++) {
-      btns[k].classList.toggle('active', parseInt(btns[k].getAttribute('data-ch'), 10) === curChapter);
-    }
+    chSel.innerHTML = html;
+    chSel.value = '1';
   }
 
   function loadChapter(ch) {
     if (curBookIdx < 0) return;
     curChapter = ch;
-    markChapter();
+    if (chSel.value !== String(ch)) chSel.value = String(ch);
     var book = books[curBookIdx];
     vList.innerHTML = '<div class="hint">Loading…</div>';
     fetch('/api/chapter?book=' + encodeURIComponent(book.id) + '&chapter=' + ch)
@@ -3776,8 +4233,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       live.chapter = j.chapterNum || 0;
       live.verse = j.verseNum || 0;
       var cit = j.arabicCitation || j.englishCitation || '';
-      document.getElementById('now').textContent =
-        cit ? (live.onAir ? 'Now: ' + cit : 'Off air — ' + cit) : '—';
+      var pill = document.getElementById('livePill');
+      document.getElementById('liveRef').textContent =
+        cit ? (live.onAir ? cit : 'Off air — ' + cit) : 'Off air';
+      pill.className = 'livepill' + (live.onAir && cit ? ' on' : '');
+      pill.title = cit || '';
       renderOnAir();
       markLiveRow();
     }).catch(function() {});

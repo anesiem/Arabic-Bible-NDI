@@ -1209,25 +1209,8 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    fun nextVerse() {
-        val current = _uiState.value.activeVerse ?: return
-        val list = _uiState.value.displayedVerses
-        val currentIndex = list.indexOfFirst { it.id == current.id }
-        if (currentIndex != -1 && currentIndex < list.size - 1) {
-            val next = list[currentIndex + 1]
-            onVerseClicked(next)
-        }
-    }
-
-    fun prevVerse() {
-        val current = _uiState.value.activeVerse ?: return
-        val list = _uiState.value.displayedVerses
-        val currentIndex = list.indexOfFirst { it.id == current.id }
-        if (currentIndex > 0) {
-            val prev = list[currentIndex - 1]
-            onVerseClicked(prev)
-        }
-    }
+    // v1.9.1 (#9): nextVerse()/prevVerse() were removed with the Library's
+    // verse-stepping arrows (Ashraf: "I will tap on the verse I need").
 
     /**
      * User selected a saved Lower Third style: the working template becomes the

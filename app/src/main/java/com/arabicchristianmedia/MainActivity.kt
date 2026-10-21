@@ -351,9 +351,6 @@ class MainActivity : ComponentActivity() {
                                 onSearchChanged = { viewModel.onSearchQueryChanged(it) },
                                 onClearSearch = { viewModel.clearSearch() },
                                 onToggleLive = { viewModel.toggleLive() },
-                                onClearBroadcast = { viewModel.clearBroadcast() },
-                                onNextVerse = { viewModel.nextVerse() },
-                                onPrevVerse = { viewModel.prevVerse() },
                                 onIncreaseFontSize = { viewModel.increaseFontSize() },
                                 onDecreaseFontSize = { viewModel.decreaseFontSize() },
                                 onSetAppThemeMode = { viewModel.setAppThemeMode(it) }

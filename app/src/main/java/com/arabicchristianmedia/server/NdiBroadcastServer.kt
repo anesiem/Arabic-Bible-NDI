@@ -1143,6 +1143,25 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     let lastFitFn = null;
     let activeParticleKey = null;
 
+    // v1.9.1 (#11): the font faces a state depends on — shared by the apply
+    // path (finishApply, inside applyData) and the page-load warm-up below.
+    // Pure: payload in, CSS font shorthands out.
+    function facesForData(d) {
+      const faces = [];
+      const prim = String(d.fontFamily || 'Amiri').replace(/['"\\]/g, '');
+      if (prim && prim !== 'System') {
+        faces.push('400 32px "' + prim + '"');
+        if (d.verseIsBold || d.referenceIsBold) faces.push('700 32px "' + prim + '"');
+      }
+      const lang = d.languageMode || (d.bilingual ? 'BOTH' : 'ARABIC_ONLY');
+      const secFam = d.secondaryFontFamily;
+      if (lang !== 'ARABIC_ONLY' && d.englishText && secFam && secFam !== 'System' && secFam !== 'system-ui') {
+        faces.push('400 32px "' + secFam + '"');
+        if (d.secondaryVerseIsBold || d.secondaryReferenceIsBold) faces.push('700 32px "' + secFam + '"');
+      }
+      return faces;
+    }
+
     function applyData(data) {
       // State-version guard: drop stale/out-of-order deliveries and let a fresh
       // reconnect re-sync (the server bumps stateVersion on every change).
@@ -1350,11 +1369,18 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       // size jumps. Base sizes were just reset above (section 5).
       const doFit = function() {
         if (data.autoFitText === false) return;
-        const minVersePx = (data.autoFitMinVerseSp || 28) * 2 * getStageScale();
-        const baseVerse = parseFloat(verseText.style.fontSize) || minVersePx;
-        const baseCite = parseFloat(citationText.style.fontSize) || baseVerse * 0.6;
-        const baseEnV = parseFloat(englishText.style.fontSize) || baseVerse * 0.7;
-        const baseEnC = parseFloat(englishCitation.style.fontSize) || baseVerse * 0.55;
+        // v1.9.1 (#11): base sizes come from the PAYLOAD, not from the
+        // current DOM styles. The old code read them back from the styles
+        // section 5 had just reset — coupling the fit to reset ordering
+        // and to the font gate. Payload-derived bases (the same formula
+        // sections 3/5 use) make the fit exact and safe to run
+        // synchronously the moment the text changes.
+        const ss0 = getStageScale();
+        const minVersePx = (data.autoFitMinVerseSp || 28) * 2 * ss0;
+        const baseVerse = (data.verseFontSize || 26) * 2 * ss0;
+        const baseCite = (data.referenceFontSize || 18) * 2 * ss0;
+        const baseEnV = (data.secondaryVerseFontSize || 18) * 2 * ss0;
+        const baseEnC = (data.secondaryReferenceFontSize || 14) * 2 * ss0;
         const minRatio = Math.min(1, minVersePx / baseVerse);
         // SAME budget as the NDI renderer, measured the SAME way — content
         // only (card padding excluded). See the v2.0 parity note in git
@@ -1389,22 +1415,17 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       // v1.9.1: finish an apply — fit with real metrics, then reveal (only
       // if hidden). The style's actual faces are loaded first; font-display
       // 'swap' otherwise paints fallback text and swaps each face in as it
-      // downloads (the "font changes two or three times" cascade). A 300ms
-      // cap means a slow font can never hold the verse hostage; if a face
-      // still lands late, fonts.ready re-fits once with final metrics.
+      // downloads (the "font changes two or three times" cascade). If a
+      // face still lands late, fonts.ready re-fits once with final metrics.
+      // v1.9.1 (#11): when every needed face is ALREADY loaded — the
+      // normal verse-change case — finish SYNCHRONOUSLY in this same task:
+      // no promise race, no timer. The async gate (150ms cap, was 300ms)
+      // now runs only for a style's first use, so a plain verse change is
+      // as immediate as the push that carried it.
       const finishApply = function() {
         const token = ++revealToken;
         lastFitFn = doFit;
-        const faces = [];
-        if (rawFont && rawFont !== 'System') {
-          faces.push('400 32px "' + rawFont + '"');
-          if (data.verseIsBold || data.referenceIsBold) faces.push('700 32px "' + rawFont + '"');
-        }
-        const secFam = data.secondaryFontFamily;
-        if (showEnglishSection && secFam && secFam !== 'System' && secFam !== 'system-ui') {
-          faces.push('400 32px "' + secFam + '"');
-          if (data.secondaryVerseIsBold || data.secondaryReferenceIsBold) faces.push('700 32px "' + secFam + '"');
-        }
+        const faces = facesForData(data);
         let finished = false;
         const finish = function() {
           if (finished || token !== revealToken) return;
@@ -1422,13 +1443,18 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
           }
         };
         if (!document.fonts || !document.fonts.load || faces.length === 0) { finish(); return; }
+        let allReady = false;
+        try {
+          allReady = faces.every(function(f) { return document.fonts.check(f, 'A\u0627'); });
+        } catch (e) { allReady = false; }
+        if (allReady) { finish(); return; }
         const loads = faces.map(function(f) {
           try { return Promise.resolve(document.fonts.load(f, 'A\u0627')).catch(function() { return []; }); }
           catch (e) { return Promise.resolve([]); }
         });
         Promise.race([
           Promise.all(loads),
-          new Promise(function(res) { setTimeout(res, 300); })
+          new Promise(function(res) { setTimeout(res, 150); })
         ]).then(finish).catch(finish);
       };
 
@@ -1687,11 +1713,23 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     }
 
     // Initial payload render
+    const initialData = $initialJson;
     try {
-      applyData($initialJson);
+      applyData(initialData);
     } catch (e) {
       console.error(e);
     }
+
+    // v1.9.1 (#11): warm the initial style's fonts in the background. In
+    // standby, applyData returns before any font loading runs — without
+    // this, the FIRST verse pushed live would pay the full font-load wait.
+    try {
+      if (document.fonts && document.fonts.load && initialData) {
+        facesForData(initialData).forEach(function(f) {
+          try { document.fonts.load(f, 'A\u0627'); } catch (e) { /* best-effort */ }
+        });
+      }
+    } catch (e) { /* best-effort */ }
 
     connectSse();
   </script>

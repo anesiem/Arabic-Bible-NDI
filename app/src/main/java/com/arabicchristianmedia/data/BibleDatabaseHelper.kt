@@ -17,7 +17,7 @@ class BibleDatabaseHelper(private val context: Context) {
          * Bump when the bundled database assets in assets/bible change: stale on-device
          * copies are recopied on the next launch.
          */
-        const val DATA_VERSION = 2 // v2.0: arabic.db has tashkeelWord column; added english_kjv.db
+        const val DATA_VERSION = 3 // v1.9.1: Psalm 52:1 tashkeel filled (data-only fix; bump REQUIRED so upgraded installs recopy)
         private const val PREFS = "bible_db_prefs"
     }
 

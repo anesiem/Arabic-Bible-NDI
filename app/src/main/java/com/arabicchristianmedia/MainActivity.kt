@@ -372,6 +372,13 @@ class MainActivity : ComponentActivity() {
                                 onUpdateTemplate = { viewModel.updateActiveTemplate(it) },
                                 onUpdateShowTemplate = { viewModel.updateActiveShowTemplate(it) },
                                 onSaveAsNew = { name, base, isFull -> viewModel.saveAsNewTemplate(name, base, isFull) },
+                                onUpdateStyleInPlace = { isFull -> viewModel.updateStyleInPlace(isFull) },
+                                highlightedStyleIsFactory = com.arabicchristianmedia.data.TemplateRepository.isFactoryStyleId(
+                                    if (editorTab == 1) uiState.highlightedShowStyleId else uiState.highlightedLowerStyleId
+                                ),
+                                customFonts = uiState.customFonts,
+                                onImportCustomFont = { uri, name -> viewModel.importCustomFont(uri, name) },
+                                onDeleteCustomFont = { viewModel.deleteCustomFont(it) },
                                 onResetDefaults = { isFull -> viewModel.resetTemplate(isFull) },
                                 onDeleteTemplate = { id, isFull -> viewModel.deleteTemplate(id, isFull) },
                                 onExportTemplate = { id -> viewModel.exportTemplateJson(id) },

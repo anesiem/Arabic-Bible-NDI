@@ -2,6 +2,7 @@ package com.arabicchristianmedia.ui
 
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.*
@@ -121,6 +122,11 @@ fun TemplateEditorScreen(
     onUpdateTemplate: (LowerThirdTemplate) -> Unit,
     onUpdateShowTemplate: (LowerThirdTemplate) -> Unit,
     onSaveAsNew: (String, LowerThirdTemplate, Boolean) -> Unit,
+    onUpdateStyleInPlace: (Boolean) -> Unit,
+    highlightedStyleIsFactory: Boolean,
+    customFonts: List<CustomFont>,
+    onImportCustomFont: (String, String) -> Unit,
+    onDeleteCustomFont: (CustomFont) -> Unit,
     onResetDefaults: (Boolean) -> Unit,
     onDeleteTemplate: (String, Boolean) -> Unit,
     onExportTemplate: (String) -> String?,
@@ -199,6 +205,21 @@ fun TemplateEditorScreen(
             }
         }
     }
+
+    // v1.9.1: custom font import — file picker → name dialog → ViewModel
+    // copies the TTF/OTF into private storage (FontStore).
+    var pendingFontUri by remember { mutableStateOf<Uri?>(null) }
+    var fontNameInput by remember { mutableStateOf("") }
+    var fontToDelete by remember { mutableStateOf<CustomFont?>(null) }
+    var showFactoryUpdateDialog by remember { mutableStateOf(false) }
+    val fontPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            fontNameInput = com.arabicchristianmedia.server.FontStore(context)
+                .displayNameFor(uri)?.substringBeforeLast('.')?.trim().orEmpty()
+            pendingFontUri = uri
+        }
+    }
+    val launchFontPicker = { fontPicker.launch(arrayOf("*/*")) }
 
     val displayVerse = activeVerse ?: BibleVerse(
         id = "sample", bookId = "jhn", bookArabicName = "إنجيل يوحنا", bookEnglishName = "John", chapter = 3, verse = 16,
@@ -433,6 +454,26 @@ CollapsibleSection(
                         Spacer(Modifier.width(6.dp))
                         Text("حفظ كنمط جديد (Save as new style)", fontSize = 13.sp)
                     }
+                    // v1.9.1: update the highlighted style IN PLACE — shown only
+                    // when a style is highlighted and the working values differ
+                    // from it. Factory styles cannot be overwritten (the app
+                    // re-supplies them each launch), so for those this saves
+                    // the edit as the user's own copy under the same name —
+                    // explained in the factory dialog below.
+                    if (highlightedId != null && tabIsDirty) {
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedButton(
+                            onClick = {
+                                if (highlightedStyleIsFactory) showFactoryUpdateDialog = true
+                                else onUpdateStyleInPlace(editorTab == 1)
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.Save, null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("تحديث النمط الحالي (Update current style)", fontSize = 13.sp)
+                        }
+                    }
                 }
 
         Spacer(Modifier.height(8.dp))
@@ -449,7 +490,10 @@ CollapsibleSection(
                 ) {
                     FontDropdown(
                         selected = editingTemplate.fontFamily,
-                        onSelect = { onUpdate(editingTemplate.copy(fontFamily = it)) }
+                        onSelect = { onUpdate(editingTemplate.copy(fontFamily = it)) },
+                        customFonts = customFonts,
+                        onImportFont = launchFontPicker,
+                        onDeleteCustomFont = { fontToDelete = it }
                     )
                 
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -514,7 +558,10 @@ CollapsibleSection(
                         // English Verse Controls
                         LatinFontDropdown(
                             selected = editingTemplate.secondaryFontFamily,
-                            onSelect = { onUpdate(editingTemplate.copy(secondaryFontFamily = it)) }
+                            onSelect = { onUpdate(editingTemplate.copy(secondaryFontFamily = it)) },
+                            customFonts = customFonts,
+                            onImportFont = launchFontPicker,
+                            onDeleteCustomFont = { fontToDelete = it }
                         )
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             Text("الآية الإنجليزية:", fontSize = 11.sp, color = bento.textSecondary)
@@ -887,6 +934,71 @@ CollapsibleSection(
             )
         }
 
+        // v1.9.1: name dialog for a picked font file, then the ViewModel
+        // imports it into private storage.
+        pendingFontUri?.let { uri ->
+            AlertDialog(
+                onDismissRequest = { pendingFontUri = null },
+                title = { Text("استيراد خط (Import font)") },
+                text = {
+                    Column {
+                        OutlinedTextField(
+                            value = fontNameInput,
+                            onValueChange = { fontNameInput = it },
+                            label = { Text("اسم الخط (Font name)") },
+                            singleLine = true
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            "سيظهر الخط بهذا الاسم في قائمتي الخطوط العربية والإنجليزية، ويعمل في المعاينة وNDI وصفحات HTTP.",
+                            fontSize = 11.sp, color = bento.textSecondary
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(onClick = {
+                        onImportCustomFont(uri.toString(), fontNameInput)
+                        pendingFontUri = null
+                    }) { Text("استيراد") }
+                },
+                dismissButton = { TextButton(onClick = { pendingFontUri = null }) { Text("إلغاء") } }
+            )
+        }
+
+        // v1.9.1: delete an imported font (styles using it fall back to the
+        // system typeface until another font is picked).
+        fontToDelete?.let { font ->
+            AlertDialog(
+                onDismissRequest = { fontToDelete = null },
+                title = { Text("حذف الخط «${font.name}»؟") },
+                text = { Text("سيتم حذف ملف الخط من الجهاز. الأنماط التي تستخدمه ستعود إلى خط النظام حتى تختار خطاً آخر.") },
+                confirmButton = {
+                    Button(onClick = { onDeleteCustomFont(font); fontToDelete = null }) { Text("حذف") }
+                },
+                dismissButton = { TextButton(onClick = { fontToDelete = null }) { Text("إلغاء") } }
+            )
+        }
+
+        // v1.9.1: updating a FACTORY style — the app re-supplies shipped
+        // styles on every launch, so the edit is saved as the user's own
+        // copy under the same name (and the highlight moves to the copy).
+        if (showFactoryUpdateDialog) {
+            AlertDialog(
+                onDismissRequest = { showFactoryUpdateDialog = false },
+                title = { Text("تحديث نمط جاهز (Factory style)") },
+                text = {
+                    Text("هذا النمط من الأنماط الجاهزة التي يجدّدها التطبيق مع كل تشغيل، فلا يمكن الكتابة فوقه مباشرة. سيتم حفظ تعديلاتك كنسختك الخاصة بنفس الاسم، وستصبح هي النمط المحدد.")
+                },
+                confirmButton = {
+                    Button(onClick = {
+                        onUpdateStyleInPlace(editorTab == 1)
+                        showFactoryUpdateDialog = false
+                    }) { Text("حفظ كنسختي") }
+                },
+                dismissButton = { TextButton(onClick = { showFactoryUpdateDialog = false }) { Text("إلغاء") } }
+            )
+        }
+
         // Long-press style menu: export / update-from-import / delete (full user control).
         styleMenuTpl?.let { tpl ->
             AlertDialog(
@@ -1006,14 +1118,81 @@ CollapsibleSection(
      */
     private fun bundledFontFamily(context: Context, family: String): FontFamily {
         if (family == ArabicFonts.SYSTEM) return FontFamily.Default
-        return editorFontFamilyCache.getOrPut(family) {
-            val bundled = BundledFonts.find(family) ?: return FontFamily.Default
+        val bundled = BundledFonts.find(family)
+        if (bundled != null) {
+            return editorFontFamilyCache.getOrPut(family) {
+                try {
+                    FontFamily(android.graphics.Typeface.createFromAsset(context.assets, bundled.asset400))
+                } catch (_: Exception) {
+                    FontFamily.Default
+                }
+            }
+        }
+        // v1.9.1: user-imported font from private storage. Deliberately NOT
+        // cached: the file under a name can change (delete + re-import).
+        val custom = com.arabicchristianmedia.model.CustomFonts.find(family)
+        val file = custom?.let { com.arabicchristianmedia.server.FontStore(context).fileFor(it) }
+        return if (file != null) {
             try {
-                FontFamily(android.graphics.Typeface.createFromAsset(context.assets, bundled.asset400))
+                FontFamily(android.graphics.Typeface.createFromFile(file))
             } catch (_: Exception) {
                 FontFamily.Default
             }
+        } else {
+            FontFamily.Default
         }
+    }
+
+    /**
+     * v1.9.1: the imported-fonts section shared by both font dropdowns —
+     * the user's own fonts (each rendered in its typeface, with a delete
+     * button) plus the "import a font" action that opens the file picker.
+     */
+    @Composable
+    private fun CustomFontMenuItems(
+        customFonts: List<com.arabicchristianmedia.model.CustomFont>,
+        onSelect: (String) -> Unit,
+        onImportFont: () -> Unit,
+        onDeleteCustomFont: (com.arabicchristianmedia.model.CustomFont) -> Unit,
+        closeMenu: () -> Unit
+    ) {
+        val context = LocalContext.current
+        if (customFonts.isNotEmpty()) {
+            DropdownMenuItem(
+                text = { Text("خطوطي المستوردة (My fonts)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = LocalBentoColors.current.textSecondary) },
+                onClick = {},
+                enabled = false
+            )
+            customFonts.forEach { font ->
+                val itemFamily = remember(font.name) { bundledFontFamily(context, font.name) }
+                DropdownMenuItem(
+                    text = { Text(font.name, fontFamily = itemFamily, fontSize = 14.sp) },
+                    onClick = { onSelect(font.name); closeMenu() },
+                    trailingIcon = {
+                        IconButton(onClick = { closeMenu(); onDeleteCustomFont(font) }) {
+                            Icon(
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = "حذف الخط (Delete font)",
+                                tint = LocalBentoColors.current.textSecondary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                )
+            }
+        }
+        DropdownMenuItem(
+            text = { Text("استيراد خط… (Import font…)", fontSize = 13.sp, fontWeight = FontWeight.SemiBold) },
+            onClick = { closeMenu(); onImportFont() },
+            leadingIcon = {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = null,
+                    tint = LocalBentoColors.current.primary,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        )
     }
 
     /**
@@ -1022,7 +1201,13 @@ CollapsibleSection(
      */
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
-    private fun FontDropdown(selected: String, onSelect: (String) -> Unit) {
+    private fun FontDropdown(
+        selected: String,
+        onSelect: (String) -> Unit,
+        customFonts: List<com.arabicchristianmedia.model.CustomFont>,
+        onImportFont: () -> Unit,
+        onDeleteCustomFont: (com.arabicchristianmedia.model.CustomFont) -> Unit
+    ) {
         val context = LocalContext.current
         var expanded by remember { mutableStateOf(false) }
         val selectedFamily = remember(selected) { bundledFontFamily(context, selected) }
@@ -1051,6 +1236,13 @@ CollapsibleSection(
                         onClick = { onSelect(name); expanded = false }
                     )
                 }
+                CustomFontMenuItems(
+                    customFonts = customFonts,
+                    onSelect = onSelect,
+                    onImportFont = onImportFont,
+                    onDeleteCustomFont = onDeleteCustomFont,
+                    closeMenu = { expanded = false }
+                )
             }
         }
     }
@@ -1061,7 +1253,13 @@ CollapsibleSection(
      */
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
-    private fun LatinFontDropdown(selected: String, onSelect: (String) -> Unit) {
+    private fun LatinFontDropdown(
+        selected: String,
+        onSelect: (String) -> Unit,
+        customFonts: List<com.arabicchristianmedia.model.CustomFont>,
+        onImportFont: () -> Unit,
+        onDeleteCustomFont: (com.arabicchristianmedia.model.CustomFont) -> Unit
+    ) {
         val context = LocalContext.current
         var expanded by remember { mutableStateOf(false) }
         val selectedFamily = remember(selected) { bundledFontFamily(context, selected) }
@@ -1090,6 +1288,13 @@ CollapsibleSection(
                         onClick = { onSelect(name); expanded = false }
                     )
                 }
+                CustomFontMenuItems(
+                    customFonts = customFonts,
+                    onSelect = onSelect,
+                    onImportFont = onImportFont,
+                    onDeleteCustomFont = onDeleteCustomFont,
+                    closeMenu = { expanded = false }
+                )
             }
         }
     }

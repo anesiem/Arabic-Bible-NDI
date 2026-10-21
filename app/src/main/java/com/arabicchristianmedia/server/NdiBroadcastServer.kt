@@ -2648,8 +2648,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     private fun getBestTypeface(family: String, textStyle: Int): Typeface {
         val cacheKey = "$family|$textStyle"
         typefaceCache[cacheKey]?.let { return it }
+        // v1.9.1: only bundled-asset typefaces are cached. A custom font can
+        // be imported/deleted under the same family name at runtime, and an
+        // unknown family must not cache its system fallback — either would
+        // freeze the wrong typeface for the rest of the process.
+        val bundled = BundledFonts.find(family)
         val result = try {
-            val bundled = BundledFonts.find(family)
+            val custom = if (bundled == null) com.arabicchristianmedia.model.CustomFonts.find(family) else null
             if (bundled != null) {
                 // Bundled Google Font (assets/fonts, fully offline). Prefer the true
                 // bold file when bold was requested; synthesize italic (Arabic has no
@@ -2661,6 +2666,16 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 val remainingStyle =
                     if (assetPath == bundled.asset700) textStyle and Typeface.BOLD.inv() else textStyle
                 if (remainingStyle == Typeface.NORMAL) base else Typeface.create(base, remainingStyle)
+            } else if (custom != null) {
+                // v1.9.1: user-imported font (private storage, single weight —
+                // bold/italic are synthesized by Typeface.create()).
+                val file = FontStore(context).fileFor(custom)
+                if (file != null) {
+                    val base = Typeface.createFromFile(file)
+                    if (textStyle == Typeface.NORMAL) base else Typeface.create(base, textStyle)
+                } else {
+                    Typeface.create(Typeface.DEFAULT, textStyle)
+                }
             } else {
                 // "System" or unknown family: Android system default.
                 Typeface.create(Typeface.DEFAULT, textStyle)
@@ -2672,7 +2687,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 Typeface.DEFAULT
             }
         }
-        typefaceCache[cacheKey] = result
+        if (bundled != null) typefaceCache[cacheKey] = result
         return result
     }
 
@@ -2695,6 +2710,17 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                     .append(f700).append("') format('truetype');}")
             }
         }
+        // v1.9.1: user-imported fonts (single weight; the 700 rule points at
+        // the same file and the browser synthesizes the extra weight).
+        for (cf in com.arabicchristianmedia.model.CustomFonts.all) {
+            val format = if (cf.ext == "otf") "opentype" else "truetype"
+            sb.append("@font-face{font-family:'").append(cf.name)
+                .append("';font-style:normal;font-weight:400;font-display:swap;src:url('/fonts/")
+                .append(cf.serveName).append("') format('").append(format).append("');}")
+            sb.append("@font-face{font-family:'").append(cf.name)
+                .append("';font-style:normal;font-weight:700;font-display:swap;src:url('/fonts/")
+                .append(cf.serveName).append("') format('").append(format).append("');}")
+        }
         return sb.toString()
     }
 
@@ -2709,7 +2735,37 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     private fun serveFontFile(out: OutputStream, requested: String) {
         val writer = PrintWriter(out)
         val name = requested.substringAfterLast('/').trim()
-        if (!name.endsWith(".ttf") || name !in fontAssetFiles) {
+        // v1.9.1: user-imported fonts are served from private storage under
+        // "custom-<id>.<ext>", allowlisted against the live registry.
+        if (name.startsWith("custom-")) {
+            val custom = com.arabicchristianmedia.model.CustomFonts.all
+                .firstOrNull { it.serveName == name }
+            val file = custom?.let { FontStore(context).fileFor(it) }
+            if (custom == null || file == null) {
+                writer.print("HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n")
+                writer.flush()
+                return
+            }
+            try {
+                val bytes = file.readBytes()
+                writer.print("HTTP/1.1 200 OK\r\n")
+                writer.print("Content-Type: font/${if (custom.ext == "otf") "otf" else "ttf"}\r\n")
+                writer.print("Content-Length: ${bytes.size}\r\n")
+                writer.print("Cache-Control: public, max-age=31536000, immutable\r\n")
+                writer.print("Access-Control-Allow-Origin: *\r\n")
+                writer.print("Connection: close\r\n\r\n")
+                writer.flush()
+                out.write(bytes)
+                out.flush()
+            } catch (e: Exception) {
+                try {
+                    writer.print("HTTP/1.1 500 Internal Server Error\r\nConnection: close\r\n\r\n")
+                    writer.flush()
+                } catch (_: Exception) { /* ignore */ }
+            }
+            return
+        }
+        if (!(name.endsWith(".ttf") || name.endsWith(".otf")) || name !in fontAssetFiles) {
             writer.print("HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n")
             writer.flush()
             return

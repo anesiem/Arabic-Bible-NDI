@@ -1082,6 +1082,14 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             _uiState.value = _uiState.value.copy(statusMessage = "أدخل اسماً للخط (Enter a name for the font)")
             return
         }
+        if (com.arabicchristianmedia.model.BundledFonts.find(finalName) != null ||
+            finalName == com.arabicchristianmedia.model.ArabicFonts.SYSTEM
+        ) {
+            _uiState.value = _uiState.value.copy(
+                statusMessage = "هذا الاسم محجوز لخط مدمج — اختر اسماً آخر (That name belongs to a bundled font — pick another)"
+            )
+            return
+        }
         val imported = store.importFromUri(uri, finalName)
         if (imported == null) {
             _uiState.value = _uiState.value.copy(
@@ -1311,8 +1319,8 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
 
     /**
      * "Save as": create a NEW style in the current tab's collection from the
-     * working values. Saved styles are never updated in place. The new style
-     * is highlighted and used immediately.
+     * working values. (v1.9.1 adds updateStyleInPlace for overwriting the
+     * highlighted user style; Save As remains the way to fork a style.)
      */
     fun saveAsNewTemplate(name: String, base: LowerThirdTemplate, isFullScreen: Boolean) {
         val newTemplate = base.copy(
@@ -1344,6 +1352,60 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             templateRepo.setActiveTemplateId(newTemplate.id)
             templateRepo.setWorkingDirty(false, false)
             broadcastServer.updateTemplate(newTemplate)
+            triggerAllFrames()
+        }
+    }
+
+    /**
+     * v1.9.1: "Update current style" (Ashraf's request — revises the v1.6
+     * save-as-new-only rule). Writes the working values back into the
+     * highlighted style: same id, same name, same position, highlight kept,
+     * dirty cleared.
+     *
+     * Factory styles are re-supplied from code on every launch, so an edit
+     * to one is saved as the user's own copy under the same name (the
+     * editor explains this before calling us) and the highlight moves to
+     * the copy.
+     */
+    fun updateStyleInPlace(isFullScreen: Boolean) {
+        val state = _uiState.value
+        val highlightId = if (isFullScreen) state.highlightedShowStyleId else state.highlightedLowerStyleId
+            ?: return
+        val saved = state.templates.firstOrNull {
+            it.id == highlightId && it.isFullScreen == isFullScreen
+        } ?: return
+        val working = if (isFullScreen) state.activeShowTemplate else state.activeTemplate
+
+        if (TemplateRepository.isFactoryStyleId(highlightId)) {
+            saveAsNewTemplate(saved.name, working, isFullScreen)
+            _uiState.value = _uiState.value.copy(
+                statusMessage = "تم حفظ تعديلاتك كنسختك الخاصة من «${saved.name}»"
+            )
+            return
+        }
+
+        val updated = working.copy(id = highlightId, name = saved.name, isFullScreen = isFullScreen)
+        val newList = TemplateRepository.updatedTemplates(state.templates, updated)
+        templateRepo.saveTemplates(newList)
+        templateRepo.saveWorkingTemplate(updated)
+        templateRepo.setWorkingDirty(isFullScreen, false)
+        if (isFullScreen) {
+            _uiState.value = _uiState.value.copy(
+                templates = newList,
+                activeShowTemplate = updated,
+                showWorkingDirty = false,
+                statusMessage = "تم تحديث النمط «${saved.name}»"
+            )
+            broadcastServer.updateShowTemplate(updated)
+            nativeSender.triggerFrame(NdiNativeSender.FEED_FULL, true)
+        } else {
+            _uiState.value = _uiState.value.copy(
+                templates = newList,
+                activeTemplate = updated,
+                lowerWorkingDirty = false,
+                statusMessage = "تم تحديث النمط «${saved.name}»"
+            )
+            broadcastServer.updateTemplate(updated)
             triggerAllFrames()
         }
     }

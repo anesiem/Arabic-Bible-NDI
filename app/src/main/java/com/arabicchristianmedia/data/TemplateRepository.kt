@@ -41,6 +41,20 @@ class TemplateRepository(context: Context) {
             "tpl_fs_starlit", "tpl_fs_garden", "tpl_fs_candle"
         )
 
+        /** v1.9.1: shipped styles (the current set, or any previous shipped
+         * set) can never be overwritten in place — the loader re-supplies
+         * them from code on every launch. */
+        fun isFactoryStyleId(id: String?): Boolean =
+            id != null && (DEFAULT_TEMPLATES.any { it.id == id } || id in LEGACY_FACTORY_IDS)
+
+        /** v1.9.1: the style list with the same-id entry replaced by
+         * [updated], order preserved. Pure — unit-tested. */
+        fun updatedTemplates(
+            list: List<LowerThirdTemplate>,
+            updated: LowerThirdTemplate
+        ): List<LowerThirdTemplate> =
+            list.map { if (it.id == updated.id) updated else it }
+
         val DEFAULT_TEMPLATES = listOf(
         // v1.9 redesign: 38 shipped styles as one designed set — motion-first,
         // harmonious color families, varied Arabic + Latin fonts, all 61 fields explicit.

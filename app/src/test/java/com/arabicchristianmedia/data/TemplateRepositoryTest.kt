@@ -347,4 +347,39 @@ class TemplateRepositoryTest {
         assertFalse(imported.secondaryReferenceIsBold)
         assertFalse(imported.secondaryReferenceIsItalic)
     }
+
+    // ── v1.9.1: update style in place ───────────────────────────────────
+
+    @Test
+    fun updatedTemplatesReplacesSameIdPreservingOrder() {
+        val a = baseTemplate("tpl_100", false)
+        val b = baseTemplate("tpl_200", false)
+        val c = baseTemplate("tpl_300", true)
+        val editedB = b.copy(verseFontSize = 99, textColorHex = "#123456")
+        val result = TemplateRepository.updatedTemplates(listOf(a, b, c), editedB)
+        assertEquals("list size must not change on in-place update", 3, result.size)
+        assertEquals("order is preserved (first)", a, result[0])
+        assertEquals("the same-id entry is replaced by the edited values", editedB, result[1])
+        assertEquals("order is preserved (last)", c, result[2])
+    }
+
+    @Test
+    fun updatedTemplatesWithUnknownIdChangesNothing() {
+        val a = baseTemplate("tpl_100", false)
+        val stranger = baseTemplate("tpl_999", false)
+        val result = TemplateRepository.updatedTemplates(listOf(a), stranger)
+        assertEquals("an unknown id must not be inserted by an update", listOf(a), result)
+    }
+
+    @Test
+    fun factoryStyleIdsAreDetected() {
+        val factoryId = TemplateRepository.DEFAULT_TEMPLATES[0].id
+        assertTrue("a shipped style id is factory", TemplateRepository.isFactoryStyleId(factoryId))
+        assertTrue(
+            "a previous shipped set id is factory",
+            TemplateRepository.isFactoryStyleId(TemplateRepository.LEGACY_FACTORY_IDS.first())
+        )
+        assertFalse("a user style id (tpl_<timestamp>) is not factory", TemplateRepository.isFactoryStyleId("tpl_1730000000000"))
+        assertFalse("null is not factory", TemplateRepository.isFactoryStyleId(null))
+    }
 }

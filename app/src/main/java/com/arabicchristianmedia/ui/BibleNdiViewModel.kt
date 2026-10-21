@@ -207,6 +207,9 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         broadcastServer.onClearVerse = {
             clearBroadcast()
         }
+        broadcastServer.onSetOnAir = { on ->
+            setOnAir(on)
+        }
         broadcastServer.onListVideos = {
             listBackgroundVideos()
         }
@@ -783,6 +786,20 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         triggerAllFrames()
     }
 
+    /**
+     * v1.9.1: absolute ON AIR control for remote surfaces (the /remote page
+     * mirrors the Library ON AIR button). Same semantics as [toggleLive]:
+     * off blanks every output but retains the verse; on brings it back.
+     */
+    fun setOnAir(on: Boolean) {
+        _uiState.value = _uiState.value.copy(
+            isLiveOnAir = on,
+            statusMessage = if (on) "LIVE ON AIR (NDI Streaming)" else "BROADCAST CLEARED (Transparent)"
+        )
+        broadcastServer.setLiveState(on)
+        triggerAllFrames()
+    }
+
     fun clearBroadcast() {
         _uiState.value = _uiState.value.copy(
             isLiveOnAir = false,
@@ -809,6 +826,12 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
                 isLiveOnAir = true,
                 statusMessage = "Remote trigger: ${verse.getFormattedArabicCitation()}"
             )
+
+            // v1.9.1 (#14): keep the Library reader in sync, exactly like a
+            // sermon-row tap — the operator who walks back to the tablet
+            // finds the reader on the triggered verse, highlighted live.
+            // Silent: no tab switch is forced.
+            syncReaderToVerse(verse)
 
             // Take live on the requested target(s).
             // For now, "lower"/"show"/"both" all use the shared verse state;

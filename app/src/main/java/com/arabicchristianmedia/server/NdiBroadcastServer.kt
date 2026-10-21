@@ -90,6 +90,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
      */
     var onTriggerVerse: ((bookId: String, chapter: Int, verse: Int, target: String) -> Boolean)? = null
     var onClearVerse: (() -> Unit)? = null
+    var onSetOnAir: ((Boolean) -> Unit)? = null
     var onListVideos: (() -> List<VideoInfo>)? = null
 
     /** Opaque video ID + display info for /api/videos. */
@@ -247,7 +248,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                     for ((writer, _) in sseClients) {
                         try {
                             synchronized(writer) {
-                                writer.print(": ping\n\n")
+                                writer.print("event: ping\ndata: 1\n\n")
                                 writer.flush()
                             }
                             if (writer.checkError()) dead.add(writer to false)
@@ -594,6 +595,15 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 cleanPath == "/api/clear" -> {
                     serveApiClear(out)
                 }
+                cleanPath == "/api/books" -> {
+                    serveApiBooks(out)
+                }
+                cleanPath == "/api/chapter" -> {
+                    serveApiChapter(out, fullPath)
+                }
+                cleanPath == "/api/onair" -> {
+                    serveApiOnAir(out, fullPath)
+                }
                 cleanPath == "/api/videos" -> {
                     serveApiVideos(out)
                 }
@@ -688,6 +698,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             put("arabicCitation", formattedCitation)
             put("englishText", verse?.englishText ?: "")
             put("englishCitation", verse?.getFormattedEnglishCitation() ?: "")
+            put("bookId", verse?.bookId ?: "")
+            put("chapterNum", verse?.chapter ?: 0)
+            put("verseNum", verse?.verse ?: 0)
             put("bilingual", tpl.languageMode == LanguageMode.BOTH)
             put("languageMode", tpl.languageMode.name)
             put("style", tpl.style.name)
@@ -923,7 +936,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
     .anim-golden-rays {
       background: radial-gradient(circle at 50% 50%, rgba(251, 191, 36, 0.4) 0%, transparent 70%),
-                  linear-gradient(135deg, rgba(217, 119, 6, 0.3) 0%, rgba(251, 191, 36, 0.5) 50%, rgba(217, 119, 6, 0.3) 100%);
+                  linear-gradient(135deg, rgba(217, 119, 6, 1) 0%, rgba(251, 191, 36, 1) 50%, rgba(217, 119, 6, 1) 100%);
       background-size: 400% 400%;
       animation: smoothFlow 15s linear infinite;
     }
@@ -933,13 +946,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     }
 
     .anim-blue-waves {
-      background: linear-gradient(120deg, rgba(30, 58, 138, 0.4) 0%, rgba(14, 165, 233, 0.6) 50%, rgba(30, 58, 138, 0.4) 100%);
+      background: linear-gradient(120deg, rgba(30, 58, 138, 1) 0%, rgba(14, 165, 233, 1) 50%, rgba(30, 58, 138, 1) 100%);
       background-size: 300% 300%;
       animation: smoothFlow 20s linear infinite;
     }
 
     .anim-candle-glow {
-      background: radial-gradient(circle at 50% 50%, rgba(245, 158, 11, 0.6) 0%, rgba(120, 53, 15, 0.3) 70%);
+      background: radial-gradient(circle at 50% 50%, rgba(245, 158, 11, 1) 0%, rgba(120, 53, 15, 1) 70%);
       animation: candleBreath 5s ease-in-out infinite alternate;
     }
     @keyframes candleBreath {
@@ -948,31 +961,41 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     }
 
     .anim-purple-silk {
-      background: linear-gradient(45deg, rgba(88, 28, 135, 0.4) 0%, rgba(192, 132, 252, 0.6) 50%, rgba(88, 28, 135, 0.4) 100%);
+      background: linear-gradient(45deg, rgba(88, 28, 135, 1) 0%, rgba(192, 132, 252, 1) 50%, rgba(88, 28, 135, 1) 100%);
       background-size: 400% 400%;
       animation: smoothFlow 18s linear infinite;
     }
 
     .anim-emerald-waves {
-      background: linear-gradient(45deg, rgba(6, 78, 59, 0.4) 0%, rgba(52, 211, 153, 0.6) 50%, rgba(6, 78, 59, 0.4) 100%);
+      background: linear-gradient(45deg, rgba(6, 78, 59, 1) 0%, rgba(52, 211, 153, 1) 50%, rgba(6, 78, 59, 1) 100%);
       background-size: 400% 400%;
       animation: smoothFlow 20s linear infinite;
     }
 
     .anim-rose-glow {
-      background: radial-gradient(circle at 50% 50%, rgba(251, 113, 133, 0.5) 0%, rgba(136, 19, 55, 0.3) 100%);
+      background: radial-gradient(circle at 50% 50%, rgba(251, 113, 133, 1) 0%, rgba(136, 19, 55, 1) 100%);
       animation: candleBreath 8s ease-in-out infinite alternate;
     }
 
     .anim-gold-particles {
-      background: linear-gradient(135deg, rgba(120, 53, 15, 0.4) 0%, rgba(252, 211, 77, 0.5) 50%, rgba(120, 53, 15, 0.4) 100%);
+      background: linear-gradient(135deg, rgba(120, 53, 15, 1) 0%, rgba(252, 211, 77, 1) 50%, rgba(120, 53, 15, 1) 100%);
       background-size: 300% 300%;
       animation: smoothFlow 15s linear infinite;
     }
 
     .anim-particles {
-      background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.1) 0%, transparent 100%);
-      animation: particleBreath 10s ease-in-out infinite alternate;
+      background: linear-gradient(135deg, rgba(15, 23, 42, 1) 0%, rgba(56, 189, 248, 1) 50%, rgba(15, 23, 42, 1) 100%);
+      background-size: 300% 300%;
+      animation: smoothFlow 15s linear infinite;
+    }
+
+    /* Card-safe variants of the breathing radial gradients: same paints,
+       no opacity/transform keyframes (those must never animate the card). */
+    .anim-candle-glow-still {
+      background: radial-gradient(circle at 50% 50%, rgba(245, 158, 11, 1) 0%, rgba(120, 53, 15, 1) 70%);
+    }
+    .anim-rose-glow-still {
+      background: radial-gradient(circle at 50% 50%, rgba(251, 113, 133, 1) 0%, rgba(136, 19, 55, 1) 100%);
     }
     @keyframes particleBreath {
       0% { filter: brightness(0.8); }
@@ -1142,6 +1165,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     let revealToken = 0;
     let lastFitFn = null;
     let activeParticleKey = null;
+    let cardAnimClass = null; // v1.9.1 (#13): gradient class currently on the card (Lower placement)
+    let lastSseSeen = Date.now();
+    let sseWatchdog = null;
 
     // v1.9.1 (#11): the font faces a state depends on — shared by the apply
     // path (finishApply, inside applyData) and the page-load warm-up below.
@@ -1184,7 +1210,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       // style did not change — only the words did.
       const styleKey = JSON.stringify(data, function(k, v) {
         return (k === 'arabicText' || k === 'englishText' || k === 'arabicCitation' ||
-                k === 'englishCitation' || k === 'stateVersion') ? undefined : v;
+                k === 'englishCitation' || k === 'stateVersion' || k === 'bookId' ||
+                k === 'chapterNum' || k === 'verseNum') ? undefined : v;
       });
 
       const isFull = data.isFullScreen || $forceFullScreen;
@@ -1489,6 +1516,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       // (was: accent-colored chip background).
       crossEmblem.style.backgroundColor = 'transparent';
       crossEmblem.style.color = refColor;
+      // v1.9.1 (#13): emoji-first stack so a symbol emblem (e.g. the sun)
+      // renders as a COLOR emoji like on NDI, not the text font's
+      // monochrome glyph.
+      crossEmblem.style.fontFamily = "'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', sans-serif";
       // v1.7: free user emblem (emoji/symbol); empty = hidden.
       if (data.emblem) {
         crossEmblem.textContent = data.emblem;
@@ -1666,6 +1697,59 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         animBgLayer.style.animationDuration = '';
       }
 
+      // v1.9.1 (#13): animated backgrounds at NATIVE strength and placement.
+      // The NDI renderer paints the animated gradient AS the background —
+      // the type's two colors at bgOpacity, replacing the flat fill (Full:
+      // the whole frame; Lower: inside the card only). The CSS stops above
+      // are now the same full-strength colors; here the gradient is placed
+      // where NDI paints it instead of sitting as a wash behind a flat card.
+      const gradClassFor = {
+        golden_rays: 'anim-golden-rays', blue_waves: 'anim-blue-waves',
+        candle_glow: 'anim-candle-glow', purple_silk: 'anim-purple-silk',
+        emerald_waves: 'anim-emerald-waves', rose_glow: 'anim-rose-glow',
+        gold_particles: 'anim-gold-particles', particles: 'anim-particles'
+      }[animType];
+      // Breathing radial keyframes animate opacity/transform — safe on the
+      // full-frame layer, never on the card; the card gets the still twin.
+      const cardClassFor = {
+        candle_glow: 'anim-candle-glow-still', rose_glow: 'anim-rose-glow-still'
+      }[animType] || gradClassFor;
+      if (cardAnimClass && cardAnimClass !== cardClassFor) {
+        cardBox.classList.remove(cardAnimClass);
+        cardBox.style.animationPlayState = '';
+        cardBox.style.animationDuration = '';
+        cardAnimClass = null;
+      }
+      if (gradClassFor && data.isPureTransparentBackground) {
+        // Toggle on = no background at all (native paints none either).
+        animBgLayer.style.opacity = '0';
+      }
+      if (gradClassFor && !data.isPureTransparentBackground) {
+        const bgOp = data.bgOpacity !== undefined ? data.bgOpacity : 0.85;
+        if (isFull) {
+          // The layer IS the frame background; the card goes clear so the
+          // gradient is not buried under the flat fill.
+          animBgLayer.style.opacity = bgOp;
+          cardBox.style.backgroundColor = 'transparent';
+          cardBox.style.backgroundImage = 'none';
+        } else if (cardClassFor) {
+          animBgLayer.className = 'animated-bg-layer';
+          animBgLayer.style.opacity = '0';
+          cardBox.style.background = '';
+          cardBox.style.backgroundColor = '';
+          cardBox.classList.add(cardClassFor);
+          cardAnimClass = cardClassFor;
+          if (animBaseDurations[animType]) {
+            if (!(animSpeed > 0)) {
+              cardBox.style.animationPlayState = 'paused';
+            } else {
+              cardBox.style.animationPlayState = 'running';
+              cardBox.style.animationDuration = (animBaseDurations[animType] / animSpeed) + 's';
+            }
+          }
+        }
+      }
+
       // 8. Entry Transitions
       // v1.9.1: preserve 'visible' across the class reset. Dropping it on
       // every update made each verse change fade out and back in over the
@@ -1698,16 +1782,33 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       // the current state unconditionally, or every update after an OS-kill
       // auto-resume is dropped as "stale" and the overlay freezes on the
       // pre-crash verse until a manual page refresh.
-      evtSource.onopen = function() { lastStateVersion = -1; };
+      evtSource.onopen = function() { lastStateVersion = -1; lastSseSeen = Date.now(); };
       evtSource.onmessage = function(e) {
+        lastSseSeen = Date.now();
         try {
           applyData(JSON.parse(e.data));
         } catch (err) {
           console.error('Failed to parse SSE payload', err);
         }
       };
+      // v1.9.1: heartbeat watchdog. A weak-Wi-Fi drop can leave the socket
+      // half-open: no error fires, no data arrives, and the page freezes on
+      // its last state (the stale-card trap). The server pings every 15s;
+      // if nothing — data or ping — is heard for 35s, force a reconnect,
+      // which re-syncs from the server's connect-time state push.
+      evtSource.addEventListener('ping', function() { lastSseSeen = Date.now(); });
+      if (sseWatchdog) clearInterval(sseWatchdog);
+      sseWatchdog = setInterval(function() {
+        if (Date.now() - lastSseSeen > 35000) {
+          try { evtSource.close(); } catch (e) { /* ignore */ }
+          clearInterval(sseWatchdog);
+          sseWatchdog = null;
+          connectSse();
+        }
+      }, 5000);
       evtSource.onerror = function() {
         evtSource.close();
+        if (sseWatchdog) { clearInterval(sseWatchdog); sseWatchdog = null; }
         setTimeout(connectSse, 2000);
       };
     }
@@ -1873,6 +1974,19 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         canvas.restore()
     }
 
+    /**
+     * v1.9.1 F3: ONE shared legibility floor for auto-fit. When the fitted
+     * verse size would fall below 24px, EVERY element (verse, citation,
+     * English verse, English citation) is boosted by the same factor, so the
+     * user-designed size ratios between them are preserved exactly. (The old
+     * per-element floors — 24/18/18/14 — distorted the citation:verse ratio
+     * on deep shrinks.) Ratio-preserving by construction.
+     */
+    private fun fitFloorBoost(tpl: LowerThirdTemplate, scale: Float, fitRatio: Float): Float {
+        val rawVerse = tpl.verseFontSize * 2f * scale * fitRatio
+        return if (rawVerse > 0.01f && rawVerse < 24f) 24f / rawVerse else 1f
+    }
+
     private fun buildFittedTextLayouts(
         tpl: LowerThirdTemplate,
         verseText: String,
@@ -1886,10 +2000,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         showEnglish: Boolean,
         fitRatio: Float,
     ): FittedTextLayouts? {
+        // v1.9.1 F3: shared ratio-preserving floor boost (see fitFloorBoost).
+        val floorBoost = fitFloorBoost(tpl, scale, fitRatio)
         // Setup TextPaint for multi-line wrapped text
         val verseTextPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
             color = try { Color.parseColor(tpl.textColorHex) } catch (e: Exception) { Color.WHITE }
-            textSize = (tpl.verseFontSize * 2f * scale * fitRatio).coerceAtLeast(24f)
+            textSize = tpl.verseFontSize * 2f * scale * fitRatio * floorBoost
             
             var textStyle = Typeface.NORMAL
             if (tpl.verseIsBold && tpl.verseIsItalic) textStyle = Typeface.BOLD_ITALIC
@@ -1937,7 +2053,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // startY + textSize*0.9, primary text starts 16*scale below that. The
         // old fixed 44*scale*fitRatio underestimated it, shifting everything
         // below (Arabic, English) down and eating the bottom padding.
-        val citationHeight = (tpl.referenceFontSize * 2f * scale * fitRatio).coerceAtLeast(18f) * 0.9f + 16f * scale
+        val citationHeight = (tpl.referenceFontSize * 2f * scale * fitRatio * floorBoost) * 0.9f + 16f * scale
 
         // Calculate bilingual secondary text if needed
         var secondaryLayout: StaticLayout? = null
@@ -1951,7 +2067,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             
             val secondaryTextPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = try { Color.parseColor(tpl.secondaryTextColorHex) } catch (e: Exception) { Color.LTGRAY }
-                textSize = (tpl.secondaryVerseFontSize * 2f * scale * fitRatio).coerceAtLeast(18f)
+                textSize = tpl.secondaryVerseFontSize * 2f * scale * fitRatio * floorBoost
                 
                 var secStyle = Typeface.NORMAL
                 if (tpl.secondaryVerseIsBold && tpl.secondaryVerseIsItalic) secStyle = Typeface.BOLD_ITALIC
@@ -1990,7 +2106,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 val secCitationText = "(" + activeVerse.getFormattedEnglishCitation() + ")"
                 val secCitationPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
                     color = try { Color.parseColor(tpl.secondaryReferenceColorHex) } catch (e: Exception) { Color.GRAY }
-                    textSize = (tpl.secondaryReferenceFontSize * 2f * scale * fitRatio).coerceAtLeast(14f)
+                    textSize = tpl.secondaryReferenceFontSize * 2f * scale * fitRatio * floorBoost
                     var citStyle = Typeface.NORMAL
                     if (tpl.secondaryReferenceIsBold && tpl.secondaryReferenceIsItalic) citStyle = Typeface.BOLD_ITALIC
                     else if (tpl.secondaryReferenceIsBold) citStyle = Typeface.BOLD
@@ -2099,10 +2215,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             canvas.drawColor(bgCol)
         }
 
-        // When off-air and rendering for transparent overlay, return 100% transparent alpha frame.
-        // Special Case: Full Show (Projector) should typically NOT be blanked even if not 'Live' for broadcast,
-        // as the projector usually remains active with a background or current verse.
-        if (!isLive && !isForStream && !tpl.isFullScreen) {
+        // When off-air, return a 100% transparent alpha frame for BOTH feeds
+        // (v1.9.1 F1: the old Full Show exemption kept the Full feed showing
+        // the verse after OFF AIR — removed; OFF AIR blanks every output).
+        if (!isLive && !isForStream) {
             return
         }
 
@@ -2432,7 +2548,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             // v1.8: In ENGLISH_ONLY, use the English citation color for clear design.
             val refColorHex = if (tpl.languageMode == LanguageMode.ENGLISH_ONLY) tpl.secondaryReferenceColorHex else tpl.referenceColorHex
             color = try { Color.parseColor(refColorHex) } catch (e: Exception) { Color.YELLOW }
-            textSize = (tpl.referenceFontSize * 2f * scale * fitRatio).coerceAtLeast(18f)
+            textSize = tpl.referenceFontSize * 2f * scale * fitRatio * fitFloorBoost(tpl, scale, fitRatio)
             
             var refStyle = Typeface.NORMAL
             if (tpl.referenceIsBold && tpl.referenceIsItalic) refStyle = Typeface.BOLD_ITALIC
@@ -3213,6 +3329,51 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         }
     }
 
+    /** GET /api/books — the book list for the /remote Bible browser. */
+    private fun serveApiBooks(out: OutputStream) {
+        val books = try { com.arabicchristianmedia.data.BibleRepository.allBooks } catch (e: Exception) { emptyList() }
+        val sb = StringBuilder()
+        sb.append("{\"ok\":true,\"books\":[")
+        books.forEachIndexed { i, b ->
+            if (i > 0) sb.append(",")
+            sb.append("{\"id\":\"${jsonEscape(b.id)}\",\"ar\":\"${jsonEscape(b.arabicName)}\",\"en\":\"${jsonEscape(b.englishName)}\",\"chapters\":${b.totalChapters}}")
+        }
+        sb.append("]}")
+        sendJson(out, 200, sb.toString())
+    }
+
+    /** GET /api/chapter?book=<bookId>&chapter=<n> — verses for the /remote browser. */
+    private fun serveApiChapter(out: OutputStream, fullPath: String) {
+        val params = parseQueryParams(fullPath)
+        val bookId = params["book"]
+        val chapter = params["chapter"]?.toIntOrNull()
+        if (bookId == null || chapter == null) {
+            sendJson(out, 400, "{\"ok\":false,\"error\":\"Provide ?book=<id>&chapter=<n>\"}")
+            return
+        }
+        val verses = try { com.arabicchristianmedia.data.BibleRepository.getVerses(bookId, chapter) } catch (e: Exception) { emptyList() }
+        val sb = StringBuilder()
+        sb.append("{\"ok\":true,\"bookId\":\"${jsonEscape(bookId)}\",\"chapter\":$chapter,\"verses\":[")
+        verses.forEachIndexed { i, v ->
+            if (i > 0) sb.append(",")
+            sb.append("{\"v\":${v.verse},\"ar\":\"${jsonEscape(v.arabicText)}\",\"en\":\"${jsonEscape(v.englishText)}\"}")
+        }
+        sb.append("]}")
+        sendJson(out, 200, sb.toString())
+    }
+
+    /**
+     * GET /api/onair?on=1|0 — absolute ON AIR control for remote surfaces.
+     * Mirrors the Library ON AIR button: off blanks the outputs but keeps
+     * the verse; on brings the same verse back.
+     */
+    private fun serveApiOnAir(out: OutputStream, fullPath: String) {
+        val params = parseQueryParams(fullPath)
+        val on = params["on"] == "1" || params["on"] == "true"
+        try { onSetOnAir?.invoke(on) } catch (e: Exception) { }
+        sendJson(out, 200, "{\"ok\":true,\"onAir\":$on}")
+    }
+
     /** GET /api/clear — clear the active verse (take outputs off-air). */
     private fun serveApiClear(out: OutputStream) {
         try { onClearVerse?.invoke() } catch (e: Exception) { }
@@ -3349,9 +3510,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     }
 
     /**
-     * GET /remote — phone-friendly remote control page (v1.8).
-     * One-handed operation, follows the device's light/dark theme,
-     * fully offline (served by the tablet, no external resources).
+     * GET /remote — the web REMOTE DEVICE (v1.9.1, reworked from the v1.8
+     * reference-typer). A Bible browser (book → chapter → tap a verse) plus
+     * an ON AIR button mirroring the master, exactly like a native remote:
+     * it never chooses outputs — the master decides what shows. Fully
+     * offline, follows the device's light/dark theme.
      */
     private fun serveRemotePage(out: OutputStream) {
         val html = """
@@ -3375,160 +3538,258 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   @media (prefers-color-scheme: light) {
     body { background: #f1f5f9; color: #0f172a; }
     .card { background: #ffffff; border-color: #e2e8f0; }
-    input { background: #f8fafc; border-color: #cbd5e1; color: #0f172a; }
-    .seg button { color: #475569; }
-    .seg button.active { background: #0f172a; color: #fff; }
+    input, select { background: #f8fafc; border-color: #cbd5e1; color: #0f172a; }
     .hint { color: #64748b; }
+    .chips button { border-color: #cbd5e1; color: #334155; }
+    .chips button.active { background: #0f172a; color: #fff; border-color: transparent; }
+    .vrow { border-color: #e2e8f0; }
   }
   @media (prefers-color-scheme: dark) {
     body { background: #0f172a; color: #f1f5f9; }
     .card { background: #1e293b; border-color: #334155; }
-    input { background: #0f172a; border-color: #475569; color: #f1f5f9; }
-    .seg button { color: #94a3b8; }
-    .seg button.active { background: #f1f5f9; color: #0f172a; }
+    input, select { background: #0f172a; border-color: #475569; color: #f1f5f9; }
     .hint { color: #94a3b8; }
+    .chips button { border-color: #475569; color: #cbd5e1; }
+    .chips button.active { background: #f1f5f9; color: #0f172a; border-color: transparent; }
+    .vrow { border-color: #334155; }
   }
-  header {
-    padding: 16px 20px 8px;
-    font-size: 20px; font-weight: 700;
-  }
+  header { padding: 16px 20px 8px; font-size: 20px; font-weight: 700; }
   header .sub { font-size: 13px; font-weight: 400; opacity: 0.7; margin-top: 2px; }
-  main { flex: 1; padding: 8px 16px 16px; display: flex; flex-direction: column; gap: 12px; max-width: 560px; width: 100%; margin: 0 auto; }
-  .card {
-    border: 1px solid; border-radius: 16px;
-    padding: 16px;
-  }
+  main { flex: 1; padding: 8px 16px 16px; display: flex; flex-direction: column; gap: 12px; max-width: 640px; width: 100%; margin: 0 auto; }
+  .card { border: 1px solid; border-radius: 16px; padding: 16px; }
   label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 8px; opacity: 0.8; }
-  input {
-    width: 100%; font-size: 20px; padding: 14px 16px;
-    border: 1px solid; border-radius: 12px;
-    outline: none;
+  input, select {
+    width: 100%; font-size: 18px; padding: 13px 14px;
+    border: 1px solid; border-radius: 12px; outline: none;
   }
-  input:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.25); }
-  .seg { display: flex; gap: 8px; }
-  .seg button {
-    flex: 1; padding: 12px 8px; font-size: 15px; font-weight: 600;
-    border: 1px solid; border-radius: 12px; background: transparent;
-    cursor: pointer;
-  }
-  .seg button.active { border-color: transparent; }
+  input:focus, select:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.25); }
   .btn {
-    width: 100%; padding: 18px; font-size: 20px; font-weight: 700;
+    width: 100%; padding: 16px; font-size: 19px; font-weight: 700;
     border: none; border-radius: 16px; cursor: pointer;
-    background: #16a34a; color: #fff;
-    min-height: 64px;
+    background: #16a34a; color: #fff; min-height: 60px;
   }
   .btn:active { transform: scale(0.98); opacity: 0.9; }
-  .btn-clear {
-    background: transparent; color: inherit;
-    border: 2px solid; font-size: 17px; padding: 14px;
+  .onair {
+    width: 100%; padding: 16px; font-size: 18px; font-weight: 800;
+    border: none; border-radius: 16px; cursor: pointer; min-height: 60px;
+    letter-spacing: 0.4px;
   }
-  .status {
-    text-align: center; font-size: 14px; min-height: 22px;
-    font-weight: 600;
-  }
+  .onair.on { background: #16a34a; color: #fff; }
+  .onair.off { background: #dc2626; color: #fff; }
+  .onair:active { transform: scale(0.98); opacity: 0.9; }
+  .status { text-align: center; font-size: 14px; min-height: 22px; font-weight: 600; }
   .status.ok { color: #16a34a; }
   .status.err { color: #dc2626; }
   .hint { font-size: 12px; margin-top: 8px; line-height: 1.5; }
   .now { font-size: 15px; text-align: center; padding: 4px 0; opacity: 0.85; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+  .chips button {
+    width: 46px; padding: 9px 0; font-size: 15px; font-weight: 600;
+    border: 1px solid; border-radius: 10px; background: transparent; cursor: pointer;
+  }
+  .vlist { margin-top: 8px; max-height: 52vh; overflow-y: auto; }
+  .vrow { display: flex; gap: 10px; padding: 10px 8px; border-bottom: 1px solid; cursor: pointer; align-items: flex-start; }
+  .vrow:active { opacity: 0.7; }
+  .vrow.live { background: rgba(22,163,74,0.18); border-radius: 10px; }
+  .vn { font-weight: 800; min-width: 30px; text-align: center; opacity: 0.65; padding-top: 2px; }
+  .va { font-size: 17px; line-height: 1.8; }
+  .ve { font-size: 13px; opacity: 0.75; margin-top: 2px; line-height: 1.5; }
 </style>
 </head>
 <body>
 <header>
   📖 Bible Remote
-  <div class="sub">Arabic Bible NDI — live verse trigger</div>
+  <div class="sub">Arabic Bible NDI — remote device: tap a verse to show it</div>
 </header>
 <main>
   <div class="now" id="now">—</div>
+  <button class="onair off" id="onAirBtn" onclick="toggleOnAir()">OFF AIR</button>
   <div class="card">
-    <label for="ref">Bible reference</label>
+    <label for="bookSel">Browse the Bible — اختر سفراً</label>
+    <select id="bookSel"><option value="">Loading books…</option></select>
+    <div class="chips" id="chChips"></div>
+    <div class="vlist" id="vList"></div>
+  </div>
+  <div class="card">
+    <label for="ref">Quick reference</label>
     <input id="ref" type="text" inputmode="text" autocomplete="off"
            placeholder="John 3:16  •  يوحنا 3:16  •  Jn 3:16"
            enterkeyhint="go">
-    <div class="hint">English, Arabic, or abbreviation. Examples: <b>Rom 8:28</b>, <b>مزمور 23:1</b>, <b>1Jn 1:9</b></div>
+    <div class="hint">Or type a reference — English, Arabic, or abbreviation. Examples: <b>Rom 8:28</b>, <b>مزمور 23:1</b></div>
   </div>
-  <div class="card">
-    <label>Target output</label>
-    <div class="seg" id="targetSeg">
-      <button data-t="lower">Lower Third</button>
-      <button data-t="show">Full Show</button>
-      <button data-t="both" class="active">Both</button>
-    </div>
-  </div>
-  <button class="btn" id="goBtn" onclick="trigger()">▶ Show Verse</button>
-  <button class="btn btn-clear" onclick="clearVerse()">Clear (off-air)</button>
+  <button class="btn" id="goBtn" onclick="triggerRef()">▶ Show Verse</button>
   <div class="status" id="status"></div>
 </main>
 <script>
-  let target = 'both';
-  const seg = document.getElementById('targetSeg');
-  seg.addEventListener('click', e => {
-    const b = e.target.closest('button');
-    if (!b) return;
-    target = b.dataset.t;
-    seg.querySelectorAll('button').forEach(x => x.classList.toggle('active', x === b));
+  var books = [];
+  var curBookIdx = -1;
+  var curChapter = 0;
+  var live = { onAir: false, bookId: '', chapter: 0, verse: 0 };
+
+  var bookSel = document.getElementById('bookSel');
+  var chChips = document.getElementById('chChips');
+  var vList = document.getElementById('vList');
+  var refInput = document.getElementById('ref');
+  refInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') triggerRef(); });
+  refInput.addEventListener('focus', function() { refInput.select(); });
+  bookSel.addEventListener('change', function() {
+    var i = parseInt(bookSel.value, 10);
+    if (isNaN(i) || !books[i]) return;
+    curBookIdx = i;
+    renderChapters(books[i]);
+    loadChapter(1);
   });
-  const refInput = document.getElementById('ref');
-  refInput.addEventListener('keydown', e => { if (e.key === 'Enter') trigger(); });
-  // Select-all on focus so re-typing replaces (v2.0 pattern, applied here too).
-  refInput.addEventListener('focus', () => refInput.select());
 
   function setStatus(msg, cls) {
-    const el = document.getElementById('status');
+    var el = document.getElementById('status');
     el.textContent = msg;
     el.className = 'status ' + (cls || '');
   }
 
-  async function trigger() {
-    const ref = refInput.value.trim();
+  function loadBooks() {
+    fetch('/api/books').then(function(r) { return r.json(); }).then(function(j) {
+      if (!j.ok) { setStatus('Could not load books', 'err'); return; }
+      books = j.books;
+      var html = '';
+      for (var i = 0; i < books.length; i++) {
+        html += '<option value="' + i + '">' + books[i].ar + ' · ' + books[i].en + '</option>';
+      }
+      bookSel.innerHTML = html;
+      if (books.length) {
+        curBookIdx = 0;
+        bookSel.value = '0';
+        renderChapters(books[0]);
+        loadChapter(1);
+      }
+    }).catch(function() { setStatus('Network error loading books', 'err'); });
+  }
+
+  function renderChapters(book) {
+    var html = '';
+    for (var c = 1; c <= book.chapters; c++) {
+      html += '<button data-ch="' + c + '">' + c + '</button>';
+    }
+    chChips.innerHTML = html;
+    var btns = chChips.querySelectorAll('button');
+    for (var k = 0; k < btns.length; k++) {
+      btns[k].addEventListener('click', function() { loadChapter(parseInt(this.getAttribute('data-ch'), 10)); });
+    }
+  }
+
+  function markChapter() {
+    var btns = chChips.querySelectorAll('button');
+    for (var k = 0; k < btns.length; k++) {
+      btns[k].classList.toggle('active', parseInt(btns[k].getAttribute('data-ch'), 10) === curChapter);
+    }
+  }
+
+  function loadChapter(ch) {
+    if (curBookIdx < 0) return;
+    curChapter = ch;
+    markChapter();
+    var book = books[curBookIdx];
+    vList.innerHTML = '<div class="hint">Loading…</div>';
+    fetch('/api/chapter?book=' + encodeURIComponent(book.id) + '&chapter=' + ch)
+      .then(function(r) { return r.json(); })
+      .then(function(j) {
+        if (!j.ok) { vList.innerHTML = '<div class="hint">Could not load chapter</div>'; return; }
+        var html = '';
+        for (var i = 0; i < j.verses.length; i++) {
+          var v = j.verses[i];
+          html += '<div class="vrow" data-v="' + v.v + '"><div class="vn">' + v.v + '</div>' +
+                  '<div><div class="va" dir="rtl" lang="ar">' + escapeHtml(v.ar) + '</div>' +
+                  '<div class="ve">' + escapeHtml(v.en) + '</div></div></div>';
+        }
+        vList.innerHTML = html;
+        var rows = vList.querySelectorAll('.vrow');
+        for (var k = 0; k < rows.length; k++) {
+          rows[k].addEventListener('click', function() {
+            triggerVerse(parseInt(this.getAttribute('data-v'), 10));
+          });
+        }
+        markLiveRow();
+      })
+      .catch(function() { vList.innerHTML = '<div class="hint">Network error</div>'; });
+  }
+
+  function escapeHtml(t) {
+    return String(t || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function markLiveRow() {
+    var rows = vList.querySelectorAll('.vrow');
+    var book = books[curBookIdx];
+    var match = book && live.bookId === book.id && live.chapter === curChapter;
+    for (var k = 0; k < rows.length; k++) {
+      rows[k].classList.toggle('live', !!(match && parseInt(rows[k].getAttribute('data-v'), 10) === live.verse));
+    }
+  }
+
+  function triggerVerse(verseNum) {
+    if (curBookIdx < 0) return;
+    setStatus('Sending…', '');
+    fetch('/api/trigger?book=' + (curBookIdx + 1) + '&chapter=' + curChapter + '&verse=' + verseNum)
+      .then(function(r) { return r.json(); })
+      .then(function(j) {
+        if (j.ok) { setStatus('✓ On screen', 'ok'); pollNow(); }
+        else setStatus('✗ ' + (j.error || 'failed'), 'err');
+      })
+      .catch(function() { setStatus('✗ Network error', 'err'); });
+  }
+
+  function triggerRef() {
+    var ref = refInput.value.trim();
     if (!ref) { setStatus('Type a reference first', 'err'); refInput.focus(); return; }
     setStatus('Sending…', '');
-    try {
-      const r = await fetch('/api/trigger?ref=' + encodeURIComponent(ref) + '&target=' + target);
-      const j = await r.json();
-      if (j.ok) {
-        setStatus('✓ ' + ref + ' → ' + target, 'ok');
-        updateNow(ref);
-      } else {
-        setStatus('✗ ' + (j.error || 'failed'), 'err');
-      }
-    } catch (e) {
-      setStatus('✗ Network error', 'err');
+    fetch('/api/trigger?ref=' + encodeURIComponent(ref))
+      .then(function(r) { return r.json(); })
+      .then(function(j) {
+        if (j.ok) { setStatus('✓ ' + ref, 'ok'); pollNow(); }
+        else setStatus('✗ ' + (j.error || 'failed'), 'err');
+      })
+      .catch(function() { setStatus('✗ Network error', 'err'); });
+  }
+
+  function toggleOnAir() {
+    var want = !live.onAir;
+    fetch('/api/onair?on=' + (want ? '1' : '0'))
+      .then(function(r) { return r.json(); })
+      .then(function(j) { if (j.ok) pollNow(); })
+      .catch(function() { setStatus('✗ Network error', 'err'); });
+  }
+
+  function renderOnAir() {
+    var btn = document.getElementById('onAirBtn');
+    if (live.onAir) {
+      btn.className = 'onair on';
+      btn.textContent = '🔴 ON AIR — tap to hide';
+    } else {
+      btn.className = 'onair off';
+      btn.textContent = '⚫ OFF AIR — tap to show';
     }
   }
 
-  async function clearVerse() {
-    setStatus('Clearing…', '');
-    try {
-      const r = await fetch('/api/clear');
-      const j = await r.json();
-      if (j.ok) { setStatus('✓ Cleared', 'ok'); updateNow('—'); }
-      else setStatus('✗ failed', 'err');
-    } catch (e) {
-      setStatus('✗ Network error', 'err');
-    }
+  function pollNow() {
+    fetch('/api/verse').then(function(r) { return r.json(); }).then(function(j) {
+      live.onAir = !!j.isLive;
+      live.bookId = j.bookId || '';
+      live.chapter = j.chapterNum || 0;
+      live.verse = j.verseNum || 0;
+      var cit = j.arabicCitation || j.englishCitation || '';
+      document.getElementById('now').textContent =
+        cit ? (live.onAir ? 'Now: ' + cit : 'Off air — ' + cit) : '—';
+      renderOnAir();
+      markLiveRow();
+    }).catch(function() {});
   }
 
-  function updateNow(t) { document.getElementById('now').textContent = 'Now: ' + t; }
-
-  // Poll current verse for the "Now" line.
-  async function pollNow() {
-    try {
-      const r = await fetch('/api/verse');
-      const j = await r.json();
-      if (j.isLive && (j.arabicCitation || j.englishCitation)) {
-        updateNow(j.arabicCitation || j.englishCitation);
-      } else {
-        updateNow('—');
-      }
-    } catch (e) {}
-  }
+  loadBooks();
   pollNow();
-  setInterval(pollNow, 5000);
+  setInterval(pollNow, 3000);
 </script>
 </body>
 </html>
-        """.trimIndent()
+""".trimIndent()
 
         val bytes = html.toByteArray(Charsets.UTF_8)
         val writer = PrintWriter(out)

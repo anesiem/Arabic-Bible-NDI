@@ -133,6 +133,11 @@ class MainActivity : ComponentActivity() {
                 LaunchedEffect(uiState.sermonListNonce) {
                     if (uiState.sermonListNonce > 0) selectedTab = 3
                 }
+                // v1.9.1: a sermon row's book icon jumps to the Library tab
+                // at the focused verse (without putting it on air).
+                LaunchedEffect(uiState.readerJumpNonce) {
+                    if (uiState.readerJumpNonce > 0) selectedTab = 0
+                }
                 // v1.9: editor sub-tab (Lower Third / Full Show) hoisted here so it
                 // survives both rotation and main-tab switches.
                 var editorTab by rememberSaveable { mutableIntStateOf(0) }
@@ -401,7 +406,13 @@ class MainActivity : ComponentActivity() {
                             3 -> SermonListScreen(
                                 uiState = uiState,
                                 onShowVerse = { viewModel.showSermonVerse(it) },
-                                onClear = { viewModel.clearSermonPlaylist() }
+                                onOpenInReader = { viewModel.openSermonVerseInReader(it) },
+                                onRemove = { viewModel.removeSermonEntry(it) },
+                                onClear = { viewModel.clearSermonPlaylist() },
+                                onSave = { viewModel.saveCurrentSermon(it) },
+                                onOpenSaved = { id, merge -> viewModel.openSavedSermon(id, merge) },
+                                onRenameSaved = { id, name -> viewModel.renameSavedSermon(id, name) },
+                                onDeleteSaved = { viewModel.deleteSavedSermon(it) }
                             )
                         }
                     }

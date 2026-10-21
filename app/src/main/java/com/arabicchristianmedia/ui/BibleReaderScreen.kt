@@ -97,6 +97,16 @@ fun BibleReaderScreen(
         }
     }
 
+    // v1.9.1: when the operator jumps from a sermon row's book icon, scroll
+    // the focused verse into view (the Library tab opens on it).
+    LaunchedEffect(uiState.readerJumpNonce) {
+        val focusId = uiState.readerFocusVerseId ?: return@LaunchedEffect
+        val index = uiState.displayedVerses.indexOfFirst { it.id == focusId }
+        if (index != -1) {
+            lazyListState.animateScrollToItem(index)
+        }
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -295,6 +305,11 @@ fun BibleReaderScreen(
 
                 // Verse List
                 val versesToShow = if (uiState.isSearching) uiState.searchResults else uiState.displayedVerses
+                // v1.9.1: verses that appear in the sermon list get a finder
+                // tint in ANY chapter the operator browses to.
+                val sermonVerseIds = remember(uiState.sermonPlaylist) {
+                    uiState.sermonPlaylist.map { it.verse.id }.toSet()
+                }
                 if (uiState.isLoadingBible && versesToShow.isEmpty()) {
                     // First-launch database copy: show progress instead of a blank list.
                     Box(
@@ -356,6 +371,8 @@ fun BibleReaderScreen(
                             verse = verse,
                             isCued = isCued,
                             isLiveOnAir = isCued && uiState.isLiveOnAir,
+                            isFocused = uiState.readerFocusVerseId == verse.id,
+                            inSermonList = verse.id in sermonVerseIds,
                             version = uiState.bibleVersion,
                             fontSizeSp = uiState.readerFontSize,
                             showCitation = uiState.isSearching,
@@ -406,7 +423,9 @@ fun BentoVerseCard(
     version: BibleVersion,
     fontSizeSp: Int,
     showCitation: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    isFocused: Boolean = false,
+    inSermonList: Boolean = false
 ) {
     val bento = LocalBentoColors.current
     val isDark = MaterialTheme.colorScheme.surface == BentoCardDark
@@ -415,15 +434,23 @@ fun BentoVerseCard(
     } else {
         bento.primary.copy(alpha = 0.25f)
     }
-    val bgColor by animateColorAsState(if (isCued) highlightColor else bento.card, label = "cardBg")
+    // v1.9.1 highlight priority: live > focused (jumped-to from a sermon
+    // row) > cued > in-sermon-list finder tint > plain card.
+    val targetColor = when {
+        isLiveOnAir || isCued -> highlightColor
+        isFocused -> bento.primaryContainer
+        inSermonList -> bento.secondary.copy(alpha = 0.35f)
+        else -> bento.card
+    }
+    val bgColor by animateColorAsState(targetColor, label = "cardBg")
     // v1.8: Use primary (theme-aware) instead of red for the verse highlight border.
-    val borderColor = if (isLiveOnAir || isCued) bento.primary else bento.border
+    val borderColor = if (isLiveOnAir || isCued || isFocused) bento.primary else bento.border
 
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
         Card(
             shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(containerColor = bgColor),
-            border = androidx.compose.foundation.BorderStroke(if (isCued) 2.dp else 1.dp, borderColor),
+            border = androidx.compose.foundation.BorderStroke(if (isCued || isFocused) 2.dp else 1.dp, borderColor),
             modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
         ) {
             Column(modifier = Modifier.padding(12.dp)) {

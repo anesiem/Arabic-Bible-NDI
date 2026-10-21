@@ -3,18 +3,26 @@ package com.arabicchristianmedia.ui
 import android.app.Application
 import android.content.Context
 import android.content.SharedPreferences
+import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.arabicchristianmedia.data.BibleRepository
+import com.arabicchristianmedia.data.SermonStore
 import com.arabicchristianmedia.data.TemplateRepository
 import com.arabicchristianmedia.model.AppThemeMode
 import com.arabicchristianmedia.model.BibleBook
 import com.arabicchristianmedia.model.BibleVerse
 import com.arabicchristianmedia.model.BibleVersion
 import com.arabicchristianmedia.model.BroadcastTextAlignment
+import com.arabicchristianmedia.model.CustomFont
+import com.arabicchristianmedia.model.CustomFonts
 import com.arabicchristianmedia.model.LanguageMode
 import com.arabicchristianmedia.model.LowerThirdTemplate
+import com.arabicchristianmedia.model.SavedSermon
+import com.arabicchristianmedia.model.SermonEntry
+import com.arabicchristianmedia.model.SermonGrouping
 import com.arabicchristianmedia.model.Testament
+import com.arabicchristianmedia.server.FontStore
 import com.arabicchristianmedia.server.NdiBroadcastServer
 import com.arabicchristianmedia.server.NdiService
 import com.arabicchristianmedia.server.NdiErrorEvent
@@ -81,9 +89,24 @@ data class BibleNdiUiState(
     val isLoadingBible: Boolean = false,
     // v2.0: sermon playlist built from text shared from other apps
     // (Google Keep notes, Bible apps) — see handleSharedText.
-    val sermonPlaylist: List<BibleVerse> = emptyList(),
+    // v1.9.1: entries carry their share-group + shade (per-reference
+    // grouping), the list persists across restarts, and named sermons can
+    // be saved/opened (see SermonStore).
+    val sermonPlaylist: List<SermonEntry> = emptyList(),
     // v2.0: bumped on every successful share so MainActivity opens the list tab.
-    val sermonListNonce: Long = 0
+    val sermonListNonce: Long = 0,
+    // v1.9.1: named saved sermons + which one the working list belongs to.
+    val savedSermons: List<SavedSermon> = emptyList(),
+    val currentSermonId: String? = null,
+    val currentSermonName: String? = null,
+    // v1.9.1: verse the reader should focus (highlight + scroll to) when the
+    // operator jumps from a sermon row's book icon. Distinct from the live
+    // verse: focusing never changes what is on air.
+    val readerFocusVerseId: String? = null,
+    // v1.9.1: bumped when the reader should open at the focused verse.
+    val readerJumpNonce: Long = 0,
+    // v1.9.1: user-imported fonts (TTF/OTF), shown in both font dropdowns.
+    val customFonts: List<CustomFont> = emptyList()
 )
 
 class BibleNdiViewModel(application: Application) : AndroidViewModel(application) {
@@ -127,6 +150,8 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
     }
 
     private val templateRepo = TemplateRepository(getApplication())
+    /** v1.9.1: sermon list persistence (working list + saved sermons). */
+    private val sermonStore = SermonStore(getApplication())
     /**
      * v1.9: the broadcast server is owned by [NdiService] (foreground service) so
      * broadcasting survives backgrounding. Always resolve through the service
@@ -309,6 +334,9 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             statusMessage = "Ready. Tap a verse to go LIVE."
         )
         loadPersistedNdiSpecs()
+        // v1.9.1: restore the persisted sermon working list + saved sermons.
+        restoreSermonState()
+        refreshCustomFonts()
 
         // v1.9: if the service is mid auto-resume (flag set but the server isn't
         // up yet — rehydration runs on its own thread), give it a moment to finish
@@ -603,7 +631,8 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             selectedChapter = chapter,
             displayedVerses = verses,
             selectedTestament = book.testament,
-            activeVerse = null
+            activeVerse = null,
+            readerFocusVerseId = null
         )
         // v2.0: removed setLiveState(false) — browsing chapters must not take
         // the broadcast off-air. Outputs hold the previous verse until a new
@@ -616,7 +645,8 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         _uiState.value = _uiState.value.copy(
             selectedChapter = chapter,
             displayedVerses = verses,
-            activeVerse = null
+            activeVerse = null,
+            readerFocusVerseId = null
         )
         // v2.0: removed setLiveState(false) — see selectBook above.
     }
@@ -734,6 +764,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         _uiState.value = _uiState.value.copy(
             activeVerse = displayVerse,
             isLiveOnAir = true,
+            readerFocusVerseId = null,
             statusMessage = "Cued & Live: ${displayVerse.getFormattedArabicCitation()}",
             isSearching = false // Close search view on click
         )
@@ -797,15 +828,21 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
     /**
      * v2.0: text shared from another app (Google Keep, Bible apps) via
      * ACTION_SEND / ACTION_PROCESS_TEXT. Scans the text for references
-     * (ReferenceScanner — book-name anchored, ranges supported), expands
-     * them against the database, replaces the sermon playlist, and puts
-     * the FIRST verse on air through the same path as /api/trigger.
-     * Canonical text always comes from the app's own database (so the
-     * tashkeel setting applies); the shared text is only the carrier.
+     * (ReferenceScanner — book-name anchored, ranges supported) and expands
+     * them against the database. Canonical text always comes from the app's
+     * own database (so the tashkeel setting applies); the shared text is
+     * only the carrier.
+     *
+     * v1.9.1 rework (Ashraf's spec): sharing STAGES the verses — nothing
+     * goes on air; the operator taps a row to air it. Each REFERENCE is its
+     * own group (range included) and groups alternate shades. The new
+     * batch is PREPENDED to the existing list (duplicates move to the top
+     * with the new batch), and the list is persisted so it survives the
+     * app being closed.
      */
     fun handleSharedText(text: String) {
         val refs = com.arabicchristianmedia.model.ReferenceScanner.scan(text, BibleRepository.allBooks)
-        val verses = mutableListOf<BibleVerse>()
+        val groups = mutableListOf<List<BibleVerse>>()
         for (ref in refs) {
             val chapterVerses = BibleRepository.getVerses(ref.book.id, ref.chapter)
             if (chapterVerses.isEmpty()) continue
@@ -814,31 +851,276 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
                 ref.endVerse != null -> chapterVerses.filter { it.verse in ref.verse..ref.endVerse }
                 else -> chapterVerses.filter { it.verse == ref.verse }
             }
-            verses.addAll(selected)
+            if (selected.isNotEmpty()) groups.add(selected)
         }
-        if (verses.isEmpty()) {
+        if (groups.isEmpty()) {
             _uiState.value = _uiState.value.copy(
                 statusMessage = "لم يتم العثور على مرجع كتابي في النص المشارَك (No verse reference found in the shared text)"
             )
             return
         }
-        val first = verses.first()
-        triggerVerseByReference(first.bookId, first.chapter, first.verse, "both")
+        val current = _uiState.value.sermonPlaylist
+        var nextGroupId = (current.maxOfOrNull { it.groupId } ?: 0L) + 1L
+        val shades = SermonGrouping.shadesForNewBatch(current.firstOrNull()?.shade, groups.size)
+        val newEntries = groups.flatMapIndexed { index, verses ->
+            val gid = nextGroupId++
+            verses.map { SermonEntry(it, gid, shades[index]) }
+        }
+        // Dedupe: a verse shared again moves up with the new batch.
+        val newKeys = newEntries.map { it.key }.toSet()
+        val merged = newEntries + current.filterNot { it.key in newKeys }
         _uiState.value = _uiState.value.copy(
-            sermonPlaylist = verses,
+            sermonPlaylist = merged,
             sermonListNonce = _uiState.value.sermonListNonce + 1,
-            statusMessage = "قائمة الخدمة: ${verses.size} آية — الأولى على الهواء الآن"
+            statusMessage = "أُضيفت ${newEntries.size} آية إلى أعلى القائمة — اضغط أي آية لبثّها على الهواء"
+        )
+        persistSermonWorking()
+    }
+
+    /**
+     * v1.9.1: tap on a sermon row — the verse goes on air (the exact
+     * /api/trigger path) AND the reader silently syncs to it in the
+     * background (book/chapter selected, chapter loaded) WITHOUT switching
+     * tabs, so switching to the Library tab later lands on this verse.
+     */
+    fun showSermonVerse(entry: SermonEntry) {
+        val verse = entry.verse
+        triggerVerseByReference(verse.bookId, verse.chapter, verse.verse, "both")
+        syncReaderToVerse(verse)
+        _uiState.value = _uiState.value.copy(
+            statusMessage = "على الهواء: ${verse.getFormattedArabicCitation()}"
         )
     }
 
-    /** v2.0: put a sermon-playlist verse on air (tap in the list). */
-    fun showSermonVerse(verse: BibleVerse) {
-        triggerVerseByReference(verse.bookId, verse.chapter, verse.verse, "both")
+    /**
+     * v1.9.1: the book icon at the end of a sermon row — open the verse in
+     * the reader WITHOUT putting it on air. The reader focuses it (blue
+     * focus highlight + scroll) and MainActivity switches to the Library
+     * tab via [BibleNdiUiState.readerJumpNonce].
+     */
+    fun openSermonVerseInReader(entry: SermonEntry) {
+        syncReaderToVerse(entry.verse, focus = true)
+        _uiState.value = _uiState.value.copy(
+            readerJumpNonce = _uiState.value.readerJumpNonce + 1
+        )
     }
 
-    /** v2.0: empty the sermon playlist. */
+    /**
+     * Move the reader's position to [verse]'s book/chapter in the
+     * background. Never touches the live verse or the on-air state.
+     * With [focus], the verse also becomes the reader's focused verse.
+     */
+    private fun syncReaderToVerse(verse: BibleVerse, focus: Boolean = false) {
+        val book = BibleRepository.getBookById(verse.bookId) ?: return
+        val verses = BibleRepository.getVerses(book.id, verse.chapter)
+        _uiState.value = _uiState.value.copy(
+            selectedBook = book,
+            selectedChapter = verse.chapter,
+            displayedVerses = verses,
+            selectedTestament = book.testament,
+            readerFocusVerseId = if (focus) verse.id else _uiState.value.readerFocusVerseId
+        )
+    }
+
+    /** v1.9.1: swipe-to-delete one sermon row. Removing the live row does NOT take the verse off air. */
+    fun removeSermonEntry(entry: SermonEntry) {
+        _uiState.value = _uiState.value.copy(
+            sermonPlaylist = _uiState.value.sermonPlaylist.filterNot {
+                it.verse.id == entry.verse.id && it.groupId == entry.groupId
+            }
+        )
+        persistSermonWorking()
+    }
+
+    /** v1.9.1: empty the working list (also clears its persisted copy and detaches it from any saved sermon). */
     fun clearSermonPlaylist() {
-        _uiState.value = _uiState.value.copy(sermonPlaylist = emptyList())
+        _uiState.value = _uiState.value.copy(
+            sermonPlaylist = emptyList(),
+            currentSermonId = null,
+            currentSermonName = null
+        )
+        sermonStore.setCurrent(null, null)
+        persistSermonWorking()
+    }
+
+    /**
+     * v1.9.1: save the working list under [name]. Saving with the name of
+     * an existing saved sermon updates that sermon in place; a new name
+     * creates a new saved sermon. The working list now belongs to it.
+     */
+    fun saveCurrentSermon(name: String) {
+        val trimmed = name.trim()
+        val entries = _uiState.value.sermonPlaylist
+        if (trimmed.isEmpty() || entries.isEmpty()) return
+        val now = System.currentTimeMillis()
+        val refs = entries.map { it.toRef() }
+        val saved = sermonStore.loadSaved().toMutableList()
+        val existingIndex = saved.indexOfFirst { it.name.equals(trimmed, ignoreCase = true) }
+        val id: String
+        if (existingIndex >= 0) {
+            id = saved[existingIndex].id
+            saved[existingIndex] = saved[existingIndex].copy(entries = refs, updatedAt = now)
+        } else {
+            id = "sermon_$now"
+            saved.add(0, SavedSermon(id, trimmed, now, refs))
+        }
+        sermonStore.saveSaved(saved)
+        sermonStore.setCurrent(id, trimmed)
+        _uiState.value = _uiState.value.copy(
+            savedSermons = saved,
+            currentSermonId = id,
+            currentSermonName = trimmed,
+            statusMessage = "تم حفظ العظة «$trimmed» (${refs.size} آية)"
+        )
+    }
+
+    /**
+     * v1.9.1: open a saved sermon. Replace = it becomes the working list.
+     * Merge = its groups are prepended above the current list (stored
+     * colors' alternation preserved, flipped only if the seam would
+     * collide; duplicates in the current list are dropped in favor of the
+     * merged-in copies). Merge does not change which sermon the working
+     * list belongs to.
+     */
+    fun openSavedSermon(id: String, merge: Boolean) {
+        val saved = _uiState.value.savedSermons.firstOrNull { it.id == id } ?: return
+        val expanded = saved.entries.mapNotNull { ref ->
+            val verse = BibleRepository.getVerses(ref.bookId, ref.chapter)
+                .firstOrNull { it.verse == ref.verse } ?: return@mapNotNull null
+            SermonEntry(verse, ref.groupId, ref.shade)
+        }
+        if (!merge) {
+            _uiState.value = _uiState.value.copy(
+                sermonPlaylist = expanded,
+                currentSermonId = saved.id,
+                currentSermonName = saved.name,
+                statusMessage = "تم فتح العظة «${saved.name}» (${expanded.size} آية)"
+            )
+            sermonStore.setCurrent(saved.id, saved.name)
+        } else {
+            val groupOrder = expanded.map { it.groupId }.distinct()
+            val storedShades = groupOrder.map { g -> expanded.first { it.groupId == g }.shade }
+            val newShades = SermonGrouping.reshadeForMerge(
+                _uiState.value.sermonPlaylist.firstOrNull()?.shade, storedShades
+            )
+            var nextGroupId = (_uiState.value.sermonPlaylist.maxOfOrNull { it.groupId } ?: 0L) + 1L
+            val idMap = mutableMapOf<Long, Long>()
+            groupOrder.forEach { g -> idMap[g] = nextGroupId++ }
+            val shadeMap = groupOrder.zip(newShades).toMap()
+            val incoming = expanded.map {
+                SermonEntry(it.verse, idMap[it.groupId] ?: it.groupId, shadeMap[it.groupId] ?: it.shade)
+            }
+            val incomingKeys = incoming.map { it.key }.toSet()
+            val merged = incoming + _uiState.value.sermonPlaylist.filterNot { it.key in incomingKeys }
+            _uiState.value = _uiState.value.copy(
+                sermonPlaylist = merged,
+                statusMessage = "تم دمج العظة «${saved.name}» في أعلى القائمة"
+            )
+        }
+        persistSermonWorking()
+    }
+
+    /** v1.9.1: rename a saved sermon (also renames the header when it is the open one). */
+    fun renameSavedSermon(id: String, newName: String) {
+        val trimmed = newName.trim()
+        if (trimmed.isEmpty()) return
+        val saved = sermonStore.loadSaved().map {
+            if (it.id == id) it.copy(name = trimmed) else it
+        }
+        sermonStore.saveSaved(saved)
+        val isCurrent = _uiState.value.currentSermonId == id
+        if (isCurrent) sermonStore.setCurrent(id, trimmed)
+        _uiState.value = _uiState.value.copy(
+            savedSermons = saved,
+            currentSermonName = if (isCurrent) trimmed else _uiState.value.currentSermonName
+        )
+    }
+
+    /** v1.9.1: delete a saved sermon from the library (never touches the working list). */
+    fun deleteSavedSermon(id: String) {
+        val saved = sermonStore.loadSaved().filterNot { it.id == id }
+        sermonStore.saveSaved(saved)
+        val isCurrent = _uiState.value.currentSermonId == id
+        if (isCurrent) sermonStore.setCurrent(null, null)
+        _uiState.value = _uiState.value.copy(
+            savedSermons = saved,
+            currentSermonId = if (isCurrent) null else _uiState.value.currentSermonId,
+            currentSermonName = if (isCurrent) null else _uiState.value.currentSermonName
+        )
+    }
+
+    private fun persistSermonWorking() {
+        sermonStore.saveWorking(_uiState.value.sermonPlaylist.map { it.toRef() })
+    }
+
+    // ── v1.9.1: custom font import ─────────────────────────────────────
+
+    /** Reload the imported-font registry + UI state from the FontStore. */
+    fun refreshCustomFonts() {
+        val fonts = FontStore(getApplication()).list()
+        CustomFonts.refresh(fonts)
+        _uiState.value = _uiState.value.copy(customFonts = fonts)
+    }
+
+    /**
+     * Import a user-picked TTF/OTF (content URI string from the file
+     * picker) under [name]. Blank name falls back to the file's own name.
+     * The font then appears in both font dropdowns and works on every
+     * output (editor preview, NDI, HTTP overlays).
+     */
+    fun importCustomFont(uriString: String, name: String) {
+        val store = FontStore(getApplication())
+        val uri = try { Uri.parse(uriString) } catch (e: Exception) { null }
+        if (uri == null) {
+            _uiState.value = _uiState.value.copy(statusMessage = "تعذر قراءة ملف الخط (Could not read the font file)")
+            return
+        }
+        val finalName = name.trim().ifEmpty {
+            store.displayNameFor(uri)?.substringBeforeLast('.')?.trim().orEmpty()
+        }
+        if (finalName.isEmpty()) {
+            _uiState.value = _uiState.value.copy(statusMessage = "أدخل اسماً للخط (Enter a name for the font)")
+            return
+        }
+        val imported = store.importFromUri(uri, finalName)
+        if (imported == null) {
+            _uiState.value = _uiState.value.copy(
+                statusMessage = "فشل استيراد الخط — تأكد أنه ملف TTF أو OTF وأن الاسم غير مكرر (Import failed: TTF/OTF only, name must be unique)"
+            )
+            return
+        }
+        refreshCustomFonts()
+        _uiState.value = _uiState.value.copy(
+            statusMessage = "تم استيراد الخط «${imported.name}» — متاح الآن في قوائم الخطوط"
+        )
+    }
+
+    /**
+     * Delete an imported font. Styles that use it fall back to the system
+     * typeface until another font is chosen (same as an unknown family).
+     */
+    fun deleteCustomFont(font: CustomFont) {
+        FontStore(getApplication()).delete(font)
+        refreshCustomFonts()
+        _uiState.value = _uiState.value.copy(
+            statusMessage = "تم حذف الخط «${font.name}»"
+        )
+    }
+
+    /** v1.9.1: restore the persisted working list + saved sermons at launch. */
+    private fun restoreSermonState() {
+        val refs = sermonStore.loadWorking()
+        val entries = refs.mapNotNull { ref ->
+            val verse = BibleRepository.getVerses(ref.bookId, ref.chapter)
+                .firstOrNull { it.verse == ref.verse } ?: return@mapNotNull null
+            SermonEntry(verse, ref.groupId, ref.shade)
+        }
+        _uiState.value = _uiState.value.copy(
+            sermonPlaylist = entries,
+            savedSermons = sermonStore.loadSaved(),
+            currentSermonId = sermonStore.getCurrentId(),
+            currentSermonName = sermonStore.getCurrentName()
+        )
     }
 
     /**

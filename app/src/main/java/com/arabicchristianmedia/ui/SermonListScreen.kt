@@ -1,31 +1,56 @@
 package com.arabicchristianmedia.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlaylistPlay
+import androidx.compose.material.icons.filled.Save
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -34,51 +59,98 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.arabicchristianmedia.data.ArabicTextFormatter
-import com.arabicchristianmedia.model.BibleVerse
+import com.arabicchristianmedia.model.SavedSermon
+import com.arabicchristianmedia.model.SermonEntry
 import com.arabicchristianmedia.ui.theme.LocalBentoColors
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
- * v2.0: the sermon playlist — built from text shared from other apps
- * (Google Keep notes, Bible apps) via ACTION_SEND / ACTION_PROCESS_TEXT.
- * References-only: every row is a canonical database verse. The first row
- * goes on air automatically on arrival; tapping any row puts that verse
- * live on both feeds (same path as /api/trigger).
+ * v1.9.1 sermon list (rework of the v2.0 playlist):
+ * - Sharing STAGES verses; tapping a row puts it on air and silently syncs
+ *   the reader to it. Nothing airs automatically.
+ * - Rows are colored per share-GROUP (one reference = one group, shades
+ *   alternate); the live row gets the red live treatment + LIVE badge.
+ * - The list persists across restarts; the header is ONE slim icon row
+ *   (save / open / clear) so the verse list keeps all its screen space —
+ *   every other action lives in dialogs, a modal sheet, or a swipe.
+ * - Swipe a row to reveal the trash icon; a full swipe removes the verse.
+ * - The book icon at the end of a row opens the verse in the Library tab
+ *   WITHOUT putting it on air.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SermonListScreen(
     uiState: BibleNdiUiState,
-    onShowVerse: (BibleVerse) -> Unit,
-    onClear: () -> Unit
+    onShowVerse: (SermonEntry) -> Unit,
+    onOpenInReader: (SermonEntry) -> Unit,
+    onRemove: (SermonEntry) -> Unit,
+    onClear: () -> Unit,
+    onSave: (String) -> Unit,
+    onOpenSaved: (String, Boolean) -> Unit,
+    onRenameSaved: (String, String) -> Unit,
+    onDeleteSaved: (String) -> Unit
 ) {
     val bento = LocalBentoColors.current
     val playlist = uiState.sermonPlaylist
 
+    var showSaveDialog by remember { mutableStateOf(false) }
+    var saveNameInput by remember { mutableStateOf("") }
+    var showOpenSheet by remember { mutableStateOf(false) }
+    var pendingOpen by remember { mutableStateOf<SavedSermon?>(null) }
+    var renameTarget by remember { mutableStateOf<SavedSermon?>(null) }
+    var renameInput by remember { mutableStateOf("") }
+    var deleteTarget by remember { mutableStateOf<SavedSermon?>(null) }
+
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
         Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+            // Slim header: name + counts on the left, icon-only actions.
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "قائمة الخدمة (Sermon list)",
-                        fontSize = 20.sp,
+                        text = uiState.currentSermonName ?: "قائمة الخدمة (Sermon list)",
+                        fontSize = 17.sp,
                         fontWeight = FontWeight.Bold,
-                        color = bento.textPrimary
+                        color = bento.textPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                     Text(
                         text = if (playlist.isEmpty()) "لا توجد آيات بعد"
-                               else "${playlist.size} آية — اضغط أي آية لعرضها على الهواء",
+                               else "${playlist.size} آية — اضغط آية للبث • اسحب لحذفها",
                         fontSize = 12.sp,
                         color = bento.textSecondary
+                    )
+                }
+                IconButton(
+                    onClick = {
+                        saveNameInput = uiState.currentSermonName ?: ""
+                        showSaveDialog = true
+                    },
+                    enabled = playlist.isNotEmpty()
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Save,
+                        contentDescription = "حفظ القائمة (Save sermon)",
+                        tint = if (playlist.isNotEmpty()) bento.primary else bento.textSecondary
+                    )
+                }
+                IconButton(onClick = { showOpenSheet = true }) {
+                    Icon(
+                        imageVector = Icons.Filled.FolderOpen,
+                        contentDescription = "فتح عظة محفوظة (Open saved sermon)",
+                        tint = bento.primary
                     )
                 }
                 if (playlist.isNotEmpty()) {
                     IconButton(onClick = onClear) {
                         Icon(
                             imageVector = Icons.Filled.Delete,
-                            contentDescription = "مسح القائمة (Clear list)",
+                            contentDescription = "مسح كل القائمة (Clear all)",
                             tint = bento.textSecondary
                         )
                     }
@@ -101,7 +173,7 @@ fun SermonListScreen(
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
-                        text = "شارك ملاحظة من Google Keep أو من تطبيق الكتاب المقدس إلى «Bible NDI» — ستظهر مراجعها هنا بالترتيب، والآية الأولى تذهب للبث فوراً.",
+                        text = "شارك ملاحظة من Google Keep أو من تطبيق الكتاب المقدس إلى «Bible NDI» — ستظهر مراجعها هنا مجمّعة بالألوان، واضغط أي آية لبثّها. أو افتح عظة محفوظة من أيقونة المجلد بالأعلى.",
                         fontSize = 14.sp,
                         color = bento.textSecondary,
                         textAlign = TextAlign.Center,
@@ -113,77 +185,335 @@ fun SermonListScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    itemsIndexed(playlist, key = { _, v -> v.id }) { index, verse ->
-                        val isLive = uiState.activeVerse?.id == verse.id && uiState.isLiveOnAir
-                        Card(
-                            shape = RoundedCornerShape(16.dp),
-                            colors = CardDefaults.cardColors(containerColor = bento.card),
-                            border = androidx.compose.foundation.BorderStroke(
-                                if (isLive) 2.dp else 1.dp,
-                                if (isLive) bento.primary else bento.border
-                            ),
-                            modifier = Modifier.fillMaxWidth().clickable { onShowVerse(verse) }
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(12.dp),
-                                verticalAlignment = Alignment.Top
-                            ) {
-                                Surface(
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = if (isLive) bento.primary.copy(alpha = 0.25f)
-                                            else bento.primaryContainer,
-                                    modifier = Modifier.padding(end = 10.dp)
+                    itemsIndexed(
+                        playlist,
+                        key = { _, e -> "${e.groupId}-${e.verse.id}" }
+                    ) { index, entry ->
+                        SermonRow(
+                            entry = entry,
+                            index = index,
+                            isLive = uiState.activeVerse?.id == entry.verse.id && uiState.isLiveOnAir,
+                            onTap = { onShowVerse(entry) },
+                            onOpenInReader = { onOpenInReader(entry) },
+                            onRemove = { onRemove(entry) }
+                        )
+                    }
+                }
+            }
+        }
+
+        // ── Save dialog ─────────────────────────────────────────────────
+        if (showSaveDialog) {
+            AlertDialog(
+                onDismissRequest = { showSaveDialog = false },
+                title = { Text("حفظ العظة (Save sermon)") },
+                text = {
+                    Column {
+                        OutlinedTextField(
+                            value = saveNameInput,
+                            onValueChange = { saveNameInput = it },
+                            label = { Text("اسم العظة (Sermon name)") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "الحفظ بنفس اسم عظة موجودة يحدّثها بدلاً من إنشاء نسخة جديدة.",
+                            fontSize = 11.sp,
+                            color = bento.textSecondary
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = { onSave(saveNameInput); showSaveDialog = false },
+                        enabled = saveNameInput.isNotBlank()
+                    ) { Text("حفظ") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showSaveDialog = false }) { Text("إلغاء") }
+                }
+            )
+        }
+
+        // ── Saved sermons sheet ─────────────────────────────────────────
+        if (showOpenSheet) {
+            ModalBottomSheet(onDismissRequest = { showOpenSheet = false }) {
+                Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    Text(
+                        text = "العظات المحفوظة (Saved sermons)",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = bento.textPrimary
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    if (uiState.savedSermons.isEmpty()) {
+                        Text(
+                            text = "لا توجد عظات محفوظة بعد — ابنِ قائمة ثم احفظها من أيقونة الحفظ بالأعلى.",
+                            fontSize = 13.sp,
+                            color = bento.textSecondary,
+                            modifier = Modifier.padding(vertical = 16.dp)
+                        )
+                    } else {
+                        LazyColumn(modifier = Modifier.heightIn(max = 420.dp)) {
+                            items(uiState.savedSermons, key = { it.id }) { saved ->
+                                var menuOpen by remember { mutableStateOf(false) }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth()
+                                        .clickable {
+                                            showOpenSheet = false
+                                            if (playlist.isEmpty()) onOpenSaved(saved.id, false)
+                                            else pendingOpen = saved
+                                        }
+                                        .padding(vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(
-                                        text = ArabicTextFormatter.toEasternArabicDigits(index + 1),
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = bento.primary,
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                                    )
-                                }
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
+                                    Column(modifier = Modifier.weight(1f)) {
                                         Text(
-                                            text = verse.getFormattedArabicCitation(true),
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = bento.primary
+                                            text = saved.name,
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = bento.textPrimary,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
                                         )
-                                        if (isLive) {
-                                            Surface(
-                                                shape = RoundedCornerShape(6.dp),
-                                                color = bento.primary
-                                            ) {
-                                                Text(
-                                                    text = "على الهواء • LIVE",
-                                                    fontSize = 10.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = bento.onPrimary,
-                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                                )
-                                            }
+                                        Text(
+                                            text = "${saved.entries.size} آية • " +
+                                                SimpleDateFormat("yyyy/MM/dd", Locale.US).format(Date(saved.updatedAt)),
+                                            fontSize = 11.sp,
+                                            color = bento.textSecondary
+                                        )
+                                    }
+                                    Box {
+                                        IconButton(onClick = { menuOpen = true }) {
+                                            Icon(
+                                                imageVector = Icons.Filled.MoreVert,
+                                                contentDescription = "خيارات (Options)",
+                                                tint = bento.textSecondary
+                                            )
+                                        }
+                                        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                                            DropdownMenuItem(
+                                                text = { Text("إعادة تسمية (Rename)") },
+                                                onClick = {
+                                                    menuOpen = false
+                                                    showOpenSheet = false
+                                                    renameInput = saved.name
+                                                    renameTarget = saved
+                                                }
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text("حذف (Delete)") },
+                                                onClick = {
+                                                    menuOpen = false
+                                                    showOpenSheet = false
+                                                    deleteTarget = saved
+                                                }
+                                            )
                                         }
                                     }
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        text = verse.arabicText,
-                                        fontSize = 15.sp,
-                                        lineHeight = 24.sp,
-                                        color = bento.textPrimary,
-                                        textAlign = TextAlign.Right,
-                                        maxLines = 3,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.fillMaxWidth()
-                                    )
                                 }
                             }
                         }
                     }
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
+            }
+        }
+
+        // ── Replace or merge chooser ────────────────────────────────────
+        pendingOpen?.let { saved ->
+            AlertDialog(
+                onDismissRequest = { pendingOpen = null },
+                title = { Text("فتح «${saved.name}»") },
+                text = {
+                    Text("القائمة الحالية تحتوي على آيات. هل تستبدلها بهذه العظة، أم تدمج العظة في أعلى القائمة الحالية؟")
+                },
+                confirmButton = {
+                    Button(onClick = { onOpenSaved(saved.id, false); pendingOpen = null }) {
+                        Text("استبدال (Replace)")
+                    }
+                },
+                dismissButton = {
+                    Row {
+                        TextButton(onClick = { onOpenSaved(saved.id, true); pendingOpen = null }) {
+                            Text("دمج (Merge)")
+                        }
+                        TextButton(onClick = { pendingOpen = null }) { Text("إلغاء") }
+                    }
+                }
+            )
+        }
+
+        // ── Rename dialog ───────────────────────────────────────────────
+        renameTarget?.let { saved ->
+            AlertDialog(
+                onDismissRequest = { renameTarget = null },
+                title = { Text("إعادة تسمية العظة (Rename)") },
+                text = {
+                    OutlinedTextField(
+                        value = renameInput,
+                        onValueChange = { renameInput = it },
+                        label = { Text("الاسم الجديد (New name)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                },
+                confirmButton = {
+                    Button(
+                        onClick = { onRenameSaved(saved.id, renameInput); renameTarget = null },
+                        enabled = renameInput.isNotBlank()
+                    ) { Text("حفظ") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { renameTarget = null }) { Text("إلغاء") }
+                }
+            )
+        }
+
+        // ── Delete saved sermon confirm ─────────────────────────────────
+        deleteTarget?.let { saved ->
+            AlertDialog(
+                onDismissRequest = { deleteTarget = null },
+                title = { Text("حذف «${saved.name}»؟") },
+                text = { Text("سيتم حذف هذه العظة المحفوظة نهائياً. القائمة الحالية لن تتأثر.") },
+                confirmButton = {
+                    Button(onClick = { onDeleteSaved(saved.id); deleteTarget = null }) {
+                        Text("حذف")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { deleteTarget = null }) { Text("إلغاء") }
+                }
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SermonRow(
+    entry: SermonEntry,
+    index: Int,
+    isLive: Boolean,
+    onTap: () -> Unit,
+    onOpenInReader: () -> Unit,
+    onRemove: () -> Unit
+) {
+    val bento = LocalBentoColors.current
+    val verse = entry.verse
+    val dismissState = rememberSwipeToDismissBoxState(
+        confirmValueChange = { value ->
+            if (value == SwipeToDismissBoxValue.EndToStart) {
+                onRemove()
+                true
+            } else {
+                false
+            }
+        }
+    )
+    SwipeToDismissBox(
+        state = dismissState,
+        enableDismissFromStartToEnd = false,
+        enableDismissFromEndToStart = true,
+        backgroundContent = {
+            Box(
+                modifier = Modifier.fillMaxSize()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(MaterialTheme.colorScheme.errorContainer),
+                contentAlignment = Alignment.CenterEnd
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Delete,
+                    contentDescription = "حذف الآية (Remove verse)",
+                    tint = MaterialTheme.colorScheme.onErrorContainer,
+                    modifier = Modifier.padding(end = 20.dp)
+                )
+            }
+        }
+    ) {
+        Card(
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = when {
+                    isLive -> bento.liveRed.copy(alpha = 0.18f)
+                    entry.shade == 0 -> bento.primaryContainer.copy(alpha = 0.55f)
+                    else -> bento.secondary.copy(alpha = 0.45f)
+                }
+            ),
+            border = androidx.compose.foundation.BorderStroke(
+                if (isLive) 2.dp else 1.dp,
+                if (isLive) bento.liveRed else bento.border
+            ),
+            modifier = Modifier.fillMaxWidth().clickable { onTap() }
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(12.dp),
+                verticalAlignment = Alignment.Top
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = if (isLive) bento.liveRed.copy(alpha = 0.25f)
+                            else bento.primaryContainer,
+                    modifier = Modifier.padding(end = 10.dp)
+                ) {
+                    Text(
+                        text = ArabicTextFormatter.toEasternArabicDigits(index + 1),
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isLive) bento.liveRed else bento.primary,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                    )
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = verse.getFormattedArabicCitation(true),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = bento.primary
+                        )
+                        if (isLive) {
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = bento.liveRed
+                            ) {
+                                Text(
+                                    text = "على الهواء • LIVE",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = androidx.compose.ui.graphics.Color.White,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                )
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = verse.arabicText,
+                        fontSize = 15.sp,
+                        lineHeight = 24.sp,
+                        color = bento.textPrimary,
+                        textAlign = TextAlign.Right,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                IconButton(
+                    onClick = onOpenInReader,
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.MenuBook,
+                        contentDescription = "فتح في المكتبة (Open in Library)",
+                        tint = bento.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
                 }
             }
         }

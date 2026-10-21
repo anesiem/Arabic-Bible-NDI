@@ -1137,6 +1137,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
      */
     // Last applied SSE state version (-1 = none yet). See applyData guard.
     let lastStateVersion = -1;
+    // v1.9.1: overlay stability state (fast path, font gate, particles).
+    let lastStyleKey = null;
+    let revealToken = 0;
+    let lastFitFn = null;
+    let activeParticleKey = null;
 
     function applyData(data) {
       // State-version guard: drop stale/out-of-order deliveries and let a fresh
@@ -1147,8 +1152,21 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       }
       if (!data.isLive || !data.arabicText) {
         container.classList.remove('visible');
+        // v1.9.1: cancel any pending font-gated reveal and force the next
+        // live state through the full apply path.
+        revealToken++;
+        lastStyleKey = null;
         return;
       }
+
+      const wasVisible = container.classList.contains('visible');
+      // v1.9.1: style key = the whole payload minus the volatile text fields
+      // (verse/citation text and the state version). Identical key means the
+      // style did not change — only the words did.
+      const styleKey = JSON.stringify(data, function(k, v) {
+        return (k === 'arabicText' || k === 'englishText' || k === 'arabicCitation' ||
+                k === 'englishCitation' || k === 'stateVersion') ? undefined : v;
+      });
 
       const isFull = data.isFullScreen || $forceFullScreen;
 
@@ -1325,6 +1343,104 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       // so without this each applyData compounds the shrink.
       citationText.style.fontSize = scaledPx(data.referenceFontSize || 18);
 
+      // v1.9.1: auto-fit as a callable unit (was a tail block of applyData).
+      // It runs AFTER the used fonts are ready (see finishApply), so sizes
+      // are computed with the real font metrics — measuring with fallback
+      // metrics and swapping the font in afterwards was one of the visible
+      // size jumps. Base sizes were just reset above (section 5).
+      const doFit = function() {
+        if (data.autoFitText === false) return;
+        const minVersePx = (data.autoFitMinVerseSp || 28) * 2 * getStageScale();
+        const baseVerse = parseFloat(verseText.style.fontSize) || minVersePx;
+        const baseCite = parseFloat(citationText.style.fontSize) || baseVerse * 0.6;
+        const baseEnV = parseFloat(englishText.style.fontSize) || baseVerse * 0.7;
+        const baseEnC = parseFloat(englishCitation.style.fontSize) || baseVerse * 0.55;
+        const minRatio = Math.min(1, minVersePx / baseVerse);
+        // SAME budget as the NDI renderer, measured the SAME way — content
+        // only (card padding excluded). See the v2.0 parity note in git
+        // history for the full story.
+        const ss = getStageScale();
+        const padTopPx = parseFloat(padT) || 0;
+        const padBotPx = parseFloat(padB) || 0;
+        function contentHeight() { return cardBox.scrollHeight - padTopPx - padBotPx; }
+        const maxContentH = isFull
+          ? (stage.clientHeight - padTopPx - padBotPx)
+          : (stage.clientHeight * 0.45 - padTopPx - padBotPx - 16 * ss);
+        function applyRatio(r) {
+          verseText.style.fontSize = (baseVerse * r) + 'px';
+          citationText.style.fontSize = (baseCite * r) + 'px';
+          englishText.style.fontSize = (baseEnV * r) + 'px';
+          englishCitation.style.fontSize = (baseEnC * r) + 'px';
+        }
+        const cH = contentHeight();
+        if (cH > maxContentH && maxContentH > 0) {
+          // One exact step (NDI's computeFitRatio), then one corrective
+          // pass because line wrapping makes height non-linear.
+          let ratio = Math.max(minRatio, Math.min(1, maxContentH / cH));
+          applyRatio(ratio);
+          const cH2 = contentHeight();
+          if (cH2 > maxContentH && ratio > minRatio) {
+            ratio = Math.max(minRatio, ratio * (maxContentH / cH2));
+            applyRatio(ratio);
+          }
+        }
+      };
+
+      // v1.9.1: finish an apply — fit with real metrics, then reveal (only
+      // if hidden). The style's actual faces are loaded first; font-display
+      // 'swap' otherwise paints fallback text and swaps each face in as it
+      // downloads (the "font changes two or three times" cascade). A 300ms
+      // cap means a slow font can never hold the verse hostage; if a face
+      // still lands late, fonts.ready re-fits once with final metrics.
+      const finishApply = function() {
+        const token = ++revealToken;
+        lastFitFn = doFit;
+        const faces = [];
+        if (rawFont && rawFont !== 'System') {
+          faces.push('400 32px "' + rawFont + '"');
+          if (data.verseIsBold || data.referenceIsBold) faces.push('700 32px "' + rawFont + '"');
+        }
+        const secFam = data.secondaryFontFamily;
+        if (showEnglishSection && secFam && secFam !== 'System' && secFam !== 'system-ui') {
+          faces.push('400 32px "' + secFam + '"');
+          if (data.secondaryVerseIsBold || data.secondaryReferenceIsBold) faces.push('700 32px "' + secFam + '"');
+        }
+        let finished = false;
+        const finish = function() {
+          if (finished || token !== revealToken) return;
+          finished = true;
+          doFit();
+          if (!wasVisible) {
+            requestAnimationFrame(function() {
+              if (token === revealToken) container.classList.add('visible');
+            });
+          }
+          if (document.fonts && document.fonts.ready) {
+            document.fonts.ready.then(function() {
+              if (token === revealToken && lastFitFn === doFit) doFit();
+            });
+          }
+        };
+        if (!document.fonts || !document.fonts.load || faces.length === 0) { finish(); return; }
+        const loads = faces.map(function(f) {
+          try { return Promise.resolve(document.fonts.load(f, 'A\u0627')).catch(function() { return []; }); }
+          catch (e) { return Promise.resolve([]); }
+        });
+        Promise.race([
+          Promise.all(loads),
+          new Promise(function(res) { setTimeout(res, 300); })
+        ]).then(finish).catch(finish);
+      };
+
+      // v1.9.1 fast path: identical style — text (section 2) and typography
+      // (section 5) already updated above; skip the card, background,
+      // particle and transition sections so a plain verse change causes
+      // zero visual churn and no fade cycle.
+      if (styleKey === lastStyleKey) {
+        finishApply();
+        return;
+      }
+
       // 6. Color Schemes & Container Styling
       const hex = data.bgColorHex || '#0A1128';
       const opacity = data.bgOpacity !== undefined ? data.bgOpacity : 0.85;
@@ -1431,7 +1547,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
       animBgLayer.className = 'animated-bg-layer';
       customVideoBg.style.display = 'none';
-      stopParticles();
+      // v1.9.1: don't tear the particle field down on every apply — it was
+      // restarted (positions reset) by any state change, even a verse tap.
+      if (animType !== 'gold_particles' && animType !== 'particles') {
+        stopParticles();
+        activeParticleKey = null;
+      }
 
       if (animType === 'golden_rays') {
         animBgLayer.classList.add('anim-golden-rays');
@@ -1454,11 +1575,17 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       } else if (animType === 'gold_particles') {
         animBgLayer.classList.add('anim-gold-particles');
         animBgLayer.style.opacity = animOpacity;
-        startParticles('#FCD34D', animOpacity);
+        if (activeParticleKey !== 'gold_particles') {
+          startParticles('#FCD34D', animOpacity);
+          activeParticleKey = 'gold_particles';
+        }
       } else if (animType === 'particles') {
         animBgLayer.classList.add('anim-particles');
         animBgLayer.style.opacity = animOpacity;
-        startParticles('#7DD3FC', animOpacity);
+        if (activeParticleKey !== 'particles') {
+          startParticles('#7DD3FC', animOpacity);
+          activeParticleKey = 'particles';
+        }
       } else if (animType === 'custom_video' && data.customVideoId) {
         // v1.7: videos are served by opaque ID from private storage (never by path).
         const videoUrl = '/video?id=' + encodeURIComponent(data.customVideoId);
@@ -1514,6 +1641,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       }
 
       // 8. Entry Transitions
+      // v1.9.1: preserve 'visible' across the class reset. Dropping it on
+      // every update made each verse change fade out and back in over the
+      // full transition duration — the HTTP "delay" vs NDI's crossfade.
       container.className = isFull ? 'mode-full-show' : '';
       if (data.transition === 'FADE') container.classList.add('anim-fade');
       else if (data.transition === 'SLIDE_RIGHT') container.classList.add('anim-slide-right');
@@ -1521,53 +1651,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       else container.classList.add('anim-slide-up');
 
       container.style.transitionDuration = (data.transitionDurationMs || 350) + 'ms';
+      if (wasVisible) container.classList.add('visible');
 
-      requestAnimationFrame(() => {
-        container.classList.add('visible');
-      });
-
-      // v1.9: auto-fit — shrink verse/citation/English together until the card
-      // fits (or the minimum size is reached). Short verses are untouched: the
-      // loop only runs while the content overflows its budget.
-      if (data.autoFitText !== false) {
-        const minVersePx = (data.autoFitMinVerseSp || 28) * 2 * getStageScale();
-        const baseVerse = parseFloat(verseText.style.fontSize) || minVersePx;
-        const baseCite = parseFloat(citationText.style.fontSize) || baseVerse * 0.6;
-        const baseEnV = parseFloat(englishText.style.fontSize) || baseVerse * 0.7;
-        const baseEnC = parseFloat(englishCitation.style.fontSize) || baseVerse * 0.55;
-        const minRatio = Math.min(1, minVersePx / baseVerse);
-        // v2.0: SAME budget as the NDI renderer, measured the SAME way —
-        // content only (card padding excluded). NDI: lower third content
-        // budget = 45% of frame height minus pads and the citation gap;
-        // full show = frame height minus pads. The old code capped the
-        // whole card (padding included) at 50%, so mid-length verses
-        // shrank on NDI but not on HTTP and sizes never matched.
-        const ss = getStageScale();
-        const padTopPx = parseFloat(padT) || 0;
-        const padBotPx = parseFloat(padB) || 0;
-        function contentHeight() { return cardBox.scrollHeight - padTopPx - padBotPx; }
-        const maxContentH = isFull
-          ? (stage.clientHeight - padTopPx - padBotPx)
-          : (stage.clientHeight * 0.45 - padTopPx - padBotPx - 16 * ss);
-        function applyRatio(r) {
-          verseText.style.fontSize = (baseVerse * r) + 'px';
-          citationText.style.fontSize = (baseCite * r) + 'px';
-          englishText.style.fontSize = (baseEnV * r) + 'px';
-          englishCitation.style.fontSize = (baseEnC * r) + 'px';
-        }
-        const cH = contentHeight();
-        if (cH > maxContentH && maxContentH > 0) {
-          // One exact step (NDI's computeFitRatio), then one corrective
-          // pass because line wrapping makes height non-linear.
-          let ratio = Math.max(minRatio, Math.min(1, maxContentH / cH));
-          applyRatio(ratio);
-          const cH2 = contentHeight();
-          if (cH2 > maxContentH && ratio > minRatio) {
-            ratio = Math.max(minRatio, ratio * (maxContentH / cH2));
-            applyRatio(ratio);
-          }
-        }
-      }
+      // v1.9.1: fit + reveal happen through the font gate (finishApply),
+      // defined in section 5. The old tail block (immediate fit with
+      // fallback metrics + rAF reveal) is gone.
+      lastStyleKey = styleKey;
+      finishApply();
     }
 
     // Connect Server-Sent Events (SSE)

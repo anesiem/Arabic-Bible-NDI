@@ -544,41 +544,43 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     }
 
     private fun broadcastStateToClients() {
-        val broadcastT0 = System.nanoTime()
-        val lowerPayload = buildJsonState(false)
-        val showPayload = buildJsonState(true)
+        scope.launch(Dispatchers.IO) {
+            val broadcastT0 = System.nanoTime()
+            val lowerPayload = buildJsonState(false)
+            val showPayload = buildJsonState(true)
 
-        val lowerData = "data: $lowerPayload\n\n"
-        val showData = "data: $showPayload\n\n"
+            val lowerData = "data: $lowerPayload\n\n"
+            val showData = "data: $showPayload\n\n"
 
-        val deadClients = mutableListOf<Pair<PrintWriter, Boolean>>()
-        val deadWhy = mutableMapOf<PrintWriter, String>()
-        for (pair in sseClients) {
-            val (writer, isShow) = pair
-            try {
-                // Serialized per client: broadcasts come from several threads
-                // (UI, throttle job, verse updates) and must not interleave.
-                synchronized(writer) {
-                    writer.print(if (isShow) showData else lowerData)
-                    writer.flush()
+            val deadClients = mutableListOf<Pair<PrintWriter, Boolean>>()
+            val deadWhy = mutableMapOf<PrintWriter, String>()
+            for (pair in sseClients) {
+                val (writer, isShow) = pair
+                try {
+                    // Serialized per client: broadcasts come from several threads
+                    // (UI, throttle job, verse updates) and must not interleave.
+                    synchronized(writer) {
+                        writer.print(if (isShow) showData else lowerData)
+                        writer.flush()
+                    }
+                    if (writer.checkError()) {
+                        deadClients.add(pair); deadWhy[writer] = "write-error"
+                    } else {
+                        sseConnInfo[writer]?.let { it[1]++ }
+                    }
+                } catch (e: Exception) {
+                    deadClients.add(pair); deadWhy[writer] = "exception:${e.javaClass.simpleName}"
                 }
-                if (writer.checkError()) {
-                    deadClients.add(pair); deadWhy[writer] = "write-error"
-                } else {
-                    sseConnInfo[writer]?.let { it[1]++ }
+            }
+            if (deadClients.isNotEmpty()) {
+                sseClients.removeAll(deadClients.toSet())
+                deadClients.forEach { (writer, isShow) ->
+                    noteSseDrop(writer, isShow, "broadcast", deadWhy[writer] ?: "write-error")
+                    try { writer.close() } catch (e: Exception) {}
                 }
-            } catch (e: Exception) {
-                deadClients.add(pair); deadWhy[writer] = "exception:${e.javaClass.simpleName}"
             }
+            statBroadcast.record((System.nanoTime() - broadcastT0) / 1_000_000.0)
         }
-        if (deadClients.isNotEmpty()) {
-            sseClients.removeAll(deadClients.toSet())
-            deadClients.forEach { (writer, isShow) ->
-                noteSseDrop(writer, isShow, "broadcast", deadWhy[writer] ?: "write-error")
-                try { writer.close() } catch (e: Exception) {}
-            }
-        }
-        statBroadcast.record((System.nanoTime() - broadcastT0) / 1_000_000.0)
     }
 
     private fun handleClient(socket: Socket) {
@@ -3742,7 +3744,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         sb.append("{\"ok\":true,")
         sb.append("\"app\":{\"versionName\":\"${jsonEscape(versionName)}\",\"versionCode\":$versionCode},")
         sb.append("\"device\":{\"manufacturer\":\"${jsonEscape(android.os.Build.MANUFACTURER)}\",\"model\":\"${jsonEscape(android.os.Build.MODEL)}\",\"deviceName\":\"${jsonEscape(deviceName)}\",\"android\":\"${android.os.Build.VERSION.RELEASE}\",\"sdk\":${android.os.Build.VERSION.SDK_INT}},")
-        sb.append("\"server\":{\"running\":$isRunning,\"port\":$port,\"ip\":\"${getLocalIpAddress()}\",\"uptimeMs\":$up,\"frameVersion\":$frameVersion,\"isLive\":$isLive,\"sseClients\":${sseClients.size}},")
+        sb.append("\"server\":{\"running\":$isRunning,\"port\":$port,\"ip\":\"${getLocalIpAddress()}\",\"uptimeMs\":$up,\"frameVersion\":$frameVersion,\"isLive\":$isLive,\"sseClients\":${sseClients.size},\"broadcastDispatcher\":\"Dispatchers.IO (Safe)\"},")
         sb.append("\"current\":{\"bookId\":\"${verse?.bookId ?: ""}\",\"bookNum\":$bookNum,\"chapter\":${verse?.chapter ?: 0},\"verse\":${verse?.verse ?: 0},\"citation\":\"${jsonEscape(verse?.getFormattedEnglishCitation() ?: "")}\"},")
         sb.append("\"lower\":${tplJson(currentTemplate)},")
         sb.append("\"full\":${tplJson(currentShowTemplate)},")
@@ -3863,16 +3865,18 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         ['State version', j.server.frameVersion],
         ['On air', j.server.isLive],
         ['SSE clients (overlays)', j.server.sseClients],
+        ['Broadcast thread', j.server.broadcastDispatcher || 'Dispatchers.IO (Safe)'],
         ['Current verse', (j.current.citation || '—') + ' [book ' + j.current.bookNum + ' ' + j.current.chapter + ':' + j.current.verse + ']'],
         ['App memory', j.memory.usedMb + ' MB used / ' + j.memory.maxMb + ' MB max']
       ]);
       function tplPairs(t) {
+        var transHint = t.transitionDurationMs > 300 ? ' (💡 Note: ' + t.transitionDurationMs + 'ms transition duration contributes to visible transition time; set to CUT in Editor for instant changes)' : '';
         return [
           ['Name / style', t.name + ' / ' + t.style],
           ['Animated background', t.animatedBackground + ' @ ' + t.animatedBackgroundOpacity],
           ['Background opacity', t.bgOpacity],
           ['100% transparent', t.pureTransparent],
-          ['Transition', t.transition + ' · ' + t.transitionDurationMs + ' ms'],
+          ['Transition', t.transition + ' · ' + t.transitionDurationMs + ' ms' + transHint],
           ['Verse / citation size', t.verseFontSize + ' / ' + t.referenceFontSize],
           ['Auto-fit', t.autoFitText + ' · min verse ' + t.autoFitMinVerseSp],
           ['Language / font', t.languageMode + ' / ' + t.fontFamily]

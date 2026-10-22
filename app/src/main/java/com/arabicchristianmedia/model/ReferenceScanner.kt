@@ -16,11 +16,15 @@ package com.arabicchristianmedia.model
  */
 object ReferenceScanner {
 
-    /** "9:7-9" / "9:7" — chapter:verse with optional same-chapter range end. */
-    private val VERSE_REF = Regex("""(\d+)\s*:\s*(\d+)\s*-\s*(\d+)|(\d+)\s*:\s*(\d+)""")
+    /** "9:7-9" / "9:7" / "9:7, 9" — chapter:verse with an optional
+     * same-chapter range end or an explicit verse list. */
+    private val VERSE_REF = Regex("""(\d+)\s*:\s*(\d+)(?:\s*-\s*(\d+)|(\s*(?:[,،]\s*\d+)+))?""")
 
-    /** Bare chapter number right at the start of the window (" 23 ..."). */
-    private val CHAPTER_ONLY = Regex("""^\D{0,3}(\d+)""")
+    /** Bare chapter number right at the start of the window (" 23 ...").
+     * Only spaces/punctuation may precede the digits — NEVER letters: a
+     * letter means the matched name was a prefix of a longer word (the
+     * "رؤ" inside "رؤيا" trap) and the digits belong to something else. */
+    private val CHAPTER_ONLY = Regex("""^[^\p{L}\d]{0,3}(\d+)""")
 
     /** How far after a book name to look for its numbers. */
     private const val WINDOW = 48
@@ -39,6 +43,9 @@ object ReferenceScanner {
             listOf(
                 b.arabicName,
                 ReferenceParser.stripArabicPrefix(b.arabicName),
+                // The bare short form people actually write ("رؤيا" for
+                // "الرؤيا", "تكوين" for "التكوين").
+                ReferenceParser.stripArabicPrefix(b.arabicName).removePrefix("ال"),
                 b.arabicAbbreviation,
                 b.englishName,
                 b.englishAbbreviation
@@ -78,16 +85,22 @@ object ReferenceScanner {
             var refEnd = -1
 
             val m = VERSE_REF.find(window)
+            var sawCvForm = false
             if (m != null && window.substring(0, m.range.first).none { it.isLetterOrDigit() }) {
                 // The c:v numbers are the next token after the book name.
                 // Validate through the parser using the book's real name.
+                sawCvForm = true
                 parsed = ReferenceParser.parse(occ.variant.book.arabicName + " " + m.value, books)
                 if (parsed != null) refEnd = occ.end + m.range.last + 1
             }
-            if (parsed == null) {
+            if (parsed == null && !sawCvForm) {
                 // Whole-chapter form: a bare number right after the name.
+                // It must NEVER fire for a "chapter:verse" token: if a
+                // verse reference was present but invalid, the reference
+                // is nothing — not the whole chapter (the Rev 1 bug:
+                // "رؤيا ١: ١٢" degraded into all of Revelation 1).
                 val chM = CHAPTER_ONLY.find(window)
-                if (chM != null) {
+                if (chM != null && !window.substring(chM.range.last + 1).trimStart().startsWith(":")) {
                     parsed = ReferenceParser.parseChapterOnly(
                         occ.variant.book.arabicName + " " + chM.groupValues[1], books
                     )

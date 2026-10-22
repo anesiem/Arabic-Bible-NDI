@@ -989,6 +989,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             if (chapterVerses.isEmpty()) continue
             val selected = when {
                 ref.wholeChapter -> chapterVerses
+                ref.verseList != null -> ref.verseList.mapNotNull { v -> chapterVerses.firstOrNull { it.verse == v } }
                 ref.endVerse != null -> chapterVerses.filter { it.verse in ref.verse..ref.endVerse }
                 else -> chapterVerses.filter { it.verse == ref.verse }
             }

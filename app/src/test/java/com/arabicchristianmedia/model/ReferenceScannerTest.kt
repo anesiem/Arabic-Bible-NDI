@@ -1,6 +1,8 @@
 package com.arabicchristianmedia.model
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -99,5 +101,89 @@ class ReferenceScannerTest {
         assertEquals(1, hits.size)
         assertEquals("heb", hits[0].book.id)
         assertEquals(11, hits[0].verse)
+    }
+}
+
+/**
+ * v1.9.1 regression tests — the reported Rev 1 share bug (a verse
+ * reference degrading into a whole chapter), the abbreviation-prefix
+ * trap, and verse-list support.
+ */
+class ReferenceScannerFixTest {
+
+    private val books = listOf(
+        BibleBook("psa", "سفر المزامير", "Psalms", "مز", "Psa", Testament.OLD_TESTAMENT, 150),
+        BibleBook("ezr", "سفر عزرا", "Ezra", "عز", "Ezr", Testament.OLD_TESTAMENT, 10),
+        BibleBook("heb", "رسالة العبرانيين", "Hebrews", "عب", "Heb", Testament.NEW_TESTAMENT, 13),
+        BibleBook("joh", "إنجيل يوحنا", "John", "يو", "Jn", Testament.NEW_TESTAMENT, 21),
+        BibleBook("rev", "سفر الرؤيا", "Revelation", "رؤ", "Rev", Testament.NEW_TESTAMENT, 22)
+    )
+
+    @Test
+    fun reportedShareAddsOnlyListedVerses() {
+        val text = "رؤيا ١: ١٢، ١٣ ١٢ فَالْتَفَتُّ لأَنْظُرَ الصَّوْتَ الَّذِي تَكَلَّمَ مَعِي. " +
+            "وَلَمَّا الْتَفَتُّ رَأَيْتُ سَبْعَ مَنَايِرَ مِنْ ذَهَبٍ، ١٣ وَفِي وَسْطِ السَّبْعِ الْمَنَايِرِ " +
+            "شِبْهُ ابْنِ إِنْسَانٍ، رؤيا ١: ٢٠ سِرَّ السَّبْعَةِ الْكَوَاكِبِ"
+        val refs = ReferenceScanner.scan(text, books)
+        assertEquals("the share holds exactly two references", 2, refs.size)
+        assertEquals("rev", refs[0].book.id)
+        assertEquals(1, refs[0].chapter)
+        assertEquals(listOf(12, 13), refs[0].verseList)
+        assertFalse("a verse list must never become a whole chapter", refs[0].wholeChapter)
+        assertEquals("rev", refs[1].book.id)
+        assertEquals(20, refs[1].verse)
+        assertNull(refs[1].verseList)
+        assertFalse(refs[1].wholeChapter)
+    }
+
+    @Test
+    fun bareChapterStillMeansWholeChapter() {
+        val refs = ReferenceScanner.scan("سفر المزامير ٢٣", books)
+        assertEquals(1, refs.size)
+        assertTrue(refs[0].wholeChapter)
+        assertEquals(23, refs[0].chapter)
+    }
+
+    @Test
+    fun bareShortFormChapterStillMeansWholeChapter() {
+        val refs = ReferenceScanner.scan("رؤيا ١", books)
+        assertEquals(1, refs.size)
+        assertTrue(refs[0].wholeChapter)
+        assertEquals(1, refs[0].chapter)
+    }
+
+    @Test
+    fun invalidVerseReferenceNeverDegradesToWholeChapter() {
+        // Chapter 23 does not exist in Revelation (22 chapters): the
+        // reference is invalid and must yield nothing.
+        val refs = ReferenceScanner.scan("رؤيا ٢٣: ١", books)
+        assertTrue("an invalid c:v reference must produce no reference", refs.isEmpty())
+    }
+
+    @Test
+    fun rangeStillWorks() {
+        val refs = ReferenceScanner.scan("العبرانيين ٩: ٧-٩", books)
+        assertEquals(1, refs.size)
+        assertEquals(7, refs[0].verse)
+        assertEquals(9, refs[0].endVerse)
+        assertNull(refs[0].verseList)
+    }
+
+    @Test
+    fun englishVerseListParses() {
+        val refs = ReferenceScanner.scan("John 3:16, 18 is the text", books)
+        assertEquals(1, refs.size)
+        assertEquals(listOf(16, 18), refs[0].verseList)
+        assertFalse(refs[0].wholeChapter)
+    }
+
+    @Test
+    fun singleVerseUnchanged() {
+        val refs = ReferenceScanner.scan("يوحنا ٣: ١٦", books)
+        assertEquals(1, refs.size)
+        assertEquals(16, refs[0].verse)
+        assertNull(refs[0].endVerse)
+        assertNull(refs[0].verseList)
+        assertFalse(refs[0].wholeChapter)
     }
 }

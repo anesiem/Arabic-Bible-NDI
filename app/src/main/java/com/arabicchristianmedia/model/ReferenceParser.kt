@@ -20,6 +20,8 @@ object ReferenceParser {
         val verse: Int,
         /** v2.0: last verse of a same-chapter range ("9:7-9"); null = single verse. */
         val endVerse: Int? = null,
+        /** v1.9.1: explicit verse list ("3:16, 18") in written order; null = not a list. */
+        val verseList: List<Int>? = null,
         /** v2.0: true when only book+chapter were given ("Psalm 23") — the whole chapter. */
         val wholeChapter: Boolean = false
     )
@@ -50,6 +52,23 @@ object ReferenceParser {
             val book = findBook(bookPart, books) ?: return null
             if (chapter > book.totalChapters) return null
             return ParsedReference(book, chapter, verse, endVerse = endVerse)
+        }
+
+        // v1.9.1: verse-list form — "John 3:16, 18" -> verses [16, 18] of
+        // chapter 3, in written order (duplicates dropped). The separator
+        // is the Western "," or the Arabic "،".
+        val listMatch = Regex("""(\d+)\s*:\s*(\d+)((?:\s*[,،]\s*\d+)+)\s*$""").find(normalized)
+        if (listMatch != null) {
+            val chapter = listMatch.groupValues[1].toIntOrNull() ?: return null
+            val first = listMatch.groupValues[2].toIntOrNull() ?: return null
+            val rest = Regex("""\d+""").findAll(listMatch.groupValues[3]).map { it.value.toInt() }.toList()
+            val verses = (listOf(first) + rest).distinct()
+            if (chapter < 1 || verses.any { it < 1 }) return null
+            val bookPart = normalized.substring(0, listMatch.range.first).trim()
+            if (bookPart.isEmpty()) return null
+            val book = findBook(bookPart, books) ?: return null
+            if (chapter > book.totalChapters) return null
+            return ParsedReference(book, chapter, verses.first(), verseList = verses)
         }
 
         // Split into book part and chapter:verse part.

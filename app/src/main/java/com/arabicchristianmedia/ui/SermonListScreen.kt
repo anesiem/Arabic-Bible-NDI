@@ -437,7 +437,6 @@ fun SermonListScreen(
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable
 // v1.9.1: on-air row colors — dark blue with light yellow (Ashraf's
 // pick, replacing the red tint). Fixed in both screen modes.
 private val SermonLiveNavy = Color(0xFF1B3A5C)
@@ -462,6 +461,7 @@ private fun SermonPairOption(pair: SermonShadePair, selected: Boolean, onClick: 
     }
 }
 
+@Composable
 private fun SermonRow(
     entry: SermonEntry,
     index: Int,

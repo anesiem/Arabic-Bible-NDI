@@ -966,8 +966,16 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     #lowerthird-container.anim-fade:not(.visible) { opacity: 0; }
     #lowerthird-container.anim-slide-up { transform: translateY(60px); }
     #lowerthird-container.anim-slide-up.visible { transform: translateY(0); }
+    #lowerthird-container.anim-slide-down { transform: translateY(-60px); }
+    #lowerthird-container.anim-slide-down.visible { transform: translateY(0); }
     #lowerthird-container.anim-slide-right { transform: translateX(80px); }
     #lowerthird-container.anim-slide-right.visible { transform: translateX(0); }
+    #lowerthird-container.anim-slide-left { transform: translateX(-80px); }
+    #lowerthird-container.anim-slide-left.visible { transform: translateX(0); }
+    #lowerthird-container.anim-zoom { transform: scale(0.92); }
+    #lowerthird-container.anim-zoom.visible { transform: scale(1.0); }
+    #lowerthird-container.anim-bounce { transform: scale(0.88); transition-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1) !important; }
+    #lowerthird-container.anim-bounce.visible { transform: scale(1.0); }
     #lowerthird-container.anim-cut { transition: none !important; }
 
     /* ==========================================================================
@@ -1254,6 +1262,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
      */
     // Last applied SSE state version (-1 = none yet). See applyData guard.
     let lastStateVersion = -1;
+    let lastVerseText = null;
     // v1.9.1: overlay stability state (fast path, font gate, particles).
     let lastStyleKey = null;
     let revealToken = 0;
@@ -1367,22 +1376,53 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       // v1.8: English section is shown in BOTH and ENGLISH_ONLY (with its own colors).
       // No color swapping — each language keeps its own styling.
       const showEnglishSection = langMode !== 'ARABIC_ONLY' && data.englishText;
-      if (showArabic) {
-        verseText.style.display = '';
-        citationText.style.display = '';
-        verseText.textContent = data.arabicText;
-        citationText.textContent = data.arabicCitation;
-      } else {
-        // ENGLISH_ONLY: Hide Arabic rows, English section takes over.
-        verseText.style.display = 'none';
-        citationText.style.display = 'none';
+      const transType = data.transition || 'SLIDE_UP';
+      const transDur = data.transitionDurationMs !== undefined ? data.transitionDurationMs : 350;
+      const verseChanged = lastVerseText !== null && lastVerseText !== data.arabicText;
+      lastVerseText = data.arabicText;
+
+      function applyVerseTextContent() {
+        if (showArabic) {
+          verseText.style.display = '';
+          citationText.style.display = '';
+          verseText.textContent = data.arabicText;
+          citationText.textContent = data.arabicCitation;
+        } else {
+          verseText.style.display = 'none';
+          citationText.style.display = 'none';
+        }
+        if (showEnglishSection) {
+          englishSection.style.display = 'block';
+          englishText.textContent = data.englishText;
+          englishCitation.textContent = '(' + data.englishCitation + ')';
+        } else {
+          englishSection.style.display = 'none';
+        }
       }
 
-      // 3. Bilingual Mode (BOTH only: English in secondary section below Arabic)
+      if (wasVisible && verseChanged && transType !== 'CUT' && transDur > 0) {
+        const halfDur = Math.floor(transDur / 2);
+        cardBox.style.transition = 'opacity ' + halfDur + 'ms ease-in-out, transform ' + halfDur + 'ms ease-in-out';
+        cardBox.style.opacity = '0';
+        if (transType === 'SLIDE_UP') cardBox.style.transform = 'translateY(15px)';
+        else if (transType === 'SLIDE_DOWN') cardBox.style.transform = 'translateY(-15px)';
+        else if (transType === 'SLIDE_RIGHT') cardBox.style.transform = 'translateX(20px)';
+        else if (transType === 'SLIDE_LEFT') cardBox.style.transform = 'translateX(-20px)';
+        else if (transType === 'SCALE_ZOOM') cardBox.style.transform = 'scale(0.95)';
+        else if (transType === 'BOUNCE') cardBox.style.transform = 'scale(0.92)';
+
+        setTimeout(function() {
+          applyVerseTextContent();
+          cardBox.style.opacity = '1';
+          cardBox.style.transform = 'none';
+          setTimeout(function() { cardBox.style.transition = ''; }, halfDur);
+        }, halfDur);
+      } else {
+        applyVerseTextContent();
+      }
+
+      // 3. Bilingual Styling
       if (showEnglishSection) {
-        englishSection.style.display = 'block';
-        englishText.textContent = data.englishText;
-        englishCitation.textContent = '(' + data.englishCitation + ')';
         englishText.style.color = data.secondaryTextColorHex || '#CBD5E1';
         englishCitation.style.color = data.secondaryReferenceColorHex || '#94A3B8';
         englishText.style.fontSize = scaledPx(data.secondaryVerseFontSize || 18);
@@ -1393,12 +1433,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         englishCitation.style.fontWeight = data.secondaryReferenceIsBold ? 'bold' : 'normal';
         englishCitation.style.fontStyle = data.secondaryReferenceIsItalic ? 'italic' : 'normal';
         const spacing = data.showBilingualSpacing ? (data.bilingualSpacing || 20) : 0;
-        // v2.0: scale like every other measurement (NDI: spacing x frame
-        // scale). Raw px made the gap proportionally bigger than NDI at any
-        // window size other than exactly 1920 wide.
         englishSection.style.marginTop = (spacing * getStageScale()) + 'px';
-      } else {
-        englishSection.style.display = 'none';
       }
 
       // 4. Layout & Alignment (Ensures Full Show remains vertically & horizontally centered in middle)
@@ -1903,16 +1938,17 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       }
 
       // 8. Entry Transitions
-      // v1.9.1: preserve 'visible' across the class reset. Dropping it on
-      // every update made each verse change fade out and back in over the
-      // full transition duration — the HTTP "delay" vs NDI's crossfade.
       container.className = isFull ? 'mode-full-show' : '';
-      if (data.transition === 'FADE') container.classList.add('anim-fade');
-      else if (data.transition === 'SLIDE_RIGHT') container.classList.add('anim-slide-right');
-      else if (data.transition === 'CUT') container.classList.add('anim-cut');
+      if (transType === 'FADE') container.classList.add('anim-fade');
+      else if (transType === 'SLIDE_DOWN') container.classList.add('anim-slide-down');
+      else if (transType === 'SLIDE_RIGHT') container.classList.add('anim-slide-right');
+      else if (transType === 'SLIDE_LEFT') container.classList.add('anim-slide-left');
+      else if (transType === 'SCALE_ZOOM') container.classList.add('anim-zoom');
+      else if (transType === 'BOUNCE') container.classList.add('anim-bounce');
+      else if (transType === 'CUT') container.classList.add('anim-cut');
       else container.classList.add('anim-slide-up');
 
-      container.style.transitionDuration = (data.transitionDurationMs || 350) + 'ms';
+      container.style.transitionDuration = transDur + 'ms';
       if (wasVisible) container.classList.add('visible');
 
       // v1.9.1: fit + reveal happen through the font gate (finishApply),
@@ -2410,6 +2446,22 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 } catch (_: Exception) { /* fall through: plain fade-in */ }
                 val layerPaint = Paint().apply { alpha = (p * 255f).toInt().coerceIn(0, 255) }
                 transitionLayer = canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), layerPaint)
+                // Apply directional motion or scaling during transition
+                when (tpl.transition) {
+                    TransitionType.SLIDE_UP -> canvas.translate(0f, (1f - p) * 50f * (width / 1920f))
+                    TransitionType.SLIDE_DOWN -> canvas.translate(0f, -(1f - p) * 50f * (width / 1920f))
+                    TransitionType.SLIDE_RIGHT -> canvas.translate((1f - p) * 60f * (width / 1920f), 0f)
+                    TransitionType.SLIDE_LEFT -> canvas.translate(-(1f - p) * 60f * (width / 1920f), 0f)
+                    TransitionType.SCALE_ZOOM -> {
+                        val s = 0.92f + 0.08f * p
+                        canvas.scale(s, s, width / 2f, height / 2f)
+                    }
+                    TransitionType.BOUNCE -> {
+                        val bp = if (p < 0.7f) (p / 0.7f) * 1.05f else 1.05f - (p - 0.7f) / 0.3f * 0.05f
+                        canvas.scale(bp, bp, width / 2f, height / 2f)
+                    }
+                    else -> {}
+                }
             }
         }
 

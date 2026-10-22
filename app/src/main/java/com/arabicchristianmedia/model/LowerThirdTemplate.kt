@@ -12,7 +12,11 @@ enum class TemplateStyle(val displayName: String, val description: String) {
 enum class TransitionType(val displayName: String) {
     FADE("Smooth Fade"),
     SLIDE_UP("Slide From Bottom"),
-    SLIDE_RIGHT("Slide From Right (RTL)"),
+    SLIDE_DOWN("Slide From Top"),
+    SLIDE_RIGHT("Slide From Right"),
+    SLIDE_LEFT("Slide From Left"),
+    SCALE_ZOOM("Zoom In / Scale"),
+    BOUNCE("Pop / Elastic Bounce"),
     CUT("Instant Cut")
 }
 

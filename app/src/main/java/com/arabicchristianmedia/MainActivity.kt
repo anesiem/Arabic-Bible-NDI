@@ -404,6 +404,9 @@ class MainActivity : ComponentActivity() {
                                 onToggleAdvancedNdi = { viewModel.toggleAdvancedNdi() },
                                 onRefreshNdiDiagnostics = { viewModel.refreshNdiDiagnostics() },
                                 onClearNdiDiagnostics = { viewModel.clearNdiDiagnostics() },
+                                onSetAdvertiseByName = { viewModel.setAdvertiseByName(it) },
+                                onSetAdvertiseName = { viewModel.setAdvertiseName(it) },
+                                onToggleAdvertiseTips = { viewModel.toggleAdvertiseTips() },
                                 onToggleTashkeel = { viewModel.setTashkeelEnabled(it) },
                                 onSelectEnglishVersion = { viewModel.setEnglishVersion(it) }
                             )

@@ -71,6 +71,18 @@ data class BibleNdiUiState(
     // Advanced diagnostics (last tab): when on, NDI errors are shown to the user
     val showAdvancedNdi: Boolean = false,
     val ndiErrorEvents: List<NdiErrorEvent> = emptyList(),
+    // v1.9.1: HTTP overlay (SSE) health, filled by refreshNdiDiagnostics()
+    // from the broadcast server's session journal.
+    val sseConnectedNow: Int = 0,
+    val sseConnectTotal: Int = 0,
+    val sseDropTotal: Int = 0,
+    val sseLastDropReason: String = "",
+    val sseLastDropAgoSec: Long = -1,
+    // v1.9.1 (#16): advertise overlay URLs by the tablet's network name
+    // instead of its DHCP-changing IP; tips card collapse state.
+    val advertiseByName: Boolean = false,
+    val advertiseName: String = "",
+    val advertiseTipsCollapsed: Boolean = false,
     val templates: List<LowerThirdTemplate> = emptyList(),
     val activeTemplate: LowerThirdTemplate = TemplateRepository.DEFAULT_TEMPLATES[0],
     val activeShowTemplate: LowerThirdTemplate = BibleNdiViewModel.defaultShowTemplate(),
@@ -194,6 +206,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             }
         }
         loadInitialDataAsync()
+        loadAdvertiseSettings()
         refreshNetworkInterfaces()
         // startBroadcastServer() // DO NOT auto-start as per request 8? 
         // User said: "on Library tab, don't start the on air, be sure it's off air till a user click on a verse"
@@ -520,8 +533,70 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         refreshNdiDiagnostics()
     }
 
+    // ---- v1.9.1 (#16): advertise-by-name setting ----
+
+    private fun loadAdvertiseSettings() {
+        val prefs = getNdiPrefs()
+        val byName = prefs?.getBoolean("advertise_by_name", false) ?: false
+        var name = prefs?.getString("advertise_name", "") ?: ""
+        if (name.isBlank()) {
+            // Prefill with the tablet's system device name; the field stays
+            // editable because the router may answer to a different name.
+            name = try {
+                android.provider.Settings.Global.getString(
+                    getApplication<Application>().contentResolver, "device_name"
+                ) ?: ""
+            } catch (e: Exception) { "" }
+        }
+        val tipsCollapsed = prefs?.getBoolean("advertise_tips_collapsed", false) ?: false
+        _uiState.value = _uiState.value.copy(
+            advertiseByName = byName,
+            advertiseName = name,
+            advertiseTipsCollapsed = tipsCollapsed
+        )
+        applyAdvertise()
+    }
+
+    private fun applyAdvertise() {
+        val st = _uiState.value
+        broadcastServer.advertiseName = if (st.advertiseByName) st.advertiseName.trim() else null
+        _uiState.value = st.copy(
+            serverUrl = broadcastServer.getServerUrl(),
+            streamUrl = broadcastServer.getStreamUrl()
+        )
+    }
+
+    fun setAdvertiseByName(on: Boolean) {
+        _uiState.value = _uiState.value.copy(advertiseByName = on)
+        try { getNdiPrefs()?.edit()?.putBoolean("advertise_by_name", on)?.apply() } catch (e: Exception) {}
+        applyAdvertise()
+    }
+
+    fun setAdvertiseName(name: String) {
+        val clean = name.trim()
+        _uiState.value = _uiState.value.copy(advertiseName = clean)
+        try { getNdiPrefs()?.edit()?.putString("advertise_name", clean)?.apply() } catch (e: Exception) {}
+        applyAdvertise()
+    }
+
+    fun toggleAdvertiseTips() {
+        val now = !_uiState.value.advertiseTipsCollapsed
+        _uiState.value = _uiState.value.copy(advertiseTipsCollapsed = now)
+        try { getNdiPrefs()?.edit()?.putBoolean("advertise_tips_collapsed", now)?.apply() } catch (e: Exception) {}
+    }
+
     fun refreshNdiDiagnostics() {
-        _uiState.value = _uiState.value.copy(ndiErrorEvents = nativeSender.getErrorEvents())
+        val srv = broadcastServer
+        val lastDropAt = srv.sseLastDropAtMs
+        _uiState.value = _uiState.value.copy(
+            ndiErrorEvents = nativeSender.getErrorEvents(),
+            sseConnectedNow = srv.sseConnectedNow,
+            sseConnectTotal = srv.sseConnectTotal,
+            sseDropTotal = srv.sseDropTotal,
+            sseLastDropReason = srv.sseLastDropReason,
+            sseLastDropAgoSec = if (lastDropAt == 0L) -1
+                else (System.currentTimeMillis() - lastDropAt) / 1000
+        )
     }
 
     fun clearNdiDiagnostics() {

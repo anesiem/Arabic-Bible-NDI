@@ -239,6 +239,43 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     // Connected SSE clients for instantaneous broadcast push (PrintWriter to isShow)
     private val sseClients = CopyOnWriteArrayList<Pair<PrintWriter, Boolean>>()
 
+    // v1.9.1: SSE connection journal + session counters (diagnostics for
+    // the overlay-drop investigation). A 3-hour service can cycle many
+    // connections, so the counters are cumulative for the whole server
+    // session and the journal keeps the last 200 events. Read by
+    // /api/debug and the Setup tab's server-health readout. Cost: a few
+    // short strings per connect/disconnect only — nothing per message.
+    private val sseJournal = java.util.Collections.synchronizedList(mutableListOf<String>())
+    @Volatile var sseConnectTotal: Int = 0; private set
+    @Volatile var sseDropTotal: Int = 0; private set
+    @Volatile var sseLastDropAtMs: Long = 0L; private set
+    @Volatile var sseLastDropReason: String = ""; private set
+    private val sseDropReasons = java.util.concurrent.ConcurrentHashMap<String, Int>()
+    private val sseConnInfo = java.util.concurrent.ConcurrentHashMap<PrintWriter, LongArray>()
+    val sseConnectedNow: Int get() = sseClients.size
+
+    private fun journalSse(line: String) {
+        synchronized(sseJournal) {
+            sseJournal.add(line)
+            while (sseJournal.size > 200) sseJournal.removeAt(0)
+        }
+    }
+
+    /** Records a dropped overlay connection (no-op if it wasn't tracked). */
+    private fun noteSseDrop(writer: PrintWriter, isShow: Boolean, via: String, reason: String) {
+        val info = sseConnInfo.remove(writer) ?: return
+        val now = System.currentTimeMillis()
+        val lived = now - info[0]
+        sseDropTotal++
+        sseLastDropAtMs = now
+        sseLastDropReason = reason
+        sseDropReasons.compute(reason) { _, v -> (v ?: 0) + 1 }
+        journalSse("$now DROP ${if (isShow) "full" else "lower"} lived=${lived}ms msgs=${info[1]} via=$via reason=$reason")
+    }
+
+    fun sseJournalSnapshot(): List<String> = synchronized(sseJournal) { ArrayList(sseJournal) }
+    fun sseDropReasonCounts(): Map<String, Int> = HashMap(sseDropReasons)
+
     fun start(onStarted: (String) -> Unit = {}, onError: (String) -> Unit = {}) {
         if (isRunning) return
 
@@ -272,22 +309,25 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 while (isActive && isRunning) {
                     delay(15_000)
                     val dead = mutableListOf<Pair<PrintWriter, Boolean>>()
-                    for ((writer, _) in sseClients) {
+                    val deadWhy = mutableMapOf<PrintWriter, String>()
+                    for ((writer, isShow) in sseClients) {
                         try {
                             synchronized(writer) {
                                 writer.print("event: ping\ndata: 1\n\n")
                                 writer.flush()
                             }
-                            if (writer.checkError()) dead.add(writer to false)
+                            if (writer.checkError()) { dead.add(writer to isShow); deadWhy[writer] = "write-error" }
                         } catch (e: Exception) {
-                            dead.add(writer to false)
+                            dead.add(writer to isShow); deadWhy[writer] = "exception:${e.javaClass.simpleName}"
                         }
                     }
                     if (dead.isNotEmpty()) {
-                        // Remove by writer identity; the isShow flag is irrelevant here.
                         val deadWriters = dead.map { it.first }.toSet()
                         sseClients.removeAll { deadWriters.contains(it.first) }
-                        deadWriters.forEach { try { it.close() } catch (e: Exception) {} }
+                        dead.forEach { (writer, isShow) ->
+                            noteSseDrop(writer, isShow, "ping", deadWhy[writer] ?: "write-error")
+                            try { writer.close() } catch (e: Exception) {}
+                        }
                     }
                 }
             }
@@ -315,6 +355,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             try { writer.close() } catch (e: Exception) {}
         }
         sseClients.clear()
+        sseConnInfo.clear()
         // v1.7: release video decoders (recreated lazily on next start).
         synchronized(videoRenderers) {
             videoRenderers.values.forEach { try { it.release() } catch (e: Exception) {} }
@@ -511,6 +552,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         val showData = "data: $showPayload\n\n"
 
         val deadClients = mutableListOf<Pair<PrintWriter, Boolean>>()
+        val deadWhy = mutableMapOf<PrintWriter, String>()
         for (pair in sseClients) {
             val (writer, isShow) = pair
             try {
@@ -521,15 +563,20 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                     writer.flush()
                 }
                 if (writer.checkError()) {
-                    deadClients.add(pair)
+                    deadClients.add(pair); deadWhy[writer] = "write-error"
+                } else {
+                    sseConnInfo[writer]?.let { it[1]++ }
                 }
             } catch (e: Exception) {
-                deadClients.add(pair)
+                deadClients.add(pair); deadWhy[writer] = "exception:${e.javaClass.simpleName}"
             }
         }
         if (deadClients.isNotEmpty()) {
             sseClients.removeAll(deadClients.toSet())
-            deadClients.forEach { (writer, _) -> try { writer.close() } catch (e: Exception) {} }
+            deadClients.forEach { (writer, isShow) ->
+                noteSseDrop(writer, isShow, "broadcast", deadWhy[writer] ?: "write-error")
+                try { writer.close() } catch (e: Exception) {}
+            }
         }
         statBroadcast.record((System.nanoTime() - broadcastT0) / 1_000_000.0)
     }
@@ -689,12 +736,16 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         writer.print("Access-Control-Allow-Origin: *\r\n\r\n")
         writer.flush()
 
-        // Send initial state immediately
-        val initialData = "data: ${buildJsonState(isShow)}\n\n"
+        // Send initial state immediately. The retry field asks the browser
+        // to reconnect 1s after a drop instead of its ~3s default.
+        val initialData = "retry: 1000\ndata: ${buildJsonState(isShow)}\n\n"
         writer.print(initialData)
         writer.flush()
 
         sseClients.add(Pair(writer, isShow))
+        sseConnInfo[writer] = longArrayOf(System.currentTimeMillis(), 1)
+        sseConnectTotal++
+        journalSse("${System.currentTimeMillis()} CONNECT ${if (isShow) "full" else "lower"} ${socket.remoteSocketAddress}")
     }
 
     private fun serveJsonState(out: OutputStream, isShow: Boolean = false) {
@@ -1870,6 +1921,17 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     }
 
     // Connect Server-Sent Events (SSE)
+    // v1.9.1: shared forced reconnect (half-open socket recovery). The
+    // watchdog calls this on its 5 s tick — but Chrome throttles timers in
+    // background tabs, so the visibility/focus hooks below call it the
+    // moment the user returns to the tab: the watchdog's blind spot.
+    function forceReconnect(reason) {
+      diagEvent(reason, 'silence>35s, reconnecting');
+      try { evtSource.close(); } catch (e) { /* ignore */ }
+      if (sseWatchdog) { clearInterval(sseWatchdog); sseWatchdog = null; }
+      connectSse();
+    }
+
     function connectSse() {
       const urlParams = new URLSearchParams(window.location.search);
       const isShow = urlParams.get('show') === '1' || window.location.pathname.includes('/full');
@@ -1899,13 +1961,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       evtSource.addEventListener('ping', function() { lastSseSeen = Date.now(); });
       if (sseWatchdog) clearInterval(sseWatchdog);
       sseWatchdog = setInterval(function() {
-        if (Date.now() - lastSseSeen > 35000) {
-          diagEvent('watchdog', 'silence>35s, reconnecting');
-          try { evtSource.close(); } catch (e) { /* ignore */ }
-          clearInterval(sseWatchdog);
-          sseWatchdog = null;
-          connectSse();
-        }
+        if (Date.now() - lastSseSeen > 35000) forceReconnect('watchdog');
       }, 5000);
       evtSource.onerror = function() {
         evtSource.close();
@@ -1934,7 +1990,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     } catch (e) { /* best-effort */ }
 
     setInterval(sendDiag, 10000);
-    document.addEventListener('visibilitychange', function() { if (document.visibilityState === 'hidden') sendDiag(); });
+    document.addEventListener('visibilitychange', function() {
+      if (document.visibilityState === 'hidden') { sendDiag(); return; }
+      if (Date.now() - lastSseSeen > 35000) forceReconnect('visibility-resume');
+    });
+    window.addEventListener('focus', function() {
+      if (Date.now() - lastSseSeen > 35000) forceReconnect('visibility-resume');
+    });
     connectSse();
   </script>
 </body>
@@ -3689,6 +3751,21 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         sb.append("\"lower\":${clientStatLower ?: "null"},\"lowerAgeMs\":${if (clientStatLowerAtMs == 0L) -1 else System.currentTimeMillis() - clientStatLowerAtMs},")
         sb.append("\"full\":${clientStatFull ?: "null"},\"fullAgeMs\":${if (clientStatFullAtMs == 0L) -1 else System.currentTimeMillis() - clientStatFullAtMs}")
         sb.append("},")
+        sb.append("\"sseTotals\":{\"connects\":$sseConnectTotal,\"drops\":$sseDropTotal,\"reasons\":{")
+        var firstReason = true
+        for ((reason, count) in sseDropReasonCounts()) {
+            if (!firstReason) sb.append(",")
+            firstReason = false
+            sb.append("\"${jsonEscape(reason)}\":$count")
+        }
+        sb.append("}},")
+        sb.append("\"sseJournal\":[")
+        val journal = sseJournalSnapshot()
+        for (i in journal.indices) {
+            if (i > 0) sb.append(",")
+            sb.append("\"${jsonEscape(journal[i])}\"")
+        }
+        sb.append("],")
         sb.append("\"memory\":{\"usedMb\":$usedMb,\"maxMb\":$maxMb}")
         sb.append("}")
         sendJson(out, 200, sb.toString())
@@ -3745,6 +3822,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
 <h2>Overlay pages — self-reported (browser side)</h2>
 <div id="clientStatSec">—</div>
+
+<h2>SSE connections — tablet's journal</h2>
+<div class="out" id="sseSec">—</div>
 
 <h2>This browser</h2>
 <div id="clientSec">—</div>
@@ -3821,6 +3901,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       document.getElementById('clientStatSec').innerHTML =
         '<div class="out">' + esc(ocText('LOWER', oc.lower, oc.lowerAgeMs || 0)) + '</div>' +
         '<div class="out" style="margin-top:6px">' + esc(ocText('FULL', oc.full, oc.fullAgeMs || 0)) + '</div>';
+      var st = j.sseTotals || { connects: 0, drops: 0, reasons: {} };
+      var reasons = Object.keys(st.reasons || {}).map(function(k) { return k + '=' + st.reasons[k]; }).join(', ') || 'none';
+      var lines = (j.sseJournal || []).slice(-14);
+      document.getElementById('sseSec').textContent =
+        'Session totals · connects ' + st.connects + ' · drops ' + st.drops + ' · drop reasons: ' + reasons +
+        '\n' + (lines.length ? lines.join('\n') : '(no connections recorded yet)');
       renderClient();
       buildReport();
     }).catch(function(e) {
@@ -3985,7 +4071,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     .chips button.active { background: #f1f5f9; color: #0f172a; border-color: transparent; }
     .vrow { border-color: #334155; }
   }
-  header { padding: 16px 20px 8px; font-size: 20px; font-weight: 700; display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+  header { padding: 16px 20px 8px; font-size: 20px; font-weight: 700; display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;  flex-wrap: wrap; }
   /* The live reference rides in the header as a slim pill \u2014 information
      only, zero extra layout space. */
   .livepill { display: inline-flex; align-items: center; gap: 6px; max-width: 55%; flex: none;
@@ -3993,7 +4079,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     padding: 5px 11px; font-size: 12.5px; font-weight: 600; margin-top: 2px; }
   .livepill .dot { width: 8px; height: 8px; border-radius: 50%; background: #9ca3af; flex: none; }
   .livepill.on .dot { background: #22c55e; box-shadow: 0 0 6px #22c55e; }
-  .livepill .ref { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .livepill .ref { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; unicode-bidi: plaintext; }
+  @media (max-width: 480px) { .livepill { max-width: 100%; } }
   header .sub { font-size: 13px; font-weight: 400; opacity: 0.7; margin-top: 2px; }
   main { flex: 1; padding: 8px 16px 16px; display: flex; flex-direction: column; gap: 12px; max-width: 640px; width: 100%; margin: 0 auto; }
   .card { border: 1px solid; border-radius: 16px; padding: 16px; }
@@ -4061,7 +4148,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   <div>📖 Bible Remote
     <div class="sub">Arabic Bible NDI — remote device: tap a verse to show it</div>
   </div>
-  <span class="livepill" id="livePill"><span class="dot"></span><span class="ref" id="liveRef">—</span></span>
+  <span class="livepill" id="livePill"><span class="dot"></span><span class="ref" id="liveRef" dir="auto">—</span></span>
 </header>
 <main>
   <button class="onair off" id="onAirBtn" onclick="toggleOnAir()">OFF AIR</button>
@@ -4284,13 +4371,24 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     /** True when the device has a real LAN address (never loopback/localhost). */
     fun hasLanAddress(): Boolean = !getLocalIpAddress().startsWith("127.")
 
+    // v1.9.1 (#16): optional display host — the tablet's network name.
+    // When set, advertised URLs use the name instead of the raw IP (which
+    // changes with DHCP). Display only: the server keeps listening on all
+    // interfaces, and the IP remains reachable as the fallback.
+    @Volatile var advertiseName: String? = null
+
+    fun getDisplayHost(): String {
+        val n = advertiseName?.trim()
+        return if (!n.isNullOrEmpty()) n else getLocalIpAddress()
+    }
+
     fun getServerUrl(): String {
         if (!hasLanAddress()) return ""
-        return "http://${getLocalIpAddress()}:$port/ndi"
+        return "http://${getDisplayHost()}:$port/ndi"
     }
 
     fun getStreamUrl(): String {
         if (!hasLanAddress()) return ""
-        return "http://${getLocalIpAddress()}:$port/ndi/stream"
+        return "http://${getDisplayHost()}:$port/ndi/stream"
     }
 }

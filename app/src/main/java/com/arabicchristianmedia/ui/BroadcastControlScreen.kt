@@ -68,6 +68,7 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -110,6 +111,9 @@ fun BroadcastControlScreen(
     onToggleAdvancedNdi: () -> Unit = {},
     onRefreshNdiDiagnostics: () -> Unit = {},
     onClearNdiDiagnostics: () -> Unit = {},
+    onSetAdvertiseByName: (Boolean) -> Unit = {},
+    onSetAdvertiseName: (String) -> Unit = {},
+    onToggleAdvertiseTips: () -> Unit = {},
     onToggleTashkeel: (Boolean) -> Unit = {},
     onSelectEnglishVersion: (String) -> Unit = {},
     modifier: Modifier = Modifier
@@ -731,6 +735,81 @@ fun BroadcastControlScreen(
                                     }
                                 }
 
+                                // v1.9.1 (#16): advertise overlay URLs by IP or by the tablet's network name,
+                                // with a collapsible information & tips card (his design).
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = bento.card,
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, bento.border),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(modifier = Modifier.padding(10.dp)) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text("عنوان البث (Advertise address)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary)
+                                                Text("إظهار الروابط بعنوان IP أو باسم الجهاز على الشبكة", fontSize = 10.sp, color = bento.textSecondary)
+                                            }
+                                            Switch(
+                                                checked = uiState.advertiseByName,
+                                                onCheckedChange = { onSetAdvertiseByName(it) }
+                                            )
+                                        }
+                                        if (uiState.advertiseByName) {
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            var nameText by remember(uiState.advertiseName) { mutableStateOf(uiState.advertiseName) }
+                                            TextField(
+                                                value = nameText,
+                                                onValueChange = { nameText = it },
+                                                label = { Text("اسم الجهاز على الشبكة (Device name)") },
+                                                singleLine = true,
+                                                modifier = Modifier.fillMaxWidth()
+                                            )
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.SpaceBetween
+                                            ) {
+                                                Text(
+                                                    "مثال: http://" + nameText.ifBlank { "…" } + ":" + uiState.serverPort + "/lower",
+                                                    fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = bento.textSecondary
+                                                )
+                                                androidx.compose.material3.TextButton(onClick = { onSetAdvertiseName(nameText) }) {
+                                                    Text("تطبيق (Apply)")
+                                                }
+                                            }
+                                            Text("البديل دائماً متاح (IP): " + uiState.activeIpAddress, fontSize = 10.sp, color = bento.textSecondary)
+                                        }
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text("💡 معلومات ونصائح (Info & tips)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary)
+                                            androidx.compose.material3.TextButton(onClick = { onToggleAdvertiseTips() }) {
+                                                Text(if (uiState.advertiseTipsCollapsed) "عرض (Show)" else "إخفاء (Hide)")
+                                            }
+                                        }
+                                        if (!uiState.advertiseTipsCollapsed) {
+                                            Text("• عنوان IP يعمل دائماً، لكنه قد يتغيّر عند إعادة تشغيل الراوتر أو الجهاز (DHCP) فتنكسر الروابط المحفوظة.", fontSize = 10.sp, color = bento.textSecondary)
+                                            Spacer(modifier = Modifier.height(2.dp))
+                                            Text("• اسم الجهاز يبقى ثابتاً حتى لو تغيّر الـ IP — اكتب الاسم تماماً كما يفتح في متصفحك الآن (بدون .local).", fontSize = 10.sp, color = bento.textSecondary)
+                                            Spacer(modifier = Modifier.height(2.dp))
+                                            Text("• جرّب الاسم في المتصفح أولاً: إذا فتحت صفحة التحكم، فالاسم يعمل على شبكتك ويمكن الاعتماد عليه.", fontSize = 10.sp, color = bento.textSecondary)
+                                            Spacer(modifier = Modifier.height(2.dp))
+                                            Text("• إذا توقّف الاسم عن العمل على شبكة معيّنة، أعد التبديل إلى IP — رابط الـ IP يبقى ظاهراً دائماً كبديل.", fontSize = 10.sp, color = bento.textSecondary)
+                                            Spacer(modifier = Modifier.height(2.dp))
+                                            Text("• هذا الإعداد يغيّر الروابط المعروضة والمنسوخة فقط؛ البثّ نفسه وطرق الاتصال لا تتغيّر.", fontSize = 10.sp, color = bento.textSecondary)
+                                            Spacer(modifier = Modifier.height(2.dp))
+                                        }
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(12.dp))
+
                                 // Advanced diagnostics toggle
                                 Surface(
                                     shape = RoundedCornerShape(10.dp),
@@ -763,6 +842,7 @@ fun BroadcastControlScreen(
                                             )
                                         }
                                         if (uiState.showAdvancedNdi) {
+                                            LaunchedEffect(Unit) { onRefreshNdiDiagnostics() }
                                             Spacer(modifier = Modifier.height(8.dp))
                                             HorizontalDivider(color = bento.border)
                                             Spacer(modifier = Modifier.height(8.dp))
@@ -782,6 +862,21 @@ fun BroadcastControlScreen(
                                                 )
                                                 Spacer(modifier = Modifier.height(2.dp))
                                             }
+                                            Text(
+                                                "صحة بث HTTP (الأوفرلاي):",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = bento.textPrimary
+                                            )
+                                            Text(
+                                                text = "متصل الآن: ${uiState.sseConnectedNow} • جلسات الاتصال: ${uiState.sseConnectTotal} • الانقطاعات: ${uiState.sseDropTotal}" +
+                                                    if (uiState.sseLastDropReason.isNotEmpty() && uiState.sseLastDropAgoSec >= 0)
+                                                        " • آخر انقطاع: ${uiState.sseLastDropReason} (قبل ${uiState.sseLastDropAgoSec} ث)"
+                                                    else "",
+                                                fontSize = 10.sp,
+                                                fontFamily = FontFamily.Monospace,
+                                                color = if (uiState.sseLastDropAgoSec in 0..60) bento.liveRed else bento.textSecondary
+                                            )
                                             Spacer(modifier = Modifier.height(8.dp))
                                             Text(
                                                 "سجل الأخطاء (${uiState.ndiErrorEvents.size}):",

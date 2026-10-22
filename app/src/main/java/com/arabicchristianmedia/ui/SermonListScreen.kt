@@ -438,6 +438,12 @@ fun SermonListScreen(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+// v1.9.1: on-air row colors — dark blue with light yellow (Ashraf's
+// pick, replacing the red tint). Fixed in both screen modes.
+private val SermonLiveNavy = Color(0xFF1B3A5C)
+private val SermonLiveYellow = Color(0xFFF5D76E)
+private val SermonLivePaleYellow = Color(0xFFFDE9A8)
+
 /** One selectable shade pair in the sermon colors dialog. */
 @Composable
 private fun SermonPairOption(pair: SermonShadePair, selected: Boolean, onClick: () -> Unit) {
@@ -502,14 +508,14 @@ private fun SermonRow(
             shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(
                 containerColor = when {
-                    isLive -> bento.liveRed.copy(alpha = 0.18f)
+                    isLive -> SermonLiveNavy
                     entry.shade == 0 -> shadeColorA
                     else -> shadeColorB
                 }
             ),
             border = androidx.compose.foundation.BorderStroke(
                 if (isLive) 2.dp else 1.dp,
-                if (isLive) bento.liveRed else bento.border
+                if (isLive) SermonLiveYellow else bento.border
             ),
             modifier = Modifier.fillMaxWidth().clickable { onTap() }
         ) {
@@ -519,7 +525,7 @@ private fun SermonRow(
             ) {
                 Surface(
                     shape = RoundedCornerShape(8.dp),
-                    color = if (isLive) bento.liveRed.copy(alpha = 0.25f)
+                    color = if (isLive) SermonLiveYellow
                             else bento.primaryContainer,
                     modifier = Modifier.padding(end = 10.dp)
                 ) {
@@ -527,7 +533,7 @@ private fun SermonRow(
                         text = ArabicTextFormatter.toEasternArabicDigits(index + 1),
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
-                        color = if (isLive) bento.liveRed else bento.primary,
+                        color = if (isLive) SermonLiveNavy else bento.primary,
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                     )
                 }
@@ -541,18 +547,18 @@ private fun SermonRow(
                             text = verse.getFormattedArabicCitation(true),
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
-                            color = bento.primary
+                            color = if (isLive) SermonLivePaleYellow else bento.primary
                         )
                         if (isLive) {
                             Surface(
                                 shape = RoundedCornerShape(6.dp),
-                                color = bento.liveRed
+                                color = SermonLiveYellow
                             ) {
                                 Text(
                                     text = "على الهواء • LIVE",
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = androidx.compose.ui.graphics.Color.White,
+                                    color = SermonLiveNavy,
                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                                 )
                             }
@@ -563,7 +569,7 @@ private fun SermonRow(
                         text = verse.arabicText,
                         fontSize = 15.sp,
                         lineHeight = 24.sp,
-                        color = bento.textPrimary,
+                        color = if (isLive) SermonLivePaleYellow else bento.textPrimary,
                         textAlign = TextAlign.Right,
                         maxLines = 3,
                         overflow = TextOverflow.Ellipsis,
@@ -577,7 +583,7 @@ private fun SermonRow(
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.MenuBook,
                         contentDescription = "فتح في المكتبة (Open in Library)",
-                        tint = bento.primary,
+                        tint = if (isLive) SermonLivePaleYellow else bento.primary,
                         modifier = Modifier.size(20.dp)
                     )
                 }

@@ -1619,13 +1619,15 @@ private fun AllUrlsCard(
         "Lower Third (Browser Source)" to "/lower",
         "العرض الكامل (Full Show)" to "/full",
         "بث MJPEG" to "/stream",
-        "لقطة PNG" to "/snapshot.png",
+        "لقطة PNG (Lower)" to "/lower/snapshot.png",
+        "لقطة PNG (Full)" to "/full/snapshot.png",
         "أحداث SSE (الآيات)" to "/events",
         "الحالة" to "/api/status",
         "واجهة الآيات (API)" to "/api/verse",
         "تشغيل آية عن بُعد" to "/api/trigger?ref=John+3:16",
         "صفحة التحكم عن بُعد" to "/remote",
-        "خلاصة vMix (XML)" to "/bibleshow.xml"
+        "خلاصة vMix (XML) — Lower" to "/lower/bibleshow.xml",
+        "خلاصة vMix (XML) — Full" to "/full/bibleshow.xml"
     )
     Text(
         text = "٥. جميع الروابط المتاحة:",

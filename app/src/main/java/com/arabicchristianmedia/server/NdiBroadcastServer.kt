@@ -37,6 +37,7 @@ import com.arabicchristianmedia.model.TemplateStyle
 import com.arabicchristianmedia.model.TransitionType
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -71,7 +72,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     private var serverSocket: ServerSocket? = null
     private var serverJob: Job? = null
     private var ssePingJob: Job? = null
-    private val scope = CoroutineScope(Dispatchers.IO)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /**
      * Held while broadcasting. The high-perf WifiLock keeps the Wi-Fi radio
@@ -685,8 +686,14 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 cleanPath == "/api/videos" -> {
                     serveApiVideos(out)
                 }
-                cleanPath == "/snapshot.png" -> {
-                    serveTransparentPngOverlay(out)
+                cleanPath == "/lower/snapshot.png" -> {
+                    // v1.9.1: canonical per-feed snapshot URLs (the old bare
+                    // /snapshot.png was never used in production — removed
+                    // rather than kept as an alias, per Ashraf).
+                    serveTransparentPngOverlay(out, isFull = false)
+                }
+                cleanPath == "/full/snapshot.png" -> {
+                    serveTransparentPngOverlay(out, isFull = true)
                 }
                 cleanPath == "/api/status" -> {
                     serveStatus(out)
@@ -709,8 +716,14 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 cleanPath == "/debug" -> {
                     serveDebugPage(out)
                 }
-                cleanPath == "/bibleshow.xml" -> {
-                    serveBibleShowXml(out)
+                cleanPath == "/lower/bibleshow.xml" -> {
+                    // v1.9.1: canonical per-feed XML URLs (the old bare
+                    // /bibleshow.xml alias is removed — vMix inputs point
+                    // at the per-feed URLs, per Ashraf).
+                    serveBibleShowXml(out, currentTemplate)
+                }
+                cleanPath == "/full/bibleshow.xml" -> {
+                    serveBibleShowXml(out, currentShowTemplate)
                 }
                 else -> {
                     serveNdiHtmlOverlay(out)
@@ -958,7 +971,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       flex-direction: column !important;
       align-items: center !important;
       justify-content: center !important;
-      transform: none !important;
+      /* v1.9.1: no transform lock here — a former "transform: none
+         !important" in this rule silently killed every slide/zoom/bounce
+         entry preset in Full mode (Lower has no such lock, so the two
+         overlays disagreed). The resting transform comes from .visible /
+         the anim presets, exactly as in Lower mode. */
     }
 
     /* Animation Presets */
@@ -1263,6 +1280,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     // Last applied SSE state version (-1 = none yet). See applyData guard.
     let lastStateVersion = -1;
     let lastVerseText = null;
+    // v1.9.1: sequence guard for the card swap timer — a newer apply
+    // supersedes a pending swap, whose timer must then do nothing.
+    let swapSeq = 0;
     // v1.9.1: overlay stability state (fast path, font gate, particles).
     let lastStyleKey = null;
     let revealToken = 0;
@@ -1328,6 +1348,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // v1.9.1: cancel any pending font-gated reveal and force the next
         // live state through the full apply path.
         revealToken++;
+        swapSeq++;
         lastStyleKey = null;
         return;
       }
@@ -1402,6 +1423,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
       if (wasVisible && verseChanged && transType !== 'CUT' && transDur > 0) {
         const halfDur = Math.floor(transDur / 2);
+        const mySwap = ++swapSeq;
         cardBox.style.transition = 'opacity ' + halfDur + 'ms ease-in-out, transform ' + halfDur + 'ms ease-in-out';
         cardBox.style.opacity = '0';
         if (transType === 'SLIDE_UP') cardBox.style.transform = 'translateY(15px)';
@@ -1412,12 +1434,22 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         else if (transType === 'BOUNCE') cardBox.style.transform = 'scale(0.92)';
 
         setTimeout(function() {
+          if (mySwap !== swapSeq) return; // superseded by a newer apply
           applyVerseTextContent();
           cardBox.style.opacity = '1';
           cardBox.style.transform = 'none';
-          setTimeout(function() { cardBox.style.transition = ''; }, halfDur);
+          // The fit in finishApply measured the OLD text (the swap is
+          // timer-deferred); re-fit now that the new text is in place.
+          doFit();
+          setTimeout(function() { if (mySwap === swapSeq) cardBox.style.transition = ''; }, halfDur);
         }, halfDur);
       } else {
+        // Cancel any pending swap and clear its mid-animation card state,
+        // so the card can never be left faded/shifted by a stale timer.
+        swapSeq++;
+        cardBox.style.transition = '';
+        cardBox.style.opacity = '';
+        cardBox.style.transform = '';
         applyVerseTextContent();
       }
 
@@ -3164,9 +3196,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         }
     }
 
-    private fun serveTransparentPngOverlay(out: OutputStream) {
+    private fun serveTransparentPngOverlay(out: OutputStream, isFull: Boolean = false) {
         // Owned bitmap: safe to recycle (never the shared NDI cache bitmap).
-        val bitmap = renderFrameOwned(1920, 1080, isForStream = false)
+        // Full renders through the show template via overrideTemplate
+        // (renderFrame derives the feed from the template's isFullScreen).
+        val bitmap = if (isFull) renderFrameOwned(1920, 1080, isForStream = false, overrideTemplate = currentShowTemplate)
+                     else renderFrameOwned(1920, 1080, isForStream = false)
         val stream = ByteArrayOutputStream()
         bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
         bitmap.recycle()
@@ -3618,9 +3653,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
      * GET /bibleshow.xml — vMix BibleShow-compatible text feed (v1.8).
      * Text/data only; vMix controls all formatting. TimeCode is .NET ticks.
      */
-    private fun serveBibleShowXml(out: OutputStream) {
+    private fun serveBibleShowXml(out: OutputStream, tpl: LowerThirdTemplate) {
         val verse = currentVerse
-        val tpl = currentTemplate
 
         fun xmlEscape(s: String): String {
             return s.replace("&", "&amp;")
@@ -3776,21 +3810,71 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         fun fmt(x: Double): String = String.format(java.util.Locale.US, "%.2f", x)
         fun statJson(st: ActionStat): String =
             "{\"count\":${st.count},\"lastMs\":${fmt(st.lastMs)},\"avgMs\":${fmt(st.avgMs())},\"maxMs\":${fmt(st.maxMs)}}"
-        fun tplJson(t: LowerThirdTemplate): String =
-            "{\"name\":\"${jsonEscape(t.name)}\"," +
-            "\"style\":\"${t.style.name}\"," +
-            "\"animatedBackground\":\"${t.animatedBackground.id}\"," +
-            "\"animatedBackgroundOpacity\":${t.animatedBackgroundOpacity}," +
-            "\"bgOpacity\":${t.bgOpacity}," +
-            "\"pureTransparent\":${t.isPureTransparentBackground}," +
-            "\"transition\":\"${t.transition.name}\"," +
-            "\"transitionDurationMs\":${t.transitionDurationMs}," +
-            "\"verseFontSize\":${t.verseFontSize}," +
-            "\"referenceFontSize\":${t.referenceFontSize}," +
-            "\"autoFitText\":${t.autoFitText}," +
-            "\"autoFitMinVerseSp\":${t.autoFitMinVerseSp}," +
-            "\"languageMode\":\"${t.languageMode.name}\"," +
-            "\"fontFamily\":\"${jsonEscape(t.fontFamily)}\"}"
+        fun tplJson(t: LowerThirdTemplate): String {
+            // v1.9.1: FULL template dump (was a 14-key summary) so a value
+            // change anywhere in the Editor can be confirmed here.
+            val o = JSONObject()
+            o.put("name", t.name)
+            o.put("style", t.style.name)
+            o.put("bgColorHex", t.bgColorHex)
+            o.put("bgOpacity", t.bgOpacity.toDouble())
+            o.put("accentColorHex", t.accentColorHex)
+            o.put("textColorHex", t.textColorHex)
+            o.put("referenceColorHex", t.referenceColorHex)
+            o.put("verseFontSize", t.verseFontSize)
+            o.put("referenceFontSize", t.referenceFontSize)
+            o.put("fontFamily", t.fontFamily)
+            o.put("secondaryTextColorHex", t.secondaryTextColorHex)
+            o.put("secondaryReferenceColorHex", t.secondaryReferenceColorHex)
+            o.put("secondaryVerseFontSize", t.secondaryVerseFontSize)
+            o.put("secondaryReferenceFontSize", t.secondaryReferenceFontSize)
+            o.put("secondaryFontFamily", t.secondaryFontFamily)
+            o.put("isFullScreen", t.isFullScreen)
+            o.put("bilingualSpacing", t.bilingualSpacing)
+            o.put("showBilingualSpacing", t.showBilingualSpacing)
+            o.put("verseIsBold", t.verseIsBold)
+            o.put("verseIsItalic", t.verseIsItalic)
+            o.put("referenceIsBold", t.referenceIsBold)
+            o.put("referenceIsItalic", t.referenceIsItalic)
+            o.put("secondaryVerseIsBold", t.secondaryVerseIsBold)
+            o.put("secondaryVerseIsItalic", t.secondaryVerseIsItalic)
+            o.put("secondaryReferenceIsBold", t.secondaryReferenceIsBold)
+            o.put("secondaryReferenceIsItalic", t.secondaryReferenceIsItalic)
+            o.put("useEasternArabicNumerals", t.useEasternArabicNumerals)
+            o.put("useArabicPunctuation", t.useArabicPunctuation)
+            o.put("alignment", t.alignment.name)
+            o.put("positionBottomPercent", t.positionBottomPercent)
+            o.put("horizontalMarginPercent", t.horizontalMarginPercent)
+            o.put("cornerRadiusDp", t.cornerRadiusDp)
+            o.put("transition", t.transition.name)
+            o.put("transitionDurationMs", t.transitionDurationMs)
+            o.put("showAccentBorder", t.showAccentBorder)
+            o.put("textShadowEnabled", t.textShadowEnabled)
+            o.put("textShadowColorHex", t.textShadowColorHex)
+            o.put("textShadowBlurDp", t.textShadowBlurDp.toDouble())
+            o.put("textShadowOffsetDp", t.textShadowOffsetDp.toDouble())
+            o.put("textShadowAngleDeg", t.textShadowAngleDeg)
+            o.put("cardGlowEnabled", t.cardGlowEnabled)
+            o.put("cardGlowColorHex", t.cardGlowColorHex)
+            o.put("emblem", t.emblem)
+            o.put("languageMode", t.languageMode.name)
+            o.put("pureTransparent", t.isPureTransparentBackground)
+            o.put("animatedBackground", t.animatedBackground.id)
+            o.put("animatedBackgroundOpacity", t.animatedBackgroundOpacity.toDouble())
+            o.put("customVideoUrl", t.customVideoUrl)
+            o.put("customVideoId", t.customVideoId)
+            o.put("customVideoMuted", t.customVideoMuted)
+            o.put("motionSpeed", t.motionSpeed.toDouble())
+            o.put("videoLoopMode", t.videoLoopMode.id)
+            o.put("streamBackgroundMode", t.streamBackgroundMode.name)
+            o.put("cardPaddingTopDp", t.cardPaddingTopDp.toDouble())
+            o.put("cardPaddingBottomDp", t.cardPaddingBottomDp.toDouble())
+            o.put("cardPaddingLeftDp", t.cardPaddingLeftDp.toDouble())
+            o.put("cardPaddingRightDp", t.cardPaddingRightDp.toDouble())
+            o.put("autoFitText", t.autoFitText)
+            o.put("autoFitMinVerseSp", t.autoFitMinVerseSp)
+            return o.toString()
+        }
         val up = if (serverStartTimeMs == 0L) 0 else System.currentTimeMillis() - serverStartTimeMs
         val sb = StringBuilder()
         sb.append("{\"ok\":true,")
@@ -4131,11 +4215,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   /* The live reference rides in the header as a slim pill \u2014 information
      only, zero extra layout space. */
   .livepill { display: inline-flex; align-items: center; gap: 6px; max-width: 55%; flex: none;
+    direction: rtl;
     background: rgba(127,127,127,0.16); border: 1px solid rgba(127,127,127,0.45); border-radius: 999px;
     padding: 5px 11px; font-size: 12.5px; font-weight: 600; margin-top: 2px; }
   .livepill .dot { width: 8px; height: 8px; border-radius: 50%; background: #9ca3af; flex: none; }
   .livepill.on .dot { background: #22c55e; box-shadow: 0 0 6px #22c55e; }
-  .livepill .ref { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; unicode-bidi: plaintext; }
+  .livepill .ref { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; unicode-bidi: plaintext; }
   @media (max-width: 480px) { .livepill { max-width: 100%; } }
   header .sub { font-size: 13px; font-weight: 400; opacity: 0.7; margin-top: 2px; }
   main { flex: 1; padding: 8px 16px 16px; display: flex; flex-direction: column; gap: 12px; max-width: 640px; width: 100%; margin: 0 auto; }

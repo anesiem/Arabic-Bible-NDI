@@ -512,6 +512,7 @@ CollapsibleSection(
                     ColorGradePickerRow("لون الشاهد العربي (Citation Color)", editingTemplate.referenceColorHex, { onUpdate(editingTemplate.copy(referenceColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
                     SliderWithLabel("حجم الشاهد العربي", editingTemplate.referenceFontSize.toFloat(), 10f..120f) { onUpdate(editingTemplate.copy(referenceFontSize = it.toInt())) }
                     FeatureToggleRow("علامات الترقيم العربية (Use Arabic punctuation ، ؛ ؟)", editingTemplate.useArabicPunctuation) { onUpdate(editingTemplate.copy(useArabicPunctuation = it)) }
+                    FeatureToggleRow("الأرقام العربية المشرقية (Eastern Arabic numerals ١٢٣)", editingTemplate.useEasternArabicNumerals) { onUpdate(editingTemplate.copy(useEasternArabicNumerals = it)) }
 
                     // v1.8: Three-way language mode (replaces the bilingual toggle).
                 
@@ -604,6 +605,14 @@ CollapsibleSection(
                             FilterChip(selected = editingTemplate.alignment == align, onClick = { onUpdate(editingTemplate.copy(alignment = align)) }, label = { Text(align.displayName, fontSize = 10.sp) })
                         }
                     }
+                    Spacer(Modifier.height(8.dp))
+
+                    // v1.9.1: position / margins / corner radius — template
+                    // fields the renderers always honored but the Editor
+                    // never exposed (no write path existed anywhere).
+                    SliderWithLabel("المسافة من أسفل الشاشة (Bottom Position %)", editingTemplate.positionBottomPercent.toFloat(), 0f..30f) { onUpdate(editingTemplate.copy(positionBottomPercent = it.toInt())) }
+                    SliderWithLabel("الهامش الأفقي (Horizontal Margin %)", editingTemplate.horizontalMarginPercent.toFloat(), 0f..30f) { onUpdate(editingTemplate.copy(horizontalMarginPercent = it.toInt())) }
+                    SliderWithLabel("انحناء زوايا البطاقة (Corner Radius)", editingTemplate.cornerRadiusDp.toFloat(), 0f..60f) { onUpdate(editingTemplate.copy(cornerRadiusDp = it.toInt())) }
                     Spacer(Modifier.height(8.dp))
 
                     // v1.9: Card padding — breathing room between the card edge
@@ -1233,7 +1242,7 @@ CollapsibleSection(
             onExpandedChange = { expanded = !expanded }
         ) {
             TextField(
-                value = selected,
+                value = ArabicFonts.arabicName(selected)?.let { "$it · $selected" } ?: selected,
                 onValueChange = {},
                 readOnly = true,
                 label = { Text("الخط (Font)", fontSize = 10.sp) },
@@ -1249,7 +1258,17 @@ CollapsibleSection(
                 ArabicFonts.displayNames.forEach { name ->
                     val itemFamily = remember(name) { bundledFontFamily(context, name) }
                     DropdownMenuItem(
-                        text = { Text(name, fontFamily = itemFamily, fontSize = 14.sp) },
+                        text = {
+                            val arName = ArabicFonts.arabicName(name)
+                            if (arName != null) {
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text(arName, fontFamily = itemFamily, fontSize = 15.sp)
+                                    Text(name, fontSize = 11.sp, color = Color(0xFF888888))
+                                }
+                            } else {
+                                Text(name, fontFamily = itemFamily, fontSize = 14.sp)
+                            }
+                        },
                         onClick = { onSelect(name); expanded = false }
                     )
                 }

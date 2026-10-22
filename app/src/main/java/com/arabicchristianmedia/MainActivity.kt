@@ -419,7 +419,8 @@ class MainActivity : ComponentActivity() {
                                 onSave = { viewModel.saveCurrentSermon(it) },
                                 onOpenSaved = { id, merge -> viewModel.openSavedSermon(id, merge) },
                                 onRenameSaved = { id, name -> viewModel.renameSavedSermon(id, name) },
-                                onDeleteSaved = { viewModel.deleteSavedSermon(it) }
+                                onDeleteSaved = { viewModel.deleteSavedSermon(it) },
+                                onSelectSermonPair = { dark, id -> viewModel.setSermonShadePair(dark, id) }
                             )
                         }
                     }

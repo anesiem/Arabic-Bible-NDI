@@ -273,7 +273,25 @@ class NdiNativeSender {
         }
 
         synchronized(activeSenders) {
-            if (activeSenders.containsKey(feedKey)) return true
+            // v1.9.1: verify a registered session is actually alive before
+            // trusting it — a present-but-dead session (job cancelled, marked
+            // closed) previously made every re-enable a no-op, and only a
+            // stop-all could clear it. Tear a dead entry down and fall
+            // through to a fresh create.
+            val existing = activeSenders[feedKey]
+            if (existing != null) {
+                if (existing.job?.isActive == true && !existing.closed) return true
+                synchronized(feedLock(feedKey)) {
+                    try {
+                        existing.closed = true
+                        existing.job?.cancel()
+                        try { existing.scaledBitmap?.recycle() } catch (e: Exception) {}
+                        existing.scaledBitmap = null
+                        nativeDestroySender(existing.ptr)
+                    } catch (e: Exception) { /* fall through to fresh create */ }
+                }
+                activeSenders.remove(feedKey)
+            }
 
             val ptr = nativeCreateSender(displayName(feedKey), spec.fps)
             if (ptr == 0L) {

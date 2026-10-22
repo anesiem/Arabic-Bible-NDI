@@ -41,8 +41,8 @@ production computer.
   (transparent, chroma green, black, dark studio) for keying anywhere.
 - `/remote` — a phone-friendly remote control page: trigger verses from
   anywhere in the room.
-- `/bibleshow.xml` + **vMix SetText push** — verse text flows straight into
-  your vMix GT titles over the LAN.
+- `/lower/bibleshow.xml` + `/full/bibleshow.xml` + **vMix SetText push** —
+  verse text flows straight into your vMix GT titles over the LAN, per feed.
 
 ### Background broadcasting
 Broadcasting runs in a foreground service: it continues with the screen off or

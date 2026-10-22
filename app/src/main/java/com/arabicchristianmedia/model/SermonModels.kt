@@ -48,6 +48,38 @@ data class SavedSermon(
  * must differ from the existing top group's shade. Existing groups are
  * never recolored.
  */
+/**
+ * v1.9.1: user-selectable alternating row colors for the sermon list —
+ * curated pairs, one set per screen mode (the stock theme pair swung
+ * between a saturated violet and a bright lavender in dark mode, which
+ * was harsh on the eyes). The user picks a pair per mode in the Sermon
+ * tab's palette dialog; defaults are D1 / L1. Colors are ARGB longs.
+ */
+data class SermonShadePair(
+    val id: String,
+    val displayName: String,
+    val shadeA: Long,
+    val shadeB: Long
+)
+
+object SermonShadePairs {
+    val DARK: List<SermonShadePair> = listOf(
+        SermonShadePair("d1", "Dusty Violet / Slate", 0xFF3B3052, 0xFF2B3A42),
+        SermonShadePair("d2", "Plum / Smoked Olive", 0xFF413147, 0xFF37402F),
+        SermonShadePair("d3", "Midnight / Deep Teal", 0xFF2E3A55, 0xFF274743),
+        SermonShadePair("d4", "Espresso / Aubergine", 0xFF40342C, 0xFF382E47)
+    )
+    val LIGHT: List<SermonShadePair> = listOf(
+        SermonShadePair("l1", "Lavender / Mist Blue", 0xFFEAE3F6, 0xFFDFE9F3),
+        SermonShadePair("l2", "Blush / Sage", 0xFFF6E3E6, 0xFFE3EFE2),
+        SermonShadePair("l3", "Sand / Sky", 0xFFF3ECDC, 0xFFE0EBF5),
+        SermonShadePair("l4", "Lilac / Mint", 0xFFEDE4F7, 0xFFE0F2EA)
+    )
+
+    fun dark(id: String?): SermonShadePair = DARK.firstOrNull { it.id == id } ?: DARK[0]
+    fun light(id: String?): SermonShadePair = LIGHT.firstOrNull { it.id == id } ?: LIGHT[0]
+}
+
 object SermonGrouping {
 
     /**

@@ -21,6 +21,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.Save
@@ -48,6 +50,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -61,7 +64,10 @@ import androidx.compose.ui.unit.sp
 import com.arabicchristianmedia.data.ArabicTextFormatter
 import com.arabicchristianmedia.model.SavedSermon
 import com.arabicchristianmedia.model.SermonEntry
+import com.arabicchristianmedia.model.SermonShadePair
+import com.arabicchristianmedia.model.SermonShadePairs
 import com.arabicchristianmedia.ui.theme.LocalBentoColors
+import com.arabicchristianmedia.ui.theme.BentoCardDark
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -90,10 +96,17 @@ fun SermonListScreen(
     onSave: (String) -> Unit,
     onOpenSaved: (String, Boolean) -> Unit,
     onRenameSaved: (String, String) -> Unit,
-    onDeleteSaved: (String) -> Unit
+    onDeleteSaved: (String) -> Unit,
+    onSelectSermonPair: (Boolean, String) -> Unit
 ) {
     val bento = LocalBentoColors.current
     val playlist = uiState.sermonPlaylist
+    // v1.9.1: alternating row colors — user-picked pair per screen mode
+    // (same dark detection idiom as the reader screen).
+    val isDark = MaterialTheme.colorScheme.surface == BentoCardDark
+    val sermonPair = if (isDark) SermonShadePairs.dark(uiState.sermonPairDarkId)
+                     else SermonShadePairs.light(uiState.sermonPairLightId)
+    var showColorDialog by remember { mutableStateOf(false) }
 
     var showSaveDialog by remember { mutableStateOf(false) }
     var saveNameInput by remember { mutableStateOf("") }
@@ -146,6 +159,13 @@ fun SermonListScreen(
                         tint = bento.primary
                     )
                 }
+                IconButton(onClick = { showColorDialog = true }) {
+                    Icon(
+                        imageVector = Icons.Filled.Palette,
+                        contentDescription = "ألوان القائمة (Sermon list colors)",
+                        tint = bento.primary
+                    )
+                }
                 if (playlist.isNotEmpty()) {
                     IconButton(onClick = onClear) {
                         Icon(
@@ -195,11 +215,37 @@ fun SermonListScreen(
                             isLive = uiState.activeVerse?.id == entry.verse.id && uiState.isLiveOnAir,
                             onTap = { onShowVerse(entry) },
                             onOpenInReader = { onOpenInReader(entry) },
-                            onRemove = { onRemove(entry) }
+                            onRemove = { onRemove(entry) },
+                            shadeColorA = Color(sermonPair.shadeA),
+                            shadeColorB = Color(sermonPair.shadeB)
                         )
                     }
                 }
             }
+        }
+
+        // ── Sermon colors dialog (v1.9.1: user-picked pairs per mode) ──
+        if (showColorDialog) {
+            AlertDialog(
+                onDismissRequest = { showColorDialog = false },
+                title = { Text("ألوان قائمة الخدمة (Sermon colors)", fontSize = 15.sp, fontWeight = FontWeight.Bold) },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("الوضع الداكن (Dark screen)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
+                        SermonShadePairs.DARK.forEach { pair ->
+                            SermonPairOption(pair, uiState.sermonPairDarkId == pair.id) { onSelectSermonPair(true, pair.id) }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Text("الوضع الفاتح (Light screen)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
+                        SermonShadePairs.LIGHT.forEach { pair ->
+                            SermonPairOption(pair, uiState.sermonPairLightId == pair.id) { onSelectSermonPair(false, pair.id) }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showColorDialog = false }) { Text("إغلاق (Close)") }
+                }
+            )
         }
 
         // ── Save dialog ─────────────────────────────────────────────────
@@ -392,13 +438,33 @@ fun SermonListScreen(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+/** One selectable shade pair in the sermon colors dialog. */
+@Composable
+private fun SermonPairOption(pair: SermonShadePair, selected: Boolean, onClick: () -> Unit) {
+    val bento = LocalBentoColors.current
+    Row(
+        modifier = Modifier.fillMaxWidth().clickable { onClick() }.padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            Box(Modifier.size(22.dp).background(Color(pair.shadeA), RoundedCornerShape(6.dp)))
+            Box(Modifier.size(22.dp).background(Color(pair.shadeB), RoundedCornerShape(6.dp)))
+        }
+        Text(pair.displayName, fontSize = 13.sp, color = bento.textPrimary, modifier = Modifier.weight(1f))
+        if (selected) Icon(Icons.Filled.Check, null, tint = bento.primary)
+    }
+}
+
 private fun SermonRow(
     entry: SermonEntry,
     index: Int,
     isLive: Boolean,
     onTap: () -> Unit,
     onOpenInReader: () -> Unit,
-    onRemove: () -> Unit
+    onRemove: () -> Unit,
+    shadeColorA: Color,
+    shadeColorB: Color
 ) {
     val bento = LocalBentoColors.current
     val verse = entry.verse
@@ -437,8 +503,8 @@ private fun SermonRow(
             colors = CardDefaults.cardColors(
                 containerColor = when {
                     isLive -> bento.liveRed.copy(alpha = 0.18f)
-                    entry.shade == 0 -> bento.primaryContainer.copy(alpha = 0.55f)
-                    else -> bento.secondary.copy(alpha = 0.45f)
+                    entry.shade == 0 -> shadeColorA
+                    else -> shadeColorB
                 }
             ),
             border = androidx.compose.foundation.BorderStroke(

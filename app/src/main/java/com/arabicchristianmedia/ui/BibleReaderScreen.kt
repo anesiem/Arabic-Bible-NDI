@@ -141,7 +141,18 @@ fun BibleReaderScreen(
                                 fontSize = 14.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary
                             )
                         }
-                        Icon(if (scripturePickerExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown, null, tint = bento.primary)
+                        // v1.9.1: labeled affordance — a lone chevron read as
+                        // decoration and users missed that the bar opens the
+                        // book/chapter picker (the whole bar is clickable).
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("إضغط هنا", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.primary)
+                            Box(
+                                modifier = Modifier.size(26.dp).background(bento.primary.copy(alpha = 0.16f), CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(if (scripturePickerExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown, null, tint = bento.primary, modifier = Modifier.size(18.dp))
+                            }
+                        }
                     }
                 }
 

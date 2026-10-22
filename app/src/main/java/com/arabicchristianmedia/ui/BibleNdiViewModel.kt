@@ -95,6 +95,9 @@ data class BibleNdiUiState(
     val showWorkingDirty: Boolean = false,
     val statusMessage: String? = null,
     val appThemeMode: AppThemeMode = AppThemeMode.SYSTEM,
+    // v1.9.1: sermon list alternating-color pair picks (per screen mode).
+    val sermonPairDarkId: String = "d1",
+    val sermonPairLightId: String = "l1",
     val readerFontSize: Int = 18,
     val isKeepScreenOn: Boolean = true,
     // True while the Bible databases are being copied/loaded on first launch.
@@ -275,9 +278,17 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             isNdiProtocolEnabled = enabled,
             statusMessage = if (enabled) "تم تفعيل بث بروتوكول Full NDI الشفاف" else "تم إيقاف بث NDI لتوفير استهلاك شبكة الواي فاي (Bandwidth Saver)"
         )
-        if (enabled && _uiState.value.isServerRunning) {
-            syncNativeSources()
-            triggerAllFrames()
+        if (enabled) {
+            // v1.9.1: enabling must NEVER stop senders. The old else-branch
+            // did stopAll() whenever the server wasn't (yet) marked running
+            // — in the post-restart window the service may have already
+            // auto-resumed the feeds, and flipping this switch on killed
+            // them while the per-feed toggles still showed "enabled".
+            if (_uiState.value.isServerRunning) {
+                syncNativeSources()
+                triggerAllFrames()
+            }
+            // Not running yet: the server-start path syncs on start.
         } else {
             nativeSender.stopAll()
             _uiState.value = _uiState.value.copy(
@@ -350,6 +361,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             statusMessage = "Ready. Tap a verse to go LIVE."
         )
         loadPersistedNdiSpecs()
+        loadSermonShadePairs()
         // v1.9.1: restore the persisted sermon working list + saved sermons.
         restoreSermonState()
         refreshCustomFonts()
@@ -643,6 +655,33 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             ?.putInt("${spec.feedKey}_fps", spec.fps)
             ?.putBoolean("${spec.feedKey}_motion", spec.motionEnabled)
             ?.apply()
+    }
+
+    // v1.9.1: sermon shade-pair picks (Sermon tab palette dialog).
+    private fun getSermonPrefs(): SharedPreferences? {
+        return try {
+            getApplication<Application>()?.getSharedPreferences("sermon_ui_prefs", Context.MODE_PRIVATE)
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun loadSermonShadePairs() {
+        val prefs = getSermonPrefs()
+        _uiState.value = _uiState.value.copy(
+            sermonPairDarkId = prefs?.getString("sermon_pair_dark", "d1") ?: "d1",
+            sermonPairLightId = prefs?.getString("sermon_pair_light", "l1") ?: "l1"
+        )
+    }
+
+    fun setSermonShadePair(dark: Boolean, pairId: String) {
+        if (dark) {
+            _uiState.value = _uiState.value.copy(sermonPairDarkId = pairId)
+            getSermonPrefs()?.edit()?.putString("sermon_pair_dark", pairId)?.apply()
+        } else {
+            _uiState.value = _uiState.value.copy(sermonPairLightId = pairId)
+            getSermonPrefs()?.edit()?.putString("sermon_pair_light", pairId)?.apply()
+        }
     }
 
     private fun persistNdiEnabled(feedKey: String, enabled: Boolean) {

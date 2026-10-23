@@ -1491,7 +1491,16 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         englishCitation.style.color = data.secondaryReferenceColorHex || '#94A3B8';
         englishText.style.fontSize = scaledPx(data.secondaryVerseFontSize || 18);
         englishCitation.style.fontSize = scaledPx(data.secondaryReferenceFontSize || 14);
-        englishText.style.fontFamily = data.secondaryFontFamily || 'system-ui';
+        // Round 2 (#5): 'System' is not a CSS family - assigning it raw
+        // made the browser fall back to its default SERIF while NDI drew
+        // the system sans. Map it to the sans stack; named fonts get a
+        // quoted stack. The citation never had a family (inherited the
+        // Arabic stack) - it takes the same secondary stack now.
+        const secFam = data.secondaryFontFamily;
+        const secFontStack = (!secFam || secFam === 'System' || secFam === 'system-ui')
+          ? 'system-ui, sans-serif' : "'" + secFam + "', serif";
+        englishText.style.fontFamily = secFontStack;
+        englishCitation.style.fontFamily = secFontStack;
         englishText.style.fontWeight = data.secondaryVerseIsBold ? 'bold' : 'normal';
         englishText.style.fontStyle = data.secondaryVerseIsItalic ? 'italic' : 'normal';
         englishCitation.style.fontWeight = data.secondaryReferenceIsBold ? 'bold' : 'normal';
@@ -1841,7 +1850,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       customVideoBg.style.display = 'none';
       // v1.9.1: don't tear the particle field down on every apply — it was
       // restarted (positions reset) by any state change, even a verse tap.
-      if (animType !== 'gold_particles' && animType !== 'particles') {
+      // Round 2 (#7): under Alpha 100% (pure transparent) the particle
+      // canvas must go too - NDI draws nothing but text there, while the
+      // canvas previously kept animating over the "transparent" feed.
+      if (data.isPureTransparentBackground || (animType !== 'gold_particles' && animType !== 'particles')) {
         stopParticles();
         activeParticleKey = null;
       }
@@ -1867,14 +1879,14 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       } else if (animType === 'gold_particles') {
         animBgLayer.classList.add('anim-gold-particles');
         animBgLayer.style.opacity = animOpacity;
-        if (activeParticleKey !== 'gold_particles') {
+        if (!data.isPureTransparentBackground && activeParticleKey !== 'gold_particles') {
           startParticles('#FCD34D', animOpacity);
           activeParticleKey = 'gold_particles';
         }
       } else if (animType === 'particles') {
         animBgLayer.classList.add('anim-particles');
         animBgLayer.style.opacity = animOpacity;
-        if (activeParticleKey !== 'particles') {
+        if (!data.isPureTransparentBackground && activeParticleKey !== 'particles') {
           startParticles('#7DD3FC', animOpacity);
           activeParticleKey = 'particles';
         }
@@ -1956,9 +1968,15 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       const grad = GRAD_COLORS[animType];
       const gradIsRadial = animType === 'candle_glow' || animType === 'rose_glow';
       function rgbaStr(c, a) { return 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + a + ')'; }
-      function gradCss(alpha) {
+      function gradCss(alpha, band) {
         if (gradIsRadial) {
           return 'radial-gradient(circle at 50% 50%, ' + rgbaStr(grad[1], alpha) + ' 0%, ' + rgbaStr(grad[0], alpha) + ' 100%)';
+        }
+        // Round 2 (#3): the Full frame's native shader is a moving WINDOW
+        // (bright band between darker edges), not a broad wash - compress
+        // the bright stop into a band for the frame path.
+        if (band) {
+          return 'linear-gradient(135deg, ' + rgbaStr(grad[0], alpha) + ' 30%, ' + rgbaStr(grad[1], alpha) + ' 50%, ' + rgbaStr(grad[0], alpha) + ' 70%)';
         }
         return 'linear-gradient(135deg, ' + rgbaStr(grad[0], alpha) + ' 0%, ' + rgbaStr(grad[1], alpha) + ' 50%, ' + rgbaStr(grad[0], alpha) + ' 100%)';
       }
@@ -1970,13 +1988,15 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         el.style.animationPlayState = '';
         el.style.animationDuration = '';
       }
-      function applyGrad(el, breath) {
+      function applyGrad(el, breath, band) {
         const bgOp = data.bgOpacity !== undefined ? data.bgOpacity : 0.85;
-        el.style.backgroundImage = gradCss(bgOp);
+        el.style.backgroundImage = gradCss(bgOp, band);
         // v1.9.1 parity: 200%, not 400% — at 400% the gradient's bright
         // mid-band stretched ~4x wider than the native shader's (its stops
         // span the box once), washing the whole card bright on HTTP.
-        el.style.backgroundSize = '200% 200%';
+        // Round 2 (#3): the band variant tiles at 300% so bg-flow sweeps
+        // the bright band across the frame like the native window.
+        el.style.backgroundSize = band ? '300% 300%' : '200% 200%';
         el.classList.add(breath ? 'bg-breath' : 'bg-flow');
         const dur = animBaseDurations[animType];
         if (dur) {
@@ -1990,7 +2010,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
           // The layer IS the frame background; the card goes clear so the
           // gradient is not buried under the flat fill.
           animBgLayer.className = 'animated-bg-layer';
-          applyGrad(animBgLayer, gradIsRadial);
+          applyGrad(animBgLayer, gradIsRadial, !gradIsRadial);
           animBgLayer.style.opacity = '1';
           cardBox.style.backgroundColor = 'transparent';
         } else {
@@ -4385,16 +4405,20 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   /* The live reference rides in the header as a slim pill \u2014 information
      only, zero extra layout space. */
   .livepill { display: inline-flex; align-items: center; gap: 8px; max-width: 55%; flex: none;
-    direction: rtl;
+    direction: rtl; position: relative; justify-content: center;
     background: rgba(127,127,127,0.16); border: 1px solid rgba(127,127,127,0.45); border-radius: 999px;
-    padding: 7px 13px; font-size: 13px; font-weight: 600; margin-top: 2px; color: #111827; }
+    padding: 7px 30px; font-size: 13px; font-weight: 600; margin-top: 2px; color: #111827; }
   /* v1.9.1: ON AIR tints the WHOLE pill, not just the dot, and the citation
      gets an explicit high-contrast color (was: inherited page color washed
      out on the pill's gray tint) + more breathing room around the text. */
   .livepill.on { background: rgba(34,197,94,0.18); border-color: rgba(34,197,94,0.65); color: #14532d; }
-  .livepill .dot { width: 8px; height: 8px; border-radius: 50%; background: #9ca3af; flex: none; }
+  /* Round 2 (#8): the status dot is pinned to the pill's right edge and
+     the citation centers in the space left over - a long citation can
+     never slide under the dot. */
+  .livepill .dot { width: 8px; height: 8px; border-radius: 50%; background: #9ca3af; flex: none;
+    position: absolute; right: 11px; top: 50%; transform: translateY(-50%); }
   .livepill.on .dot { background: #22c55e; box-shadow: 0 0 6px #22c55e; }
-  .livepill .ref { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; unicode-bidi: plaintext; }
+  .livepill .ref { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; unicode-bidi: plaintext; flex: 1; text-align: center; }
   @media (max-width: 480px) { .livepill { max-width: 100%; } }
   header .sub { font-size: 13px; font-weight: 400; opacity: 0.7; margin-top: 2px; }
   main { flex: 1; padding: 8px 16px 16px; display: flex; flex-direction: column; gap: 12px; max-width: 640px; width: 100%; margin: 0 auto; }
@@ -4431,6 +4455,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   .selrow { display: flex; gap: 8px; }
   .selrow #bookSel { flex: 2; }
   .selrow #chSel { flex: 1; }
+  .selrow #langSel { flex: 1; }
   .vlist { margin-top: 8px; max-height: 52vh; overflow-y: auto; }
   /* Desktop / wide tablet: two columns — controls left, Bible browser
      right with a tall verse list. Narrow screens keep the stacked
@@ -4472,6 +4497,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     <div class="selrow">
       <select id="bookSel"><option value="">Loading books…</option></select>
       <select id="chSel" aria-label="Chapter"></select>
+      <select id="langSel" aria-label="Version"><option value="ar">العربية</option><option value="en">English</option></select>
     </div>
     <div class="vlist" id="vList"></div>
   </div>
@@ -4493,10 +4519,25 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
   var bookSel = document.getElementById('bookSel');
   var chSel = document.getElementById('chSel');
+  var langSel = document.getElementById('langSel');
+  // Round 2 (#9): the browser shows ONE version - Arabic by default,
+  // English on request - for the book list AND the verse rows. The old
+  // composite "Arabic - English" labels also bidi-split numbered books
+  // ("1 Samuel"); single-language labels cannot.
+  var browseLang = 'ar';
+  try { browseLang = localStorage.getItem('ndiBrowseLang') || 'ar'; } catch (e) {}
+  if (browseLang !== 'en') browseLang = 'ar';
+  langSel.value = browseLang;
   var vList = document.getElementById('vList');
   var refInput = document.getElementById('ref');
   refInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') triggerRef(); });
   refInput.addEventListener('focus', function() { refInput.select(); });
+  langSel.addEventListener('change', function() {
+    browseLang = langSel.value === 'en' ? 'en' : 'ar';
+    try { localStorage.setItem('ndiBrowseLang', browseLang); } catch (e) {}
+    fillBooks();
+    if (curBookIdx >= 0 && curChapter > 0) loadChapter(curChapter);
+  });
   bookSel.addEventListener('change', function() {
     var i = parseInt(bookSel.value, 10);
     if (isNaN(i) || !books[i]) return;
@@ -4515,15 +4556,21 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     el.className = 'status ' + (cls || '');
   }
 
+  function fillBooks() {
+    var html = '';
+    for (var i = 0; i < books.length; i++) {
+      html += '<option value="' + i + '">' + escapeHtml(browseLang === 'en' ? books[i].en : books[i].ar) + '</option>';
+    }
+    bookSel.innerHTML = html;
+    bookSel.dir = browseLang === 'en' ? 'ltr' : 'rtl';
+    if (curBookIdx >= 0 && books[curBookIdx]) bookSel.value = String(curBookIdx);
+  }
+
   function loadBooks() {
     fetch('/api/books').then(function(r) { return r.json(); }).then(function(j) {
       if (!j.ok) { setStatus('Could not load books', 'err'); return; }
       books = j.books;
-      var html = '';
-      for (var i = 0; i < books.length; i++) {
-        html += '<option value="' + i + '">' + books[i].ar + ' · ' + books[i].en + '</option>';
-      }
-      bookSel.innerHTML = html;
+      fillBooks();
       if (books.length) {
         curBookIdx = 0;
         bookSel.value = '0';
@@ -4555,9 +4602,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         var html = '';
         for (var i = 0; i < j.verses.length; i++) {
           var v = j.verses[i];
+          var textDiv = browseLang === 'en'
+            ? '<div class="ve" dir="ltr">' + escapeHtml(v.en) + '</div>'
+            : '<div class="va" dir="rtl" lang="ar">' + escapeHtml(v.ar) + '</div>';
           html += '<div class="vrow" data-v="' + v.v + '"><div class="vn">' + v.v + '</div>' +
-                  '<div><div class="va" dir="rtl" lang="ar">' + escapeHtml(v.ar) + '</div>' +
-                  '<div class="ve">' + escapeHtml(v.en) + '</div></div></div>';
+                  '<div>' + textDiv + '</div></div>';
         }
         vList.innerHTML = html;
         var rows = vList.querySelectorAll('.vrow');

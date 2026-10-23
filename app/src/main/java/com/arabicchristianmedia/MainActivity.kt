@@ -33,13 +33,13 @@ import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.Cast
 import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.Palette
-import androidx.compose.material.icons.filled.PlaylistPlay
+import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.Radio
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Palette
-import androidx.compose.material.icons.outlined.PlaylistPlay
+import androidx.compose.material.icons.automirrored.outlined.PlaylistPlay
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -318,7 +318,7 @@ class MainActivity : ComponentActivity() {
                                     onClick = { selectedTab = 3 },
                                     icon = {
                                         Icon(
-                                            imageVector = if (selectedTab == 3) Icons.Filled.PlaylistPlay else Icons.Outlined.PlaylistPlay,
+                                            imageVector = if (selectedTab == 3) Icons.AutoMirrored.Filled.PlaylistPlay else Icons.AutoMirrored.Outlined.PlaylistPlay,
                                             contentDescription = "Sermon list (verses shared from notes)"
                                         )
                                     },

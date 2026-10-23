@@ -326,6 +326,16 @@ class TemplateRepositoryTest {
     }
 
     @Test
+    fun `v1_9_1 legacy floor below verse size migrates up to the verse size`() {
+        // Round-2 guard: floor 16 with verse 58 was harmless as a floor;
+        // as a cap it would crush every verse (Ashraf's Midnight Psalm).
+        // The migrated cap rises to the style's own verse size.
+        val imported = repo.templateFromJsonString("{\"id\":\"leg4\",\"name\":\"Legacy2\",\"verseFontSize\":58,\"autoFitMinVerseSp\":16}")
+        assertNotNull(imported)
+        assertEquals(58, imported!!.autoFitMaxVerseSp)
+    }
+
+    @Test
     fun `v1_9_1 box height defaults follow the screen kind`() {
         val lower = repo.templateFromJsonString("{\"id\":\"bh1\",\"name\":\"L\"}")
         val full = repo.templateFromJsonString("{\"id\":\"bh2\",\"name\":\"F\",\"isFullScreen\":true}")

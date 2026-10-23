@@ -2758,8 +2758,13 @@ class TemplateRepository(context: Context) {
             // v1.9.1: the size setting changed meaning (floor -> CAP, Ashraf's
             // model). Legacy saves carry only autoFitMinVerseSp: migrate its
             // value as the cap. New key wins when both exist.
+            // Round-2 guard (Ashraf's Midnight Psalm case): a low legacy
+            // FLOOR was permissive ("shrink at most down to 16"), but as a
+            // CAP it is destructive ("never above 16") — a migrated cap
+            // never lands below the style's own verse size. Deliberate
+            // small caps remain settable afterwards in the Editor.
             autoFitMaxVerseSp = (if (obj.has("autoFitMaxVerseSp")) obj.optInt("autoFitMaxVerseSp", 48)
-                                 else obj.optInt("autoFitMinVerseSp", 48)).coerceIn(10, 200),
+                                 else maxOf(obj.optInt("autoFitMinVerseSp", 48), obj.optInt("verseFontSize", 26))).coerceIn(10, 200),
             boxHeightPercent = obj.optInt("boxHeightPercent",
                 if (obj.optBoolean("isFullScreen", false)) 100 else 45).coerceIn(10, 100)
         ).let { migrateLegacyVideo(it) }

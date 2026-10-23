@@ -1211,8 +1211,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       <div id="card-box" class="card-content">
         <div id="animated-bg-layer" class="animated-bg-layer">
           <video id="custom-video-bg" style="display:none;" autoplay loop muted playsinline></video>
-          <canvas id="particle-canvas" style="display:none; position:absolute; inset:0; width:100%; height:100%; pointer-events:none;"></canvas>
         </div>
+        <!-- v1.9.1 parity: the particle canvas is a DIRECT child of the card,
+             above its background and below the content (NDI's paint order).
+             It used to live inside the animated layer, which Lower mode
+             zeroes out — the stars never showed on HTTP Lower at all. -->
+        <canvas id="particle-canvas" style="display:none; position:absolute; inset:0; width:100%; height:100%; pointer-events:none;"></canvas>
 
         <div class="card-inner-content">
           <div id="citation-row" class="citation-badge">
@@ -1958,7 +1962,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       function applyGrad(el, breath) {
         const bgOp = data.bgOpacity !== undefined ? data.bgOpacity : 0.85;
         el.style.backgroundImage = gradCss(bgOp);
-        el.style.backgroundSize = '400% 400%';
+        // v1.9.1 parity: 200%, not 400% — at 400% the gradient's bright
+        // mid-band stretched ~4x wider than the native shader's (its stops
+        // span the box once), washing the whole card bright on HTTP.
+        el.style.backgroundSize = '200% 200%';
         el.classList.add(breath ? 'bg-breath' : 'bg-flow');
         const dur = animBaseDurations[animType];
         if (dur) {
@@ -1982,6 +1989,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
           animBgLayer.style.opacity = '0';
           clearGrad(animBgLayer);
           applyGrad(cardBox, false);
+          // v1.9.1 parity: native paints the gradient INSTEAD of the card
+          // color (the shader replaces the fill) — drop the section-6
+          // underlay so the gradient composites like NDI's frame.
+          cardBox.style.backgroundColor = 'transparent';
           cardGradOn = true;
         }
       } else if (animType !== 'custom_video') {

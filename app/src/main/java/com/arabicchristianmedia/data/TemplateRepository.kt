@@ -2593,7 +2593,7 @@ class TemplateRepository(context: Context) {
             val obj = JSONObject(json)
             if (obj.optString("name", "").trim().isEmpty()) return null
             // Sanity: a real style carries several known keys.
-            val knownKeys = listOf("fontFamily", "bgColorHex", "textColorHex", "verseFontSize", "style", "showCrossEmblem", "emblem")
+            val knownKeys = listOf("fontFamily", "bgColorHex", "textColorHex", "verseFontSize", "style", "showCrossEmblem", "emblem", "autoFitMinVerseSp", "autoFitMaxVerseSp", "boxHeightPercent", "isFullScreen", "id")
             if (knownKeys.none { obj.has(it) }) return null
             fromJson(obj)
         } catch (e: Exception) {

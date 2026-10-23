@@ -2598,6 +2598,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             tpl, verseText, activeVerse, contentWidth, scale,
             shadowBlur, shadowDx, shadowDy, showArabic, showEnglish, 1f
         ) ?: return
+        var r = 1f
         if (tpl.autoFitText) {
             val maxContentH = if (tpl.isFullScreen) {
                 height * tpl.boxHeightPercent / 100f - padT - padB
@@ -2605,7 +2606,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 // Lower third must not swallow the screen.
                 height * tpl.boxHeightPercent / 100f - padT - padB - 16f * scale
             }
-            var r = capRatio
+            r = capRatio
             if (layouts.contentH > maxContentH && maxContentH > 0) {
                 r = minOf(computeFitRatio(layouts.contentH, maxContentH, hardFloorRatio), capRatio)
             }
@@ -2616,6 +2617,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 ) ?: return
             }
         }
+        val fitRatio = r
         val primaryLayout = layouts.primary
         val bilingualSecondary = layouts.bilingualSecondary
         val secHeight = layouts.secHeight

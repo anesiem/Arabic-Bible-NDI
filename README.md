@@ -43,6 +43,10 @@ production computer.
   anywhere in the room.
 - `/lower/bibleshow.xml` + `/full/bibleshow.xml`, `/lower/bibleshow.json` + `/full/bibleshow.json` (JSON mirror of the XML feed, with `onAir` + `stateVersion`) + **vMix SetText push** —
   verse text flows straight into your vMix GT titles over the LAN, per feed.
+  Both feeds carry the Arabic and English text as **separate fields** (plus
+  the combined `Scripture`/`VerseText` for BibleShow compatibility), and
+  each slot declares its version — Arabic is Smith–Van Dyck (SVD); English
+  is the version you selected in the app (ASV/KJV).
 
 ### Background broadcasting
 Broadcasting runs in a foreground service: it continues with the screen off or

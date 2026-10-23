@@ -1870,6 +1870,21 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
         }
         
         val isFS = template.isFullScreen
+        // Round 2 (#2/#6): the preview now uses the SAME proportional
+        // system as the outputs. The stage stands for a 1920px frame and
+        // design sizes render at sp x 2 px there, so one design unit is
+        // stageWidthDp / 960 dp. Was: fixed sp factors tuned for one
+        // 720dp stage (wrong on any other stage size or orientation -
+        // the same verse wrapped 2 lines in portrait, 1 in landscape,
+        // 3 on air) and a card placed by a 0.4dp-per-% approximation
+        // (the verse drew outside the Edit Box outline). dp units also
+        // keep the system font-scale setting from inflating the preview.
+        val density = LocalDensity.current
+        val stageWDp = if (stageSize.width > 0) stageSize.width / density.density else 720f
+        val stageHDp = if (stageSize.height > 0) stageSize.height / density.density else 405f
+        val stageUnit = stageWDp / 960f
+        val cardSidePad = if (isFS) 0.dp else if (stageSize.width > 0) (stageWDp * template.horizontalMarginPercent / 100f).dp else (template.horizontalMarginPercent * 0.4f).dp
+        val cardBottomPad = if (isFS) 0.dp else if (stageSize.height > 0) (stageHDp * template.positionBottomPercent / 100f).dp else (template.positionBottomPercent * 0.4f).dp
         val bgCol = try { Color(android.graphics.Color.parseColor(template.bgColorHex)) } catch (e: Exception) { Color.Black }
         val textCol = try { Color(android.graphics.Color.parseColor(template.textColorHex)) } catch (e: Exception) { Color.White }
         val refCol = try { Color(android.graphics.Color.parseColor(template.referenceColorHex)) } catch (e: Exception) { Color.Yellow }
@@ -1916,11 +1931,7 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(
-                    start = if (isFS) 0.dp else (template.horizontalMarginPercent * 0.4f).dp,
-                    end = if (isFS) 0.dp else (template.horizontalMarginPercent * 0.4f).dp,
-                    bottom = if (isFS) 0.dp else (template.positionBottomPercent * 0.4f).dp
-                ),
+                .padding(start = cardSidePad, end = cardSidePad, bottom = cardBottomPad),
             contentAlignment = if (isFS) Alignment.Center else Alignment.BottomCenter
         ) {
             val cardBg = when {
@@ -1933,16 +1944,18 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
                 color = cardBg,
                 border = if (template.showAccentBorder) BorderStroke(1.5.dp, try { Color(android.graphics.Color.parseColor(template.accentColorHex)) } catch (e: Exception) { Color.Yellow }) else null,
                 shadowElevation = if (template.cardGlowEnabled && !isFS && hasVisibleCard) 12.dp else 0.dp,
-                modifier = cardGlowModifier.then(if (isFS) Modifier.fillMaxSize() else Modifier.fillMaxWidth().padding(horizontal = 8.dp))
+                // Round 2 (#2): no extra fixed inset - the card edges now
+                // coincide with the box outline's true fractions.
+                modifier = cardGlowModifier.then(if (isFS) Modifier.fillMaxSize() else Modifier.fillMaxWidth())
             ) {
                 Column(
                     // v1.9: preview honors the style's per-side card padding
                     // (was hardcoded 14/10dp), like NDI and HTTP.
                     modifier = (if (isFS) Modifier.fillMaxSize() else Modifier).padding(
-                        start = (template.cardPaddingLeftDp * 0.4f).dp,
-                        end = (template.cardPaddingRightDp * 0.4f).dp,
-                        top = (template.cardPaddingTopDp * 0.4f).dp,
-                        bottom = (template.cardPaddingBottomDp * 0.4f).dp
+                        start = (template.cardPaddingLeftDp * stageUnit * 0.5f).dp,
+                        end = (template.cardPaddingRightDp * stageUnit * 0.5f).dp,
+                        top = (template.cardPaddingTopDp * stageUnit * 0.5f).dp,
+                        bottom = (template.cardPaddingBottomDp * stageUnit * 0.5f).dp
                     ),
                     verticalArrangement = if (isFS) Arrangement.Center else Arrangement.Top,
                     horizontalAlignment = when (template.alignment) {
@@ -1962,7 +1975,7 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
                         if (template.emblem.isNotEmpty()) {
                             Text(
                                 text = template.emblem,
-                                fontSize = 14.sp,
+                                fontSize = (template.referenceFontSize * previewFitScale * stageUnit).dp,
                                 // v1.8: emblem uses citation styling (was accent).
                                 color = refCol
                             )
@@ -1971,7 +1984,7 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
                             text = if (template.languageMode != com.arabicchristianmedia.model.LanguageMode.ENGLISH_ONLY)
                                 verse.getFormattedArabicCitation(template.useEasternArabicNumerals)
                             else verse.getFormattedEnglishCitation(),
-                            fontSize = (template.referenceFontSize * 0.42f * previewFitScale).sp,
+                            fontSize = (template.referenceFontSize * previewFitScale * stageUnit).dp,
                             fontWeight = if (template.referenceIsBold) FontWeight.Bold else FontWeight.Normal,
                             fontStyle = if (template.referenceIsItalic) FontStyle.Italic else FontStyle.Normal,
                             fontFamily = previewFontFamily,
@@ -1986,8 +1999,8 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
                     // Arabic Verse Text
                     Text(
                         text = verse.arabicText,
-                        fontSize = (template.verseFontSize * 0.42f * previewFitScale).sp,
-                        lineHeight = (template.verseFontSize * 0.55f * previewFitScale).sp,
+                        fontSize = (template.verseFontSize * previewFitScale * stageUnit).dp,
+                        lineHeight = (template.verseFontSize * 1.31f * previewFitScale * stageUnit).dp,
                         fontWeight = if (template.verseIsBold) FontWeight.Bold else FontWeight.Normal,
                         fontStyle = if (template.verseIsItalic) FontStyle.Italic else FontStyle.Normal,
                         fontFamily = previewFontFamily,
@@ -2004,11 +2017,11 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
                     
                     // v1.8: three-way language mode; English left unless centered.
                     if (template.languageMode != com.arabicchristianmedia.model.LanguageMode.ARABIC_ONLY) {
-                        Spacer(Modifier.height((template.bilingualSpacing * 0.2f).dp))
+                        Spacer(Modifier.height((template.bilingualSpacing * stageUnit * 0.5f).dp))
                         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
                             Text(
                                 text = verse.englishText,
-                                fontSize = (template.secondaryVerseFontSize * 0.4f * previewFitScale).sp,
+                                fontSize = (template.secondaryVerseFontSize * 0.95f * previewFitScale * stageUnit).dp,
                                 fontWeight = if (template.secondaryVerseIsBold) FontWeight.Bold else FontWeight.Normal,
                                 fontStyle = if (template.secondaryVerseIsItalic) FontStyle.Italic else FontStyle.Normal,
                                 color = secTextCol,
@@ -2024,7 +2037,7 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
                             if (template.languageMode == com.arabicchristianmedia.model.LanguageMode.BOTH) {
                                 Text(
                                     text = "(${verse.getFormattedEnglishCitation()})",
-                                    fontSize = (template.secondaryReferenceFontSize * 0.38f * previewFitScale).sp,
+                                    fontSize = (template.secondaryReferenceFontSize * 0.9f * previewFitScale * stageUnit).dp,
                                     fontWeight = if (template.secondaryReferenceIsBold) FontWeight.Bold else FontWeight.Normal,
                                     fontStyle = if (template.secondaryReferenceIsItalic) FontStyle.Italic else FontStyle.Normal,
                                     fontFamily = previewFontFamily,

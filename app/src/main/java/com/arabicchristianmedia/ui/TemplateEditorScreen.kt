@@ -31,6 +31,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -39,9 +40,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import kotlin.math.roundToInt
 import com.arabicchristianmedia.data.ArabicTextFormatter
 import com.arabicchristianmedia.data.TemplateRepository
 import com.arabicchristianmedia.model.*
@@ -143,6 +150,8 @@ fun TemplateEditorScreen(
     var showImportDialog by remember { mutableStateOf(false) }
     var newTemplateName by remember { mutableStateOf("") }
     var previewBg by remember { mutableStateOf(PreviewBackground.SIMULATED_STUDIO_CAMERA) }
+    // v1.9.1: visual text-box editing on the preview (drag the box edges).
+    var boxEdit by remember { mutableStateOf(false) }
     val context = LocalContext.current
     // v1.9: How-it-works tips visibility, persisted. Shown expanded on first run,
     // collapsible thereafter, with a "don't show again" option.
@@ -339,7 +348,14 @@ fun TemplateEditorScreen(
                 }
                 Text(previewBg.displayNameAr, fontSize = 10.sp, color = bento.textSecondary, modifier = Modifier.padding(top = 2.dp))
                 Spacer(Modifier.height(8.dp))
-                BroadcastPreviewViewport(editingTemplate, displayVerse, previewBg)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    FilterChip(selected = boxEdit, onClick = { boxEdit = !boxEdit }, label = { Text("تعديل الصندوق (Edit Box)", fontSize = 10.sp) })
+                    if (boxEdit) {
+                        Text("اسحب حواف الصندوق — drag the box edges", fontSize = 10.sp, color = bento.textSecondary, modifier = Modifier.padding(start = 8.dp))
+                    }
+                }
+                Spacer(Modifier.height(6.dp))
+                BroadcastPreviewViewport(editingTemplate, displayVerse, previewBg, boxEditEnabled = boxEdit, onTemplateChange = { onUpdate(it) })
             }
         }
 
@@ -612,6 +628,10 @@ CollapsibleSection(
                     // never exposed (no write path existed anywhere).
                     SliderWithLabel("المسافة من أسفل الشاشة (Bottom Position %)", editingTemplate.positionBottomPercent.toFloat(), 0f..30f) { onUpdate(editingTemplate.copy(positionBottomPercent = it.toInt())) }
                     SliderWithLabel("الهامش الأفقي (Horizontal Margin %)", editingTemplate.horizontalMarginPercent.toFloat(), 0f..30f) { onUpdate(editingTemplate.copy(horizontalMarginPercent = it.toInt())) }
+                    // v1.9.1: the text box height auto-fit fits into (was a
+                    // hardcoded 45% for Lower). Editable visually too — the
+                    // Edit Box toggle above the preview.
+                    SliderWithLabel("ارتفاع صندوق النص (Text Box Height %)", editingTemplate.boxHeightPercent.toFloat(), 10f..100f) { onUpdate(editingTemplate.copy(boxHeightPercent = it.toInt())) }
                     SliderWithLabel("انحناء زوايا البطاقة (Corner Radius)", editingTemplate.cornerRadiusDp.toFloat(), 0f..60f) { onUpdate(editingTemplate.copy(cornerRadiusDp = it.toInt())) }
                     Spacer(Modifier.height(8.dp))
 
@@ -661,7 +681,7 @@ CollapsibleSection(
                     // overflowing the card or screen. Short verses are untouched.
                     FeatureToggleRow("ملاءمة تلقائية للنص (Auto-fit text)", editingTemplate.autoFitText) { onUpdate(editingTemplate.copy(autoFitText = it)) }
                     if (editingTemplate.autoFitText) {
-                        SliderWithLabel("أصغر حجم للنص (Min size)", editingTemplate.autoFitMinVerseSp.toFloat(), 10f..80f) { onUpdate(editingTemplate.copy(autoFitMinVerseSp = it.toInt())) }
+                        SliderWithLabel("أكبر حجم للنص (Max size)", editingTemplate.autoFitMaxVerseSp.toFloat(), 10f..120f) { onUpdate(editingTemplate.copy(autoFitMaxVerseSp = it.toInt())) }
                     }
                     Spacer(Modifier.height(8.dp))
                 
@@ -1689,21 +1709,122 @@ fun FeatureToggleRow(label: String, checked: Boolean, onCheckedChange: (Boolean)
     }
 }
 
+/**
+ * v1.9.1: one drag handle for the visual box editor — a 28dp touch target
+ * with a 14dp dot. [onDrag] receives the drag delta in stage px.
+ */
 @Composable
-fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, previewBg: PreviewBackground) {
+fun BoxEditHandle(xPx: Float, yPx: Float, color: Color, onDrag: (Float, Float) -> Unit) {
+    val currentOnDrag by rememberUpdatedState(onDrag)
+    Box(
+        modifier = Modifier
+            .offset { IntOffset((xPx - 14.dp.toPx()).roundToInt(), (yPx - 14.dp.toPx()).roundToInt()) }
+            .size(28.dp)
+            .pointerInput(Unit) {
+                detectDragGestures { change, dragAmount ->
+                    change.consume()
+                    currentOnDrag(dragAmount.x, dragAmount.y)
+                }
+            }
+            .padding(7.dp)
+            .background(color, CircleShape)
+            .border(1.5.dp, Color.White, CircleShape)
+    )
+}
+
+/**
+ * v1.9.1: the visual text-box editor (Ashraf's ask): the auto-fit box drawn
+ * over the preview stage in TRUE frame fractions — Lower: width from the
+ * horizontal margins, height = boxHeightPercent, anchored at
+ * positionBottomPercent; Full: full width, height centered. Dragging an
+ * edge edits the same template fields the sliders edit (they stay in sync);
+ * the chip reads the box in % of frame and px at 1080p.
+ */
+@Composable
+fun BoxEditOverlay(template: LowerThirdTemplate, stageW: Int, stageH: Int, onTemplateChange: (LowerThirdTemplate) -> Unit) {
+    val bento = LocalBentoColors.current
+    val density = LocalDensity.current
+    val isFS = template.isFullScreen
+    val w = stageW.toFloat()
+    val h = stageH.toFloat()
+    val left = if (isFS) 0f else w * template.horizontalMarginPercent / 100f
+    val right = if (isFS) w else w * (100 - template.horizontalMarginPercent) / 100f
+    val boxH = h * template.boxHeightPercent / 100f
+    val top = if (isFS) (h - boxH) / 2f else h - h * template.positionBottomPercent / 100f - boxH
+    val midX = (left + right) / 2f
+    val midY = top + boxH / 2f
+    val accent = bento.primary
+
+    Box(
+        modifier = Modifier
+            .offset { IntOffset(left.roundToInt(), top.roundToInt()) }
+            .size(with(density) { (right - left).toDp() }, with(density) { boxH.toDp() })
+            .border(2.dp, accent, RoundedCornerShape(6.dp))
+    )
+
+    val wPct = if (isFS) 100 else 100 - 2 * template.horizontalMarginPercent
+    val label = "Box $wPct% × ${template.boxHeightPercent}%" +
+        (if (isFS) "" else " · B ${template.positionBottomPercent}%") +
+        " — ${wPct * 1920 / 100}×${template.boxHeightPercent * 1080 / 100} px @1080p"
+    Box(
+        modifier = Modifier
+            .offset { IntOffset(8, 8) }
+            .background(Color(0xDD0F172A), RoundedCornerShape(6.dp))
+            .padding(horizontal = 8.dp, vertical = 4.dp)
+    ) {
+        Text(label, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+    }
+
+    if (!isFS) {
+        BoxEditHandle(left, midY, accent) { dx, _ ->
+            val m = (template.horizontalMarginPercent + dx / w * 100f).coerceIn(0f, 30f)
+            onTemplateChange(template.copy(horizontalMarginPercent = m.toInt()))
+        }
+        BoxEditHandle(right, midY, accent) { dx, _ ->
+            val m = (template.horizontalMarginPercent - dx / w * 100f).coerceIn(0f, 30f)
+            onTemplateChange(template.copy(horizontalMarginPercent = m.toInt()))
+        }
+        BoxEditHandle(midX, top + boxH, accent) { _, dy ->
+            val b = (template.positionBottomPercent - dy / h * 100f).coerceIn(0f, 30f)
+            onTemplateChange(template.copy(positionBottomPercent = b.toInt()))
+        }
+    }
+    // Top edge always drags the box height (Full's bottom edge does too —
+    // its region is centered; Lower's bottom edge drags the position).
+    BoxEditHandle(midX, top, accent) { _, dy ->
+        val nh = (template.boxHeightPercent - dy / h * 100f).coerceIn(10f, 100f)
+        onTemplateChange(template.copy(boxHeightPercent = nh.toInt()))
+    }
+    if (isFS) {
+        BoxEditHandle(midX, top + boxH, accent) { _, dy ->
+            val nh = (template.boxHeightPercent + dy / h * 100f).coerceIn(10f, 100f)
+            onTemplateChange(template.copy(boxHeightPercent = nh.toInt()))
+        }
+    }
+}
+
+@Composable
+fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, previewBg: PreviewBackground, boxEditEnabled: Boolean = false, onTemplateChange: (LowerThirdTemplate) -> Unit = {}) {
     val bento = LocalBentoColors.current
     val context = LocalContext.current
+    // v1.9.1: stage size (px) for the visual box editor overlay.
+    var stageSize by remember { mutableStateOf(IntSize.Zero) }
     // v1.9: preview honors auto-fit (approximation of the NDI/HTTP shrink).
-    // Heuristic: ~45 chars per preview line; budget 6 lines (lower) / 10 (full).
+    // Heuristic: ~45 chars per preview line; line budget scales with the
+    // template's box height (6 lines at Lower's 45%, 10 at Full's 100%).
+    // v1.9.1: the CAP applies first (short verse renders at min(size, cap));
+    // overflow shrinks below the cap toward the same 10sp hard floor.
     val previewFitScale = remember(template, verse) {
         if (!template.autoFitText || template.verseFontSize <= 0) 1f
         else {
-            val minRatio = (template.autoFitMinVerseSp.toFloat() / template.verseFontSize).coerceIn(0.2f, 1f)
+            val capRatio = (template.autoFitMaxVerseSp.toFloat() / template.verseFontSize).coerceIn(0.05f, 1f)
+            val hardFloor = (10f / template.verseFontSize).coerceIn(0.05f, 1f)
             val totalChars = verse.arabicText.length +
                 (if (template.languageMode != com.arabicchristianmedia.model.LanguageMode.ARABIC_ONLY) verse.englishText.length else 0)
             val estLines = totalChars / 45f
-            val maxLines = if (template.isFullScreen) 10f else 6f
-            if (estLines <= maxLines) 1f else (maxLines / estLines).coerceIn(minRatio, 1f)
+            val maxLines = (if (template.isFullScreen) 10f else 6f) *
+                (template.boxHeightPercent / (if (template.isFullScreen) 100f else 45f))
+            if (estLines <= maxLines) capRatio else (maxLines / estLines).coerceIn(hardFloor, capRatio)
         }
     }
     Box(
@@ -1714,6 +1835,7 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
             .aspectRatio(16f / 9f)
             .clip(RoundedCornerShape(14.dp))
             .border(1.5.dp, bento.border, RoundedCornerShape(14.dp))
+            .onSizeChanged { stageSize = it }
     ) {
         // Background Simulation
         if (previewBg == PreviewBackground.CHECKERBOARD_TRANSPARENT) {
@@ -1919,6 +2041,12 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
                     }
                 }
             }
+        }
+
+        // v1.9.1: visual text-box editor — outline + drag handles + readout,
+        // drawn over the stage when enabled (Editor's Edit Box toggle).
+        if (boxEditEnabled && stageSize.width > 0 && stageSize.height > 0) {
+            BoxEditOverlay(template, stageSize.width, stageSize.height, onTemplateChange)
         }
     }
 }

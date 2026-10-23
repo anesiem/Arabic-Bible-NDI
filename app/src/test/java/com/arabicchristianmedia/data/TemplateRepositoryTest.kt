@@ -287,7 +287,8 @@ class TemplateRepositoryTest {
             cardPaddingLeftDp = 30f,
             cardPaddingRightDp = 40f,
             autoFitText = false,
-            autoFitMinVerseSp = 36
+            autoFitMaxVerseSp = 36,
+            boxHeightPercent = 60
         )
         val imported = repo.templateFromJsonString(repo.templateToJsonString(tpl))
         assertNotNull(imported)
@@ -296,7 +297,8 @@ class TemplateRepositoryTest {
         assertEquals(30f, imported.cardPaddingLeftDp, 0.001f)
         assertEquals(40f, imported.cardPaddingRightDp, 0.001f)
         assertFalse(imported.autoFitText)
-        assertEquals(36, imported.autoFitMinVerseSp)
+        assertEquals(36, imported.autoFitMaxVerseSp)
+        assertEquals(60, imported.boxHeightPercent)
     }
 
     @Test
@@ -310,7 +312,27 @@ class TemplateRepositoryTest {
         assertEquals(36f, imported.cardPaddingLeftDp, 0.001f)
         assertEquals(36f, imported.cardPaddingRightDp, 0.001f)
         assertTrue(imported.autoFitText)
-        assertEquals(28, imported.autoFitMinVerseSp)
+        assertEquals(48, imported.autoFitMaxVerseSp)
+        assertEquals(45, imported.boxHeightPercent)
+    }
+
+    @Test
+    fun `v1_9_1 legacy autoFitMinVerseSp migrates as the cap`() {
+        // v1.9 saves carry only the old floor key; its value becomes the cap
+        // (the meaning changed on Ashraf's ruling, the number carries over).
+        val imported = repo.templateFromJsonString("{\"id\":\"leg3\",\"name\":\"Legacy\",\"autoFitMinVerseSp\":42}")
+        assertNotNull(imported)
+        assertEquals(42, imported!!.autoFitMaxVerseSp)
+    }
+
+    @Test
+    fun `v1_9_1 box height defaults follow the screen kind`() {
+        val lower = repo.templateFromJsonString("{\"id\":\"bh1\",\"name\":\"L\"}")
+        val full = repo.templateFromJsonString("{\"id\":\"bh2\",\"name\":\"F\",\"isFullScreen\":true}")
+        assertNotNull(lower)
+        assertNotNull(full)
+        assertEquals(45, lower!!.boxHeightPercent)
+        assertEquals(100, full!!.boxHeightPercent)
     }
 
     @Test
@@ -320,7 +342,9 @@ class TemplateRepositoryTest {
             assertTrue(tpl.id, tpl.cardPaddingBottomDp >= 0f)
             assertTrue(tpl.id, tpl.cardPaddingLeftDp >= 0f)
             assertTrue(tpl.id, tpl.cardPaddingRightDp >= 0f)
-            assertTrue(tpl.id, tpl.autoFitMinVerseSp > 0)
+            assertTrue(tpl.id, tpl.autoFitMaxVerseSp > 0)
+            assertTrue(tpl.id, tpl.boxHeightPercent in 10..100)
+            if (tpl.isFullScreen) assertEquals(tpl.id, 100, tpl.boxHeightPercent)
         }
     }
 

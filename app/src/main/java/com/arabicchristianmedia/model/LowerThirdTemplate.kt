@@ -169,13 +169,25 @@ data class LowerThirdTemplate(
     val cardPaddingLeftDp: Float = 36f,
     val cardPaddingRightDp: Float = 36f,
     /**
-     * v1.9: shrink-to-fit. When true, a verse too long for the text box shrinks
-     * (verse, citation and English section together, preserving their ratio)
-     * until it fits — never below [autoFitMinVerseSp]. Short verses always
-     * render at the selected size. Off = the pre-v1.9 behavior (text may
-     * overflow the card/screen).
+     * v1.9: shrink-to-fit. When true, verse + citation + English section
+     * (preserving their ratio) are capped at [autoFitMaxVerseSp] and shrink
+     * together until they fit the text box ([boxHeightPercent] of the frame,
+     * width from the horizontal margins). Off = text renders at the selected
+     * sizes and may overflow.
      */
     val autoFitText: Boolean = true,
-    /** v1.9: floor for [autoFitText] shrinking (sp, applied to the verse size). */
-    val autoFitMinVerseSp: Int = 28,
+    /**
+     * v1.9.1 (Ashraf's model, replaces the v1.9 floor autoFitMinVerseSp):
+     * the MAXIMUM size (sp, verse) the fitted text may reach under
+     * [autoFitText] — a short verse must not blow up huge on a full screen.
+     * Long content shrinks below it to fit the box (hard floor 10sp).
+     * Inert when autoFitText is off. Legacy saves migrate value-for-value.
+     */
+    val autoFitMaxVerseSp: Int = 48,
+    /**
+     * v1.9.1: the text box height as % of the frame height — the region
+     * auto-fit fits into. Lower default 45 (the pre-v1.9.1 hardcoded
+     * budget); Full Show templates use 100 (the whole frame).
+     */
+    val boxHeightPercent: Int = 45,
 )

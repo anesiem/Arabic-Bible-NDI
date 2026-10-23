@@ -891,7 +891,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             put("cardPaddingLeftDp", tpl.cardPaddingLeftDp.toDouble())
             put("cardPaddingRightDp", tpl.cardPaddingRightDp.toDouble())
             put("autoFitText", tpl.autoFitText)
-            put("autoFitMinVerseSp", tpl.autoFitMinVerseSp)
+            put("autoFitMaxVerseSp", tpl.autoFitMaxVerseSp)
+            put("boxHeightPercent", tpl.boxHeightPercent)
         }
         val built = root.toString()
         statStateBuild.record((System.nanoTime() - buildT0) / 1_000_000.0)
@@ -1620,22 +1621,27 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // sections 3/5 use) make the fit exact and safe to run
         // synchronously the moment the text changes.
         const ss0 = getStageScale();
-        const minVersePx = (data.autoFitMinVerseSp || 28) * 2 * ss0;
+        // v1.9.1 (Ashraf's auto-fit model, mirrors the NDI renderer): the
+        // size setting is a CAP — fitted text starts at min(selected, cap)
+        // and shrinks below the cap only to fit the box (hard floor 10sp).
+        const capVersePx = (data.autoFitMaxVerseSp || 48) * 2 * ss0;
+        const hardMinPx = 10 * 2 * ss0;
         const baseVerse = (data.verseFontSize || 26) * 2 * ss0;
         const baseCite = (data.referenceFontSize || 18) * 2 * ss0;
         const baseEnV = (data.secondaryVerseFontSize || 18) * 2 * ss0;
         const baseEnC = (data.secondaryReferenceFontSize || 14) * 2 * ss0;
-        const minRatio = Math.min(1, minVersePx / baseVerse);
+        const capRatio = Math.min(1, capVersePx / baseVerse);
+        const hardMinRatio = Math.min(1, hardMinPx / baseVerse);
         // SAME budget as the NDI renderer, measured the SAME way — content
-        // only (card padding excluded). See the v2.0 parity note in git
-        // history for the full story.
+        // only (card padding excluded). The box height is the template's
+        // boxHeightPercent of the stage (Lower's was a hardcoded 45%).
         const ss = getStageScale();
         const padTopPx = parseFloat(padT) || 0;
         const padBotPx = parseFloat(padB) || 0;
         function contentHeight() { return cardBox.scrollHeight - padTopPx - padBotPx; }
         const maxContentH = isFull
-          ? (stage.clientHeight - padTopPx - padBotPx)
-          : (stage.clientHeight * 0.45 - padTopPx - padBotPx - 16 * ss);
+          ? (stage.clientHeight * ((data.boxHeightPercent || 100) / 100) - padTopPx - padBotPx)
+          : (stage.clientHeight * ((data.boxHeightPercent || 45) / 100) - padTopPx - padBotPx - 16 * ss);
         function applyRatio(r) {
           verseText.style.fontSize = (baseVerse * r) + 'px';
           citationText.style.fontSize = (baseCite * r) + 'px';
@@ -1643,16 +1649,21 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
           englishCitation.style.fontSize = (baseEnC * r) + 'px';
         }
         const cH = contentHeight();
+        let ratio = capRatio;
         if (cH > maxContentH && maxContentH > 0) {
           // One exact step (NDI's computeFitRatio), then one corrective
-          // pass because line wrapping makes height non-linear.
-          let ratio = Math.max(minRatio, Math.min(1, maxContentH / cH));
+          // pass because line wrapping makes height non-linear. The cap
+          // binds first; the box wins when both apply.
+          ratio = Math.min(capRatio, Math.max(hardMinRatio, maxContentH / cH));
           applyRatio(ratio);
           const cH2 = contentHeight();
-          if (cH2 > maxContentH && ratio > minRatio) {
-            ratio = Math.max(minRatio, ratio * (maxContentH / cH2));
+          if (cH2 > maxContentH && ratio > hardMinRatio) {
+            ratio = Math.max(hardMinRatio, ratio * (maxContentH / cH2));
             applyRatio(ratio);
           }
+        } else if (ratio < 1) {
+          // Fits at full size — the cap alone applies (short verse).
+          applyRatio(ratio);
         }
       };
 
@@ -2569,30 +2580,40 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // v1.9 auto-fit: build layouts at full size, then rebuild once at a
         // reduced scale when the content exceeds its height budget, so long
         // verses reflow into the card (lower third) or screen (full show)
-        // instead of overflowing. Short verses always render at the selected size.
-        val minFitRatio = if (tpl.verseFontSize > 0)
-            (tpl.autoFitMinVerseSp.toFloat() / tpl.verseFontSize).coerceIn(0.2f, 1f)
+        // instead of overflowing. v1.9.1: the rebuild ratio also applies the
+        // autoFitMaxVerseSp CAP, so short verses render at min(selected, cap).
+        // v1.9.1 (Ashraf's auto-fit model): the size setting is a CAP, not a
+        // floor. The fitted text starts at min(selected size, cap) — a short
+        // verse no longer blows up huge on a full screen — and long content
+        // shrinks below the cap until it fits the box, down to a hard 10sp
+        // floor. The box height is the template's boxHeightPercent of the
+        // frame (Lower's budget was a hardcoded 45% before).
+        val capRatio = if (tpl.verseFontSize > 0)
+            (tpl.autoFitMaxVerseSp.toFloat() / tpl.verseFontSize).coerceIn(0.05f, 1f)
         else 1f
-        var fitRatio = 1f
+        val hardFloorRatio = if (tpl.verseFontSize > 0)
+            (10f / tpl.verseFontSize).coerceIn(0.05f, 1f)
+        else 1f
         var layouts = buildFittedTextLayouts(
             tpl, verseText, activeVerse, contentWidth, scale,
-            shadowBlur, shadowDx, shadowDy, showArabic, showEnglish, fitRatio
+            shadowBlur, shadowDx, shadowDy, showArabic, showEnglish, 1f
         ) ?: return
         if (tpl.autoFitText) {
             val maxContentH = if (tpl.isFullScreen) {
-                height - padT - padB
+                height * tpl.boxHeightPercent / 100f - padT - padB
             } else {
                 // Lower third must not swallow the screen.
-                height * 0.45f - padT - padB - 16f * scale
+                height * tpl.boxHeightPercent / 100f - padT - padB - 16f * scale
             }
+            var r = capRatio
             if (layouts.contentH > maxContentH && maxContentH > 0) {
-                fitRatio = computeFitRatio(layouts.contentH, maxContentH, minFitRatio)
-                if (fitRatio < 1f) {
-                    layouts = buildFittedTextLayouts(
-                        tpl, verseText, activeVerse, contentWidth, scale,
-                        shadowBlur, shadowDx, shadowDy, showArabic, showEnglish, fitRatio
-                    ) ?: return
-                }
+                r = minOf(computeFitRatio(layouts.contentH, maxContentH, hardFloorRatio), capRatio)
+            }
+            if (r < 1f) {
+                layouts = buildFittedTextLayouts(
+                    tpl, verseText, activeVerse, contentWidth, scale,
+                    shadowBlur, shadowDx, shadowDy, showArabic, showEnglish, r
+                ) ?: return
             }
         }
         val primaryLayout = layouts.primary
@@ -4016,7 +4037,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             o.put("cardPaddingLeftDp", t.cardPaddingLeftDp.toDouble())
             o.put("cardPaddingRightDp", t.cardPaddingRightDp.toDouble())
             o.put("autoFitText", t.autoFitText)
-            o.put("autoFitMinVerseSp", t.autoFitMinVerseSp)
+            o.put("autoFitMaxVerseSp", t.autoFitMaxVerseSp)
+            o.put("boxHeightPercent", t.boxHeightPercent)
             return o.toString()
         }
         val up = if (serverStartTimeMs == 0L) 0 else System.currentTimeMillis() - serverStartTimeMs
@@ -4158,7 +4180,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
           ['100% transparent', t.pureTransparent],
           ['Transition', t.transition + ' · ' + t.transitionDurationMs + ' ms' + transHint],
           ['Verse / citation size', t.verseFontSize + ' / ' + t.referenceFontSize],
-          ['Auto-fit', t.autoFitText + ' · min verse ' + t.autoFitMinVerseSp],
+          ['Auto-fit', t.autoFitText + ' · max verse ' + t.autoFitMaxVerseSp + ' · box H ' + t.boxHeightPercent + '%'],
           ['Language / font', t.languageMode + ' / ' + t.fontFamily]
         ];
       }

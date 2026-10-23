@@ -1627,7 +1627,9 @@ private fun AllUrlsCard(
         "تشغيل آية عن بُعد" to "/api/trigger?ref=John+3:16",
         "صفحة التحكم عن بُعد" to "/remote",
         "خلاصة vMix (XML) — Lower" to "/lower/bibleshow.xml",
-        "خلاصة vMix (XML) — Full" to "/full/bibleshow.xml"
+        "خلاصة vMix (XML) — Full" to "/full/bibleshow.xml",
+        "خلاصة (JSON) — Lower" to "/lower/bibleshow.json",
+        "خلاصة (JSON) — Full" to "/full/bibleshow.json"
     )
     Text(
         text = "٥. جميع الروابط المتاحة:",

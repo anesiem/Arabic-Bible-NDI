@@ -136,6 +136,17 @@ object ReferenceParser {
             stripArabicPrefix(it.arabicName) == clean
         }?.let { return it }
 
+        // v1.9.1: the bare short form people actually type ("رؤيا" for
+        // "الرؤيا", "تكوين" for "التكوين") — the leading "ال" removed on
+        // BOTH sides. The share scanner already accepted these; typed
+        // references (remote page, /api/trigger) now match it.
+        val bareClean = clean.removePrefix("ال")
+        if (bareClean.isNotEmpty() && bareClean != clean) {
+            books.firstOrNull {
+                stripArabicPrefix(it.arabicName).removePrefix("ال") == bareClean
+            }?.let { return it }
+        }
+
         // Prefix match on English name (e.g. "Jn" handled via abbreviation;
         // this catches "Joh" etc.). Require at least 2 chars.
         if (clean.length >= 2 && clean.all { it.isLetter() || it == ' ' }) {

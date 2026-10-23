@@ -666,7 +666,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                     }
                 }
                 cleanPath == "/api/verse" -> {
-                    serveJsonState(out, fullPath.contains("show=1"))
+                    serveJsonState(out, fullPath.contains("show=1"), fullPath.contains("light=1"))
                 }
                 cleanPath == "/api/trigger" -> {
                     serveApiTrigger(out, fullPath)
@@ -725,6 +725,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 cleanPath == "/full/bibleshow.xml" -> {
                     serveBibleShowXml(out, currentShowTemplate)
                 }
+                cleanPath == "/lower/bibleshow.json" -> {
+                    serveBibleShowJson(out, currentTemplate)
+                }
+                cleanPath == "/full/bibleshow.json" -> {
+                    serveBibleShowJson(out, currentShowTemplate)
+                }
                 else -> {
                     serveNdiHtmlOverlay(out)
                 }
@@ -763,9 +769,30 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         journalSse("${System.currentTimeMillis()} CONNECT ${if (isShow) "full" else "lower"} ${socket.remoteSocketAddress}")
     }
 
-    private fun serveJsonState(out: OutputStream, isShow: Boolean = false) {
+    /**
+     * v1.9.1 (light remote feed): the small state the /remote page's
+     * live mirror actually needs — citation, position, ON AIR, version.
+     * Same citation formatting as the full state (Lower template), a
+     * fraction of the payload for what can be several polling remotes.
+     */
+    private fun buildLightJsonState(): String {
+        val tpl = currentTemplate
+        val verse = currentVerse
+        val root = JSONObject().apply {
+            put("stateVersion", frameVersion)
+            put("isLive", isLive && verse != null)
+            put("arabicCitation", if (verse != null) verse.getFormattedArabicCitation(tpl.useEasternArabicNumerals) else "")
+            put("englishCitation", verse?.getFormattedEnglishCitation() ?: "")
+            put("bookId", verse?.bookId ?: "")
+            put("chapterNum", verse?.chapter ?: 0)
+            put("verseNum", verse?.verse ?: 0)
+        }
+        return root.toString()
+    }
+
+    private fun serveJsonState(out: OutputStream, isShow: Boolean = false, light: Boolean = false) {
         val apiT0 = System.nanoTime()
-        val json = buildJsonState(isShow)
+        val json = if (light) buildLightJsonState() else buildJsonState(isShow)
         statVerseApi.record((System.nanoTime() - apiT0) / 1_000_000.0)
         val bytes = json.toByteArray(Charsets.UTF_8)
         val writer = PrintWriter(out)
@@ -3649,20 +3676,27 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         sendJson(out, 200, sb.toString())
     }
 
-    /**
-     * GET /bibleshow.xml — vMix BibleShow-compatible text feed (v1.8).
-     * Text/data only; vMix controls all formatting. TimeCode is .NET ticks.
-     */
-    private fun serveBibleShowXml(out: OutputStream, tpl: LowerThirdTemplate) {
-        val verse = currentVerse
+    /** v1.9.1: the values behind the BibleShow feeds, computed once and
+     * shared by the XML writer (vMix) and the JSON writer below. */
+    private data class BibleShowData(
+        val dotNetTicks: Long,
+        val scripture: String,
+        val verseTextOnly: String,
+        val arabicVerse: String,
+        val arabicCitation: String,
+        val englishVerse: String,
+        val englishCitation: String,
+        val bookName: String,
+        val chapterNumber: String,
+        val verseNumber: String,
+        val chapterVerse: String,
+        val bibleLanguage: String,
+        val chapter: Int,
+        val verse: Int
+    )
 
-        fun xmlEscape(s: String): String {
-            return s.replace("&", "&amp;")
-                .replace("<", "&lt;")
-                .replace(">", "&gt;")
-                .replace("\"", "&quot;")
-                .replace("'", "&apos;")
-        }
+    private fun computeBibleShowData(tpl: LowerThirdTemplate): BibleShowData {
+        val verse = currentVerse
 
         // .NET ticks: 100ns intervals since 0001-01-01 UTC.
         val dotNetTicks = System.currentTimeMillis() * 10000L + 621355968000000000L
@@ -3730,24 +3764,56 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             LanguageMode.ENGLISH_ONLY -> "English"
             LanguageMode.BOTH -> "Arabic,English"
         }
+        return BibleShowData(
+            dotNetTicks = dotNetTicks,
+            scripture = scripture,
+            verseTextOnly = verseTextOnly,
+            arabicVerse = arabicVerse,
+            arabicCitation = arabicCitation,
+            englishVerse = englishVerse,
+            englishCitation = englishCitation,
+            bookName = bookName,
+            chapterNumber = chapterNum,
+            verseNumber = verseNum,
+            chapterVerse = chapterVerse,
+            bibleLanguage = bibleLanguage,
+            chapter = verse?.chapter ?: 0,
+            verse = verse?.verse ?: 0
+        )
+    }
+
+    /**
+     * GET /bibleshow.xml — vMix BibleShow-compatible text feed (v1.8).
+     * Text/data only; vMix controls all formatting. TimeCode is .NET ticks.
+     */
+    private fun serveBibleShowXml(out: OutputStream, tpl: LowerThirdTemplate) {
+        val d = computeBibleShowData(tpl)
+
+        fun xmlEscape(s: String): String {
+            return s.replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;")
+                .replace("'", "&apos;")
+        }
 
         val xml = buildString {
             append("""<?xml version="1.0" encoding="utf-8"?>""")
             append("\n<BibleShowData>\n")
-            append("  <TimeCode>$dotNetTicks</TimeCode>\n")
+            append("  <TimeCode>${d.dotNetTicks}</TimeCode>\n")
             append("  <Reference />\n")
-            append("  <Scripture>${xmlEscape(scripture)}</Scripture>\n")
+            append("  <Scripture>${xmlEscape(d.scripture)}</Scripture>\n")
             append("  <ImagePath />\n")
             append("  <BibleVersion></BibleVersion>\n")
             append("  <BibleCopyright></BibleCopyright>\n")
-            append("  <BibleLanguage>$bibleLanguage</BibleLanguage>\n")
-            append("  <BookName>${xmlEscape(bookName)}</BookName>\n")
-            append("  <BookTitle>${xmlEscape(bookName)}</BookTitle>\n")
+            append("  <BibleLanguage>${d.bibleLanguage}</BibleLanguage>\n")
+            append("  <BookName>${xmlEscape(d.bookName)}</BookName>\n")
+            append("  <BookTitle>${xmlEscape(d.bookName)}</BookTitle>\n")
             append("  <BookAbbreviation></BookAbbreviation>\n")
-            append("  <ChapterNumber>${xmlEscape(chapterNum)}</ChapterNumber>\n")
-            append("  <VerseNumber>${xmlEscape(verseNum)}</VerseNumber>\n")
-            append("  <ChapterVerse>${xmlEscape(chapterVerse)}</ChapterVerse>\n")
-            append("  <VerseText>${xmlEscape(verseTextOnly)}</VerseText>\n")
+            append("  <ChapterNumber>${xmlEscape(d.chapterNumber)}</ChapterNumber>\n")
+            append("  <VerseNumber>${xmlEscape(d.verseNumber)}</VerseNumber>\n")
+            append("  <ChapterVerse>${xmlEscape(d.chapterVerse)}</ChapterVerse>\n")
+            append("  <VerseText>${xmlEscape(d.verseTextOnly)}</VerseText>\n")
             append("  <BackgroundPath />\n")
             append("</BibleShowData>\n")
         }
@@ -3762,6 +3828,36 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         writer.flush()
         out.write(bytes)
         out.flush()
+    }
+
+    /**
+     * GET /lower|/full/bibleshow.json — v1.9.1: JSON mirror of the XML
+     * feed (same values, computed by [computeBibleShowData]) for modern
+     * titlers and cloud graphics that prefer JSON, plus the two fields
+     * polling clients need: onAir and stateVersion.
+     */
+    private fun serveBibleShowJson(out: OutputStream, tpl: LowerThirdTemplate) {
+        val d = computeBibleShowData(tpl)
+        val root = JSONObject().apply {
+            put("timeCode", d.dotNetTicks)
+            put("scripture", d.scripture)
+            put("verseText", d.verseTextOnly)
+            put("arabicVerse", d.arabicVerse)
+            put("arabicCitation", d.arabicCitation)
+            put("englishVerse", d.englishVerse)
+            put("englishCitation", d.englishCitation)
+            put("bookName", d.bookName)
+            put("chapterNumber", d.chapterNumber)
+            put("verseNumber", d.verseNumber)
+            put("chapterVerse", d.chapterVerse)
+            put("chapter", d.chapter)
+            put("verse", d.verse)
+            put("bibleLanguage", d.bibleLanguage)
+            put("languageMode", tpl.languageMode.name)
+            put("onAir", isLive && currentVerse != null)
+            put("stateVersion", frameVersion)
+        }
+        sendJson(out, 200, root.toString())
     }
 
     /**
@@ -4455,7 +4551,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   }
 
   function pollNow() {
-    fetch('/api/verse').then(function(r) { return r.json(); }).then(function(j) {
+    fetch('/api/verse?light=1').then(function(r) { return r.json(); }).then(function(j) {
       live.onAir = !!j.isLive;
       live.bookId = j.bookId || '';
       live.chapter = j.chapterNum || 0;

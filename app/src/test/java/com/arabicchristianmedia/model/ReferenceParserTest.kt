@@ -37,6 +37,12 @@ class ReferenceParserTest {
             id = "heb", arabicName = "رسالة العبرانيين", englishName = "Hebrews",
             arabicAbbreviation = "عب", englishAbbreviation = "Heb",
             testament = Testament.NEW_TESTAMENT, totalChapters = 13
+        ),
+        // Real-style Revelation name, for the bare short-form tests.
+        BibleBook(
+            id = "rev", arabicName = "سفر الرؤيا", englishName = "Revelation",
+            arabicAbbreviation = "رؤ", englishAbbreviation = "Rev",
+            testament = Testament.NEW_TESTAMENT, totalChapters = 22
         )
     )
 
@@ -212,5 +218,29 @@ class ReferenceParserTest {
         assertEquals("العبرانيين", ReferenceParser.stripArabicPrefix("رسالة العبرانيين"))
         assertEquals("التكوين", ReferenceParser.stripArabicPrefix("سفر التكوين"))
         assertEquals("المزامير", ReferenceParser.stripArabicPrefix("المزامير"))
+    }
+
+    @Test
+    fun parseBareShortFormRevelation() {
+        // v1.9.1: "رؤيا" (no ال) must resolve, as the share scanner does.
+        val r = ReferenceParser.parse("رؤيا 1:12", books)
+        assertNotNull(r)
+        assertEquals("rev", r!!.book.id)
+        assertEquals(1, r.chapter)
+        assertEquals(12, r.verse)
+    }
+
+    @Test
+    fun parseDefiniteFormRevelationStillWorks() {
+        val r = ReferenceParser.parse("الرؤيا 1:12", books)
+        assertNotNull(r)
+        assertEquals("rev", r!!.book.id)
+    }
+
+    @Test
+    fun parseBareShortFormGenesis() {
+        val r = ReferenceParser.parse("تكوين 1:1", books)
+        assertNotNull(r)
+        assertEquals("gen", r!!.book.id)
     }
 }

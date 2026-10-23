@@ -2291,6 +2291,101 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         return if (rawVerse > 0.01f && rawVerse < 24f) 24f / rawVerse else 1f
     }
 
+    // Audit fix (perf): fitted-layout cache. StaticLayouts are immutable
+    // after build; entries are keyed by everything the fit depends on and
+    // discriminated by feed (isFull / isForStream) so the Lower, Full and
+    // stream renderers never share an entry. Bounded to 4 (live verse,
+    // transition partner, one spare per feed family).
+    private data class FittedLayoutsKey(
+        val tpl: LowerThirdTemplate,
+        val verse: BibleVerse,
+        val verseText: String,
+        val width: Int,
+        val height: Int,
+        val contentWidth: Int,
+        val scale: Float,
+        val shadowBlur: Float,
+        val shadowDx: Float,
+        val shadowDy: Float,
+        val showArabic: Boolean,
+        val showEnglish: Boolean,
+        val isFull: Boolean,
+        val isForStream: Boolean
+    )
+
+    private val fittedLayoutsCache = object : LinkedHashMap<FittedLayoutsKey, Pair<FittedTextLayouts, Float>>(8, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<FittedLayoutsKey, Pair<FittedTextLayouts, Float>>?): Boolean = size > 4
+    }
+
+    private fun fittedLayoutsCached(
+        tpl: LowerThirdTemplate,
+        verseText: String,
+        activeVerse: BibleVerse,
+        contentWidth: Int,
+        scale: Float,
+        shadowBlur: Float,
+        shadowDx: Float,
+        shadowDy: Float,
+        showArabic: Boolean,
+        showEnglish: Boolean,
+        frameWidth: Int,
+        frameHeight: Int,
+        isFull: Boolean,
+        isForStream: Boolean
+    ): Pair<FittedTextLayouts, Float>? {
+        val key = FittedLayoutsKey(
+            tpl, activeVerse, verseText, frameWidth, frameHeight,
+            contentWidth, scale, shadowBlur, shadowDx, shadowDy,
+            showArabic, showEnglish, isFull, isForStream
+        )
+        synchronized(fittedLayoutsCache) { fittedLayoutsCache[key]?.let { return it } }
+        // v1.9 auto-fit: build layouts at full size, then rebuild once at a
+        // reduced scale when the content exceeds its height budget, so long
+        // verses reflow into the card (lower third) or screen (full show)
+        // instead of overflowing. v1.9.1: the rebuild ratio also applies the
+        // autoFitMaxVerseSp CAP, so short verses render at min(selected, cap).
+        // v1.9.1 (Ashraf's auto-fit model): the size setting is a CAP, not a
+        // floor. The fitted text starts at min(selected size, cap) - a short
+        // verse no longer blows up huge on a full screen - and long content
+        // shrinks below the cap until it fits the box, down to a hard 10sp
+        // floor. The box height is the template's boxHeightPercent of the
+        // frame (Lower's budget was a hardcoded 45% before).
+        val capRatio = if (tpl.verseFontSize > 0)
+            (tpl.autoFitMaxVerseSp.toFloat() / tpl.verseFontSize).coerceIn(0.05f, 1f)
+        else 1f
+        val hardFloorRatio = if (tpl.verseFontSize > 0)
+            (10f / tpl.verseFontSize).coerceIn(0.05f, 1f)
+        else 1f
+        var layouts = buildFittedTextLayouts(
+            tpl, verseText, activeVerse, contentWidth, scale,
+            shadowBlur, shadowDx, shadowDy, showArabic, showEnglish, 1f
+        ) ?: return null
+        var r = 1f
+        if (tpl.autoFitText) {
+            val padT = tpl.cardPaddingTopDp * scale
+            val padB = tpl.cardPaddingBottomDp * scale
+            val maxContentH = if (tpl.isFullScreen) {
+                frameHeight * tpl.boxHeightPercent / 100f - padT - padB
+            } else {
+                // Lower third must not swallow the screen.
+                frameHeight * tpl.boxHeightPercent / 100f - padT - padB - 16f * scale
+            }
+            r = capRatio
+            if (layouts.contentH > maxContentH && maxContentH > 0) {
+                r = minOf(computeFitRatio(layouts.contentH, maxContentH, hardFloorRatio), capRatio)
+            }
+            if (r < 1f) {
+                layouts = buildFittedTextLayouts(
+                    tpl, verseText, activeVerse, contentWidth, scale,
+                    shadowBlur, shadowDx, shadowDy, showArabic, showEnglish, r
+                ) ?: return null
+            }
+        }
+        val result = layouts to r
+        synchronized(fittedLayoutsCache) { fittedLayoutsCache[key] = result }
+        return result
+    }
+
     private fun buildFittedTextLayouts(
         tpl: LowerThirdTemplate,
         verseText: String,
@@ -2597,47 +2692,18 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         val padB = tpl.cardPaddingBottomDp * scale
         val contentWidth = (boxWidth - padL - padR).toInt().coerceAtLeast(200)
 
-        // v1.9 auto-fit: build layouts at full size, then rebuild once at a
-        // reduced scale when the content exceeds its height budget, so long
-        // verses reflow into the card (lower third) or screen (full show)
-        // instead of overflowing. v1.9.1: the rebuild ratio also applies the
-        // autoFitMaxVerseSp CAP, so short verses render at min(selected, cap).
-        // v1.9.1 (Ashraf's auto-fit model): the size setting is a CAP, not a
-        // floor. The fitted text starts at min(selected size, cap) — a short
-        // verse no longer blows up huge on a full screen — and long content
-        // shrinks below the cap until it fits the box, down to a hard 10sp
-        // floor. The box height is the template's boxHeightPercent of the
-        // frame (Lower's budget was a hardcoded 45% before).
-        val capRatio = if (tpl.verseFontSize > 0)
-            (tpl.autoFitMaxVerseSp.toFloat() / tpl.verseFontSize).coerceIn(0.05f, 1f)
-        else 1f
-        val hardFloorRatio = if (tpl.verseFontSize > 0)
-            (10f / tpl.verseFontSize).coerceIn(0.05f, 1f)
-        else 1f
-        var layouts = buildFittedTextLayouts(
+        // Audit fix (perf): the fitted layouts (incl. the auto-fit search)
+        // come from a small cache - they only change when the verse, the
+        // template, or the frame size changes, while drawFrameInto runs
+        // every frame. Only animation phase/particles vary per frame, and
+        // they never touch layouts.
+        val fitted = fittedLayoutsCached(
             tpl, verseText, activeVerse, contentWidth, scale,
-            shadowBlur, shadowDx, shadowDy, showArabic, showEnglish, 1f
+            shadowBlur, shadowDx, shadowDy, showArabic, showEnglish,
+            width, height, isFull, isForStream
         ) ?: return
-        var r = 1f
-        if (tpl.autoFitText) {
-            val maxContentH = if (tpl.isFullScreen) {
-                height * tpl.boxHeightPercent / 100f - padT - padB
-            } else {
-                // Lower third must not swallow the screen.
-                height * tpl.boxHeightPercent / 100f - padT - padB - 16f * scale
-            }
-            r = capRatio
-            if (layouts.contentH > maxContentH && maxContentH > 0) {
-                r = minOf(computeFitRatio(layouts.contentH, maxContentH, hardFloorRatio), capRatio)
-            }
-            if (r < 1f) {
-                layouts = buildFittedTextLayouts(
-                    tpl, verseText, activeVerse, contentWidth, scale,
-                    shadowBlur, shadowDx, shadowDy, showArabic, showEnglish, r
-                ) ?: return
-            }
-        }
-        val fitRatio = r
+        val layouts = fitted.first
+        val fitRatio = fitted.second
         val primaryLayout = layouts.primary
         val bilingualSecondary = layouts.bilingualSecondary
         val secHeight = layouts.secHeight

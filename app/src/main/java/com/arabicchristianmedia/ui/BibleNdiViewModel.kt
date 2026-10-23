@@ -159,7 +159,11 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
                 if (isFullScreen) it.copy(
                     verseFontSize = 65,
                     referenceFontSize = 40,
-                    alignment = BroadcastTextAlignment.CENTER
+                    alignment = BroadcastTextAlignment.CENTER,
+                    // Audit fix (D): the class default box (45%) is the Lower
+                    // budget; a reset Full style must fit against the whole
+                    // frame like every factory Full style (100%).
+                    boxHeightPercent = 100
                 ) else it
             }
     }

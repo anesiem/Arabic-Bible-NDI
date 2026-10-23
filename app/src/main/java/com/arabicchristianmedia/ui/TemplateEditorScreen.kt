@@ -1973,10 +1973,10 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
         val previewShadow = if (template.textShadowEnabled) Shadow(
             color = shadowCol,
             offset = Offset(
-                (kotlin.math.cos(shadowAngleRad) * template.textShadowOffsetDp).toFloat(),
-                (kotlin.math.sin(shadowAngleRad) * template.textShadowOffsetDp).toFloat()
+                (kotlin.math.cos(shadowAngleRad) * template.textShadowOffsetDp * stageUnit * 0.5f).toFloat(),
+                (kotlin.math.sin(shadowAngleRad) * template.textShadowOffsetDp * stageUnit * 0.5f).toFloat()
             ),
-            blurRadius = template.textShadowBlurDp
+            blurRadius = template.textShadowBlurDp * stageUnit * 0.5f
         ) else null
         // Bundled Arabic font for a true WYSIWYG preview (same TTFs the NDI canvas uses).
         val previewFontFamily = remember(template.fontFamily) { bundledFontFamily(context, template.fontFamily) }
@@ -2016,7 +2016,7 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
             }
 
             Surface(
-                shape = RoundedCornerShape(if (isFS) 0.dp else (template.cornerRadiusDp * 0.6f).dp),
+                shape = RoundedCornerShape(if (isFS) 0.dp else (template.cornerRadiusDp * stageUnit).dp),
                 color = cardBg,
                 border = if (template.showAccentBorder) BorderStroke(1.5.dp, try { Color(android.graphics.Color.parseColor(template.accentColorHex)) } catch (e: Exception) { Color.Yellow }) else null,
                 shadowElevation = if (template.cardGlowEnabled && !isFS && hasVisibleCard) 12.dp else 0.dp,

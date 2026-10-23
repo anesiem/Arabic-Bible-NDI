@@ -236,7 +236,18 @@ fun TemplateEditorScreen(
         englishText = "For God so loved the world that He gave His only begotten Son, that whoever believes in Him should not perish but have everlasting life."
     )
 
-    Column(modifier = modifier.fillMaxSize().background(bento.bg).padding(14.dp).verticalScroll(rememberScrollState())) {
+    // Round 2 (#10): hoisted from the style-selector block - the stage
+    // footer (Save / Update) reads them from a different block now.
+        val highlightedId = if (editorTab == 0) highlightedLowerStyleId else highlightedShowStyleId
+        val tabIsDirty = if (editorTab == 0) lowerWorkingDirty else showWorkingDirty
+
+    // Round 2 (#10): the Editor is arranged the way the user works - a
+    // STAGE (pick a style, see it live, tune its frame, save) and a SPEC
+    // SHEET (every remaining section as a slim summary row). Compact
+    // screens stack them in one scroll; wide screens (>= 900dp) pin the
+    // stage beside the sheet so the preview never scrolls away while
+    // adjusting. The blocks below are shared verbatim by both layouts.
+    val headerBlock: @Composable () -> Unit = {
         // 1. Header & Quick Actions (responsive: compact icon actions on narrow
         // screens so the title never crushes the buttons under large fonts)
         BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
@@ -319,51 +330,9 @@ fun TemplateEditorScreen(
             Spacer(Modifier.height(12.dp))
         }
 
-        // 3. Compact Live Preview Card with Functional Background Modes
-        Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = bento.card), modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text(if (editorTab == 0) "معاينة البث (Lower Third Preview)" else "معاينة العرض (Full Show Preview)", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = bento.textPrimary)
-                    
-                    // Background Mode Selector
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        PreviewBackground.entries.forEach { bg ->
-                            Box(
-                                modifier = Modifier
-                                    .size(22.dp)
-                                    .clip(CircleShape)
-                                    .background(
-                                        when (bg) {
-                                            PreviewBackground.CHECKERBOARD_TRANSPARENT -> Color.LightGray
-                                            PreviewBackground.SIMULATED_STUDIO_CAMERA -> Color(0xFF0F172A)
-                                            PreviewBackground.PURE_BLACK -> Color.Black
-                                            PreviewBackground.CHROMA_GREEN -> Color(0xFF00FF00)
-                                        }
-                                    )
-                                    .border(width = if (previewBg == bg) 2.dp else 1.dp, color = if (previewBg == bg) bento.primary else bento.border, shape = CircleShape)
-                                    .clickable { previewBg = bg }
-                            )
-                        }
-                    }
-                }
-                Text(previewBg.displayNameAr, fontSize = 10.sp, color = bento.textSecondary, modifier = Modifier.padding(top = 2.dp))
-                Spacer(Modifier.height(8.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    FilterChip(selected = boxEdit, onClick = { boxEdit = !boxEdit }, label = { Text("تعديل الصندوق (Edit Box)", fontSize = 10.sp) })
-                    if (boxEdit) {
-                        Text("اسحب حواف الصندوق — drag the box edges", fontSize = 10.sp, color = bento.textSecondary, modifier = Modifier.padding(start = 8.dp))
-                    }
-                }
-                Spacer(Modifier.height(6.dp))
-                BroadcastPreviewViewport(editingTemplate, displayVerse, previewBg, boxEditEnabled = boxEdit, onTemplateChange = { onUpdate(it) })
-            }
-        }
-
-        Spacer(Modifier.height(16.dp))
-
+    }
+    val stageBlock: @Composable () -> Unit = {
         // 4. Style Selector (per-tab collection; highlight = selected style id, NOT the working template id)
-        val highlightedId = if (editorTab == 0) highlightedLowerStyleId else highlightedShowStyleId
-        val tabIsDirty = if (editorTab == 0) lowerWorkingDirty else showWorkingDirty
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text("اختر النمط (Select Style)", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = bento.textPrimary)
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -448,19 +417,49 @@ fun TemplateEditorScreen(
 
         Spacer(Modifier.height(8.dp))
 
-        // 4b. Quick Setup — pick a style above, adjust the essentials here, save.
-        // The full ~48 advanced options remain in the collapsible sections below.
-CollapsibleSection(
-                    title = "إعداد سريع (Quick Setup) — الأساسيات فقط",
-                    initiallyExpanded = true
-                ) {
-                    Text(
-                        "اختر نمطاً من الأعلى، ثم اضبط الأساسيات هنا — كل التفاصيل موجودة في الأقسام بالأسفل.",
-                        fontSize = 11.sp, color = bento.textSecondary
-                    )
-                    FeatureToggleRow("خلفية شفافة تماماً 100% Alpha", editingTemplate.isPureTransparentBackground) { onUpdate(editingTemplate.copy(isPureTransparentBackground = it)) }
-                    // v1.9: font, size, color removed from Quick Setup (were duplicated
-                    // in Typography sections). Quick Setup = transparency + save only.
+        // 3. Compact Live Preview Card with Functional Background Modes
+        Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = bento.card), modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text(if (editorTab == 0) "معاينة البث (Lower Third Preview)" else "معاينة العرض (Full Show Preview)", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = bento.textPrimary)
+                    
+                    // Background Mode Selector
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        PreviewBackground.entries.forEach { bg ->
+                            Box(
+                                modifier = Modifier
+                                    .size(22.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        when (bg) {
+                                            PreviewBackground.CHECKERBOARD_TRANSPARENT -> Color.LightGray
+                                            PreviewBackground.SIMULATED_STUDIO_CAMERA -> Color(0xFF0F172A)
+                                            PreviewBackground.PURE_BLACK -> Color.Black
+                                            PreviewBackground.CHROMA_GREEN -> Color(0xFF00FF00)
+                                        }
+                                    )
+                                    .border(width = if (previewBg == bg) 2.dp else 1.dp, color = if (previewBg == bg) bento.primary else bento.border, shape = CircleShape)
+                                    .clickable { previewBg = bg }
+                            )
+                        }
+                    }
+                }
+                Text(previewBg.displayNameAr, fontSize = 10.sp, color = bento.textSecondary, modifier = Modifier.padding(top = 2.dp))
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    FilterChip(selected = boxEdit, onClick = { boxEdit = !boxEdit }, label = { Text("تعديل الصندوق (Edit Box)", fontSize = 10.sp) })
+                    if (boxEdit) {
+                        Text("اسحب حواف الصندوق — drag the box edges", fontSize = 10.sp, color = bento.textSecondary, modifier = Modifier.padding(start = 8.dp))
+                    }
+                }
+                Spacer(Modifier.height(6.dp))
+                BroadcastPreviewViewport(editingTemplate, displayVerse, previewBg, boxEditEnabled = boxEdit, onTemplateChange = { onUpdate(it) })
+                // Round 2 (#10): Quick Setup is dissolved - its two jobs live
+                // on the stage now. Alpha is judged against the backdrop above,
+                // and saving is the last step of the pick-tune-save flow.
+                Spacer(Modifier.height(10.dp))
+                FeatureToggleRow("خلفية شفافة تماماً 100% Alpha", editingTemplate.isPureTransparentBackground) { onUpdate(editingTemplate.copy(isPureTransparentBackground = it)) }
+                Spacer(Modifier.height(8.dp))
                     Button(
                         onClick = { newTemplateName = "${editingTemplate.name} النسخة"; showSaveDialog = true },
                         colors = ButtonDefaults.buttonColors(containerColor = bento.primary),
@@ -490,129 +489,21 @@ CollapsibleSection(
                             Text("تحديث النمط الحالي (Update current style)", fontSize = 13.sp)
                         }
                     }
-                }
 
-        Spacer(Modifier.height(8.dp))
+            }
+        }
 
-        // 5. Detailed Independent Configuration Controls
-        Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = bento.card), modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-                
-                // Style Preset Selector
-                // Primary Typography (Arabic Verse & Citation)
-CollapsibleSection(
-                    title = "تنسيق الخط العربي (Arabic Typography)",
-                    initiallyExpanded = true
-                ) {
-                    FontDropdown(
-                        selected = editingTemplate.fontFamily,
-                        onSelect = { onUpdate(editingTemplate.copy(fontFamily = it)) },
-                        customFonts = customFonts,
-                        onImportFont = launchFontPicker,
-                        onDeleteCustomFont = { fontToDelete = it }
-                    )
-                
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text("الآية:", fontSize = 11.sp, color = bento.textSecondary)
-                        StyleToggle("B", editingTemplate.verseIsBold) { onUpdate(editingTemplate.copy(verseIsBold = it)) }
-                        StyleToggle("I", editingTemplate.verseIsItalic) { onUpdate(editingTemplate.copy(verseIsItalic = it)) }
-                    }
-                    ColorGradePickerRow("لون النص العربي (Verse Color)", editingTemplate.textColorHex, { onUpdate(editingTemplate.copy(textColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
-                    SliderWithLabel("حجم النص العربي", editingTemplate.verseFontSize.toFloat(), 10f..180f) { onUpdate(editingTemplate.copy(verseFontSize = it.toInt())) }
+        Spacer(Modifier.height(16.dp))
 
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text("الشاهد:", fontSize = 11.sp, color = bento.textSecondary)
-                        StyleToggle("B", editingTemplate.referenceIsBold) { onUpdate(editingTemplate.copy(referenceIsBold = it)) }
-                        StyleToggle("I", editingTemplate.referenceIsItalic) { onUpdate(editingTemplate.copy(referenceIsItalic = it)) }
-                    }
-                    ColorGradePickerRow("لون الشاهد العربي (Citation Color)", editingTemplate.referenceColorHex, { onUpdate(editingTemplate.copy(referenceColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
-                    SliderWithLabel("حجم الشاهد العربي", editingTemplate.referenceFontSize.toFloat(), 10f..120f) { onUpdate(editingTemplate.copy(referenceFontSize = it.toInt())) }
-                    FeatureToggleRow("علامات الترقيم العربية (Use Arabic punctuation ، ؛ ؟)", editingTemplate.useArabicPunctuation) { onUpdate(editingTemplate.copy(useArabicPunctuation = it)) }
-                    FeatureToggleRow("الأرقام العربية المشرقية (Eastern Arabic numerals ١٢٣)", editingTemplate.useEasternArabicNumerals) { onUpdate(editingTemplate.copy(useEasternArabicNumerals = it)) }
-
-                    // v1.8: Three-way language mode (replaces the bilingual toggle).
-                
-                }
-HorizontalDivider(color = bento.borderSubtle)
-CollapsibleSection(
-                    title = "لغة العرض (Language)",
-                    initiallyExpanded = false
-                ) {
-                    Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(bento.surfaceVariant).padding(4.dp)) {
-                        val modes = listOf(
-                            com.arabicchristianmedia.model.LanguageMode.ARABIC_ONLY to "العربية",
-                            com.arabicchristianmedia.model.LanguageMode.ENGLISH_ONLY to "English",
-                            com.arabicchristianmedia.model.LanguageMode.BOTH to "الاثنان (Both)"
-                        )
-                        modes.forEach { (mode, label) ->
-                            val selected = editingTemplate.languageMode == mode
-                            Box(
-                                modifier = Modifier.weight(1f)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(if (selected) bento.primary else androidx.compose.ui.graphics.Color.Transparent)
-                                    .clickable { onUpdate(editingTemplate.copy(languageMode = mode)) }
-                                    .padding(vertical = 10.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    label,
-                                    fontSize = 13.sp,
-                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                                    color = if (selected) bento.onPrimary else bento.textSecondary
-                                )
-                            }
-                        }
-                    }
-                    if (editingTemplate.languageMode != com.arabicchristianmedia.model.LanguageMode.ARABIC_ONLY) {
-                    
-                }
-CollapsibleSection(
-                    title = "تنسيق الخط الإنجليزي (English Typography)",
-                    initiallyExpanded = editingTemplate.languageMode != com.arabicchristianmedia.model.LanguageMode.ARABIC_ONLY,
-                    syncKey = editingTemplate.id to editingTemplate.languageMode
-                ) {
-                    
-                        // English Verse Controls
-                        LatinFontDropdown(
-                            selected = editingTemplate.secondaryFontFamily,
-                            onSelect = { onUpdate(editingTemplate.copy(secondaryFontFamily = it)) },
-                            customFonts = customFonts,
-                            onImportFont = launchFontPicker,
-                            onDeleteCustomFont = { fontToDelete = it }
-                        )
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Text("الآية الإنجليزية:", fontSize = 11.sp, color = bento.textSecondary)
-                            StyleToggle("B", editingTemplate.secondaryVerseIsBold) { onUpdate(editingTemplate.copy(secondaryVerseIsBold = it)) }
-                            StyleToggle("I", editingTemplate.secondaryVerseIsItalic) { onUpdate(editingTemplate.copy(secondaryVerseIsItalic = it)) }
-                        }
-                        ColorGradePickerRow("لون النص الإنجليزي (English Verse Color)", editingTemplate.secondaryTextColorHex, { onUpdate(editingTemplate.copy(secondaryTextColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
-                        SliderWithLabel("حجم النص الإنجليزي", editingTemplate.secondaryVerseFontSize.toFloat(), 8f..120f) { onUpdate(editingTemplate.copy(secondaryVerseFontSize = it.toInt())) }
-
-                        // English Citation Controls
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Text("الشاهد الإنجليزي:", fontSize = 11.sp, color = bento.textSecondary)
-                            StyleToggle("B", editingTemplate.secondaryReferenceIsBold) { onUpdate(editingTemplate.copy(secondaryReferenceIsBold = it)) }
-                            StyleToggle("I", editingTemplate.secondaryReferenceIsItalic) { onUpdate(editingTemplate.copy(secondaryReferenceIsItalic = it)) }
-                        }
-                        ColorGradePickerRow("لون الشاهد الإنجليزي (English Citation Color)", editingTemplate.secondaryReferenceColorHex, { onUpdate(editingTemplate.copy(secondaryReferenceColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
-                        SliderWithLabel("حجم الشاهد الإنجليزي", editingTemplate.secondaryReferenceFontSize.toFloat(), 8f..100f) { onUpdate(editingTemplate.copy(secondaryReferenceFontSize = it.toInt())) }
-
-                        SliderWithLabel("المسافة الفاصلة بين اللغتين", editingTemplate.bilingualSpacing.toFloat(), 0f..150f) { onUpdate(editingTemplate.copy(bilingualSpacing = it.toInt())) }
-                        FeatureToggleRow("إظهار المسافة بين اللغتين (Show spacing)", editingTemplate.showBilingualSpacing) { onUpdate(editingTemplate.copy(showBilingualSpacing = it)) }
-                    }
-
-                    // Background layers: motion backgrounds (Layer 1, bottom) + card/transparency/accents (Layer 2, above video)
-                
-                }
-HorizontalDivider(color = bento.borderSubtle)
-CollapsibleSection(
-                    title = "الخلفية والمؤثرات البصرية (Background & Effects)",
-                    initiallyExpanded = true
-                ) {
-                    // v2.0: Card style is now auto-coordinated via motion background picker
-                    // (see getBackgroundPairing). The style field remains adjustable
-                    // via style presets; manual override UI removed for simplicity.
-
+        // Round 2 (#10): the frame cluster (alignment, position, box height,
+        // padding, auto-fit) moved out of Background & Effects onto the stage -
+        // these are the numbers judged against the preview.
+        CollapsibleSection(
+            title = "الإطار والحشوة (Frame & Padding)",
+            initiallyExpanded = false,
+            syncKey = editingTemplate.id,
+            summary = "Box " + editingTemplate.boxHeightPercent + "% \u00b7 bottom " + editingTemplate.positionBottomPercent + "% \u00b7 margin " + editingTemplate.horizontalMarginPercent + "%"
+        ) {
                     // Alignment
                     Text("محاذاة النص (Alignment)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
                     Spacer(Modifier.height(4.dp))
@@ -684,7 +575,141 @@ CollapsibleSection(
                         SliderWithLabel("أكبر حجم للنص (Max size)", editingTemplate.autoFitMaxVerseSp.toFloat(), 10f..120f) { onUpdate(editingTemplate.copy(autoFitMaxVerseSp = it.toInt())) }
                     }
                     Spacer(Modifier.height(8.dp))
+
+        }
+
+        Spacer(Modifier.height(8.dp))
+
+    }
+    val sheetBlock: @Composable () -> Unit = {
+        // 5. Detailed Independent Configuration Controls
+        Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = bento.card), modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
                 
+                // Style Preset Selector
+                // Primary Typography (Arabic Verse & Citation)
+CollapsibleSection(
+                    title = "تنسيق الخط العربي (Arabic Typography)",
+                    initiallyExpanded = true,
+                    summary = editingTemplate.fontFamily + " \u00b7 verse " + editingTemplate.verseFontSize + " \u00b7 citation " + editingTemplate.referenceFontSize
+                ) {
+                    FontDropdown(
+                        selected = editingTemplate.fontFamily,
+                        onSelect = { onUpdate(editingTemplate.copy(fontFamily = it)) },
+                        customFonts = customFonts,
+                        onImportFont = launchFontPicker,
+                        onDeleteCustomFont = { fontToDelete = it }
+                    )
+                
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text("الشاهد:", fontSize = 11.sp, color = bento.textSecondary)
+                        StyleToggle("B", editingTemplate.referenceIsBold) { onUpdate(editingTemplate.copy(referenceIsBold = it)) }
+                        StyleToggle("I", editingTemplate.referenceIsItalic) { onUpdate(editingTemplate.copy(referenceIsItalic = it)) }
+                    }
+                    ColorGradePickerRow("لون الشاهد العربي (Citation Color)", editingTemplate.referenceColorHex, { onUpdate(editingTemplate.copy(referenceColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
+                    SliderWithLabel("حجم الشاهد العربي", editingTemplate.referenceFontSize.toFloat(), 10f..120f) { onUpdate(editingTemplate.copy(referenceFontSize = it.toInt())) }
+
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text("الآية:", fontSize = 11.sp, color = bento.textSecondary)
+                        StyleToggle("B", editingTemplate.verseIsBold) { onUpdate(editingTemplate.copy(verseIsBold = it)) }
+                        StyleToggle("I", editingTemplate.verseIsItalic) { onUpdate(editingTemplate.copy(verseIsItalic = it)) }
+                    }
+                    ColorGradePickerRow("لون النص العربي (Verse Color)", editingTemplate.textColorHex, { onUpdate(editingTemplate.copy(textColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
+                    SliderWithLabel("حجم النص العربي", editingTemplate.verseFontSize.toFloat(), 10f..180f) { onUpdate(editingTemplate.copy(verseFontSize = it.toInt())) }
+                    FeatureToggleRow("علامات الترقيم العربية (Use Arabic punctuation ، ؛ ؟)", editingTemplate.useArabicPunctuation) { onUpdate(editingTemplate.copy(useArabicPunctuation = it)) }
+                    FeatureToggleRow("الأرقام العربية المشرقية (Eastern Arabic numerals ١٢٣)", editingTemplate.useEasternArabicNumerals) { onUpdate(editingTemplate.copy(useEasternArabicNumerals = it)) }
+
+                    // v1.8: Three-way language mode (replaces the bilingual toggle).
+                
+                }
+HorizontalDivider(color = bento.borderSubtle)
+CollapsibleSection(
+                    title = "لغة العرض (Language)",
+                    initiallyExpanded = false,
+                    summary = when (editingTemplate.languageMode) {
+                        com.arabicchristianmedia.model.LanguageMode.ARABIC_ONLY -> "العربية (Arabic only)"
+                        com.arabicchristianmedia.model.LanguageMode.ENGLISH_ONLY -> "English only"
+                        com.arabicchristianmedia.model.LanguageMode.BOTH -> "الاثنان (Both)"
+                    }
+                ) {
+                    Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(bento.surfaceVariant).padding(4.dp)) {
+                        val modes = listOf(
+                            com.arabicchristianmedia.model.LanguageMode.ARABIC_ONLY to "العربية",
+                            com.arabicchristianmedia.model.LanguageMode.ENGLISH_ONLY to "English",
+                            com.arabicchristianmedia.model.LanguageMode.BOTH to "الاثنان (Both)"
+                        )
+                        modes.forEach { (mode, label) ->
+                            val selected = editingTemplate.languageMode == mode
+                            Box(
+                                modifier = Modifier.weight(1f)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (selected) bento.primary else androidx.compose.ui.graphics.Color.Transparent)
+                                    .clickable { onUpdate(editingTemplate.copy(languageMode = mode)) }
+                                    .padding(vertical = 10.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    label,
+                                    fontSize = 13.sp,
+                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (selected) bento.onPrimary else bento.textSecondary
+                                )
+                            }
+                        }
+                    }
+                    if (editingTemplate.languageMode != com.arabicchristianmedia.model.LanguageMode.ARABIC_ONLY) {
+                    
+                }
+CollapsibleSection(
+                    title = "تنسيق الخط الإنجليزي (English Typography)",
+                    initiallyExpanded = editingTemplate.languageMode != com.arabicchristianmedia.model.LanguageMode.ARABIC_ONLY,
+                    syncKey = editingTemplate.id to editingTemplate.languageMode,
+                    summary = editingTemplate.secondaryFontFamily + " \u00b7 verse " + editingTemplate.secondaryVerseFontSize + " \u00b7 citation " + editingTemplate.secondaryReferenceFontSize
+                ) {
+                    
+                        // English Citation Controls
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Text("الشاهد الإنجليزي:", fontSize = 11.sp, color = bento.textSecondary)
+                            StyleToggle("B", editingTemplate.secondaryReferenceIsBold) { onUpdate(editingTemplate.copy(secondaryReferenceIsBold = it)) }
+                            StyleToggle("I", editingTemplate.secondaryReferenceIsItalic) { onUpdate(editingTemplate.copy(secondaryReferenceIsItalic = it)) }
+                        }
+                        ColorGradePickerRow("لون الشاهد الإنجليزي (English Citation Color)", editingTemplate.secondaryReferenceColorHex, { onUpdate(editingTemplate.copy(secondaryReferenceColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
+                        SliderWithLabel("حجم الشاهد الإنجليزي", editingTemplate.secondaryReferenceFontSize.toFloat(), 8f..100f) { onUpdate(editingTemplate.copy(secondaryReferenceFontSize = it.toInt())) }
+
+                        // English Verse Controls
+                        LatinFontDropdown(
+                            selected = editingTemplate.secondaryFontFamily,
+                            onSelect = { onUpdate(editingTemplate.copy(secondaryFontFamily = it)) },
+                            customFonts = customFonts,
+                            onImportFont = launchFontPicker,
+                            onDeleteCustomFont = { fontToDelete = it }
+                        )
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Text("الآية الإنجليزية:", fontSize = 11.sp, color = bento.textSecondary)
+                            StyleToggle("B", editingTemplate.secondaryVerseIsBold) { onUpdate(editingTemplate.copy(secondaryVerseIsBold = it)) }
+                            StyleToggle("I", editingTemplate.secondaryVerseIsItalic) { onUpdate(editingTemplate.copy(secondaryVerseIsItalic = it)) }
+                        }
+                        ColorGradePickerRow("لون النص الإنجليزي (English Verse Color)", editingTemplate.secondaryTextColorHex, { onUpdate(editingTemplate.copy(secondaryTextColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
+                        SliderWithLabel("حجم النص الإنجليزي", editingTemplate.secondaryVerseFontSize.toFloat(), 8f..120f) { onUpdate(editingTemplate.copy(secondaryVerseFontSize = it.toInt())) }
+
+                        SliderWithLabel("المسافة الفاصلة بين اللغتين", editingTemplate.bilingualSpacing.toFloat(), 0f..150f) { onUpdate(editingTemplate.copy(bilingualSpacing = it.toInt())) }
+                        FeatureToggleRow("إظهار المسافة بين اللغتين (Show spacing)", editingTemplate.showBilingualSpacing) { onUpdate(editingTemplate.copy(showBilingualSpacing = it)) }
+                    }
+
+                    // Background layers: motion backgrounds (Layer 1, bottom) + card/transparency/accents (Layer 2, above video)
+                
+                }
+HorizontalDivider(color = bento.borderSubtle)
+CollapsibleSection(
+                    title = "الخلفية والمؤثرات البصرية (Background & Effects)",
+                    initiallyExpanded = editingTemplate.animatedBackground != AnimatedBackgroundType.NONE || editingTemplate.customVideoId.isNotEmpty(),
+                    syncKey = editingTemplate.id to editingTemplate.animatedBackground,
+                    summary = "Motion: " + editingTemplate.animatedBackground.displayNameAr + " \u00b7 bg " + (editingTemplate.bgOpacity * 100).toInt() + "%"
+                ) {
+                    // v2.0: Card style is now auto-coordinated via motion background picker
+                    // (see getBackgroundPairing). The style field remains adjustable
+                    // via style presets; manual override UI removed for simplicity.
+
                     // Animated Motion Backgrounds (Layer 1: Bottom background layer)
                     Text("الخلفيات المتحركة (Motion Video Backgrounds) — طبقة الخلفية", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -899,7 +924,9 @@ CollapsibleSection(
                 }
 CollapsibleSection(
                     title = "الظل والتوهج (Shadow & Glow)",
-                    initiallyExpanded = false
+                    initiallyExpanded = editingTemplate.textShadowEnabled || editingTemplate.cardGlowEnabled,
+                    syncKey = editingTemplate.id,
+                    summary = "Shadow " + (if (editingTemplate.textShadowEnabled) "on" else "off") + " \u00b7 Glow " + (if (editingTemplate.cardGlowEnabled) "on" else "off")
                 ) {
                     FeatureToggleRow("ظل النص (Text Shadow)", editingTemplate.textShadowEnabled) { onUpdate(editingTemplate.copy(textShadowEnabled = it)) }
                     if (editingTemplate.textShadowEnabled) {
@@ -970,6 +997,34 @@ CollapsibleSection(
             Spacer(Modifier.height(100.dp))
         }
 
+    }
+    BoxWithConstraints(modifier = modifier.fillMaxSize().background(bento.bg)) {
+        if (maxWidth >= 900.dp) {
+            Column(Modifier.fillMaxSize()) {
+                Column(Modifier.padding(start = 14.dp, end = 14.dp, top = 14.dp)) { headerBlock() }
+                Row(Modifier.weight(1f).fillMaxWidth()) {
+                    Column(
+                        Modifier.weight(0.44f).fillMaxHeight().padding(14.dp)
+                            .verticalScroll(rememberScrollState())
+                    ) { stageBlock() }
+                    Box(Modifier.width(1.dp).fillMaxHeight().background(bento.borderSubtle))
+                    Column(
+                        Modifier.weight(0.56f).fillMaxHeight().padding(14.dp)
+                            .verticalScroll(rememberScrollState())
+                    ) { sheetBlock() }
+                }
+            }
+        } else {
+            Column(
+                Modifier.fillMaxSize().padding(14.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                headerBlock()
+                stageBlock()
+                sheetBlock()
+            }
+        }
+    }
         if (showSaveDialog) {
             AlertDialog(
                 onDismissRequest = { showSaveDialog = false },
@@ -1152,7 +1207,6 @@ CollapsibleSection(
                 dismissButton = { TextButton(onClick = { templateToDelete = null }) { Text("إلغاء") } }
             )
         }
-    }
 }
 
     /** Cache of Compose FontFamilies built from bundled asset fonts (editor + preview). */
@@ -1378,6 +1432,7 @@ CollapsibleSection(
         title: String,
         initiallyExpanded: Boolean = true,
         syncKey: Any? = null,
+        summary: String = "",
         content: @Composable () -> Unit
     ) {
         val bento = LocalBentoColors.current
@@ -1394,7 +1449,28 @@ CollapsibleSection(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(title, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary)
+                // Round 2 (#10): the spec-sheet header - an (i) affordance,
+                // the title, and (when collapsed) a one-line summary of the
+                // section's current state, so the whole style can be audited
+                // without opening a single section.
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Info,
+                        contentDescription = null,
+                        tint = bento.textSecondary,
+                        modifier = Modifier.size(15.dp)
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Column {
+                        Text(title, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary)
+                        if (!expanded && summary.isNotEmpty()) {
+                            Text(summary, fontSize = 11.sp, color = bento.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                }
                 Text(
                     if (expanded) "▼" else "▶",
                     fontSize = 12.sp,

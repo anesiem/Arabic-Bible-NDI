@@ -3692,7 +3692,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         val chapterVerse: String,
         val bibleLanguage: String,
         val chapter: Int,
-        val verse: Int
+        val verse: Int,
+        /** v1.9.1: per-slot version identity ("" when that slot is not shown). */
+        val arabicVersion: String,
+        val englishVersion: String,
+        /** v1.9.1: human-readable combined version line for the XML feed. */
+        val bibleVersion: String
     )
 
     private fun computeBibleShowData(tpl: LowerThirdTemplate): BibleShowData {
@@ -3764,6 +3769,24 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             LanguageMode.ENGLISH_ONLY -> "English"
             LanguageMode.BOTH -> "Arabic,English"
         }
+        // v1.9.1: each slot declares its own version, so a consumer never has
+        // to guess which text it received (Ashraf). Arabic is always the
+        // Smith–Van Dyck (SVD); English follows the user's live selection.
+        val englishCode = BibleRepository.getEnglishVersion().uppercase()
+        val englishFull = when (englishCode) {
+            "ASV" -> "American Standard Version (ASV)"
+            "KJV" -> "King James Version (KJV)"
+            "WEB" -> "World English Bible (WEB)"
+            else -> englishCode
+        }
+        val arabicVersion = if (showArabic) "SVD" else ""
+        val englishVersion = if (showEnglish) englishCode else ""
+        val bibleVersion = when {
+            showArabic && showEnglish -> "Smith–Van Dyck (SVD) + $englishFull"
+            showArabic -> "Smith–Van Dyck (SVD)"
+            showEnglish -> englishFull
+            else -> ""
+        }
         return BibleShowData(
             dotNetTicks = dotNetTicks,
             scripture = scripture,
@@ -3778,7 +3801,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             chapterVerse = chapterVerse,
             bibleLanguage = bibleLanguage,
             chapter = verse?.chapter ?: 0,
-            verse = verse?.verse ?: 0
+            verse = verse?.verse ?: 0,
+            arabicVersion = arabicVersion,
+            englishVersion = englishVersion,
+            bibleVersion = bibleVersion
         )
     }
 
@@ -3804,7 +3830,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             append("  <Reference />\n")
             append("  <Scripture>${xmlEscape(d.scripture)}</Scripture>\n")
             append("  <ImagePath />\n")
-            append("  <BibleVersion></BibleVersion>\n")
+            append("  <BibleVersion>${xmlEscape(d.bibleVersion)}</BibleVersion>\n")
             append("  <BibleCopyright></BibleCopyright>\n")
             append("  <BibleLanguage>${d.bibleLanguage}</BibleLanguage>\n")
             append("  <BookName>${xmlEscape(d.bookName)}</BookName>\n")
@@ -3814,6 +3840,15 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             append("  <VerseNumber>${xmlEscape(d.verseNumber)}</VerseNumber>\n")
             append("  <ChapterVerse>${xmlEscape(d.chapterVerse)}</ChapterVerse>\n")
             append("  <VerseText>${xmlEscape(d.verseTextOnly)}</VerseText>\n")
+            // v1.9.1: the two languages as their OWN elements (the combined
+            // Scripture/VerseText above stay for BibleShow compatibility),
+            // each with its version.
+            append("  <ArabicVerse>${xmlEscape(d.arabicVerse)}</ArabicVerse>\n")
+            append("  <ArabicCitation>${xmlEscape(d.arabicCitation)}</ArabicCitation>\n")
+            append("  <EnglishVerse>${xmlEscape(d.englishVerse)}</EnglishVerse>\n")
+            append("  <EnglishCitation>${xmlEscape(d.englishCitation)}</EnglishCitation>\n")
+            append("  <ArabicVersion>${xmlEscape(d.arabicVersion)}</ArabicVersion>\n")
+            append("  <EnglishVersion>${xmlEscape(d.englishVersion)}</EnglishVersion>\n")
             append("  <BackgroundPath />\n")
             append("</BibleShowData>\n")
         }
@@ -3846,6 +3881,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             put("arabicCitation", d.arabicCitation)
             put("englishVerse", d.englishVerse)
             put("englishCitation", d.englishCitation)
+            put("arabicVersion", d.arabicVersion)
+            put("englishVersion", d.englishVersion)
             put("bookName", d.bookName)
             put("chapterNumber", d.chapterNumber)
             put("verseNumber", d.verseNumber)
@@ -4306,14 +4343,20 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     .chips button { border-color: #475569; color: #cbd5e1; }
     .chips button.active { background: #f1f5f9; color: #0f172a; border-color: transparent; }
     .vrow { border-color: #334155; }
+    .livepill { color: #f1f5f9; }
+    .livepill.on { background: rgba(34,197,94,0.22); border-color: rgba(34,197,94,0.7); color: #bbf7d0; }
   }
   header { padding: 16px 20px 8px; font-size: 20px; font-weight: 700; display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;  flex-wrap: wrap; }
   /* The live reference rides in the header as a slim pill \u2014 information
      only, zero extra layout space. */
-  .livepill { display: inline-flex; align-items: center; gap: 6px; max-width: 55%; flex: none;
+  .livepill { display: inline-flex; align-items: center; gap: 8px; max-width: 55%; flex: none;
     direction: rtl;
     background: rgba(127,127,127,0.16); border: 1px solid rgba(127,127,127,0.45); border-radius: 999px;
-    padding: 5px 11px; font-size: 12.5px; font-weight: 600; margin-top: 2px; }
+    padding: 7px 13px; font-size: 13px; font-weight: 600; margin-top: 2px; color: #111827; }
+  /* v1.9.1: ON AIR tints the WHOLE pill, not just the dot, and the citation
+     gets an explicit high-contrast color (was: inherited page color washed
+     out on the pill's gray tint) + more breathing room around the text. */
+  .livepill.on { background: rgba(34,197,94,0.18); border-color: rgba(34,197,94,0.65); color: #14532d; }
   .livepill .dot { width: 8px; height: 8px; border-radius: 50%; background: #9ca3af; flex: none; }
   .livepill.on .dot { background: #22c55e; box-shadow: 0 0 6px #22c55e; }
   .livepill .ref { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; unicode-bidi: plaintext; }

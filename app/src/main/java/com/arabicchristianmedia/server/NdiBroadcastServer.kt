@@ -2330,6 +2330,14 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         val isForStream: Boolean
     )
 
+    /** Fonts can be imported/deleted under the same family name at runtime
+     * (getBestTypeface deliberately never caches custom typefaces); cached
+     * layouts built from an old file would keep its metrics. The ViewModel
+     * calls this on font import/delete. */
+    fun invalidateFittedLayoutCache() {
+        synchronized(fittedLayoutsCache) { fittedLayoutsCache.clear() }
+    }
+
     private val fittedLayoutsCache = object : LinkedHashMap<FittedLayoutsKey, Pair<FittedTextLayouts, Float>>(8, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<FittedLayoutsKey, Pair<FittedTextLayouts, Float>>?): Boolean = size > 4
     }

@@ -2066,7 +2066,10 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
                         if (template.emblem.isNotEmpty()) {
                             Text(
                                 text = template.emblem,
-                                fontSize = (template.referenceFontSize * previewFitScale * stageUnit).dp,
+                                // Sizes are computed in dp (stage-proportional, immune to the
+                                // system font scale); Text wants TextUnit, so convert via
+                                // density - dp.toSp() cancels fontScale back out.
+                                fontSize = with(density) { (template.referenceFontSize * previewFitScale * stageUnit).dp.toSp() },
                                 // v1.8: emblem uses citation styling (was accent).
                                 color = refCol
                             )
@@ -2075,7 +2078,7 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
                             text = if (template.languageMode != com.arabicchristianmedia.model.LanguageMode.ENGLISH_ONLY)
                                 verse.getFormattedArabicCitation(template.useEasternArabicNumerals)
                             else verse.getFormattedEnglishCitation(),
-                            fontSize = (template.referenceFontSize * previewFitScale * stageUnit).dp,
+                            fontSize = with(density) { (template.referenceFontSize * previewFitScale * stageUnit).dp.toSp() },
                             fontWeight = if (template.referenceIsBold) FontWeight.Bold else FontWeight.Normal,
                             fontStyle = if (template.referenceIsItalic) FontStyle.Italic else FontStyle.Normal,
                             fontFamily = previewFontFamily,
@@ -2090,8 +2093,8 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
                     // Arabic Verse Text
                     Text(
                         text = verse.arabicText,
-                        fontSize = (template.verseFontSize * previewFitScale * stageUnit).dp,
-                        lineHeight = (template.verseFontSize * 1.31f * previewFitScale * stageUnit).dp,
+                        fontSize = with(density) { (template.verseFontSize * previewFitScale * stageUnit).dp.toSp() },
+                        lineHeight = with(density) { (template.verseFontSize * 1.31f * previewFitScale * stageUnit).dp.toSp() },
                         fontWeight = if (template.verseIsBold) FontWeight.Bold else FontWeight.Normal,
                         fontStyle = if (template.verseIsItalic) FontStyle.Italic else FontStyle.Normal,
                         fontFamily = previewFontFamily,
@@ -2112,7 +2115,7 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
                         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
                             Text(
                                 text = verse.englishText,
-                                fontSize = (template.secondaryVerseFontSize * 0.95f * previewFitScale * stageUnit).dp,
+                                fontSize = with(density) { (template.secondaryVerseFontSize * 0.95f * previewFitScale * stageUnit).dp.toSp() },
                                 fontWeight = if (template.secondaryVerseIsBold) FontWeight.Bold else FontWeight.Normal,
                                 fontStyle = if (template.secondaryVerseIsItalic) FontStyle.Italic else FontStyle.Normal,
                                 color = secTextCol,
@@ -2128,7 +2131,7 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
                             if (template.languageMode == com.arabicchristianmedia.model.LanguageMode.BOTH) {
                                 Text(
                                     text = "(${verse.getFormattedEnglishCitation()})",
-                                    fontSize = (template.secondaryReferenceFontSize * 0.9f * previewFitScale * stageUnit).dp,
+                                    fontSize = with(density) { (template.secondaryReferenceFontSize * 0.9f * previewFitScale * stageUnit).dp.toSp() },
                                     fontWeight = if (template.secondaryReferenceIsBold) FontWeight.Bold else FontWeight.Normal,
                                     fontStyle = if (template.secondaryReferenceIsItalic) FontStyle.Italic else FontStyle.Normal,
                                     fontFamily = previewFontFamily,

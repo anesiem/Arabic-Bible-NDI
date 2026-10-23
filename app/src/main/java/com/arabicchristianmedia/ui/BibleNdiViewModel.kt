@@ -1244,6 +1244,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             return
         }
         refreshCustomFonts()
+        broadcastServer.invalidateFittedLayoutCache()
         _uiState.value = _uiState.value.copy(
             statusMessage = "تم استيراد الخط «${imported.name}» — متاح الآن في قوائم الخطوط"
         )
@@ -1256,6 +1257,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
     fun deleteCustomFont(font: CustomFont) {
         FontStore(getApplication()).delete(font)
         refreshCustomFonts()
+        broadcastServer.invalidateFittedLayoutCache()
         _uiState.value = _uiState.value.copy(
             statusMessage = "تم حذف الخط «${font.name}»"
         )

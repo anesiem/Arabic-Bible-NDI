@@ -140,12 +140,9 @@ object ReferenceParser {
         // "الرؤيا", "تكوين" for "التكوين") — the leading "ال" removed on
         // BOTH sides. The share scanner already accepted these; typed
         // references (remote page, /api/trigger) now match it.
-        val bareClean = clean.removePrefix("ال")
-        if (bareClean.isNotEmpty() && bareClean != clean) {
-            books.firstOrNull {
-                stripArabicPrefix(it.arabicName).removePrefix("ال") == bareClean
-            }?.let { return it }
-        }
+        books.firstOrNull {
+            stripArabicPrefix(it.arabicName).removePrefix("ال") == clean.removePrefix("ال")
+        }?.let { return it }
 
         // Prefix match on English name (e.g. "Jn" handled via abbreviation;
         // this catches "Joh" etc.). Require at least 2 chars.

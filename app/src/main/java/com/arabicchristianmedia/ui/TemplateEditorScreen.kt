@@ -574,6 +574,21 @@ fun TemplateEditorScreen(
                     if (editingTemplate.autoFitText) {
                         SliderWithLabel("أكبر حجم للنص (Max size)", editingTemplate.autoFitMaxVerseSp.toFloat(), 10f..120f) { onUpdate(editingTemplate.copy(autoFitMaxVerseSp = it.toInt())) }
                     }
+                    // Audit fix (D): a WARNING, never a block - the fit obeys
+                    // destructive combinations silently (Ashraf's Midnight
+                    // Psalm: cap 16 under a 58sp verse in a 10% box), so say
+                    // so right where the numbers are set.
+                    if (editingTemplate.autoFitText && (editingTemplate.autoFitMaxVerseSp < editingTemplate.verseFontSize || editingTemplate.boxHeightPercent < 20)) {
+                        val warnParts = mutableListOf<String>()
+                        if (editingTemplate.autoFitMaxVerseSp < editingTemplate.verseFontSize) warnParts.add("سقف الحجم (" + editingTemplate.autoFitMaxVerseSp + ") أصغر من حجم الآية (" + editingTemplate.verseFontSize + ")")
+                        if (editingTemplate.boxHeightPercent < 20) warnParts.add("ارتفاع الصندوق " + editingTemplate.boxHeightPercent + "% صغير جداً")
+                        Text(
+                            "⚠ " + warnParts.joinToString(" · ") + " — ستظهر الآيات صغيرة (verses will render tiny)",
+                            fontSize = 11.sp,
+                            color = Color(0xFFB45309),
+                            modifier = Modifier.padding(top = 6.dp)
+                        )
+                    }
                     Spacer(Modifier.height(8.dp))
 
         }

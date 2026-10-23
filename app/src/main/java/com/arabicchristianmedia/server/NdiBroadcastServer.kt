@@ -1174,12 +1174,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
     .cross-icon {
       display: inline-block;
-      font-size: 1.15em;
+      font-size: 1em;
       line-height: 1;
     }
 
     .verse-text {
-      line-height: 1.55;
+      line-height: 1.3;
       font-weight: 600;
       word-spacing: 2px;
     }
@@ -1195,7 +1195,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       font-family: system-ui, -apple-system, sans-serif;
       font-size: 0.75em;
       opacity: 0.9;
-      line-height: 1.35;
+      line-height: 1.21;
     }
     .english-citation {
       display: block;
@@ -1490,7 +1490,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         englishText.style.color = data.secondaryTextColorHex || '#CBD5E1';
         englishCitation.style.color = data.secondaryReferenceColorHex || '#94A3B8';
         englishText.style.fontSize = scaledPx(data.secondaryVerseFontSize || 18);
+        englishText.style.lineHeight = (1.15 + 2 / (data.secondaryVerseFontSize || 18)).toFixed(3);
         englishCitation.style.fontSize = scaledPx(data.secondaryReferenceFontSize || 14);
+        englishCitation.style.lineHeight = (1.15 + 2 / (data.secondaryReferenceFontSize || 14)).toFixed(3);
         // Round 2 (#5): 'System' is not a CSS family - assigning it raw
         // made the browser fall back to its default SERIF while NDI drew
         // the system sans. Map it to the sans stack; named fonts get a
@@ -1611,6 +1613,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       citationRow.style.fontWeight = data.referenceIsBold ? 'bold' : 'normal';
       citationRow.style.fontStyle = data.referenceIsItalic ? 'italic' : 'normal';
       verseText.style.fontSize = scaledPx(data.verseFontSize || 26);
+      verseText.style.lineHeight = (1.25 + 3 / (data.verseFontSize || 26)).toFixed(3);
       citationRow.style.fontSize = scaledPx(data.referenceFontSize || 18);
       // v1.9: reset the span too — the auto-fit loop shrinks citationText directly,
       // so without this each applyData compounds the shrink.
@@ -1829,12 +1832,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         cardBox.style.boxShadow = cardGlowShadow('0 12px 36px', 0.6);
       } else if (data.style === 'ROYAL_LITURGICAL') {
         cardBox.style.background = 'linear-gradient(135deg, rgba(' + r + ',' + g + ',' + b + ',' + opacity + ') 0%, rgba(20,20,35,' + opacity + ') 100%)';
-        cardBox.style.border = data.showAccentBorder ? (2 * getStageScale()) + 'px solid ' + accent : 'none';
+        cardBox.style.border = data.showAccentBorder ? (6 * getStageScale()) + 'px solid ' + accent : 'none';
         cardBox.style.boxShadow = cardGlowShadow('0 10px 40px', 0.7);
       } else {
         cardBox.style.backgroundColor = 'rgba(' + r + ',' + g + ',' + b + ',' + opacity + ')';
         cardBox.style.backdropFilter = 'blur(16px)';
-        cardBox.style.border = data.showAccentBorder ? (1.5 * getStageScale()) + 'px solid ' + accent + '77' : 'none';
+        cardBox.style.border = data.showAccentBorder ? (6 * getStageScale()) + 'px solid ' + accent : 'none';
         cardBox.style.boxShadow = cardGlowShadow('0 16px 40px', 0.55);
       }
 
@@ -1850,10 +1853,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       customVideoBg.style.display = 'none';
       // v1.9.1: don't tear the particle field down on every apply — it was
       // restarted (positions reset) by any state change, even a verse tap.
-      // Round 2 (#7): under Alpha 100% (pure transparent) the particle
-      // canvas must go too - NDI draws nothing but text there, while the
-      // canvas previously kept animating over the "transparent" feed.
-      if (data.isPureTransparentBackground || (animType !== 'gold_particles' && animType !== 'particles')) {
+      // Round 2 (#7) stopped the canvas under Alpha 100%; the audit (A2)
+      // refined that: NDI DOES draw particles (and the ethereal glow)
+      // under pure for animated styles - only the wash/fill is gone. So
+      // the canvas follows the animated type alone, pure or not.
+      if (animType !== 'gold_particles' && animType !== 'particles') {
         stopParticles();
         activeParticleKey = null;
       }
@@ -1879,14 +1883,14 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       } else if (animType === 'gold_particles') {
         animBgLayer.classList.add('anim-gold-particles');
         animBgLayer.style.opacity = animOpacity;
-        if (!data.isPureTransparentBackground && activeParticleKey !== 'gold_particles') {
+        if (activeParticleKey !== 'gold_particles') {
           startParticles('#FCD34D', animOpacity);
           activeParticleKey = 'gold_particles';
         }
       } else if (animType === 'particles') {
         animBgLayer.classList.add('anim-particles');
         animBgLayer.style.opacity = animOpacity;
-        if (!data.isPureTransparentBackground && activeParticleKey !== 'particles') {
+        if (activeParticleKey !== 'particles') {
           startParticles('#7DD3FC', animOpacity);
           activeParticleKey = 'particles';
         }
@@ -2026,6 +2030,19 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
           cardBox.style.backgroundColor = 'transparent';
           cardGradOn = true;
         }
+      } else if (grad && data.isPureTransparentBackground) {
+        // Audit fix (A2): under Alpha 100% NDI paints NO wash and NO card
+        // fill, but animated styles still get the delicate ethereal glow
+        // (radial, alpha = motion opacity x 75, capped 15..120) behind
+        // the text. Mirror it on the layer; particles (for the particle
+        // types) are started by the class chain above.
+        const GLOW_COLORS = { golden_rays: [251,191,36], blue_waves: [56,189,248], candle_glow: [245,158,11], purple_silk: [192,132,252], emerald_waves: [52,211,153], rose_glow: [251,113,133], gold_particles: [252,211,77], particles: [125,211,252] };
+        const gc = GLOW_COLORS[animType] || [255,255,255];
+        const ga = Math.max(15, Math.min(120, animOpacity * 75)) / 255;
+        animBgLayer.className = 'animated-bg-layer';
+        clearGrad(animBgLayer);
+        animBgLayer.style.backgroundImage = 'radial-gradient(circle at 50% 50%, ' + rgbaStr(gc, ga.toFixed(3)) + ' 0%, ' + rgbaStr(gc, 0) + ' 70%)';
+        animBgLayer.style.opacity = '1';
       } else if (animType !== 'custom_video') {
         // No animated gradient for this payload (or the transparent
         // toggle is on): the layer must carry nothing.
@@ -2883,7 +2900,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                     val pColor = if (tpl.animatedBackground == AnimatedBackgroundType.PARTICLE_STARS)
                         Color.rgb(125, 211, 252) else Color.rgb(252, 211, 77)
                     val pClock = (System.currentTimeMillis() % 60000L) / 1000f * tpl.motionSpeed
-                    drawParticleField(canvas, boxLeft, boxTop, boxRight, boxBottom, radius, pClock, scale, pColor, bgAlpha)
+                    // Audit fix: particles use the motion-opacity formula on
+                    // BOTH branches (the pure branch already did; this one
+                    // passed the card bgAlpha, so the same style's stars were
+                    // dimmer over a visible card - and HTTP only ever matched
+                    // the pure formula).
+                    val particleAlpha = (tpl.animatedBackgroundOpacity * 255).toInt().coerceIn(25, 255)
+                    drawParticleField(canvas, boxLeft, boxTop, boxRight, boxBottom, radius, pClock, scale, pColor, particleAlpha)
                 }
             } else {
                 paint.color = Color.argb(bgAlpha, Color.red(baseBgCol), Color.green(baseBgCol), Color.blue(baseBgCol))

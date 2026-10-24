@@ -1861,6 +1861,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       if (data.isPureTransparentBackground) { // v1.9: toggle is the single authority (was: style check overrode it)
         cardBox.style.backgroundColor = 'transparent';
         cardBox.style.backdropFilter = 'none';
+        cardBox.style.webkitBackdropFilter = 'none';
         cardBox.style.border = 'none';
         cardBox.style.boxShadow = 'none';
       } else if (data.style === 'CLASSIC_BANNER') {
@@ -1878,6 +1879,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       } else {
         cardBox.style.backgroundColor = 'rgba(' + r + ',' + g + ',' + b + ',' + opacity + ')';
         cardBox.style.backdropFilter = 'blur(16px)';
+        cardBox.style.webkitBackdropFilter = 'blur(16px)';
         cardBox.style.border = data.showAccentBorder ? (6 * getStageScale()) + 'px solid ' + accent : 'none';
         cardBox.style.boxShadow = cardGlowShadow('0 16px 40px', 0.55);
       }
@@ -4557,8 +4559,15 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   function copyReport() {
     var ta = document.getElementById('report');
     ta.select();
-    try { document.execCommand('copy'); } catch (e) {}
-    if (navigator.clipboard) { try { navigator.clipboard.writeText(ta.value); } catch (e) {} }
+    // v1.9.2: Clipboard API first — execCommand('copy') is deprecated
+    // and stays only as the fallback for browsers without the API.
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(ta.value).catch(function() {
+        try { document.execCommand('copy'); } catch (e) {}
+      });
+    } else {
+      try { document.execCommand('copy'); } catch (e) {}
+    }
   }
   document.getElementById('autoChk').addEventListener('change', function() {
     if (this.checked) { window._dbgTimer = setInterval(loadDebug, 3000); }

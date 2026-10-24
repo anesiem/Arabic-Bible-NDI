@@ -287,7 +287,8 @@ class TemplateRepositoryTest {
             cardPaddingLeftDp = 30f,
             cardPaddingRightDp = 40f,
             autoFitText = false,
-            autoFitMinVerseSp = 36
+            autoFitMaxVerseSp = 36,
+            boxHeightPercent = 60
         )
         val imported = repo.templateFromJsonString(repo.templateToJsonString(tpl))
         assertNotNull(imported)
@@ -296,7 +297,8 @@ class TemplateRepositoryTest {
         assertEquals(30f, imported.cardPaddingLeftDp, 0.001f)
         assertEquals(40f, imported.cardPaddingRightDp, 0.001f)
         assertFalse(imported.autoFitText)
-        assertEquals(36, imported.autoFitMinVerseSp)
+        assertEquals(36, imported.autoFitMaxVerseSp)
+        assertEquals(60, imported.boxHeightPercent)
     }
 
     @Test
@@ -310,7 +312,37 @@ class TemplateRepositoryTest {
         assertEquals(36f, imported.cardPaddingLeftDp, 0.001f)
         assertEquals(36f, imported.cardPaddingRightDp, 0.001f)
         assertTrue(imported.autoFitText)
-        assertEquals(28, imported.autoFitMinVerseSp)
+        assertEquals(48, imported.autoFitMaxVerseSp)
+        assertEquals(45, imported.boxHeightPercent)
+    }
+
+    @Test
+    fun `v1_9_1 legacy autoFitMinVerseSp migrates as the cap`() {
+        // v1.9 saves carry only the old floor key; its value becomes the cap
+        // (the meaning changed on Ashraf's ruling, the number carries over).
+        val imported = repo.templateFromJsonString("{\"id\":\"leg3\",\"name\":\"Legacy\",\"autoFitMinVerseSp\":42}")
+        assertNotNull(imported)
+        assertEquals(42, imported!!.autoFitMaxVerseSp)
+    }
+
+    @Test
+    fun `v1_9_1 legacy floor below verse size migrates up to the verse size`() {
+        // Round-2 guard: floor 16 with verse 58 was harmless as a floor;
+        // as a cap it would crush every verse (Ashraf's Midnight Psalm).
+        // The migrated cap rises to the style's own verse size.
+        val imported = repo.templateFromJsonString("{\"id\":\"leg4\",\"name\":\"Legacy2\",\"verseFontSize\":58,\"autoFitMinVerseSp\":16}")
+        assertNotNull(imported)
+        assertEquals(58, imported!!.autoFitMaxVerseSp)
+    }
+
+    @Test
+    fun `v1_9_1 box height defaults follow the screen kind`() {
+        val lower = repo.templateFromJsonString("{\"id\":\"bh1\",\"name\":\"L\"}")
+        val full = repo.templateFromJsonString("{\"id\":\"bh2\",\"name\":\"F\",\"isFullScreen\":true}")
+        assertNotNull(lower)
+        assertNotNull(full)
+        assertEquals(45, lower!!.boxHeightPercent)
+        assertEquals(100, full!!.boxHeightPercent)
     }
 
     @Test
@@ -320,7 +352,9 @@ class TemplateRepositoryTest {
             assertTrue(tpl.id, tpl.cardPaddingBottomDp >= 0f)
             assertTrue(tpl.id, tpl.cardPaddingLeftDp >= 0f)
             assertTrue(tpl.id, tpl.cardPaddingRightDp >= 0f)
-            assertTrue(tpl.id, tpl.autoFitMinVerseSp > 0)
+            assertTrue(tpl.id, tpl.autoFitMaxVerseSp > 0)
+            assertTrue(tpl.id, tpl.boxHeightPercent in 10..100)
+            if (tpl.isFullScreen) assertEquals(tpl.id, 100, tpl.boxHeightPercent)
         }
     }
 
@@ -346,5 +380,40 @@ class TemplateRepositoryTest {
         assertTrue(imported.secondaryVerseIsItalic)
         assertFalse(imported.secondaryReferenceIsBold)
         assertFalse(imported.secondaryReferenceIsItalic)
+    }
+
+    // ── v1.9.1: update style in place ───────────────────────────────────
+
+    @Test
+    fun updatedTemplatesReplacesSameIdPreservingOrder() {
+        val a = baseTemplate("tpl_100", false)
+        val b = baseTemplate("tpl_200", false)
+        val c = baseTemplate("tpl_300", true)
+        val editedB = b.copy(verseFontSize = 99, textColorHex = "#123456")
+        val result = TemplateRepository.updatedTemplates(listOf(a, b, c), editedB)
+        assertEquals("list size must not change on in-place update", 3, result.size)
+        assertEquals("order is preserved (first)", a, result[0])
+        assertEquals("the same-id entry is replaced by the edited values", editedB, result[1])
+        assertEquals("order is preserved (last)", c, result[2])
+    }
+
+    @Test
+    fun updatedTemplatesWithUnknownIdChangesNothing() {
+        val a = baseTemplate("tpl_100", false)
+        val stranger = baseTemplate("tpl_999", false)
+        val result = TemplateRepository.updatedTemplates(listOf(a), stranger)
+        assertEquals("an unknown id must not be inserted by an update", listOf(a), result)
+    }
+
+    @Test
+    fun factoryStyleIdsAreDetected() {
+        val factoryId = TemplateRepository.DEFAULT_TEMPLATES[0].id
+        assertTrue("a shipped style id is factory", TemplateRepository.isFactoryStyleId(factoryId))
+        assertTrue(
+            "a previous shipped set id is factory",
+            TemplateRepository.isFactoryStyleId(TemplateRepository.LEGACY_FACTORY_IDS.first())
+        )
+        assertFalse("a user style id (tpl_<timestamp>) is not factory", TemplateRepository.isFactoryStyleId("tpl_1730000000000"))
+        assertFalse("null is not factory", TemplateRepository.isFactoryStyleId(null))
     }
 }

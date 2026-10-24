@@ -37,6 +37,7 @@ import com.arabicchristianmedia.model.TemplateStyle
 import com.arabicchristianmedia.model.TransitionType
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -71,7 +72,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     private var serverSocket: ServerSocket? = null
     private var serverJob: Job? = null
     private var ssePingJob: Job? = null
-    private val scope = CoroutineScope(Dispatchers.IO)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /**
      * Held while broadcasting. The high-perf WifiLock keeps the Wi-Fi radio
@@ -90,6 +91,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
      */
     var onTriggerVerse: ((bookId: String, chapter: Int, verse: Int, target: String) -> Boolean)? = null
     var onClearVerse: (() -> Unit)? = null
+    var onSetOnAir: ((Boolean) -> Unit)? = null
     var onListVideos: (() -> List<VideoInfo>)? = null
 
     /** Opaque video ID + display info for /api/videos. */
@@ -127,6 +129,32 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
     @Volatile
     var isRunning = false
+
+    // v1.9.1: /debug instrumentation — per-action timings (diagnostics only;
+    // volatile counters, read by /api/debug).
+    private class ActionStat {
+        @Volatile var count: Int = 0
+        @Volatile var lastMs: Double = 0.0
+        @Volatile var maxMs: Double = 0.0
+        @Volatile var totalMs: Double = 0.0
+        fun record(ms: Double) {
+            count++; lastMs = ms; totalMs += ms
+            if (ms > maxMs) maxMs = ms
+        }
+        fun avgMs(): Double = if (count == 0) 0.0 else totalMs / count
+    }
+    private val statStateBuild = ActionStat()
+    private val statBroadcast = ActionStat()
+    private val statVerseApi = ActionStat()
+    private val statTrigger = ActionStat()
+    @Volatile private var serverStartTimeMs: Long = 0L
+
+    // v1.9.1: last self-report received from each overlay page (raw JSON,
+    // validated at ingestion), shown by /api/debug as overlayClients.
+    @Volatile private var clientStatLower: String? = null
+    @Volatile private var clientStatLowerAtMs: Long = 0L
+    @Volatile private var clientStatFull: String? = null
+    @Volatile private var clientStatFullAtMs: Long = 0L
         private set
 
     @Volatile
@@ -212,6 +240,43 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     // Connected SSE clients for instantaneous broadcast push (PrintWriter to isShow)
     private val sseClients = CopyOnWriteArrayList<Pair<PrintWriter, Boolean>>()
 
+    // v1.9.1: SSE connection journal + session counters (diagnostics for
+    // the overlay-drop investigation). A 3-hour service can cycle many
+    // connections, so the counters are cumulative for the whole server
+    // session and the journal keeps the last 200 events. Read by
+    // /api/debug and the Setup tab's server-health readout. Cost: a few
+    // short strings per connect/disconnect only — nothing per message.
+    private val sseJournal = java.util.Collections.synchronizedList(mutableListOf<String>())
+    @Volatile var sseConnectTotal: Int = 0; private set
+    @Volatile var sseDropTotal: Int = 0; private set
+    @Volatile var sseLastDropAtMs: Long = 0L; private set
+    @Volatile var sseLastDropReason: String = ""; private set
+    private val sseDropReasons = java.util.concurrent.ConcurrentHashMap<String, Int>()
+    private val sseConnInfo = java.util.concurrent.ConcurrentHashMap<PrintWriter, LongArray>()
+    val sseConnectedNow: Int get() = sseClients.size
+
+    private fun journalSse(line: String) {
+        synchronized(sseJournal) {
+            sseJournal.add(line)
+            while (sseJournal.size > 200) sseJournal.removeAt(0)
+        }
+    }
+
+    /** Records a dropped overlay connection (no-op if it wasn't tracked). */
+    private fun noteSseDrop(writer: PrintWriter, isShow: Boolean, via: String, reason: String) {
+        val info = sseConnInfo.remove(writer) ?: return
+        val now = System.currentTimeMillis()
+        val lived = now - info[0]
+        sseDropTotal++
+        sseLastDropAtMs = now
+        sseLastDropReason = reason
+        sseDropReasons.compute(reason) { _, v -> (v ?: 0) + 1 }
+        journalSse("$now DROP ${if (isShow) "full" else "lower"} lived=${lived}ms msgs=${info[1]} via=$via reason=$reason")
+    }
+
+    fun sseJournalSnapshot(): List<String> = synchronized(sseJournal) { ArrayList(sseJournal) }
+    fun sseDropReasonCounts(): Map<String, Int> = HashMap(sseDropReasons)
+
     fun start(onStarted: (String) -> Unit = {}, onError: (String) -> Unit = {}) {
         if (isRunning) return
 
@@ -221,6 +286,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 bind(java.net.InetSocketAddress(port))
             }
             isRunning = true
+            serverStartTimeMs = System.currentTimeMillis()
             val ip = getLocalIpAddress()
             val url = "http://$ip:$port/lower"
             onStarted(url)
@@ -244,22 +310,25 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 while (isActive && isRunning) {
                     delay(15_000)
                     val dead = mutableListOf<Pair<PrintWriter, Boolean>>()
-                    for ((writer, _) in sseClients) {
+                    val deadWhy = mutableMapOf<PrintWriter, String>()
+                    for ((writer, isShow) in sseClients) {
                         try {
                             synchronized(writer) {
-                                writer.print(": ping\n\n")
+                                writer.print("event: ping\ndata: 1\n\n")
                                 writer.flush()
                             }
-                            if (writer.checkError()) dead.add(writer to false)
+                            if (writer.checkError()) { dead.add(writer to isShow); deadWhy[writer] = "write-error" }
                         } catch (e: Exception) {
-                            dead.add(writer to false)
+                            dead.add(writer to isShow); deadWhy[writer] = "exception:${e.javaClass.simpleName}"
                         }
                     }
                     if (dead.isNotEmpty()) {
-                        // Remove by writer identity; the isShow flag is irrelevant here.
                         val deadWriters = dead.map { it.first }.toSet()
                         sseClients.removeAll { deadWriters.contains(it.first) }
-                        deadWriters.forEach { try { it.close() } catch (e: Exception) {} }
+                        dead.forEach { (writer, isShow) ->
+                            noteSseDrop(writer, isShow, "ping", deadWhy[writer] ?: "write-error")
+                            try { writer.close() } catch (e: Exception) {}
+                        }
                     }
                 }
             }
@@ -287,6 +356,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             try { writer.close() } catch (e: Exception) {}
         }
         sseClients.clear()
+        sseConnInfo.clear()
         // v1.7: release video decoders (recreated lazily on next start).
         synchronized(videoRenderers) {
             videoRenderers.values.forEach { try { it.release() } catch (e: Exception) {} }
@@ -475,32 +545,42 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     }
 
     private fun broadcastStateToClients() {
-        val lowerPayload = buildJsonState(false)
-        val showPayload = buildJsonState(true)
+        scope.launch(Dispatchers.IO) {
+            val broadcastT0 = System.nanoTime()
+            val lowerPayload = buildJsonState(false)
+            val showPayload = buildJsonState(true)
 
-        val lowerData = "data: $lowerPayload\n\n"
-        val showData = "data: $showPayload\n\n"
+            val lowerData = "data: $lowerPayload\n\n"
+            val showData = "data: $showPayload\n\n"
 
-        val deadClients = mutableListOf<Pair<PrintWriter, Boolean>>()
-        for (pair in sseClients) {
-            val (writer, isShow) = pair
-            try {
-                // Serialized per client: broadcasts come from several threads
-                // (UI, throttle job, verse updates) and must not interleave.
-                synchronized(writer) {
-                    writer.print(if (isShow) showData else lowerData)
-                    writer.flush()
+            val deadClients = mutableListOf<Pair<PrintWriter, Boolean>>()
+            val deadWhy = mutableMapOf<PrintWriter, String>()
+            for (pair in sseClients) {
+                val (writer, isShow) = pair
+                try {
+                    // Serialized per client: broadcasts come from several threads
+                    // (UI, throttle job, verse updates) and must not interleave.
+                    synchronized(writer) {
+                        writer.print(if (isShow) showData else lowerData)
+                        writer.flush()
+                    }
+                    if (writer.checkError()) {
+                        deadClients.add(pair); deadWhy[writer] = "write-error"
+                    } else {
+                        sseConnInfo[writer]?.let { it[1]++ }
+                    }
+                } catch (e: Exception) {
+                    deadClients.add(pair); deadWhy[writer] = "exception:${e.javaClass.simpleName}"
                 }
-                if (writer.checkError()) {
-                    deadClients.add(pair)
-                }
-            } catch (e: Exception) {
-                deadClients.add(pair)
             }
-        }
-        if (deadClients.isNotEmpty()) {
-            sseClients.removeAll(deadClients.toSet())
-            deadClients.forEach { (writer, _) -> try { writer.close() } catch (e: Exception) {} }
+            if (deadClients.isNotEmpty()) {
+                sseClients.removeAll(deadClients.toSet())
+                deadClients.forEach { (writer, isShow) ->
+                    noteSseDrop(writer, isShow, "broadcast", deadWhy[writer] ?: "write-error")
+                    try { writer.close() } catch (e: Exception) {}
+                }
+            }
+            statBroadcast.record((System.nanoTime() - broadcastT0) / 1_000_000.0)
         }
     }
 
@@ -586,7 +666,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                     }
                 }
                 cleanPath == "/api/verse" -> {
-                    serveJsonState(out, fullPath.contains("show=1"))
+                    serveJsonState(out, fullPath.contains("show=1"), fullPath.contains("light=1"))
                 }
                 cleanPath == "/api/trigger" -> {
                     serveApiTrigger(out, fullPath)
@@ -594,11 +674,26 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 cleanPath == "/api/clear" -> {
                     serveApiClear(out)
                 }
+                cleanPath == "/api/books" -> {
+                    serveApiBooks(out)
+                }
+                cleanPath == "/api/chapter" -> {
+                    serveApiChapter(out, fullPath)
+                }
+                cleanPath == "/api/onair" -> {
+                    serveApiOnAir(out, fullPath)
+                }
                 cleanPath == "/api/videos" -> {
                     serveApiVideos(out)
                 }
-                cleanPath == "/snapshot.png" -> {
-                    serveTransparentPngOverlay(out)
+                cleanPath == "/lower/snapshot.png" -> {
+                    // v1.9.1: canonical per-feed snapshot URLs (the old bare
+                    // /snapshot.png was never used in production — removed
+                    // rather than kept as an alias, per Ashraf).
+                    serveTransparentPngOverlay(out, isFull = false)
+                }
+                cleanPath == "/full/snapshot.png" -> {
+                    serveTransparentPngOverlay(out, isFull = true)
                 }
                 cleanPath == "/api/status" -> {
                     serveStatus(out)
@@ -612,8 +707,29 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 cleanPath == "/remote" -> {
                     serveRemotePage(out)
                 }
-                cleanPath == "/bibleshow.xml" -> {
-                    serveBibleShowXml(out)
+                cleanPath == "/api/debug" -> {
+                    serveApiDebug(out)
+                }
+                cleanPath == "/api/clientstat" -> {
+                    serveApiClientStat(out, fullPath)
+                }
+                cleanPath == "/debug" -> {
+                    serveDebugPage(out)
+                }
+                cleanPath == "/lower/bibleshow.xml" -> {
+                    // v1.9.1: canonical per-feed XML URLs (the old bare
+                    // /bibleshow.xml alias is removed — vMix inputs point
+                    // at the per-feed URLs, per Ashraf).
+                    serveBibleShowXml(out, currentTemplate)
+                }
+                cleanPath == "/full/bibleshow.xml" -> {
+                    serveBibleShowXml(out, currentShowTemplate)
+                }
+                cleanPath == "/lower/bibleshow.json" -> {
+                    serveBibleShowJson(out, currentTemplate)
+                }
+                cleanPath == "/full/bibleshow.json" -> {
+                    serveBibleShowJson(out, currentShowTemplate)
                 }
                 else -> {
                     serveNdiHtmlOverlay(out)
@@ -641,16 +757,43 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         writer.print("Access-Control-Allow-Origin: *\r\n\r\n")
         writer.flush()
 
-        // Send initial state immediately
-        val initialData = "data: ${buildJsonState(isShow)}\n\n"
+        // Send initial state immediately. The retry field asks the browser
+        // to reconnect 1s after a drop instead of its ~3s default.
+        val initialData = "retry: 1000\ndata: ${buildJsonState(isShow)}\n\n"
         writer.print(initialData)
         writer.flush()
 
         sseClients.add(Pair(writer, isShow))
+        sseConnInfo[writer] = longArrayOf(System.currentTimeMillis(), 1)
+        sseConnectTotal++
+        journalSse("${System.currentTimeMillis()} CONNECT ${if (isShow) "full" else "lower"} ${socket.remoteSocketAddress}")
     }
 
-    private fun serveJsonState(out: OutputStream, isShow: Boolean = false) {
-        val json = buildJsonState(isShow)
+    /**
+     * v1.9.1 (light remote feed): the small state the /remote page's
+     * live mirror actually needs — citation, position, ON AIR, version.
+     * Same citation formatting as the full state (Lower template), a
+     * fraction of the payload for what can be several polling remotes.
+     */
+    private fun buildLightJsonState(): String {
+        val tpl = currentTemplate
+        val verse = currentVerse
+        val root = JSONObject().apply {
+            put("stateVersion", frameVersion)
+            put("isLive", isLive && verse != null)
+            put("arabicCitation", if (verse != null) verse.getFormattedArabicCitation(tpl.useEasternArabicNumerals) else "")
+            put("englishCitation", verse?.getFormattedEnglishCitation() ?: "")
+            put("bookId", verse?.bookId ?: "")
+            put("chapterNum", verse?.chapter ?: 0)
+            put("verseNum", verse?.verse ?: 0)
+        }
+        return root.toString()
+    }
+
+    private fun serveJsonState(out: OutputStream, isShow: Boolean = false, light: Boolean = false) {
+        val apiT0 = System.nanoTime()
+        val json = if (light) buildLightJsonState() else buildJsonState(isShow)
+        statVerseApi.record((System.nanoTime() - apiT0) / 1_000_000.0)
         val bytes = json.toByteArray(Charsets.UTF_8)
         val writer = PrintWriter(out)
         writer.print("HTTP/1.1 200 OK\r\n")
@@ -664,6 +807,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     }
 
     private fun buildJsonState(isShow: Boolean = false): String {
+        val buildT0 = System.nanoTime()
         val tpl = if (isShow) currentShowTemplate else currentTemplate
         val verse = currentVerse
 
@@ -683,11 +827,15 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             // Monotonic state version: browser sources re-sync on SSE reconnect
             // by comparing against the last version they applied.
             put("stateVersion", frameVersion)
+            put("serverTimeMs", System.currentTimeMillis())
             put("isLive", isLive && verse != null)
             put("arabicText", formattedVerseText)
             put("arabicCitation", formattedCitation)
             put("englishText", verse?.englishText ?: "")
             put("englishCitation", verse?.getFormattedEnglishCitation() ?: "")
+            put("bookId", verse?.bookId ?: "")
+            put("chapterNum", verse?.chapter ?: 0)
+            put("verseNum", verse?.verse ?: 0)
             put("bilingual", tpl.languageMode == LanguageMode.BOTH)
             put("languageMode", tpl.languageMode.name)
             put("style", tpl.style.name)
@@ -743,9 +891,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             put("cardPaddingLeftDp", tpl.cardPaddingLeftDp.toDouble())
             put("cardPaddingRightDp", tpl.cardPaddingRightDp.toDouble())
             put("autoFitText", tpl.autoFitText)
-            put("autoFitMinVerseSp", tpl.autoFitMinVerseSp)
+            put("autoFitMaxVerseSp", tpl.autoFitMaxVerseSp)
+            put("boxHeightPercent", tpl.boxHeightPercent)
         }
-        return root.toString()
+        val built = root.toString()
+        statStateBuild.record((System.nanoTime() - buildT0) / 1_000_000.0)
+        return built
     }
 
     private fun serveNdiHtmlOverlay(out: OutputStream, isFullScreen: Boolean = false) {
@@ -848,7 +999,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       flex-direction: column !important;
       align-items: center !important;
       justify-content: center !important;
-      transform: none !important;
+      /* v1.9.1: no transform lock here — a former "transform: none
+         !important" in this rule silently killed every slide/zoom/bounce
+         entry preset in Full mode (Lower has no such lock, so the two
+         overlays disagreed). The resting transform comes from .visible /
+         the anim presets, exactly as in Lower mode. */
     }
 
     /* Animation Presets */
@@ -856,8 +1011,16 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     #lowerthird-container.anim-fade:not(.visible) { opacity: 0; }
     #lowerthird-container.anim-slide-up { transform: translateY(60px); }
     #lowerthird-container.anim-slide-up.visible { transform: translateY(0); }
+    #lowerthird-container.anim-slide-down { transform: translateY(-60px); }
+    #lowerthird-container.anim-slide-down.visible { transform: translateY(0); }
     #lowerthird-container.anim-slide-right { transform: translateX(80px); }
     #lowerthird-container.anim-slide-right.visible { transform: translateX(0); }
+    #lowerthird-container.anim-slide-left { transform: translateX(-80px); }
+    #lowerthird-container.anim-slide-left.visible { transform: translateX(0); }
+    #lowerthird-container.anim-zoom { transform: scale(0.92); }
+    #lowerthird-container.anim-zoom.visible { transform: scale(1.0); }
+    #lowerthird-container.anim-bounce { transform: scale(0.88); transition-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1) !important; }
+    #lowerthird-container.anim-bounce.visible { transform: scale(1.0); }
     #lowerthird-container.anim-cut { transition: none !important; }
 
     /* ==========================================================================
@@ -923,7 +1086,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
     .anim-golden-rays {
       background: radial-gradient(circle at 50% 50%, rgba(251, 191, 36, 0.4) 0%, transparent 70%),
-                  linear-gradient(135deg, rgba(217, 119, 6, 0.3) 0%, rgba(251, 191, 36, 0.5) 50%, rgba(217, 119, 6, 0.3) 100%);
+                  linear-gradient(135deg, rgba(217, 119, 6, 1) 0%, rgba(251, 191, 36, 1) 50%, rgba(217, 119, 6, 1) 100%);
       background-size: 400% 400%;
       animation: smoothFlow 15s linear infinite;
     }
@@ -933,13 +1096,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     }
 
     .anim-blue-waves {
-      background: linear-gradient(120deg, rgba(30, 58, 138, 0.4) 0%, rgba(14, 165, 233, 0.6) 50%, rgba(30, 58, 138, 0.4) 100%);
+      background: linear-gradient(120deg, rgba(30, 58, 138, 1) 0%, rgba(14, 165, 233, 1) 50%, rgba(30, 58, 138, 1) 100%);
       background-size: 300% 300%;
       animation: smoothFlow 20s linear infinite;
     }
 
     .anim-candle-glow {
-      background: radial-gradient(circle at 50% 50%, rgba(245, 158, 11, 0.6) 0%, rgba(120, 53, 15, 0.3) 70%);
+      background: radial-gradient(circle at 50% 50%, rgba(245, 158, 11, 1) 0%, rgba(120, 53, 15, 1) 70%);
       animation: candleBreath 5s ease-in-out infinite alternate;
     }
     @keyframes candleBreath {
@@ -948,32 +1111,39 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     }
 
     .anim-purple-silk {
-      background: linear-gradient(45deg, rgba(88, 28, 135, 0.4) 0%, rgba(192, 132, 252, 0.6) 50%, rgba(88, 28, 135, 0.4) 100%);
+      background: linear-gradient(45deg, rgba(88, 28, 135, 1) 0%, rgba(192, 132, 252, 1) 50%, rgba(88, 28, 135, 1) 100%);
       background-size: 400% 400%;
       animation: smoothFlow 18s linear infinite;
     }
 
     .anim-emerald-waves {
-      background: linear-gradient(45deg, rgba(6, 78, 59, 0.4) 0%, rgba(52, 211, 153, 0.6) 50%, rgba(6, 78, 59, 0.4) 100%);
+      background: linear-gradient(45deg, rgba(6, 78, 59, 1) 0%, rgba(52, 211, 153, 1) 50%, rgba(6, 78, 59, 1) 100%);
       background-size: 400% 400%;
       animation: smoothFlow 20s linear infinite;
     }
 
     .anim-rose-glow {
-      background: radial-gradient(circle at 50% 50%, rgba(251, 113, 133, 0.5) 0%, rgba(136, 19, 55, 0.3) 100%);
+      background: radial-gradient(circle at 50% 50%, rgba(251, 113, 133, 1) 0%, rgba(136, 19, 55, 1) 100%);
       animation: candleBreath 8s ease-in-out infinite alternate;
     }
 
     .anim-gold-particles {
-      background: linear-gradient(135deg, rgba(120, 53, 15, 0.4) 0%, rgba(252, 211, 77, 0.5) 50%, rgba(120, 53, 15, 0.4) 100%);
+      background: linear-gradient(135deg, rgba(120, 53, 15, 1) 0%, rgba(252, 211, 77, 1) 50%, rgba(120, 53, 15, 1) 100%);
       background-size: 300% 300%;
       animation: smoothFlow 15s linear infinite;
     }
 
     .anim-particles {
-      background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.1) 0%, transparent 100%);
-      animation: particleBreath 10s ease-in-out infinite alternate;
+      background: linear-gradient(135deg, rgba(15, 23, 42, 1) 0%, rgba(56, 189, 248, 1) 50%, rgba(15, 23, 42, 1) 100%);
+      background-size: 300% 300%;
+      animation: smoothFlow 15s linear infinite;
     }
+
+    /* v1.9.1: animation utilities for INLINE animated gradients (the
+       gradient itself is written per-apply from the payload — see
+       section 7 — these only supply the motion). */
+    .bg-flow { animation: smoothFlow 15s linear infinite; }
+    .bg-breath { animation: candleBreath 5s ease-in-out infinite alternate; }
     @keyframes particleBreath {
       0% { filter: brightness(0.8); }
       100% { filter: brightness(1.3); }
@@ -1004,12 +1174,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
     .cross-icon {
       display: inline-block;
-      font-size: 1.15em;
+      font-size: 1em;
       line-height: 1;
     }
 
     .verse-text {
-      line-height: 1.55;
+      line-height: 1.3;
       font-weight: 600;
       word-spacing: 2px;
     }
@@ -1025,7 +1195,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       font-family: system-ui, -apple-system, sans-serif;
       font-size: 0.75em;
       opacity: 0.9;
-      line-height: 1.35;
+      line-height: 1.21;
     }
     .english-citation {
       display: block;
@@ -1042,8 +1212,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       <div id="card-box" class="card-content">
         <div id="animated-bg-layer" class="animated-bg-layer">
           <video id="custom-video-bg" style="display:none;" autoplay loop muted playsinline></video>
-          <canvas id="particle-canvas" style="display:none; position:absolute; inset:0; width:100%; height:100%; pointer-events:none;"></canvas>
         </div>
+        <!-- v1.9.1 parity: the particle canvas is a DIRECT child of the card,
+             above its background and below the content (NDI's paint order).
+             It used to live inside the animated layer, which Lower mode
+             zeroes out — the stars never showed on HTTP Lower at all. -->
+        <canvas id="particle-canvas" style="display:none; position:absolute; inset:0; width:100%; height:100%; pointer-events:none;"></canvas>
 
         <div class="card-inner-content">
           <div id="citation-row" class="citation-badge">
@@ -1137,6 +1311,60 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
      */
     // Last applied SSE state version (-1 = none yet). See applyData guard.
     let lastStateVersion = -1;
+    let lastVerseText = null;
+    // v1.9.1: sequence guard for the card swap timer — a newer apply
+    // supersedes a pending swap, whose timer must then do nothing.
+    let swapSeq = 0;
+    // v1.9.1: overlay stability state (fast path, font gate, particles).
+    let lastStyleKey = null;
+    let revealToken = 0;
+    let lastFitFn = null;
+    let activeParticleKey = null;
+    let cardGradOn = false; // v1.9.1: an inline animated gradient currently sits on the card (Lower placement)
+    // v1.9.1: overlay self-diagnostics \u2014 the page times its own receive
+    // -> apply -> fit path and reports it to /api/clientstat every 10s; the
+    // /debug page shows it beside the server timings (deep HTTP analysis).
+    const diagPage = (location.pathname.indexOf('full') >= 0 || location.search.indexOf('show=1') >= 0) ? 'full' : 'lower';
+    const diag = { msgs: 0, applies: 0, opens: 0, reconnects: 0, lastVersion: 0, lastApplyMs: 0, maxApplyMs: 0, lastFitMs: 0, events: [] };
+    let applyT0 = 0;
+    function diagEvent(kind, info) {
+      diag.events.push({ t: Math.round(performance.now()), kind: kind, info: info || '' });
+      if (diag.events.length > 40) diag.events.shift();
+    }
+    function sendDiag() {
+      try {
+        const payload = encodeURIComponent(JSON.stringify({
+          page: diagPage, ua: navigator.userAgent, version: diag.lastVersion,
+          msgs: diag.msgs, applies: diag.applies, reconnects: diag.reconnects,
+          lastApplyMs: Math.round(diag.lastApplyMs * 10) / 10,
+          maxApplyMs: Math.round(diag.maxApplyMs * 10) / 10,
+          lastFitMs: Math.round(diag.lastFitMs * 10) / 10,
+          events: diag.events
+        }));
+        fetch('/api/clientstat?page=' + diagPage + '&data=' + payload, { keepalive: true }).catch(function() {});
+      } catch (e) { /* diagnostics must never break the overlay */ }
+    }
+    let lastSseSeen = Date.now();
+    let sseWatchdog = null;
+
+    // v1.9.1 (#11): the font faces a state depends on — shared by the apply
+    // path (finishApply, inside applyData) and the page-load warm-up below.
+    // Pure: payload in, CSS font shorthands out.
+    function facesForData(d) {
+      const faces = [];
+      const prim = String(d.fontFamily || 'Amiri').replace(/['"\\]/g, '');
+      if (prim && prim !== 'System') {
+        faces.push('400 32px "' + prim + '"');
+        if (d.verseIsBold || d.referenceIsBold) faces.push('700 32px "' + prim + '"');
+      }
+      const lang = d.languageMode || (d.bilingual ? 'BOTH' : 'ARABIC_ONLY');
+      const secFam = d.secondaryFontFamily;
+      if (lang !== 'ARABIC_ONLY' && d.englishText && secFam && secFam !== 'System' && secFam !== 'system-ui') {
+        faces.push('400 32px "' + secFam + '"');
+        if (d.secondaryVerseIsBold || d.secondaryReferenceIsBold) faces.push('700 32px "' + secFam + '"');
+      }
+      return faces;
+    }
 
     function applyData(data) {
       // State-version guard: drop stale/out-of-order deliveries and let a fresh
@@ -1145,10 +1373,27 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         if (data.stateVersion <= lastStateVersion) return;
         lastStateVersion = data.stateVersion;
       }
+      diag.lastVersion = data.stateVersion || diag.lastVersion;
+      applyT0 = performance.now();
       if (!data.isLive || !data.arabicText) {
         container.classList.remove('visible');
+        // v1.9.1: cancel any pending font-gated reveal and force the next
+        // live state through the full apply path.
+        revealToken++;
+        swapSeq++;
+        lastStyleKey = null;
         return;
       }
+
+      const wasVisible = container.classList.contains('visible');
+      // v1.9.1: style key = the whole payload minus the volatile text fields
+      // (verse/citation text and the state version). Identical key means the
+      // style did not change — only the words did.
+      const styleKey = JSON.stringify(data, function(k, v) {
+        return (k === 'arabicText' || k === 'englishText' || k === 'arabicCitation' ||
+                k === 'englishCitation' || k === 'stateVersion' || k === 'bookId' ||
+                k === 'chapterNum' || k === 'verseNum' || k === 'serverTimeMs') ? undefined : v;
+      });
 
       const isFull = data.isFullScreen || $forceFullScreen;
 
@@ -1184,38 +1429,86 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       // v1.8: English section is shown in BOTH and ENGLISH_ONLY (with its own colors).
       // No color swapping — each language keeps its own styling.
       const showEnglishSection = langMode !== 'ARABIC_ONLY' && data.englishText;
-      if (showArabic) {
-        verseText.style.display = '';
-        citationText.style.display = '';
-        verseText.textContent = data.arabicText;
-        citationText.textContent = data.arabicCitation;
-      } else {
-        // ENGLISH_ONLY: Hide Arabic rows, English section takes over.
-        verseText.style.display = 'none';
-        citationText.style.display = 'none';
+      const transType = data.transition || 'SLIDE_UP';
+      const transDur = data.transitionDurationMs !== undefined ? data.transitionDurationMs : 350;
+      const verseChanged = lastVerseText !== null && lastVerseText !== data.arabicText;
+      lastVerseText = data.arabicText;
+
+      function applyVerseTextContent() {
+        if (showArabic) {
+          verseText.style.display = '';
+          citationText.style.display = '';
+          verseText.textContent = data.arabicText;
+          citationText.textContent = data.arabicCitation;
+        } else {
+          verseText.style.display = 'none';
+          citationText.style.display = 'none';
+        }
+        if (showEnglishSection) {
+          englishSection.style.display = 'block';
+          englishText.textContent = data.englishText;
+          englishCitation.textContent = '(' + data.englishCitation + ')';
+        } else {
+          englishSection.style.display = 'none';
+        }
       }
 
-      // 3. Bilingual Mode (BOTH only: English in secondary section below Arabic)
+      if (wasVisible && verseChanged && transType !== 'CUT' && transDur > 0) {
+        const halfDur = Math.floor(transDur / 2);
+        const mySwap = ++swapSeq;
+        cardBox.style.transition = 'opacity ' + halfDur + 'ms ease-in-out, transform ' + halfDur + 'ms ease-in-out';
+        cardBox.style.opacity = '0';
+        if (transType === 'SLIDE_UP') cardBox.style.transform = 'translateY(15px)';
+        else if (transType === 'SLIDE_DOWN') cardBox.style.transform = 'translateY(-15px)';
+        else if (transType === 'SLIDE_RIGHT') cardBox.style.transform = 'translateX(20px)';
+        else if (transType === 'SLIDE_LEFT') cardBox.style.transform = 'translateX(-20px)';
+        else if (transType === 'SCALE_ZOOM') cardBox.style.transform = 'scale(0.95)';
+        else if (transType === 'BOUNCE') cardBox.style.transform = 'scale(0.92)';
+
+        setTimeout(function() {
+          if (mySwap !== swapSeq) return; // superseded by a newer apply
+          applyVerseTextContent();
+          cardBox.style.opacity = '1';
+          cardBox.style.transform = 'none';
+          // The fit in finishApply measured the OLD text (the swap is
+          // timer-deferred); re-fit now that the new text is in place.
+          doFit();
+          setTimeout(function() { if (mySwap === swapSeq) cardBox.style.transition = ''; }, halfDur);
+        }, halfDur);
+      } else {
+        // Cancel any pending swap and clear its mid-animation card state,
+        // so the card can never be left faded/shifted by a stale timer.
+        swapSeq++;
+        cardBox.style.transition = '';
+        cardBox.style.opacity = '';
+        cardBox.style.transform = '';
+        applyVerseTextContent();
+      }
+
+      // 3. Bilingual Styling
       if (showEnglishSection) {
-        englishSection.style.display = 'block';
-        englishText.textContent = data.englishText;
-        englishCitation.textContent = '(' + data.englishCitation + ')';
         englishText.style.color = data.secondaryTextColorHex || '#CBD5E1';
         englishCitation.style.color = data.secondaryReferenceColorHex || '#94A3B8';
         englishText.style.fontSize = scaledPx(data.secondaryVerseFontSize || 18);
+        englishText.style.lineHeight = (1.15 + 2 / (data.secondaryVerseFontSize || 18)).toFixed(3);
         englishCitation.style.fontSize = scaledPx(data.secondaryReferenceFontSize || 14);
-        englishText.style.fontFamily = data.secondaryFontFamily || 'system-ui';
+        englishCitation.style.lineHeight = (1.15 + 2 / (data.secondaryReferenceFontSize || 14)).toFixed(3);
+        // Round 2 (#5): 'System' is not a CSS family - assigning it raw
+        // made the browser fall back to its default SERIF while NDI drew
+        // the system sans. Map it to the sans stack; named fonts get a
+        // quoted stack. The citation never had a family (inherited the
+        // Arabic stack) - it takes the same secondary stack now.
+        const secFam = data.secondaryFontFamily;
+        const secFontStack = (!secFam || secFam === 'System' || secFam === 'system-ui')
+          ? 'system-ui, sans-serif' : "'" + secFam + "', serif";
+        englishText.style.fontFamily = secFontStack;
+        englishCitation.style.fontFamily = secFontStack;
         englishText.style.fontWeight = data.secondaryVerseIsBold ? 'bold' : 'normal';
         englishText.style.fontStyle = data.secondaryVerseIsItalic ? 'italic' : 'normal';
         englishCitation.style.fontWeight = data.secondaryReferenceIsBold ? 'bold' : 'normal';
         englishCitation.style.fontStyle = data.secondaryReferenceIsItalic ? 'italic' : 'normal';
         const spacing = data.showBilingualSpacing ? (data.bilingualSpacing || 20) : 0;
-        // v2.0: scale like every other measurement (NDI: spacing x frame
-        // scale). Raw px made the gap proportionally bigger than NDI at any
-        // window size other than exactly 1920 wide.
         englishSection.style.marginTop = (spacing * getStageScale()) + 'px';
-      } else {
-        englishSection.style.display = 'none';
       }
 
       // 4. Layout & Alignment (Ensures Full Show remains vertically & horizontally centered in middle)
@@ -1320,10 +1613,133 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       citationRow.style.fontWeight = data.referenceIsBold ? 'bold' : 'normal';
       citationRow.style.fontStyle = data.referenceIsItalic ? 'italic' : 'normal';
       verseText.style.fontSize = scaledPx(data.verseFontSize || 26);
+      verseText.style.lineHeight = (1.25 + 3 / (data.verseFontSize || 26)).toFixed(3);
       citationRow.style.fontSize = scaledPx(data.referenceFontSize || 18);
       // v1.9: reset the span too — the auto-fit loop shrinks citationText directly,
       // so without this each applyData compounds the shrink.
       citationText.style.fontSize = scaledPx(data.referenceFontSize || 18);
+
+      // v1.9.1: auto-fit as a callable unit (was a tail block of applyData).
+      // It runs AFTER the used fonts are ready (see finishApply), so sizes
+      // are computed with the real font metrics — measuring with fallback
+      // metrics and swapping the font in afterwards was one of the visible
+      // size jumps. Base sizes were just reset above (section 5).
+      const doFit = function() {
+        if (data.autoFitText === false) return;
+        // v1.9.1 (#11): base sizes come from the PAYLOAD, not from the
+        // current DOM styles. The old code read them back from the styles
+        // section 5 had just reset — coupling the fit to reset ordering
+        // and to the font gate. Payload-derived bases (the same formula
+        // sections 3/5 use) make the fit exact and safe to run
+        // synchronously the moment the text changes.
+        const ss0 = getStageScale();
+        // v1.9.1 (Ashraf's auto-fit model, mirrors the NDI renderer): the
+        // size setting is a CAP — fitted text starts at min(selected, cap)
+        // and shrinks below the cap only to fit the box (hard floor 10sp).
+        const capVersePx = (data.autoFitMaxVerseSp || 48) * 2 * ss0;
+        const hardMinPx = 10 * 2 * ss0;
+        const baseVerse = (data.verseFontSize || 26) * 2 * ss0;
+        const baseCite = (data.referenceFontSize || 18) * 2 * ss0;
+        const baseEnV = (data.secondaryVerseFontSize || 18) * 2 * ss0;
+        const baseEnC = (data.secondaryReferenceFontSize || 14) * 2 * ss0;
+        const capRatio = Math.min(1, capVersePx / baseVerse);
+        const hardMinRatio = Math.min(1, hardMinPx / baseVerse);
+        // SAME budget as the NDI renderer, measured the SAME way — content
+        // only (card padding excluded). The box height is the template's
+        // boxHeightPercent of the stage (Lower's was a hardcoded 45%).
+        const ss = getStageScale();
+        const padTopPx = parseFloat(padT) || 0;
+        const padBotPx = parseFloat(padB) || 0;
+        function contentHeight() { return cardBox.scrollHeight - padTopPx - padBotPx; }
+        const maxContentH = isFull
+          ? (stage.clientHeight * ((data.boxHeightPercent || 100) / 100) - padTopPx - padBotPx)
+          : (stage.clientHeight * ((data.boxHeightPercent || 45) / 100) - padTopPx - padBotPx - 16 * ss);
+        function applyRatio(r) {
+          verseText.style.fontSize = (baseVerse * r) + 'px';
+          citationText.style.fontSize = (baseCite * r) + 'px';
+          englishText.style.fontSize = (baseEnV * r) + 'px';
+          englishCitation.style.fontSize = (baseEnC * r) + 'px';
+        }
+        const cH = contentHeight();
+        let ratio = capRatio;
+        if (cH > maxContentH && maxContentH > 0) {
+          // One exact step (NDI's computeFitRatio), then one corrective
+          // pass because line wrapping makes height non-linear. The cap
+          // binds first; the box wins when both apply.
+          ratio = Math.min(capRatio, Math.max(hardMinRatio, maxContentH / cH));
+          applyRatio(ratio);
+          const cH2 = contentHeight();
+          if (cH2 > maxContentH && ratio > hardMinRatio) {
+            ratio = Math.max(hardMinRatio, ratio * (maxContentH / cH2));
+            applyRatio(ratio);
+          }
+        } else if (ratio < 1) {
+          // Fits at full size — the cap alone applies (short verse).
+          applyRatio(ratio);
+        }
+      };
+
+      // v1.9.1: finish an apply — fit with real metrics, then reveal (only
+      // if hidden). The style's actual faces are loaded first; font-display
+      // 'swap' otherwise paints fallback text and swaps each face in as it
+      // downloads (the "font changes two or three times" cascade). If a
+      // face still lands late, fonts.ready re-fits once with final metrics.
+      // v1.9.1 (#11): when every needed face is ALREADY loaded — the
+      // normal verse-change case — finish SYNCHRONOUSLY in this same task:
+      // no promise race, no timer. The async gate (150ms cap, was 300ms)
+      // now runs only for a style's first use, so a plain verse change is
+      // as immediate as the push that carried it.
+      const finishApply = function() {
+        const token = ++revealToken;
+        lastFitFn = doFit;
+        const faces = facesForData(data);
+        let finished = false;
+        const finish = function() {
+          if (finished || token !== revealToken) return;
+          finished = true;
+          const fitT = performance.now();
+          doFit();
+          diag.lastFitMs = performance.now() - fitT;
+          if (!wasVisible) {
+            requestAnimationFrame(function() {
+              if (token === revealToken) container.classList.add('visible');
+            });
+          }
+          if (document.fonts && document.fonts.ready) {
+            document.fonts.ready.then(function() {
+              if (token === revealToken && lastFitFn === doFit) doFit();
+            });
+          }
+          diag.applies++;
+          diag.lastApplyMs = performance.now() - applyT0;
+          if (diag.lastApplyMs > diag.maxApplyMs) diag.maxApplyMs = diag.lastApplyMs;
+          diagEvent('apply', 'v' + (data.stateVersion || '?') + ' ' + diag.lastApplyMs.toFixed(1) + 'ms fit ' + diag.lastFitMs.toFixed(1) + 'ms');
+        };
+        if (!document.fonts || !document.fonts.load || faces.length === 0) { finish(); return; }
+        let allReady = false;
+        try {
+          allReady = faces.every(function(f) { return document.fonts.check(f, 'A\u0627'); });
+        } catch (e) { allReady = false; }
+        if (allReady) { finish(); return; }
+        const loads = faces.map(function(f) {
+          try { return Promise.resolve(document.fonts.load(f, 'A\u0627')).catch(function() { return []; }); }
+          catch (e) { return Promise.resolve([]); }
+        });
+        diagEvent('font-gate', faces.length + ' faces');
+        Promise.race([
+          Promise.all(loads),
+          new Promise(function(res) { setTimeout(res, 150); })
+        ]).then(finish).catch(finish);
+      };
+
+      // v1.9.1 fast path: identical style — text (section 2) and typography
+      // (section 5) already updated above; skip the card, background,
+      // particle and transition sections so a plain verse change causes
+      // zero visual churn and no fade cycle.
+      if (styleKey === lastStyleKey) {
+        finishApply();
+        return;
+      }
 
       // 6. Color Schemes & Container Styling
       const hex = data.bgColorHex || '#0A1128';
@@ -1347,6 +1763,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       // (was: accent-colored chip background).
       crossEmblem.style.backgroundColor = 'transparent';
       crossEmblem.style.color = refColor;
+      // v1.9.1 (#13): emoji-first stack so a symbol emblem (e.g. the sun)
+      // renders as a COLOR emoji like on NDI, not the text font's
+      // monochrome glyph.
+      crossEmblem.style.fontFamily = "'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', sans-serif";
       // v1.7: free user emblem (emoji/symbol); empty = hidden.
       if (data.emblem) {
         crossEmblem.textContent = data.emblem;
@@ -1412,12 +1832,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         cardBox.style.boxShadow = cardGlowShadow('0 12px 36px', 0.6);
       } else if (data.style === 'ROYAL_LITURGICAL') {
         cardBox.style.background = 'linear-gradient(135deg, rgba(' + r + ',' + g + ',' + b + ',' + opacity + ') 0%, rgba(20,20,35,' + opacity + ') 100%)';
-        cardBox.style.border = data.showAccentBorder ? (2 * getStageScale()) + 'px solid ' + accent : 'none';
+        cardBox.style.border = data.showAccentBorder ? (6 * getStageScale()) + 'px solid ' + accent : 'none';
         cardBox.style.boxShadow = cardGlowShadow('0 10px 40px', 0.7);
       } else {
         cardBox.style.backgroundColor = 'rgba(' + r + ',' + g + ',' + b + ',' + opacity + ')';
         cardBox.style.backdropFilter = 'blur(16px)';
-        cardBox.style.border = data.showAccentBorder ? (1.5 * getStageScale()) + 'px solid ' + accent + '77' : 'none';
+        cardBox.style.border = data.showAccentBorder ? (6 * getStageScale()) + 'px solid ' + accent : 'none';
         cardBox.style.boxShadow = cardGlowShadow('0 16px 40px', 0.55);
       }
 
@@ -1431,7 +1851,16 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
       animBgLayer.className = 'animated-bg-layer';
       customVideoBg.style.display = 'none';
-      stopParticles();
+      // v1.9.1: don't tear the particle field down on every apply — it was
+      // restarted (positions reset) by any state change, even a verse tap.
+      // Round 2 (#7) stopped the canvas under Alpha 100%; the audit (A2)
+      // refined that: NDI DOES draw particles (and the ethereal glow)
+      // under pure for animated styles - only the wash/fill is gone. So
+      // the canvas follows the animated type alone, pure or not.
+      if (animType !== 'gold_particles' && animType !== 'particles') {
+        stopParticles();
+        activeParticleKey = null;
+      }
 
       if (animType === 'golden_rays') {
         animBgLayer.classList.add('anim-golden-rays');
@@ -1454,11 +1883,17 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       } else if (animType === 'gold_particles') {
         animBgLayer.classList.add('anim-gold-particles');
         animBgLayer.style.opacity = animOpacity;
-        startParticles('#FCD34D', animOpacity);
+        if (activeParticleKey !== 'gold_particles') {
+          startParticles('#FCD34D', animOpacity);
+          activeParticleKey = 'gold_particles';
+        }
       } else if (animType === 'particles') {
         animBgLayer.classList.add('anim-particles');
         animBgLayer.style.opacity = animOpacity;
-        startParticles('#7DD3FC', animOpacity);
+        if (activeParticleKey !== 'particles') {
+          startParticles('#7DD3FC', animOpacity);
+          activeParticleKey = 'particles';
+        }
       } else if (animType === 'custom_video' && data.customVideoId) {
         // v1.7: videos are served by opaque ID from private storage (never by path).
         const videoUrl = '/video?id=' + encodeURIComponent(data.customVideoId);
@@ -1513,64 +1948,146 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         animBgLayer.style.animationDuration = '';
       }
 
-      // 8. Entry Transitions
-      container.className = isFull ? 'mode-full-show' : '';
-      if (data.transition === 'FADE') container.classList.add('anim-fade');
-      else if (data.transition === 'SLIDE_RIGHT') container.classList.add('anim-slide-right');
-      else if (data.transition === 'CUT') container.classList.add('anim-cut');
-      else container.classList.add('anim-slide-up');
-
-      container.style.transitionDuration = (data.transitionDurationMs || 350) + 'ms';
-
-      requestAnimationFrame(() => {
-        container.classList.add('visible');
-      });
-
-      // v1.9: auto-fit — shrink verse/citation/English together until the card
-      // fits (or the minimum size is reached). Short verses are untouched: the
-      // loop only runs while the content overflows its budget.
-      if (data.autoFitText !== false) {
-        const minVersePx = (data.autoFitMinVerseSp || 28) * 2 * getStageScale();
-        const baseVerse = parseFloat(verseText.style.fontSize) || minVersePx;
-        const baseCite = parseFloat(citationText.style.fontSize) || baseVerse * 0.6;
-        const baseEnV = parseFloat(englishText.style.fontSize) || baseVerse * 0.7;
-        const baseEnC = parseFloat(englishCitation.style.fontSize) || baseVerse * 0.55;
-        const minRatio = Math.min(1, minVersePx / baseVerse);
-        // v2.0: SAME budget as the NDI renderer, measured the SAME way —
-        // content only (card padding excluded). NDI: lower third content
-        // budget = 45% of frame height minus pads and the citation gap;
-        // full show = frame height minus pads. The old code capped the
-        // whole card (padding included) at 50%, so mid-length verses
-        // shrank on NDI but not on HTTP and sizes never matched.
-        const ss = getStageScale();
-        const padTopPx = parseFloat(padT) || 0;
-        const padBotPx = parseFloat(padB) || 0;
-        function contentHeight() { return cardBox.scrollHeight - padTopPx - padBotPx; }
-        const maxContentH = isFull
-          ? (stage.clientHeight - padTopPx - padBotPx)
-          : (stage.clientHeight * 0.45 - padTopPx - padBotPx - 16 * ss);
-        function applyRatio(r) {
-          verseText.style.fontSize = (baseVerse * r) + 'px';
-          citationText.style.fontSize = (baseCite * r) + 'px';
-          englishText.style.fontSize = (baseEnV * r) + 'px';
-          englishCitation.style.fontSize = (baseEnC * r) + 'px';
+      // v1.9.1 (#13 + F4): animated backgrounds at NATIVE strength and
+      // placement, written INLINE from the payload on every apply. The NDI
+      // renderer paints the animated gradient AS the background — the
+      // type's two colors at the style's bgOpacity (Full: the whole frame;
+      // Lower: inside the card only) — and the 100%-transparent toggle
+      // suppresses it entirely. The first version of this fix used CSS
+      // classes for the gradient: a class left on the card survived toggle
+      // flips (HTTP appeared to ignore the Edit tab until the background
+      // was cycled None -> chosen) and the card gradient ignored
+      // bgOpacity. Inline styles rewritten from the payload each apply
+      // cannot go stale: what the editor says is what paints.
+      const GRAD_COLORS = {
+        golden_rays: [[217,119,6],[251,191,36]],
+        blue_waves: [[30,58,138],[14,165,233]],
+        candle_glow: [[120,53,15],[245,158,11]],
+        purple_silk: [[88,28,135],[192,132,252]],
+        emerald_waves: [[6,78,59],[52,211,153]],
+        rose_glow: [[136,19,55],[251,113,133]],
+        gold_particles: [[120,53,15],[252,211,77]],
+        particles: [[15,23,42],[56,189,248]]
+      };
+      const grad = GRAD_COLORS[animType];
+      const gradIsRadial = animType === 'candle_glow' || animType === 'rose_glow';
+      function rgbaStr(c, a) { return 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + a + ')'; }
+      function gradCss(alpha, band) {
+        if (gradIsRadial) {
+          return 'radial-gradient(circle at 50% 50%, ' + rgbaStr(grad[1], alpha) + ' 0%, ' + rgbaStr(grad[0], alpha) + ' 100%)';
         }
-        const cH = contentHeight();
-        if (cH > maxContentH && maxContentH > 0) {
-          // One exact step (NDI's computeFitRatio), then one corrective
-          // pass because line wrapping makes height non-linear.
-          let ratio = Math.max(minRatio, Math.min(1, maxContentH / cH));
-          applyRatio(ratio);
-          const cH2 = contentHeight();
-          if (cH2 > maxContentH && ratio > minRatio) {
-            ratio = Math.max(minRatio, ratio * (maxContentH / cH2));
-            applyRatio(ratio);
-          }
+        // Round 2 (#3): the Full frame's native shader is a moving WINDOW
+        // (bright band between darker edges), not a broad wash - compress
+        // the bright stop into a band for the frame path.
+        if (band) {
+          return 'linear-gradient(135deg, ' + rgbaStr(grad[0], alpha) + ' 30%, ' + rgbaStr(grad[1], alpha) + ' 50%, ' + rgbaStr(grad[0], alpha) + ' 70%)';
+        }
+        return 'linear-gradient(135deg, ' + rgbaStr(grad[0], alpha) + ' 0%, ' + rgbaStr(grad[1], alpha) + ' 50%, ' + rgbaStr(grad[0], alpha) + ' 100%)';
+      }
+      function clearGrad(el) {
+        el.style.backgroundImage = 'none';
+        el.style.backgroundSize = '';
+        el.classList.remove('bg-flow');
+        el.classList.remove('bg-breath');
+        el.style.animationPlayState = '';
+        el.style.animationDuration = '';
+      }
+      function applyGrad(el, breath, band) {
+        const bgOp = data.bgOpacity !== undefined ? data.bgOpacity : 0.85;
+        el.style.backgroundImage = gradCss(bgOp, band);
+        // v1.9.1 parity: 200%, not 400% — at 400% the gradient's bright
+        // mid-band stretched ~4x wider than the native shader's (its stops
+        // span the box once), washing the whole card bright on HTTP.
+        // Round 2 (#3): the band variant tiles at 300% so bg-flow sweeps
+        // the bright band across the frame like the native window.
+        el.style.backgroundSize = band ? '300% 300%' : '200% 200%';
+        el.classList.add(breath ? 'bg-breath' : 'bg-flow');
+        const dur = animBaseDurations[animType];
+        if (dur) {
+          if (!(animSpeed > 0)) el.style.animationPlayState = 'paused';
+          else { el.style.animationPlayState = 'running'; el.style.animationDuration = (dur / animSpeed) + 's'; }
         }
       }
+      if (cardGradOn) { clearGrad(cardBox); cardGradOn = false; }
+      if (grad && !data.isPureTransparentBackground) {
+        if (isFull) {
+          // The layer IS the frame background; the card goes clear so the
+          // gradient is not buried under the flat fill.
+          animBgLayer.className = 'animated-bg-layer';
+          applyGrad(animBgLayer, gradIsRadial, !gradIsRadial);
+          animBgLayer.style.opacity = '1';
+          cardBox.style.backgroundColor = 'transparent';
+        } else {
+          // Lower: the gradient belongs INSIDE the card (native paints
+          // the card box only) — inline on the card, layer emptied.
+          animBgLayer.className = 'animated-bg-layer';
+          animBgLayer.style.opacity = '0';
+          clearGrad(animBgLayer);
+          applyGrad(cardBox, false);
+          // v1.9.1 parity: native paints the gradient INSTEAD of the card
+          // color (the shader replaces the fill) — drop the section-6
+          // underlay so the gradient composites like NDI's frame.
+          cardBox.style.backgroundColor = 'transparent';
+          cardGradOn = true;
+        }
+      } else if (grad && data.isPureTransparentBackground) {
+        // Audit fix (A2): under Alpha 100% NDI paints NO wash and NO card
+        // fill, but animated styles still get the delicate ethereal glow
+        // (radial, alpha = motion opacity x 75, capped 15..120) behind
+        // the text. Mirror it on the layer; particles (for the particle
+        // types) are started by the class chain above.
+        const GLOW_COLORS = { golden_rays: [251,191,36], blue_waves: [56,189,248], candle_glow: [245,158,11], purple_silk: [192,132,252], emerald_waves: [52,211,153], rose_glow: [251,113,133], gold_particles: [252,211,77], particles: [125,211,252] };
+        const gc = GLOW_COLORS[animType] || [255,255,255];
+        const ga = Math.max(15, Math.min(120, animOpacity * 75)) / 255;
+        animBgLayer.className = 'animated-bg-layer';
+        clearGrad(animBgLayer);
+        animBgLayer.style.backgroundImage = 'radial-gradient(circle at 50% 50%, ' + rgbaStr(gc, ga.toFixed(3)) + ' 0%, ' + rgbaStr(gc, 0) + ' 70%)';
+        animBgLayer.style.opacity = '1';
+      } else if (animType !== 'custom_video') {
+        // No animated gradient for this payload (or the transparent
+        // toggle is on): the layer must carry nothing.
+        animBgLayer.className = 'animated-bg-layer';
+        animBgLayer.style.opacity = '0';
+        clearGrad(animBgLayer);
+      } else {
+        // custom_video: the chain above owns the layer; just drop any
+        // inline gradient left from a previous animated style.
+        animBgLayer.style.backgroundImage = 'none';
+      }
+
+      // 8. Entry Transitions
+      container.className = isFull ? 'mode-full-show' : '';
+      if (transType === 'FADE') container.classList.add('anim-fade');
+      else if (transType === 'SLIDE_DOWN') container.classList.add('anim-slide-down');
+      else if (transType === 'SLIDE_RIGHT') container.classList.add('anim-slide-right');
+      else if (transType === 'SLIDE_LEFT') container.classList.add('anim-slide-left');
+      else if (transType === 'SCALE_ZOOM') container.classList.add('anim-zoom');
+      else if (transType === 'BOUNCE') container.classList.add('anim-bounce');
+      else if (transType === 'CUT') container.classList.add('anim-cut');
+      else container.classList.add('anim-slide-up');
+
+      container.style.transitionDuration = transDur + 'ms';
+      if (wasVisible) container.classList.add('visible');
+
+      // v1.9.1: fit + reveal happen through the font gate (finishApply),
+      // defined in section 5. The old tail block (immediate fit with
+      // fallback metrics + rAF reveal) is gone.
+      lastStyleKey = styleKey;
+      finishApply();
     }
 
     // Connect Server-Sent Events (SSE)
+    // v1.9.1: shared forced reconnect (half-open socket recovery). The
+    // watchdog calls this on its 5 s tick — but Chrome throttles timers in
+    // background tabs, so the visibility/focus hooks below call it the
+    // moment the user returns to the tab: the watchdog's blind spot.
+    function forceReconnect(reason) {
+      diagEvent(reason, 'silence>35s, reconnecting');
+      try { evtSource.close(); } catch (e) { /* ignore */ }
+      if (sseWatchdog) { clearInterval(sseWatchdog); sseWatchdog = null; }
+      connectSse();
+    }
+
     function connectSse() {
       const urlParams = new URLSearchParams(window.location.search);
       const isShow = urlParams.get('show') === '1' || window.location.pathname.includes('/full');
@@ -1582,27 +2099,60 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       // the current state unconditionally, or every update after an OS-kill
       // auto-resume is dropped as "stale" and the overlay freezes on the
       // pre-crash verse until a manual page refresh.
-      evtSource.onopen = function() { lastStateVersion = -1; };
+      evtSource.onopen = function() { lastStateVersion = -1; lastSseSeen = Date.now(); diag.opens++; diag.reconnects = Math.max(0, diag.opens - 1); diagEvent('sse-open', ''); };
       evtSource.onmessage = function(e) {
+        lastSseSeen = Date.now();
+        diag.msgs++;
         try {
           applyData(JSON.parse(e.data));
         } catch (err) {
           console.error('Failed to parse SSE payload', err);
         }
       };
+      // v1.9.1: heartbeat watchdog. A weak-Wi-Fi drop can leave the socket
+      // half-open: no error fires, no data arrives, and the page freezes on
+      // its last state (the stale-card trap). The server pings every 15s;
+      // if nothing — data or ping — is heard for 35s, force a reconnect,
+      // which re-syncs from the server's connect-time state push.
+      evtSource.addEventListener('ping', function() { lastSseSeen = Date.now(); });
+      if (sseWatchdog) clearInterval(sseWatchdog);
+      sseWatchdog = setInterval(function() {
+        if (Date.now() - lastSseSeen > 35000) forceReconnect('watchdog');
+      }, 5000);
       evtSource.onerror = function() {
         evtSource.close();
+        if (sseWatchdog) { clearInterval(sseWatchdog); sseWatchdog = null; }
         setTimeout(connectSse, 2000);
       };
     }
 
     // Initial payload render
+    const initialData = $initialJson;
     try {
-      applyData($initialJson);
+      applyData(initialData);
     } catch (e) {
       console.error(e);
     }
 
+    // v1.9.1 (#11): warm the initial style's fonts in the background. In
+    // standby, applyData returns before any font loading runs — without
+    // this, the FIRST verse pushed live would pay the full font-load wait.
+    try {
+      if (document.fonts && document.fonts.load && initialData) {
+        facesForData(initialData).forEach(function(f) {
+          try { document.fonts.load(f, 'A\u0627'); } catch (e) { /* best-effort */ }
+        });
+      }
+    } catch (e) { /* best-effort */ }
+
+    setInterval(sendDiag, 10000);
+    document.addEventListener('visibilitychange', function() {
+      if (document.visibilityState === 'hidden') { sendDiag(); return; }
+      if (Date.now() - lastSseSeen > 35000) forceReconnect('visibility-resume');
+    });
+    window.addEventListener('focus', function() {
+      if (Date.now() - lastSseSeen > 35000) forceReconnect('visibility-resume');
+    });
     connectSse();
   </script>
 </body>
@@ -1745,6 +2295,122 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         canvas.restore()
     }
 
+    /**
+     * v1.9.1 F3: ONE shared legibility floor for auto-fit. When the fitted
+     * verse size would fall below 24px, EVERY element (verse, citation,
+     * English verse, English citation) is boosted by the same factor, so the
+     * user-designed size ratios between them are preserved exactly. (The old
+     * per-element floors — 24/18/18/14 — distorted the citation:verse ratio
+     * on deep shrinks.) Ratio-preserving by construction.
+     */
+    private fun fitFloorBoost(tpl: LowerThirdTemplate, scale: Float, fitRatio: Float): Float {
+        val rawVerse = tpl.verseFontSize * 2f * scale * fitRatio
+        return if (rawVerse > 0.01f && rawVerse < 24f) 24f / rawVerse else 1f
+    }
+
+    // Audit fix (perf): fitted-layout cache. StaticLayouts are immutable
+    // after build; entries are keyed by everything the fit depends on and
+    // discriminated by feed (isFull / isForStream) so the Lower, Full and
+    // stream renderers never share an entry. Bounded to 4 (live verse,
+    // transition partner, one spare per feed family).
+    private data class FittedLayoutsKey(
+        val tpl: LowerThirdTemplate,
+        val verse: BibleVerse,
+        val verseText: String,
+        val width: Int,
+        val height: Int,
+        val contentWidth: Int,
+        val scale: Float,
+        val shadowBlur: Float,
+        val shadowDx: Float,
+        val shadowDy: Float,
+        val showArabic: Boolean,
+        val showEnglish: Boolean,
+        val isFull: Boolean,
+        val isForStream: Boolean
+    )
+
+    /** Fonts can be imported/deleted under the same family name at runtime
+     * (getBestTypeface deliberately never caches custom typefaces); cached
+     * layouts built from an old file would keep its metrics. The ViewModel
+     * calls this on font import/delete. */
+    fun invalidateFittedLayoutCache() {
+        synchronized(fittedLayoutsCache) { fittedLayoutsCache.clear() }
+    }
+
+    private val fittedLayoutsCache = object : LinkedHashMap<FittedLayoutsKey, Pair<FittedTextLayouts, Float>>(8, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<FittedLayoutsKey, Pair<FittedTextLayouts, Float>>?): Boolean = size > 4
+    }
+
+    private fun fittedLayoutsCached(
+        tpl: LowerThirdTemplate,
+        verseText: String,
+        activeVerse: BibleVerse,
+        contentWidth: Int,
+        scale: Float,
+        shadowBlur: Float,
+        shadowDx: Float,
+        shadowDy: Float,
+        showArabic: Boolean,
+        showEnglish: Boolean,
+        frameWidth: Int,
+        frameHeight: Int,
+        isFull: Boolean,
+        isForStream: Boolean
+    ): Pair<FittedTextLayouts, Float>? {
+        val key = FittedLayoutsKey(
+            tpl, activeVerse, verseText, frameWidth, frameHeight,
+            contentWidth, scale, shadowBlur, shadowDx, shadowDy,
+            showArabic, showEnglish, isFull, isForStream
+        )
+        synchronized(fittedLayoutsCache) { fittedLayoutsCache[key]?.let { return it } }
+        // v1.9 auto-fit: build layouts at full size, then rebuild once at a
+        // reduced scale when the content exceeds its height budget, so long
+        // verses reflow into the card (lower third) or screen (full show)
+        // instead of overflowing. v1.9.1: the rebuild ratio also applies the
+        // autoFitMaxVerseSp CAP, so short verses render at min(selected, cap).
+        // v1.9.1 (Ashraf's auto-fit model): the size setting is a CAP, not a
+        // floor. The fitted text starts at min(selected size, cap) - a short
+        // verse no longer blows up huge on a full screen - and long content
+        // shrinks below the cap until it fits the box, down to a hard 10sp
+        // floor. The box height is the template's boxHeightPercent of the
+        // frame (Lower's budget was a hardcoded 45% before).
+        val capRatio = if (tpl.verseFontSize > 0)
+            (tpl.autoFitMaxVerseSp.toFloat() / tpl.verseFontSize).coerceIn(0.05f, 1f)
+        else 1f
+        val hardFloorRatio = if (tpl.verseFontSize > 0)
+            (10f / tpl.verseFontSize).coerceIn(0.05f, 1f)
+        else 1f
+        var layouts = buildFittedTextLayouts(
+            tpl, verseText, activeVerse, contentWidth, scale,
+            shadowBlur, shadowDx, shadowDy, showArabic, showEnglish, 1f
+        ) ?: return null
+        var r = 1f
+        if (tpl.autoFitText) {
+            val padT = tpl.cardPaddingTopDp * scale
+            val padB = tpl.cardPaddingBottomDp * scale
+            val maxContentH = if (tpl.isFullScreen) {
+                frameHeight * tpl.boxHeightPercent / 100f - padT - padB
+            } else {
+                // Lower third must not swallow the screen.
+                frameHeight * tpl.boxHeightPercent / 100f - padT - padB - 16f * scale
+            }
+            r = capRatio
+            if (layouts.contentH > maxContentH && maxContentH > 0) {
+                r = minOf(computeFitRatio(layouts.contentH, maxContentH, hardFloorRatio), capRatio)
+            }
+            if (r < 1f) {
+                layouts = buildFittedTextLayouts(
+                    tpl, verseText, activeVerse, contentWidth, scale,
+                    shadowBlur, shadowDx, shadowDy, showArabic, showEnglish, r
+                ) ?: return null
+            }
+        }
+        val result = layouts to r
+        synchronized(fittedLayoutsCache) { fittedLayoutsCache[key] = result }
+        return result
+    }
+
     private fun buildFittedTextLayouts(
         tpl: LowerThirdTemplate,
         verseText: String,
@@ -1758,10 +2424,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         showEnglish: Boolean,
         fitRatio: Float,
     ): FittedTextLayouts? {
+        // v1.9.1 F3: shared ratio-preserving floor boost (see fitFloorBoost).
+        val floorBoost = fitFloorBoost(tpl, scale, fitRatio)
         // Setup TextPaint for multi-line wrapped text
         val verseTextPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
             color = try { Color.parseColor(tpl.textColorHex) } catch (e: Exception) { Color.WHITE }
-            textSize = (tpl.verseFontSize * 2f * scale * fitRatio).coerceAtLeast(24f)
+            textSize = tpl.verseFontSize * 2f * scale * fitRatio * floorBoost
             
             var textStyle = Typeface.NORMAL
             if (tpl.verseIsBold && tpl.verseIsItalic) textStyle = Typeface.BOLD_ITALIC
@@ -1809,7 +2477,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // startY + textSize*0.9, primary text starts 16*scale below that. The
         // old fixed 44*scale*fitRatio underestimated it, shifting everything
         // below (Arabic, English) down and eating the bottom padding.
-        val citationHeight = (tpl.referenceFontSize * 2f * scale * fitRatio).coerceAtLeast(18f) * 0.9f + 16f * scale
+        val citationHeight = (tpl.referenceFontSize * 2f * scale * fitRatio * floorBoost) * 0.9f + 16f * scale
 
         // Calculate bilingual secondary text if needed
         var secondaryLayout: StaticLayout? = null
@@ -1823,7 +2491,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             
             val secondaryTextPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = try { Color.parseColor(tpl.secondaryTextColorHex) } catch (e: Exception) { Color.LTGRAY }
-                textSize = (tpl.secondaryVerseFontSize * 2f * scale * fitRatio).coerceAtLeast(18f)
+                textSize = tpl.secondaryVerseFontSize * 2f * scale * fitRatio * floorBoost
                 
                 var secStyle = Typeface.NORMAL
                 if (tpl.secondaryVerseIsBold && tpl.secondaryVerseIsItalic) secStyle = Typeface.BOLD_ITALIC
@@ -1862,7 +2530,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 val secCitationText = "(" + activeVerse.getFormattedEnglishCitation() + ")"
                 val secCitationPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
                     color = try { Color.parseColor(tpl.secondaryReferenceColorHex) } catch (e: Exception) { Color.GRAY }
-                    textSize = (tpl.secondaryReferenceFontSize * 2f * scale * fitRatio).coerceAtLeast(14f)
+                    textSize = tpl.secondaryReferenceFontSize * 2f * scale * fitRatio * floorBoost
                     var citStyle = Typeface.NORMAL
                     if (tpl.secondaryReferenceIsBold && tpl.secondaryReferenceIsItalic) citStyle = Typeface.BOLD_ITALIC
                     else if (tpl.secondaryReferenceIsBold) citStyle = Typeface.BOLD
@@ -1971,10 +2639,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             canvas.drawColor(bgCol)
         }
 
-        // When off-air and rendering for transparent overlay, return 100% transparent alpha frame.
-        // Special Case: Full Show (Projector) should typically NOT be blanked even if not 'Live' for broadcast,
-        // as the projector usually remains active with a background or current verse.
-        if (!isLive && !isForStream && !tpl.isFullScreen) {
+        // When off-air, return a 100% transparent alpha frame for BOTH feeds
+        // (v1.9.1 F1: the old Full Show exemption kept the Full feed showing
+        // the verse after OFF AIR — removed; OFF AIR blanks every output).
+        if (!isLive && !isForStream) {
             return
         }
 
@@ -1999,6 +2667,22 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 } catch (_: Exception) { /* fall through: plain fade-in */ }
                 val layerPaint = Paint().apply { alpha = (p * 255f).toInt().coerceIn(0, 255) }
                 transitionLayer = canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), layerPaint)
+                // Apply directional motion or scaling during transition
+                when (tpl.transition) {
+                    TransitionType.SLIDE_UP -> canvas.translate(0f, (1f - p) * 50f * (width / 1920f))
+                    TransitionType.SLIDE_DOWN -> canvas.translate(0f, -(1f - p) * 50f * (width / 1920f))
+                    TransitionType.SLIDE_RIGHT -> canvas.translate((1f - p) * 60f * (width / 1920f), 0f)
+                    TransitionType.SLIDE_LEFT -> canvas.translate(-(1f - p) * 60f * (width / 1920f), 0f)
+                    TransitionType.SCALE_ZOOM -> {
+                        val s = 0.92f + 0.08f * p
+                        canvas.scale(s, s, width / 2f, height / 2f)
+                    }
+                    TransitionType.BOUNCE -> {
+                        val bp = if (p < 0.7f) (p / 0.7f) * 1.05f else 1.05f - (p - 0.7f) / 0.3f * 0.05f
+                        canvas.scale(bp, bp, width / 2f, height / 2f)
+                    }
+                    else -> {}
+                }
             }
         }
 
@@ -2033,35 +2717,18 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         val padB = tpl.cardPaddingBottomDp * scale
         val contentWidth = (boxWidth - padL - padR).toInt().coerceAtLeast(200)
 
-        // v1.9 auto-fit: build layouts at full size, then rebuild once at a
-        // reduced scale when the content exceeds its height budget, so long
-        // verses reflow into the card (lower third) or screen (full show)
-        // instead of overflowing. Short verses always render at the selected size.
-        val minFitRatio = if (tpl.verseFontSize > 0)
-            (tpl.autoFitMinVerseSp.toFloat() / tpl.verseFontSize).coerceIn(0.2f, 1f)
-        else 1f
-        var fitRatio = 1f
-        var layouts = buildFittedTextLayouts(
+        // Audit fix (perf): the fitted layouts (incl. the auto-fit search)
+        // come from a small cache - they only change when the verse, the
+        // template, or the frame size changes, while drawFrameInto runs
+        // every frame. Only animation phase/particles vary per frame, and
+        // they never touch layouts.
+        val fitted = fittedLayoutsCached(
             tpl, verseText, activeVerse, contentWidth, scale,
-            shadowBlur, shadowDx, shadowDy, showArabic, showEnglish, fitRatio
+            shadowBlur, shadowDx, shadowDy, showArabic, showEnglish,
+            width, height, isFull, isForStream
         ) ?: return
-        if (tpl.autoFitText) {
-            val maxContentH = if (tpl.isFullScreen) {
-                height - padT - padB
-            } else {
-                // Lower third must not swallow the screen.
-                height * 0.45f - padT - padB - 16f * scale
-            }
-            if (layouts.contentH > maxContentH && maxContentH > 0) {
-                fitRatio = computeFitRatio(layouts.contentH, maxContentH, minFitRatio)
-                if (fitRatio < 1f) {
-                    layouts = buildFittedTextLayouts(
-                        tpl, verseText, activeVerse, contentWidth, scale,
-                        shadowBlur, shadowDx, shadowDy, showArabic, showEnglish, fitRatio
-                    ) ?: return
-                }
-            }
-        }
+        val layouts = fitted.first
+        val fitRatio = fitted.second
         val primaryLayout = layouts.primary
         val bilingualSecondary = layouts.bilingualSecondary
         val secHeight = layouts.secHeight
@@ -2241,7 +2908,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                     val pColor = if (tpl.animatedBackground == AnimatedBackgroundType.PARTICLE_STARS)
                         Color.rgb(125, 211, 252) else Color.rgb(252, 211, 77)
                     val pClock = (System.currentTimeMillis() % 60000L) / 1000f * tpl.motionSpeed
-                    drawParticleField(canvas, boxLeft, boxTop, boxRight, boxBottom, radius, pClock, scale, pColor, bgAlpha)
+                    // Audit fix: particles use the motion-opacity formula on
+                    // BOTH branches (the pure branch already did; this one
+                    // passed the card bgAlpha, so the same style's stars were
+                    // dimmer over a visible card - and HTTP only ever matched
+                    // the pure formula).
+                    val particleAlpha = (tpl.animatedBackgroundOpacity * 255).toInt().coerceIn(25, 255)
+                    drawParticleField(canvas, boxLeft, boxTop, boxRight, boxBottom, radius, pClock, scale, pColor, particleAlpha)
                 }
             } else {
                 paint.color = Color.argb(bgAlpha, Color.red(baseBgCol), Color.green(baseBgCol), Color.blue(baseBgCol))
@@ -2304,7 +2977,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             // v1.8: In ENGLISH_ONLY, use the English citation color for clear design.
             val refColorHex = if (tpl.languageMode == LanguageMode.ENGLISH_ONLY) tpl.secondaryReferenceColorHex else tpl.referenceColorHex
             color = try { Color.parseColor(refColorHex) } catch (e: Exception) { Color.YELLOW }
-            textSize = (tpl.referenceFontSize * 2f * scale * fitRatio).coerceAtLeast(18f)
+            textSize = tpl.referenceFontSize * 2f * scale * fitRatio * fitFloorBoost(tpl, scale, fitRatio)
             
             var refStyle = Typeface.NORMAL
             if (tpl.referenceIsBold && tpl.referenceIsItalic) refStyle = Typeface.BOLD_ITALIC
@@ -2558,8 +3231,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     private fun getBestTypeface(family: String, textStyle: Int): Typeface {
         val cacheKey = "$family|$textStyle"
         typefaceCache[cacheKey]?.let { return it }
+        // v1.9.1: only bundled-asset typefaces are cached. A custom font can
+        // be imported/deleted under the same family name at runtime, and an
+        // unknown family must not cache its system fallback — either would
+        // freeze the wrong typeface for the rest of the process.
+        val bundled = BundledFonts.find(family)
         val result = try {
-            val bundled = BundledFonts.find(family)
+            val custom = if (bundled == null) com.arabicchristianmedia.model.CustomFonts.find(family) else null
             if (bundled != null) {
                 // Bundled Google Font (assets/fonts, fully offline). Prefer the true
                 // bold file when bold was requested; synthesize italic (Arabic has no
@@ -2571,6 +3249,16 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 val remainingStyle =
                     if (assetPath == bundled.asset700) textStyle and Typeface.BOLD.inv() else textStyle
                 if (remainingStyle == Typeface.NORMAL) base else Typeface.create(base, remainingStyle)
+            } else if (custom != null) {
+                // v1.9.1: user-imported font (private storage, single weight —
+                // bold/italic are synthesized by Typeface.create()).
+                val file = FontStore(context).fileFor(custom)
+                if (file != null) {
+                    val base = Typeface.createFromFile(file)
+                    if (textStyle == Typeface.NORMAL) base else Typeface.create(base, textStyle)
+                } else {
+                    Typeface.create(Typeface.DEFAULT, textStyle)
+                }
             } else {
                 // "System" or unknown family: Android system default.
                 Typeface.create(Typeface.DEFAULT, textStyle)
@@ -2582,7 +3270,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 Typeface.DEFAULT
             }
         }
-        typefaceCache[cacheKey] = result
+        if (bundled != null) typefaceCache[cacheKey] = result
         return result
     }
 
@@ -2605,6 +3293,17 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                     .append(f700).append("') format('truetype');}")
             }
         }
+        // v1.9.1: user-imported fonts (single weight; the 700 rule points at
+        // the same file and the browser synthesizes the extra weight).
+        for (cf in com.arabicchristianmedia.model.CustomFonts.all) {
+            val format = if (cf.ext == "otf") "opentype" else "truetype"
+            sb.append("@font-face{font-family:'").append(cf.name)
+                .append("';font-style:normal;font-weight:400;font-display:swap;src:url('/fonts/")
+                .append(cf.serveName).append("') format('").append(format).append("');}")
+            sb.append("@font-face{font-family:'").append(cf.name)
+                .append("';font-style:normal;font-weight:700;font-display:swap;src:url('/fonts/")
+                .append(cf.serveName).append("') format('").append(format).append("');}")
+        }
         return sb.toString()
     }
 
@@ -2619,7 +3318,37 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     private fun serveFontFile(out: OutputStream, requested: String) {
         val writer = PrintWriter(out)
         val name = requested.substringAfterLast('/').trim()
-        if (!name.endsWith(".ttf") || name !in fontAssetFiles) {
+        // v1.9.1: user-imported fonts are served from private storage under
+        // "custom-<id>.<ext>", allowlisted against the live registry.
+        if (name.startsWith("custom-")) {
+            val custom = com.arabicchristianmedia.model.CustomFonts.all
+                .firstOrNull { it.serveName == name }
+            val file = custom?.let { FontStore(context).fileFor(it) }
+            if (custom == null || file == null) {
+                writer.print("HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n")
+                writer.flush()
+                return
+            }
+            try {
+                val bytes = file.readBytes()
+                writer.print("HTTP/1.1 200 OK\r\n")
+                writer.print("Content-Type: font/${if (custom.ext == "otf") "otf" else "ttf"}\r\n")
+                writer.print("Content-Length: ${bytes.size}\r\n")
+                writer.print("Cache-Control: public, max-age=31536000, immutable\r\n")
+                writer.print("Access-Control-Allow-Origin: *\r\n")
+                writer.print("Connection: close\r\n\r\n")
+                writer.flush()
+                out.write(bytes)
+                out.flush()
+            } catch (e: Exception) {
+                try {
+                    writer.print("HTTP/1.1 500 Internal Server Error\r\nConnection: close\r\n\r\n")
+                    writer.flush()
+                } catch (_: Exception) { /* ignore */ }
+            }
+            return
+        }
+        if (!(name.endsWith(".ttf") || name.endsWith(".otf")) || name !in fontAssetFiles) {
             writer.print("HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n")
             writer.flush()
             return
@@ -2645,9 +3374,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         }
     }
 
-    private fun serveTransparentPngOverlay(out: OutputStream) {
+    private fun serveTransparentPngOverlay(out: OutputStream, isFull: Boolean = false) {
         // Owned bitmap: safe to recycle (never the shared NDI cache bitmap).
-        val bitmap = renderFrameOwned(1920, 1080, isForStream = false)
+        // Full renders through the show template via overrideTemplate
+        // (renderFrame derives the feed from the template's isFullScreen).
+        val bitmap = if (isFull) renderFrameOwned(1920, 1080, isForStream = false, overrideTemplate = currentShowTemplate)
+                     else renderFrameOwned(1920, 1080, isForStream = false)
         val stream = ByteArrayOutputStream()
         bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
         bitmap.recycle()
@@ -3018,15 +3750,62 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             bookId = book.id
         }
 
+        val trigT0 = System.nanoTime()
         val ok = try {
             onTriggerVerse?.invoke(bookId!!, chapter!!, verseNum!!, target) ?: false
         } catch (e: Exception) { false }
+        statTrigger.record((System.nanoTime() - trigT0) / 1_000_000.0)
 
         if (ok) {
             sendJson(out, 200, """{"ok":true,"bookId":"${jsonEscape(bookId!!)}","chapter":$chapter,"verse":$verseNum,"target":"$target"}""")
         } else {
             sendJson(out, 400, """{"ok":false,"error":"Verse not found: bookId=$bookId $chapter:$verseNum"}""")
         }
+    }
+
+    /** GET /api/books — the book list for the /remote Bible browser. */
+    private fun serveApiBooks(out: OutputStream) {
+        val books = try { com.arabicchristianmedia.data.BibleRepository.allBooks } catch (e: Exception) { emptyList() }
+        val sb = StringBuilder()
+        sb.append("{\"ok\":true,\"books\":[")
+        books.forEachIndexed { i, b ->
+            if (i > 0) sb.append(",")
+            sb.append("{\"id\":\"${jsonEscape(b.id)}\",\"ar\":\"${jsonEscape(b.arabicName)}\",\"en\":\"${jsonEscape(b.englishName)}\",\"chapters\":${b.totalChapters}}")
+        }
+        sb.append("]}")
+        sendJson(out, 200, sb.toString())
+    }
+
+    /** GET /api/chapter?book=<bookId>&chapter=<n> — verses for the /remote browser. */
+    private fun serveApiChapter(out: OutputStream, fullPath: String) {
+        val params = parseQueryParams(fullPath)
+        val bookId = params["book"]
+        val chapter = params["chapter"]?.toIntOrNull()
+        if (bookId == null || chapter == null) {
+            sendJson(out, 400, "{\"ok\":false,\"error\":\"Provide ?book=<id>&chapter=<n>\"}")
+            return
+        }
+        val verses = try { com.arabicchristianmedia.data.BibleRepository.getVerses(bookId, chapter) } catch (e: Exception) { emptyList() }
+        val sb = StringBuilder()
+        sb.append("{\"ok\":true,\"bookId\":\"${jsonEscape(bookId)}\",\"chapter\":$chapter,\"verses\":[")
+        verses.forEachIndexed { i, v ->
+            if (i > 0) sb.append(",")
+            sb.append("{\"v\":${v.verse},\"ar\":\"${jsonEscape(v.arabicText)}\",\"en\":\"${jsonEscape(v.englishText)}\"}")
+        }
+        sb.append("]}")
+        sendJson(out, 200, sb.toString())
+    }
+
+    /**
+     * GET /api/onair?on=1|0 — absolute ON AIR control for remote surfaces.
+     * Mirrors the Library ON AIR button: off blanks the outputs but keeps
+     * the verse; on brings the same verse back.
+     */
+    private fun serveApiOnAir(out: OutputStream, fullPath: String) {
+        val params = parseQueryParams(fullPath)
+        val on = params["on"] == "1" || params["on"] == "true"
+        try { onSetOnAir?.invoke(on) } catch (e: Exception) { }
+        sendJson(out, 200, "{\"ok\":true,\"onAir\":$on}")
     }
 
     /** GET /api/clear — clear the active verse (take outputs off-air). */
@@ -3048,21 +3827,32 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         sendJson(out, 200, sb.toString())
     }
 
-    /**
-     * GET /bibleshow.xml — vMix BibleShow-compatible text feed (v1.8).
-     * Text/data only; vMix controls all formatting. TimeCode is .NET ticks.
-     */
-    private fun serveBibleShowXml(out: OutputStream) {
-        val verse = currentVerse
-        val tpl = currentTemplate
+    /** v1.9.1: the values behind the BibleShow feeds, computed once and
+     * shared by the XML writer (vMix) and the JSON writer below. */
+    private data class BibleShowData(
+        val dotNetTicks: Long,
+        val scripture: String,
+        val verseTextOnly: String,
+        val arabicVerse: String,
+        val arabicCitation: String,
+        val englishVerse: String,
+        val englishCitation: String,
+        val bookName: String,
+        val chapterNumber: String,
+        val verseNumber: String,
+        val chapterVerse: String,
+        val bibleLanguage: String,
+        val chapter: Int,
+        val verse: Int,
+        /** v1.9.1: per-slot version identity ("" when that slot is not shown). */
+        val arabicVersion: String,
+        val englishVersion: String,
+        /** v1.9.1: human-readable combined version line for the XML feed. */
+        val bibleVersion: String
+    )
 
-        fun xmlEscape(s: String): String {
-            return s.replace("&", "&amp;")
-                .replace("<", "&lt;")
-                .replace(">", "&gt;")
-                .replace("\"", "&quot;")
-                .replace("'", "&apos;")
-        }
+    private fun computeBibleShowData(tpl: LowerThirdTemplate): BibleShowData {
+        val verse = currentVerse
 
         // .NET ticks: 100ns intervals since 0001-01-01 UTC.
         val dotNetTicks = System.currentTimeMillis() * 10000L + 621355968000000000L
@@ -3130,24 +3920,86 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             LanguageMode.ENGLISH_ONLY -> "English"
             LanguageMode.BOTH -> "Arabic,English"
         }
+        // v1.9.1: each slot declares its own version, so a consumer never has
+        // to guess which text it received (Ashraf). Arabic is always the
+        // Smith–Van Dyck (SVD); English follows the user's live selection.
+        val englishCode = BibleRepository.getEnglishVersion().uppercase()
+        val englishFull = when (englishCode) {
+            "ASV" -> "American Standard Version (ASV)"
+            "KJV" -> "King James Version (KJV)"
+            "WEB" -> "World English Bible (WEB)"
+            else -> englishCode
+        }
+        val arabicVersion = if (showArabic) "SVD" else ""
+        val englishVersion = if (showEnglish) englishCode else ""
+        val bibleVersion = when {
+            showArabic && showEnglish -> "Smith–Van Dyck (SVD) + $englishFull"
+            showArabic -> "Smith–Van Dyck (SVD)"
+            showEnglish -> englishFull
+            else -> ""
+        }
+        return BibleShowData(
+            dotNetTicks = dotNetTicks,
+            scripture = scripture,
+            verseTextOnly = verseTextOnly,
+            arabicVerse = arabicVerse,
+            arabicCitation = arabicCitation,
+            englishVerse = englishVerse,
+            englishCitation = englishCitation,
+            bookName = bookName,
+            chapterNumber = chapterNum,
+            verseNumber = verseNum,
+            chapterVerse = chapterVerse,
+            bibleLanguage = bibleLanguage,
+            chapter = verse?.chapter ?: 0,
+            verse = verse?.verse ?: 0,
+            arabicVersion = arabicVersion,
+            englishVersion = englishVersion,
+            bibleVersion = bibleVersion
+        )
+    }
+
+    /**
+     * GET /bibleshow.xml — vMix BibleShow-compatible text feed (v1.8).
+     * Text/data only; vMix controls all formatting. TimeCode is .NET ticks.
+     */
+    private fun serveBibleShowXml(out: OutputStream, tpl: LowerThirdTemplate) {
+        val d = computeBibleShowData(tpl)
+
+        fun xmlEscape(s: String): String {
+            return s.replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;")
+                .replace("'", "&apos;")
+        }
 
         val xml = buildString {
             append("""<?xml version="1.0" encoding="utf-8"?>""")
             append("\n<BibleShowData>\n")
-            append("  <TimeCode>$dotNetTicks</TimeCode>\n")
+            append("  <TimeCode>${d.dotNetTicks}</TimeCode>\n")
             append("  <Reference />\n")
-            append("  <Scripture>${xmlEscape(scripture)}</Scripture>\n")
+            append("  <Scripture>${xmlEscape(d.scripture)}</Scripture>\n")
             append("  <ImagePath />\n")
-            append("  <BibleVersion></BibleVersion>\n")
+            append("  <BibleVersion>${xmlEscape(d.bibleVersion)}</BibleVersion>\n")
             append("  <BibleCopyright></BibleCopyright>\n")
-            append("  <BibleLanguage>$bibleLanguage</BibleLanguage>\n")
-            append("  <BookName>${xmlEscape(bookName)}</BookName>\n")
-            append("  <BookTitle>${xmlEscape(bookName)}</BookTitle>\n")
+            append("  <BibleLanguage>${d.bibleLanguage}</BibleLanguage>\n")
+            append("  <BookName>${xmlEscape(d.bookName)}</BookName>\n")
+            append("  <BookTitle>${xmlEscape(d.bookName)}</BookTitle>\n")
             append("  <BookAbbreviation></BookAbbreviation>\n")
-            append("  <ChapterNumber>${xmlEscape(chapterNum)}</ChapterNumber>\n")
-            append("  <VerseNumber>${xmlEscape(verseNum)}</VerseNumber>\n")
-            append("  <ChapterVerse>${xmlEscape(chapterVerse)}</ChapterVerse>\n")
-            append("  <VerseText>${xmlEscape(verseTextOnly)}</VerseText>\n")
+            append("  <ChapterNumber>${xmlEscape(d.chapterNumber)}</ChapterNumber>\n")
+            append("  <VerseNumber>${xmlEscape(d.verseNumber)}</VerseNumber>\n")
+            append("  <ChapterVerse>${xmlEscape(d.chapterVerse)}</ChapterVerse>\n")
+            append("  <VerseText>${xmlEscape(d.verseTextOnly)}</VerseText>\n")
+            // v1.9.1: the two languages as their OWN elements (the combined
+            // Scripture/VerseText above stay for BibleShow compatibility),
+            // each with its version.
+            append("  <ArabicVerse>${xmlEscape(d.arabicVerse)}</ArabicVerse>\n")
+            append("  <ArabicCitation>${xmlEscape(d.arabicCitation)}</ArabicCitation>\n")
+            append("  <EnglishVerse>${xmlEscape(d.englishVerse)}</EnglishVerse>\n")
+            append("  <EnglishCitation>${xmlEscape(d.englishCitation)}</EnglishCitation>\n")
+            append("  <ArabicVersion>${xmlEscape(d.arabicVersion)}</ArabicVersion>\n")
+            append("  <EnglishVersion>${xmlEscape(d.englishVersion)}</EnglishVersion>\n")
             append("  <BackgroundPath />\n")
             append("</BibleShowData>\n")
         }
@@ -3165,9 +4017,447 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     }
 
     /**
-     * GET /remote — phone-friendly remote control page (v1.8).
-     * One-handed operation, follows the device's light/dark theme,
-     * fully offline (served by the tablet, no external resources).
+     * GET /lower|/full/bibleshow.json — v1.9.1: JSON mirror of the XML
+     * feed (same values, computed by [computeBibleShowData]) for modern
+     * titlers and cloud graphics that prefer JSON, plus the two fields
+     * polling clients need: onAir and stateVersion.
+     */
+    private fun serveBibleShowJson(out: OutputStream, tpl: LowerThirdTemplate) {
+        val d = computeBibleShowData(tpl)
+        val root = JSONObject().apply {
+            put("timeCode", d.dotNetTicks)
+            put("scripture", d.scripture)
+            put("verseText", d.verseTextOnly)
+            put("arabicVerse", d.arabicVerse)
+            put("arabicCitation", d.arabicCitation)
+            put("englishVerse", d.englishVerse)
+            put("englishCitation", d.englishCitation)
+            put("arabicVersion", d.arabicVersion)
+            put("englishVersion", d.englishVersion)
+            put("bookName", d.bookName)
+            put("chapterNumber", d.chapterNumber)
+            put("verseNumber", d.verseNumber)
+            put("chapterVerse", d.chapterVerse)
+            put("chapter", d.chapter)
+            put("verse", d.verse)
+            put("bibleLanguage", d.bibleLanguage)
+            put("languageMode", tpl.languageMode.name)
+            put("onAir", isLive && currentVerse != null)
+            put("stateVersion", frameVersion)
+        }
+        sendJson(out, 200, root.toString())
+    }
+
+    /**
+     * GET /api/clientstat?page=lower|full&data=<urlencoded JSON> — the
+     * overlay pages report their own receive/apply timings here (see the
+     * self-diagnostics block in the overlay script). Stored raw (after a
+     * JSON validity check) and surfaced by /api/debug.
+     */
+    private fun serveApiClientStat(out: OutputStream, fullPath: String) {
+        val params = parseQueryParams(fullPath)
+        val page = params["page"]
+        val data = params["data"]
+        var stored = false
+        if ((page == "lower" || page == "full") && data != null && data.length <= 16384) {
+            try {
+                // Validate before storing: /api/debug embeds this verbatim.
+                val checked = org.json.JSONObject(data).toString()
+                if (page == "lower") {
+                    clientStatLower = checked; clientStatLowerAtMs = System.currentTimeMillis()
+                } else {
+                    clientStatFull = checked; clientStatFullAtMs = System.currentTimeMillis()
+                }
+                stored = true
+            } catch (e: Exception) { /* malformed report: drop it */ }
+        }
+        sendJson(out, 200, "{\"ok\":$stored}")
+    }
+
+    /**
+     * GET /api/debug — full diagnostics snapshot (config, device, live
+     * state, per-action server timings) for the /debug page. Built for
+     * advanced troubleshooting of the HTTP path.
+     */
+    private fun serveApiDebug(out: OutputStream) {
+        val pi = try { context.packageManager.getPackageInfo(context.packageName, 0) } catch (e: Exception) { null }
+        val versionName = pi?.versionName ?: "?"
+        val versionCode = try { pi?.longVersionCode ?: -1L } catch (e: Exception) { -1L }
+        val deviceName = try { android.provider.Settings.Global.getString(context.contentResolver, "device_name") ?: "" } catch (e: Exception) { "" }
+        val rt = Runtime.getRuntime()
+        val usedMb = (rt.totalMemory() - rt.freeMemory()) / 1048576
+        val maxMb = rt.maxMemory() / 1048576
+        val verse = currentVerse
+        val bookNum = if (verse != null) {
+            try { com.arabicchristianmedia.data.BibleRepository.allBooks.indexOfFirst { it.id == verse.bookId } + 1 } catch (e: Exception) { 0 }
+        } else 0
+        fun fmt(x: Double): String = String.format(java.util.Locale.US, "%.2f", x)
+        fun statJson(st: ActionStat): String =
+            "{\"count\":${st.count},\"lastMs\":${fmt(st.lastMs)},\"avgMs\":${fmt(st.avgMs())},\"maxMs\":${fmt(st.maxMs)}}"
+        fun tplJson(t: LowerThirdTemplate): String {
+            // v1.9.1: FULL template dump (was a 14-key summary) so a value
+            // change anywhere in the Editor can be confirmed here.
+            val o = JSONObject()
+            o.put("name", t.name)
+            o.put("style", t.style.name)
+            o.put("bgColorHex", t.bgColorHex)
+            o.put("bgOpacity", t.bgOpacity.toDouble())
+            o.put("accentColorHex", t.accentColorHex)
+            o.put("textColorHex", t.textColorHex)
+            o.put("referenceColorHex", t.referenceColorHex)
+            o.put("verseFontSize", t.verseFontSize)
+            o.put("referenceFontSize", t.referenceFontSize)
+            o.put("fontFamily", t.fontFamily)
+            o.put("secondaryTextColorHex", t.secondaryTextColorHex)
+            o.put("secondaryReferenceColorHex", t.secondaryReferenceColorHex)
+            o.put("secondaryVerseFontSize", t.secondaryVerseFontSize)
+            o.put("secondaryReferenceFontSize", t.secondaryReferenceFontSize)
+            o.put("secondaryFontFamily", t.secondaryFontFamily)
+            o.put("isFullScreen", t.isFullScreen)
+            o.put("bilingualSpacing", t.bilingualSpacing)
+            o.put("showBilingualSpacing", t.showBilingualSpacing)
+            o.put("verseIsBold", t.verseIsBold)
+            o.put("verseIsItalic", t.verseIsItalic)
+            o.put("referenceIsBold", t.referenceIsBold)
+            o.put("referenceIsItalic", t.referenceIsItalic)
+            o.put("secondaryVerseIsBold", t.secondaryVerseIsBold)
+            o.put("secondaryVerseIsItalic", t.secondaryVerseIsItalic)
+            o.put("secondaryReferenceIsBold", t.secondaryReferenceIsBold)
+            o.put("secondaryReferenceIsItalic", t.secondaryReferenceIsItalic)
+            o.put("useEasternArabicNumerals", t.useEasternArabicNumerals)
+            o.put("useArabicPunctuation", t.useArabicPunctuation)
+            o.put("alignment", t.alignment.name)
+            o.put("positionBottomPercent", t.positionBottomPercent)
+            o.put("horizontalMarginPercent", t.horizontalMarginPercent)
+            o.put("cornerRadiusDp", t.cornerRadiusDp)
+            o.put("transition", t.transition.name)
+            o.put("transitionDurationMs", t.transitionDurationMs)
+            o.put("showAccentBorder", t.showAccentBorder)
+            o.put("textShadowEnabled", t.textShadowEnabled)
+            o.put("textShadowColorHex", t.textShadowColorHex)
+            o.put("textShadowBlurDp", t.textShadowBlurDp.toDouble())
+            o.put("textShadowOffsetDp", t.textShadowOffsetDp.toDouble())
+            o.put("textShadowAngleDeg", t.textShadowAngleDeg)
+            o.put("cardGlowEnabled", t.cardGlowEnabled)
+            o.put("cardGlowColorHex", t.cardGlowColorHex)
+            o.put("emblem", t.emblem)
+            o.put("languageMode", t.languageMode.name)
+            o.put("pureTransparent", t.isPureTransparentBackground)
+            o.put("animatedBackground", t.animatedBackground.id)
+            o.put("animatedBackgroundOpacity", t.animatedBackgroundOpacity.toDouble())
+            o.put("customVideoUrl", t.customVideoUrl)
+            o.put("customVideoId", t.customVideoId)
+            o.put("customVideoMuted", t.customVideoMuted)
+            o.put("motionSpeed", t.motionSpeed.toDouble())
+            o.put("videoLoopMode", t.videoLoopMode.id)
+            o.put("streamBackgroundMode", t.streamBackgroundMode.name)
+            o.put("cardPaddingTopDp", t.cardPaddingTopDp.toDouble())
+            o.put("cardPaddingBottomDp", t.cardPaddingBottomDp.toDouble())
+            o.put("cardPaddingLeftDp", t.cardPaddingLeftDp.toDouble())
+            o.put("cardPaddingRightDp", t.cardPaddingRightDp.toDouble())
+            o.put("autoFitText", t.autoFitText)
+            o.put("autoFitMaxVerseSp", t.autoFitMaxVerseSp)
+            o.put("boxHeightPercent", t.boxHeightPercent)
+            return o.toString()
+        }
+        val up = if (serverStartTimeMs == 0L) 0 else System.currentTimeMillis() - serverStartTimeMs
+        val sb = StringBuilder()
+        sb.append("{\"ok\":true,")
+        sb.append("\"app\":{\"versionName\":\"${jsonEscape(versionName)}\",\"versionCode\":$versionCode},")
+        sb.append("\"device\":{\"manufacturer\":\"${jsonEscape(android.os.Build.MANUFACTURER)}\",\"model\":\"${jsonEscape(android.os.Build.MODEL)}\",\"deviceName\":\"${jsonEscape(deviceName)}\",\"android\":\"${android.os.Build.VERSION.RELEASE}\",\"sdk\":${android.os.Build.VERSION.SDK_INT}},")
+        sb.append("\"server\":{\"running\":$isRunning,\"port\":$port,\"ip\":\"${getLocalIpAddress()}\",\"uptimeMs\":$up,\"frameVersion\":$frameVersion,\"isLive\":$isLive,\"sseClients\":${sseClients.size},\"broadcastDispatcher\":\"Dispatchers.IO (Safe)\"},")
+        sb.append("\"current\":{\"bookId\":\"${verse?.bookId ?: ""}\",\"bookNum\":$bookNum,\"chapter\":${verse?.chapter ?: 0},\"verse\":${verse?.verse ?: 0},\"citation\":\"${jsonEscape(verse?.getFormattedEnglishCitation() ?: "")}\"},")
+        sb.append("\"lower\":${tplJson(currentTemplate)},")
+        sb.append("\"full\":${tplJson(currentShowTemplate)},")
+        sb.append("\"timings\":{\"stateBuild\":${statJson(statStateBuild)},\"broadcast\":${statJson(statBroadcast)},\"verseApi\":${statJson(statVerseApi)},\"trigger\":${statJson(statTrigger)}},")
+        sb.append("\"overlayClients\":{")
+        sb.append("\"lower\":${clientStatLower ?: "null"},\"lowerAgeMs\":${if (clientStatLowerAtMs == 0L) -1 else System.currentTimeMillis() - clientStatLowerAtMs},")
+        sb.append("\"full\":${clientStatFull ?: "null"},\"fullAgeMs\":${if (clientStatFullAtMs == 0L) -1 else System.currentTimeMillis() - clientStatFullAtMs}")
+        sb.append("},")
+        sb.append("\"sseTotals\":{\"connects\":$sseConnectTotal,\"drops\":$sseDropTotal,\"reasons\":{")
+        var firstReason = true
+        for ((reason, count) in sseDropReasonCounts()) {
+            if (!firstReason) sb.append(",")
+            firstReason = false
+            sb.append("\"${jsonEscape(reason)}\":$count")
+        }
+        sb.append("}},")
+        sb.append("\"sseJournal\":[")
+        val journal = sseJournalSnapshot()
+        for (i in journal.indices) {
+            if (i > 0) sb.append(",")
+            sb.append("\"${jsonEscape(journal[i])}\"")
+        }
+        sb.append("],")
+        sb.append("\"memory\":{\"usedMb\":$usedMb,\"maxMb\":$maxMb}")
+        sb.append("}")
+        sendJson(out, 200, sb.toString())
+    }
+
+/**
+     * GET /debug — HTTP diagnostics page (v1.9.1): full configuration,
+     * device info, server-side per-action timings, and browser-side
+     * latency tests (ping RTT + tap-to-screen over SSE), with a
+     * copy-able report for advanced troubleshooting.
+     */
+    private fun serveDebugPage(out: OutputStream) {
+        val html = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Bible NDI — HTTP Debug</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 0; padding: 16px; background: Canvas; color: CanvasText; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h2 { font-size: 15px; margin: 20px 0 6px; }
+  .sub { opacity: 0.7; font-size: 13px; }
+  table { border-collapse: collapse; width: 100%; max-width: 720px; }
+  td, th { border: 1px solid rgba(128,128,128,0.35); padding: 5px 8px; font-size: 13px; text-align: left; vertical-align: top; }
+  td.k { font-weight: 600; white-space: nowrap; width: 190px; }
+  button { padding: 10px 14px; font-size: 14px; font-weight: 700; border-radius: 10px; border: 1px solid rgba(128,128,128,0.5); background: transparent; color: inherit; cursor: pointer; margin: 4px 4px 4px 0; }
+  button:active { transform: scale(0.97); }
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  pre, textarea { font-family: ui-monospace, monospace; font-size: 12px; }
+  textarea { width: 100%; max-width: 720px; height: 180px; }
+  .out { white-space: pre-wrap; font-family: ui-monospace, monospace; font-size: 12.5px; background: rgba(128,128,128,0.12); border-radius: 10px; padding: 10px; max-width: 720px; min-height: 20px; }
+</style>
+</head>
+<body>
+<h1>🛠 Bible NDI — HTTP Debug</h1>
+<div class="sub">Live diagnostics from the tablet. Timings are measured where they happen: server actions on the tablet, network + display in this browser.</div>
+<div class="row">
+  <button onclick="loadDebug()">↻ Refresh</button>
+  <label><input type="checkbox" id="autoChk"> Auto-refresh (3s)</label>
+  <button onclick="copyReport()">📋 Copy report</button>
+</div>
+
+<h2>Server &amp; device</h2>
+<div id="serverSec">Loading…</div>
+
+<h2>Active templates</h2>
+<div id="tplSec">—</div>
+
+<h2>Server action timings (ms)</h2>
+<div id="timeSec">—</div>
+
+<h2>Overlay pages — self-reported (browser side)</h2>
+<div id="clientStatSec">—</div>
+
+<h2>SSE connections — tablet's journal</h2>
+<div class="out" id="sseSec">—</div>
+
+<h2>This browser</h2>
+<div id="clientSec">—</div>
+
+<h2>Latency tests</h2>
+<div class="row">
+  <button onclick="pingTest()">Run ping test (10 × /api/verse)</button>
+  <button onclick="tapTest()">Run tap-to-screen test (SSE)</button>
+</div>
+<div class="sub">Tap-to-screen re-airs the current verse and measures trigger → SSE arrival in this browser, on one clock. It changes what is on air.</div>
+<div class="out" id="testOut">No tests run yet.</div>
+
+<h2>Report</h2>
+<textarea id="report" readonly></textarea>
+
+<script>
+  var lastDebug = null;
+  var testLog = '';
+  function esc(t) { return String(t == null ? '' : t).replace(/&/g, '&amp;').replace(/</g, '&lt;'); }
+  function table(pairs) {
+    var h = '<table>';
+    for (var i = 0; i < pairs.length; i++) h += '<tr><td class="k">' + esc(pairs[i][0]) + '</td><td>' + esc(pairs[i][1]) + '</td></tr>';
+    return h + '</table>';
+  }
+  function loadDebug() {
+    fetch('/api/debug').then(function(r) { return r.json(); }).then(function(j) {
+      lastDebug = j;
+      var up = Math.round((j.server.uptimeMs || 0) / 1000);
+      document.getElementById('serverSec').innerHTML = table([
+        ['App', j.app.versionName + ' (' + j.app.versionCode + ')'],
+        ['Device', j.device.manufacturer + ' ' + j.device.model],
+        ['Device name', j.device.deviceName],
+        ['Android', j.device.android + ' (SDK ' + j.device.sdk + ')'],
+        ['Server', (j.server.running ? 'running' : 'STOPPED') + ' · ' + j.server.ip + ':' + j.server.port],
+        ['Uptime', up + ' s'],
+        ['State version', j.server.frameVersion],
+        ['On air', j.server.isLive],
+        ['SSE clients (overlays)', j.server.sseClients],
+        ['Broadcast thread', j.server.broadcastDispatcher || 'Dispatchers.IO (Safe)'],
+        ['Current verse', (j.current.citation || '—') + ' [book ' + j.current.bookNum + ' ' + j.current.chapter + ':' + j.current.verse + ']'],
+        ['App memory', j.memory.usedMb + ' MB used / ' + j.memory.maxMb + ' MB max']
+      ]);
+      function tplPairs(t) {
+        var transHint = t.transitionDurationMs > 300 ? ' (💡 Note: ' + t.transitionDurationMs + 'ms transition duration contributes to visible transition time; set to CUT in Editor for instant changes)' : '';
+        return [
+          ['Name / style', t.name + ' / ' + t.style],
+          ['Animated background', t.animatedBackground + ' @ ' + t.animatedBackgroundOpacity],
+          ['Background opacity', t.bgOpacity],
+          ['100% transparent', t.pureTransparent],
+          ['Transition', t.transition + ' · ' + t.transitionDurationMs + ' ms' + transHint],
+          ['Verse / citation size', t.verseFontSize + ' / ' + t.referenceFontSize],
+          ['Auto-fit', t.autoFitText + ' · max verse ' + t.autoFitMaxVerseSp + ' · box H ' + t.boxHeightPercent + '%'],
+          ['Language / font', t.languageMode + ' / ' + t.fontFamily]
+        ];
+      }
+      document.getElementById('tplSec').innerHTML =
+        '<div class="sub">LOWER</div>' + table(tplPairs(j.lower)) +
+        '<div class="sub" style="margin-top:8px">FULL</div>' + table(tplPairs(j.full));
+      function statRow(label, st) { return [label, 'count ' + st.count + ' · last ' + st.lastMs + ' · avg ' + st.avgMs + ' · max ' + st.maxMs]; }
+      document.getElementById('timeSec').innerHTML = table([
+        statRow('State JSON build', j.timings.stateBuild),
+        statRow('Broadcast to SSE clients', j.timings.broadcast),
+        statRow('/api/verse answer', j.timings.verseApi),
+        statRow('/api/trigger handling', j.timings.trigger)
+      ]);
+      var oc = j.overlayClients || {};
+      function ocText(name, stat, ageMs) {
+        if (!stat) return name + ': no report yet (open the overlay page, wait up to 10 s)';
+        var ev = (stat.events || []).map(function(e) { return e.t + 'ms ' + e.kind + ' ' + e.info; }).join(' | ');
+        return name + ' · report age ' + Math.round(ageMs / 1000) + ' s · state v' + stat.version +
+          ' · msgs ' + stat.msgs + ' · applies ' + stat.applies + ' · reconnects ' + stat.reconnects +
+          ' · last apply ' + stat.lastApplyMs + ' ms · max apply ' + stat.maxApplyMs + ' ms · last fit ' + stat.lastFitMs + ' ms' +
+          '\n  events: ' + ev +
+          '\n  ua: ' + stat.ua;
+      }
+      document.getElementById('clientStatSec').innerHTML =
+        '<div class="out">' + esc(ocText('LOWER', oc.lower, oc.lowerAgeMs || 0)) + '</div>' +
+        '<div class="out" style="margin-top:6px">' + esc(ocText('FULL', oc.full, oc.fullAgeMs || 0)) + '</div>';
+      var st = j.sseTotals || { connects: 0, drops: 0, reasons: {} };
+      var reasons = Object.keys(st.reasons || {}).map(function(k) { return k + '=' + st.reasons[k]; }).join(', ') || 'none';
+      var lines = (j.sseJournal || []).slice(-14);
+      document.getElementById('sseSec').textContent =
+        'Session totals · connects ' + st.connects + ' · drops ' + st.drops + ' · drop reasons: ' + reasons +
+        '\n' + (lines.length ? lines.join('\n') : '(no connections recorded yet)');
+      renderClient();
+      buildReport();
+    }).catch(function(e) {
+      document.getElementById('serverSec').textContent = 'Failed to load /api/debug: ' + e;
+    });
+  }
+  function renderClient() {
+    var c = (navigator.connection || {});
+    document.getElementById('clientSec').innerHTML = table([
+      ['User agent', navigator.userAgent],
+      ['Screen', window.screen.width + ' × ' + window.screen.height + ' · DPR ' + window.devicePixelRatio],
+      ['Window', window.innerWidth + ' × ' + window.innerHeight],
+      ['Connection', (c.effectiveType || '?') + ' · downlink ' + (c.downlink || '?') + ' Mb/s · rtt ' + (c.rtt || '?') + ' ms'],
+      ['Page loaded in', Math.round(performance.now()) + ' ms']
+    ]);
+  }
+  function logTest(line) {
+    testLog += line + '\n';
+    document.getElementById('testOut').textContent = testLog;
+    buildReport();
+  }
+  function pingTest() {
+    logTest('— Ping test —');
+    var times = [];
+    var offsetShown = false;
+    var chain = Promise.resolve();
+    function one(i) {
+      return function() {
+        var t0 = performance.now();
+        return fetch('/api/verse').then(function(r) { return r.json(); }).then(function(j) {
+          var t1 = performance.now();
+          var ms = t1 - t0;
+          times.push(ms);
+          if (!offsetShown && j.serverTimeMs) {
+            offsetShown = true;
+            var offset = Math.round(j.serverTimeMs - (Date.now() - ms / 2));
+            logTest('Server clock minus browser clock ≈ ' + offset + ' ms (for comparing timestamps)');
+          }
+          logTest('ping ' + (i + 1) + ': ' + ms.toFixed(1) + ' ms');
+        }).catch(function(e) { logTest('ping ' + (i + 1) + ': ERROR ' + e); });
+      };
+    }
+    for (var i = 0; i < 10; i++) chain = chain.then(one(i));
+    chain.then(function() {
+      if (times.length) {
+        var sum = 0, mx = 0;
+        for (var k = 0; k < times.length; k++) { sum += times[k]; if (times[k] > mx) mx = times[k]; }
+        logTest('Ping avg ' + (sum / times.length).toFixed(1) + ' ms · max ' + mx.toFixed(1) + ' ms');
+      }
+    });
+  }
+  function tapTest() {
+    if (!lastDebug || !lastDebug.current.bookNum) { logTest('Tap test: no current verse to re-air.'); return; }
+    var cur = lastDebug.current;
+    logTest('— Tap-to-screen test —');
+    fetch('/api/verse').then(function(r) { return r.json(); }).then(function(j) {
+      var v0 = j.stateVersion;
+      var es = new EventSource('/events');
+      var done = false;
+      var t0 = 0;
+      var to = setTimeout(function() {
+        if (!done) { done = true; es.close(); logTest('Tap test: NO event within 10 s — SSE delivery is stuck.'); }
+      }, 10000);
+      es.onmessage = function(e) {
+        try {
+          var d = JSON.parse(e.data);
+          if (!done && t0 && d.stateVersion > v0) {
+            done = true;
+            clearTimeout(to);
+            es.close();
+            logTest('Tap → screen event: ' + (performance.now() - t0).toFixed(1) + ' ms (state ' + v0 + ' → ' + d.stateVersion + ')');
+          }
+        } catch (err) {}
+      };
+      es.onopen = function() {
+        t0 = performance.now();
+        fetch('/api/trigger?book=' + cur.bookNum + '&chapter=' + cur.chapter + '&verse=' + cur.verse)
+          .then(function(r) { return r.json(); })
+          .then(function(j) { if (!j.ok) logTest('Tap test: trigger failed: ' + (j.error || '')); })
+          .catch(function(e) { logTest('Tap test: trigger error ' + e); });
+      };
+    }).catch(function(e) { logTest('Tap test: setup error ' + e); });
+  }
+  function buildReport() {
+    if (!lastDebug) return;
+    var txt = 'BIBLE NDI HTTP DEBUG REPORT\n' + JSON.stringify(lastDebug, null, 2) +
+      '\n\nBROWSER: ' + navigator.userAgent +
+      '\nSCREEN: ' + window.screen.width + 'x' + window.screen.height + ' DPR ' + window.devicePixelRatio +
+      '\n\nTESTS:\n' + (testLog || '(none run)');
+    document.getElementById('report').value = txt;
+  }
+  function copyReport() {
+    var ta = document.getElementById('report');
+    ta.select();
+    try { document.execCommand('copy'); } catch (e) {}
+    if (navigator.clipboard) { try { navigator.clipboard.writeText(ta.value); } catch (e) {} }
+  }
+  document.getElementById('autoChk').addEventListener('change', function() {
+    if (this.checked) { window._dbgTimer = setInterval(loadDebug, 3000); }
+    else if (window._dbgTimer) { clearInterval(window._dbgTimer); window._dbgTimer = null; }
+  });
+  loadDebug();
+</script>
+</body>
+</html>
+        """.trimIndent()
+
+        val bytes = html.toByteArray(Charsets.UTF_8)
+        val writer = PrintWriter(out)
+        writer.print("HTTP/1.1 200 OK\r\n")
+        writer.print("Content-Type: text/html; charset=utf-8\r\n")
+        writer.print("Content-Length: " + bytes.size + "\r\n")
+        writer.print("Cache-Control: no-cache\r\n")
+        writer.print("Connection: close\r\n\r\n")
+        writer.flush()
+        out.write(bytes)
+        out.flush()
+    }
+
+
+    /**
+     * GET /remote — the web REMOTE DEVICE (v1.9.1, reworked from the v1.8
+     * reference-typer). A Bible browser (book → chapter → tap a verse) plus
+     * an ON AIR button mirroring the master, exactly like a native remote:
+     * it never chooses outputs — the master decides what shows. Fully
+     * offline, follows the device's light/dark theme.
      */
     private fun serveRemotePage(out: OutputStream) {
         val html = """
@@ -3191,160 +4481,323 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   @media (prefers-color-scheme: light) {
     body { background: #f1f5f9; color: #0f172a; }
     .card { background: #ffffff; border-color: #e2e8f0; }
-    input { background: #f8fafc; border-color: #cbd5e1; color: #0f172a; }
-    .seg button { color: #475569; }
-    .seg button.active { background: #0f172a; color: #fff; }
+    input, select { background: #f8fafc; border-color: #cbd5e1; color: #0f172a; }
     .hint { color: #64748b; }
+    .chips button { border-color: #cbd5e1; color: #334155; }
+    .chips button.active { background: #0f172a; color: #fff; border-color: transparent; }
+    .vrow { border-color: #e2e8f0; }
   }
   @media (prefers-color-scheme: dark) {
     body { background: #0f172a; color: #f1f5f9; }
     .card { background: #1e293b; border-color: #334155; }
-    input { background: #0f172a; border-color: #475569; color: #f1f5f9; }
-    .seg button { color: #94a3b8; }
-    .seg button.active { background: #f1f5f9; color: #0f172a; }
+    input, select { background: #0f172a; border-color: #475569; color: #f1f5f9; }
     .hint { color: #94a3b8; }
+    .chips button { border-color: #475569; color: #cbd5e1; }
+    .chips button.active { background: #f1f5f9; color: #0f172a; border-color: transparent; }
+    .vrow { border-color: #334155; }
+    .livepill { color: #f1f5f9; }
+    .livepill.on { background: rgba(34,197,94,0.22); border-color: rgba(34,197,94,0.7); color: #bbf7d0; }
   }
-  header {
-    padding: 16px 20px 8px;
-    font-size: 20px; font-weight: 700;
-  }
+  header { padding: 16px 20px 8px; font-size: 20px; font-weight: 700; display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;  flex-wrap: wrap; }
+  /* The live reference rides in the header as a slim pill \u2014 information
+     only, zero extra layout space. */
+  .livepill { display: inline-flex; align-items: center; gap: 8px; max-width: 55%; flex: none;
+    direction: rtl; position: relative; justify-content: center;
+    background: rgba(127,127,127,0.16); border: 1px solid rgba(127,127,127,0.45); border-radius: 999px;
+    padding: 7px 30px; font-size: 13px; font-weight: 600; margin-top: 2px; color: #111827; }
+  /* v1.9.1: ON AIR tints the WHOLE pill, not just the dot, and the citation
+     gets an explicit high-contrast color (was: inherited page color washed
+     out on the pill's gray tint) + more breathing room around the text. */
+  .livepill.on { background: rgba(34,197,94,0.18); border-color: rgba(34,197,94,0.65); color: #14532d; }
+  /* Round 2 (#8): the status dot is pinned to the pill's right edge and
+     the citation centers in the space left over - a long citation can
+     never slide under the dot. */
+  .livepill .dot { width: 8px; height: 8px; border-radius: 50%; background: #9ca3af; flex: none;
+    position: absolute; right: 11px; top: 50%; transform: translateY(-50%); }
+  .livepill.on .dot { background: #22c55e; box-shadow: 0 0 6px #22c55e; }
+  .livepill .ref { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; unicode-bidi: plaintext; flex: 1; text-align: center; }
+  @media (max-width: 480px) { .livepill { max-width: 100%; } }
   header .sub { font-size: 13px; font-weight: 400; opacity: 0.7; margin-top: 2px; }
-  main { flex: 1; padding: 8px 16px 16px; display: flex; flex-direction: column; gap: 12px; max-width: 560px; width: 100%; margin: 0 auto; }
-  .card {
-    border: 1px solid; border-radius: 16px;
-    padding: 16px;
-  }
+  main { flex: 1; padding: 8px 16px 16px; display: flex; flex-direction: column; gap: 12px; max-width: 640px; width: 100%; margin: 0 auto; }
+  .card { border: 1px solid; border-radius: 16px; padding: 16px; }
   label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 8px; opacity: 0.8; }
-  input {
-    width: 100%; font-size: 20px; padding: 14px 16px;
-    border: 1px solid; border-radius: 12px;
-    outline: none;
+  input, select {
+    width: 100%; font-size: 18px; padding: 13px 14px;
+    border: 1px solid; border-radius: 12px; outline: none;
   }
-  input:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.25); }
-  .seg { display: flex; gap: 8px; }
-  .seg button {
-    flex: 1; padding: 12px 8px; font-size: 15px; font-weight: 600;
-    border: 1px solid; border-radius: 12px; background: transparent;
-    cursor: pointer;
-  }
-  .seg button.active { border-color: transparent; }
+  input:focus, select:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.25); }
   .btn {
-    width: 100%; padding: 18px; font-size: 20px; font-weight: 700;
+    width: 100%; padding: 16px; font-size: 19px; font-weight: 700;
     border: none; border-radius: 16px; cursor: pointer;
-    background: #16a34a; color: #fff;
-    min-height: 64px;
+    background: #16a34a; color: #fff; min-height: 60px;
   }
   .btn:active { transform: scale(0.98); opacity: 0.9; }
-  .btn-clear {
-    background: transparent; color: inherit;
-    border: 2px solid; font-size: 17px; padding: 14px;
+  .onair {
+    width: 100%; padding: 16px; font-size: 18px; font-weight: 800;
+    border: none; border-radius: 16px; cursor: pointer; min-height: 60px;
+    letter-spacing: 0.4px;
   }
-  .status {
-    text-align: center; font-size: 14px; min-height: 22px;
-    font-weight: 600;
-  }
+  .onair.on { background: #16a34a; color: #fff; }
+  .onair.off { background: #dc2626; color: #fff; }
+  .onair:active { transform: scale(0.98); opacity: 0.9; }
+  .status { text-align: center; font-size: 14px; min-height: 22px; font-weight: 600; }
   .status.ok { color: #16a34a; }
   .status.err { color: #dc2626; }
   .hint { font-size: 12px; margin-top: 8px; line-height: 1.5; }
-  .now { font-size: 15px; text-align: center; padding: 4px 0; opacity: 0.85; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+  .chips button {
+    width: 46px; padding: 9px 0; font-size: 15px; font-weight: 600;
+    border: 1px solid; border-radius: 10px; background: transparent; cursor: pointer;
+  }
+  .selrow { display: flex; gap: 8px; }
+  .selrow #bookSel { flex: 2; }
+  .selrow #chSel { flex: 1; }
+  .selrow #langSel { flex: 1; }
+  .vlist { margin-top: 8px; max-height: 52vh; overflow-y: auto; }
+  /* Desktop / wide tablet: two columns — controls left, Bible browser
+     right with a tall verse list. Narrow screens keep the stacked
+     one-hand layout above. */
+  @media (min-width: 900px) {
+    main {
+      max-width: 1180px;
+      display: grid;
+      grid-template-columns: 340px 1fr;
+      grid-template-areas: "onair browse" "ref browse" "go browse" "status browse";
+      align-items: start;
+    }
+    #onAirBtn { grid-area: onair; }
+    #browseCard { grid-area: browse; }
+    #refCard { grid-area: ref; }
+    #goBtn { grid-area: go; }
+    .status { grid-area: status; }
+    .vlist { max-height: 66vh; }
+  }
+  .vrow { display: flex; gap: 10px; padding: 10px 8px; border-bottom: 1px solid; cursor: pointer; align-items: flex-start; }
+  .vrow:active { opacity: 0.7; }
+  .vrow.live { background: rgba(22,163,74,0.18); border-radius: 10px; }
+  .vn { font-weight: 800; min-width: 30px; text-align: center; opacity: 0.65; padding-top: 2px; }
+  .va { font-size: 17px; line-height: 1.8; }
+  .ve { font-size: 13px; opacity: 0.75; margin-top: 2px; line-height: 1.5; }
 </style>
 </head>
 <body>
 <header>
-  📖 Bible Remote
-  <div class="sub">Arabic Bible NDI — live verse trigger</div>
+  <div>📖 Bible Remote
+    <div class="sub">Arabic Bible NDI — remote device: tap a verse to show it</div>
+  </div>
+  <span class="livepill" id="livePill"><span class="dot"></span><span class="ref" id="liveRef" dir="auto">—</span></span>
 </header>
 <main>
-  <div class="now" id="now">—</div>
-  <div class="card">
-    <label for="ref">Bible reference</label>
+  <button class="onair off" id="onAirBtn" onclick="toggleOnAir()">OFF AIR</button>
+  <div class="card" id="browseCard">
+    <label for="bookSel">Browse the Bible — اختر سفراً</label>
+    <div class="selrow">
+      <select id="bookSel"><option value="">Loading books…</option></select>
+      <select id="chSel" aria-label="Chapter"></select>
+      <select id="langSel" aria-label="Version"><option value="ar">العربية</option><option value="en">English</option></select>
+    </div>
+    <div class="vlist" id="vList"></div>
+  </div>
+  <div class="card" id="refCard">
+    <label for="ref">Quick reference</label>
     <input id="ref" type="text" inputmode="text" autocomplete="off"
            placeholder="John 3:16  •  يوحنا 3:16  •  Jn 3:16"
            enterkeyhint="go">
-    <div class="hint">English, Arabic, or abbreviation. Examples: <b>Rom 8:28</b>, <b>مزمور 23:1</b>, <b>1Jn 1:9</b></div>
+    <div class="hint">Or type a reference — English, Arabic, or abbreviation. Examples: <b>Rom 8:28</b>, <b>مزمور 23:1</b></div>
   </div>
-  <div class="card">
-    <label>Target output</label>
-    <div class="seg" id="targetSeg">
-      <button data-t="lower">Lower Third</button>
-      <button data-t="show">Full Show</button>
-      <button data-t="both" class="active">Both</button>
-    </div>
-  </div>
-  <button class="btn" id="goBtn" onclick="trigger()">▶ Show Verse</button>
-  <button class="btn btn-clear" onclick="clearVerse()">Clear (off-air)</button>
+  <button class="btn" id="goBtn" onclick="triggerRef()">▶ Show Verse</button>
   <div class="status" id="status"></div>
 </main>
 <script>
-  let target = 'both';
-  const seg = document.getElementById('targetSeg');
-  seg.addEventListener('click', e => {
-    const b = e.target.closest('button');
-    if (!b) return;
-    target = b.dataset.t;
-    seg.querySelectorAll('button').forEach(x => x.classList.toggle('active', x === b));
+  var books = [];
+  var curBookIdx = -1;
+  var curChapter = 0;
+  var live = { onAir: false, bookId: '', chapter: 0, verse: 0 };
+
+  var bookSel = document.getElementById('bookSel');
+  var chSel = document.getElementById('chSel');
+  var langSel = document.getElementById('langSel');
+  // Round 2 (#9): the browser shows ONE version - Arabic by default,
+  // English on request - for the book list AND the verse rows. The old
+  // composite "Arabic - English" labels also bidi-split numbered books
+  // ("1 Samuel"); single-language labels cannot.
+  var browseLang = 'ar';
+  try { browseLang = localStorage.getItem('ndiBrowseLang') || 'ar'; } catch (e) {}
+  if (browseLang !== 'en') browseLang = 'ar';
+  langSel.value = browseLang;
+  var vList = document.getElementById('vList');
+  var refInput = document.getElementById('ref');
+  refInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') triggerRef(); });
+  refInput.addEventListener('focus', function() { refInput.select(); });
+  langSel.addEventListener('change', function() {
+    browseLang = langSel.value === 'en' ? 'en' : 'ar';
+    try { localStorage.setItem('ndiBrowseLang', browseLang); } catch (e) {}
+    fillBooks();
+    if (curBookIdx >= 0 && curChapter > 0) loadChapter(curChapter);
   });
-  const refInput = document.getElementById('ref');
-  refInput.addEventListener('keydown', e => { if (e.key === 'Enter') trigger(); });
-  // Select-all on focus so re-typing replaces (v2.0 pattern, applied here too).
-  refInput.addEventListener('focus', () => refInput.select());
+  bookSel.addEventListener('change', function() {
+    var i = parseInt(bookSel.value, 10);
+    if (isNaN(i) || !books[i]) return;
+    curBookIdx = i;
+    fillChapters(books[i]);
+    loadChapter(1);
+  });
+  chSel.addEventListener('change', function() {
+    var c = parseInt(chSel.value, 10);
+    if (!isNaN(c)) loadChapter(c);
+  });
 
   function setStatus(msg, cls) {
-    const el = document.getElementById('status');
+    var el = document.getElementById('status');
     el.textContent = msg;
     el.className = 'status ' + (cls || '');
   }
 
-  async function trigger() {
-    const ref = refInput.value.trim();
+  function fillBooks() {
+    var html = '';
+    for (var i = 0; i < books.length; i++) {
+      html += '<option value="' + i + '">' + escapeHtml(browseLang === 'en' ? books[i].en : books[i].ar) + '</option>';
+    }
+    bookSel.innerHTML = html;
+    bookSel.dir = browseLang === 'en' ? 'ltr' : 'rtl';
+    if (curBookIdx >= 0 && books[curBookIdx]) bookSel.value = String(curBookIdx);
+  }
+
+  function loadBooks() {
+    fetch('/api/books').then(function(r) { return r.json(); }).then(function(j) {
+      if (!j.ok) { setStatus('Could not load books', 'err'); return; }
+      books = j.books;
+      fillBooks();
+      if (books.length) {
+        curBookIdx = 0;
+        bookSel.value = '0';
+        fillChapters(books[0]);
+        loadChapter(1);
+      }
+    }).catch(function() { setStatus('Network error loading books', 'err'); });
+  }
+
+  function fillChapters(book) {
+    var html = '';
+    for (var c = 1; c <= book.chapters; c++) {
+      html += '<option value="' + c + '">' + c + '</option>';
+    }
+    chSel.innerHTML = html;
+    chSel.value = '1';
+  }
+
+  function loadChapter(ch) {
+    if (curBookIdx < 0) return;
+    curChapter = ch;
+    if (chSel.value !== String(ch)) chSel.value = String(ch);
+    var book = books[curBookIdx];
+    vList.innerHTML = '<div class="hint">Loading…</div>';
+    fetch('/api/chapter?book=' + encodeURIComponent(book.id) + '&chapter=' + ch)
+      .then(function(r) { return r.json(); })
+      .then(function(j) {
+        if (!j.ok) { vList.innerHTML = '<div class="hint">Could not load chapter</div>'; return; }
+        var html = '';
+        for (var i = 0; i < j.verses.length; i++) {
+          var v = j.verses[i];
+          var textDiv = browseLang === 'en'
+            ? '<div class="ve" dir="ltr">' + escapeHtml(v.en) + '</div>'
+            : '<div class="va" dir="rtl" lang="ar">' + escapeHtml(v.ar) + '</div>';
+          html += '<div class="vrow" data-v="' + v.v + '"><div class="vn">' + v.v + '</div>' +
+                  '<div>' + textDiv + '</div></div>';
+        }
+        vList.innerHTML = html;
+        var rows = vList.querySelectorAll('.vrow');
+        for (var k = 0; k < rows.length; k++) {
+          rows[k].addEventListener('click', function() {
+            triggerVerse(parseInt(this.getAttribute('data-v'), 10));
+          });
+        }
+        markLiveRow();
+      })
+      .catch(function() { vList.innerHTML = '<div class="hint">Network error</div>'; });
+  }
+
+  function escapeHtml(t) {
+    return String(t || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function markLiveRow() {
+    var rows = vList.querySelectorAll('.vrow');
+    var book = books[curBookIdx];
+    var match = book && live.bookId === book.id && live.chapter === curChapter;
+    for (var k = 0; k < rows.length; k++) {
+      rows[k].classList.toggle('live', !!(match && parseInt(rows[k].getAttribute('data-v'), 10) === live.verse));
+    }
+  }
+
+  function triggerVerse(verseNum) {
+    if (curBookIdx < 0) return;
+    setStatus('Sending…', '');
+    fetch('/api/trigger?book=' + (curBookIdx + 1) + '&chapter=' + curChapter + '&verse=' + verseNum)
+      .then(function(r) { return r.json(); })
+      .then(function(j) {
+        if (j.ok) { setStatus('✓ On screen', 'ok'); pollNow(); }
+        else setStatus('✗ ' + (j.error || 'failed'), 'err');
+      })
+      .catch(function() { setStatus('✗ Network error', 'err'); });
+  }
+
+  function triggerRef() {
+    var ref = refInput.value.trim();
     if (!ref) { setStatus('Type a reference first', 'err'); refInput.focus(); return; }
     setStatus('Sending…', '');
-    try {
-      const r = await fetch('/api/trigger?ref=' + encodeURIComponent(ref) + '&target=' + target);
-      const j = await r.json();
-      if (j.ok) {
-        setStatus('✓ ' + ref + ' → ' + target, 'ok');
-        updateNow(ref);
-      } else {
-        setStatus('✗ ' + (j.error || 'failed'), 'err');
-      }
-    } catch (e) {
-      setStatus('✗ Network error', 'err');
+    fetch('/api/trigger?ref=' + encodeURIComponent(ref))
+      .then(function(r) { return r.json(); })
+      .then(function(j) {
+        if (j.ok) { setStatus('✓ ' + ref, 'ok'); pollNow(); }
+        else setStatus('✗ ' + (j.error || 'failed'), 'err');
+      })
+      .catch(function() { setStatus('✗ Network error', 'err'); });
+  }
+
+  function toggleOnAir() {
+    var want = !live.onAir;
+    fetch('/api/onair?on=' + (want ? '1' : '0'))
+      .then(function(r) { return r.json(); })
+      .then(function(j) { if (j.ok) pollNow(); })
+      .catch(function() { setStatus('✗ Network error', 'err'); });
+  }
+
+  function renderOnAir() {
+    var btn = document.getElementById('onAirBtn');
+    if (live.onAir) {
+      btn.className = 'onair on';
+      btn.textContent = '🔴 ON AIR — tap to hide';
+    } else {
+      btn.className = 'onair off';
+      btn.textContent = '⚫ OFF AIR — tap to show';
     }
   }
 
-  async function clearVerse() {
-    setStatus('Clearing…', '');
-    try {
-      const r = await fetch('/api/clear');
-      const j = await r.json();
-      if (j.ok) { setStatus('✓ Cleared', 'ok'); updateNow('—'); }
-      else setStatus('✗ failed', 'err');
-    } catch (e) {
-      setStatus('✗ Network error', 'err');
-    }
+  function pollNow() {
+    fetch('/api/verse?light=1').then(function(r) { return r.json(); }).then(function(j) {
+      live.onAir = !!j.isLive;
+      live.bookId = j.bookId || '';
+      live.chapter = j.chapterNum || 0;
+      live.verse = j.verseNum || 0;
+      var cit = j.arabicCitation || j.englishCitation || '';
+      var pill = document.getElementById('livePill');
+      document.getElementById('liveRef').textContent =
+        cit ? (live.onAir ? cit : 'Off air — ' + cit) : 'Off air';
+      pill.className = 'livepill' + (live.onAir && cit ? ' on' : '');
+      pill.title = cit || '';
+      renderOnAir();
+      markLiveRow();
+    }).catch(function() {});
   }
 
-  function updateNow(t) { document.getElementById('now').textContent = 'Now: ' + t; }
-
-  // Poll current verse for the "Now" line.
-  async function pollNow() {
-    try {
-      const r = await fetch('/api/verse');
-      const j = await r.json();
-      if (j.isLive && (j.arabicCitation || j.englishCitation)) {
-        updateNow(j.arabicCitation || j.englishCitation);
-      } else {
-        updateNow('—');
-      }
-    } catch (e) {}
-  }
+  loadBooks();
   pollNow();
-  setInterval(pollNow, 5000);
+  setInterval(pollNow, 3000);
 </script>
 </body>
 </html>
-        """.trimIndent()
+""".trimIndent()
 
         val bytes = html.toByteArray(Charsets.UTF_8)
         val writer = PrintWriter(out)
@@ -3379,13 +4832,24 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     /** True when the device has a real LAN address (never loopback/localhost). */
     fun hasLanAddress(): Boolean = !getLocalIpAddress().startsWith("127.")
 
+    // v1.9.1 (#16): optional display host — the tablet's network name.
+    // When set, advertised URLs use the name instead of the raw IP (which
+    // changes with DHCP). Display only: the server keeps listening on all
+    // interfaces, and the IP remains reachable as the fallback.
+    @Volatile var advertiseName: String? = null
+
+    fun getDisplayHost(): String {
+        val n = advertiseName?.trim()
+        return if (!n.isNullOrEmpty()) n else getLocalIpAddress()
+    }
+
     fun getServerUrl(): String {
         if (!hasLanAddress()) return ""
-        return "http://${getLocalIpAddress()}:$port/ndi"
+        return "http://${getDisplayHost()}:$port/ndi"
     }
 
     fun getStreamUrl(): String {
         if (!hasLanAddress()) return ""
-        return "http://${getLocalIpAddress()}:$port/ndi/stream"
+        return "http://${getDisplayHost()}:$port/ndi/stream"
     }
 }

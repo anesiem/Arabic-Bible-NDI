@@ -72,9 +72,6 @@ fun BibleReaderScreen(
     onSearchChanged: (String) -> Unit,
     onClearSearch: () -> Unit,
     onToggleLive: () -> Unit,
-    onClearBroadcast: () -> Unit,
-    onNextVerse: () -> Unit,
-    onPrevVerse: () -> Unit,
     onIncreaseFontSize: () -> Unit = {},
     onDecreaseFontSize: () -> Unit = {},
     onSetAppThemeMode: (AppThemeMode) -> Unit = {},
@@ -97,6 +94,16 @@ fun BibleReaderScreen(
         }
     }
 
+    // v1.9.1: when the operator jumps from a sermon row's book icon, scroll
+    // the focused verse into view (the Library tab opens on it).
+    LaunchedEffect(uiState.readerJumpNonce) {
+        val focusId = uiState.readerFocusVerseId ?: return@LaunchedEffect
+        val index = uiState.displayedVerses.indexOfFirst { it.id == focusId }
+        if (index != -1) {
+            lazyListState.animateScrollToItem(index)
+        }
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -104,51 +111,11 @@ fun BibleReaderScreen(
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        var outputOptionsExpanded by remember { mutableStateOf(false) }
-
-        // 1. Output Options & Live Status (Top Bento Card)
-        Surface(
-            shape = RoundedCornerShape(20.dp),
-            color = bento.card,
-            border = BorderStroke(
-                1.dp,
-                if (uiState.isLiveOnAir && uiState.activeVerse != null) bento.liveRed.copy(alpha = 0.6f) else bento.border
-            ),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { outputOptionsExpanded = !outputOptionsExpanded }
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    // v1.9: compact status dot only (no text row) — red = ON AIR, green = standby.
-                    // Beside the expand control; the whole header stays tappable to expand.
-                    val isOnAir = uiState.isLiveOnAir && uiState.activeVerse != null
-                    Box(
-                        modifier = Modifier
-                            .size(12.dp)
-                            .clip(CircleShape)
-                            .background(if (isOnAir) bento.liveRedBright else bento.green)
-                    )
-                    IconButton(onClick = { outputOptionsExpanded = !outputOptionsExpanded }, modifier = Modifier.size(24.dp)) {
-                        Icon(if (outputOptionsExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown, null, tint = bento.primary)
-                    }
-                }
-
-                AnimatedVisibility(visible = outputOptionsExpanded) {
-                    Column(modifier = Modifier.padding(start = 10.dp, end = 10.dp, bottom = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        HorizontalDivider(color = bento.borderSubtle)
-                        BentoBroadcastControlsBar(uiState, onToggleLive, onClearBroadcast, onNextVerse, onPrevVerse)
-                    }
-                }
-            }
-        }
-
-        // 2. Scripture Browser Card
+        // 1. Scripture Browser Card
+        // v1.9.1 (#9): the old collapsible "output options" card that sat
+        // above this one is REMOVED — its controls moved into the
+        // sub-controls row inside the browser card (chapter arrows, search,
+        // ON AIR toggle), and the freed space goes to the verse list.
         Surface(
             shape = RoundedCornerShape(24.dp),
             color = bento.card,
@@ -174,7 +141,18 @@ fun BibleReaderScreen(
                                 fontSize = 14.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary
                             )
                         }
-                        Icon(if (scripturePickerExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown, null, tint = bento.primary)
+                        // v1.9.1: labeled affordance — a lone chevron read as
+                        // decoration and users missed that the bar opens the
+                        // book/chapter picker (the whole bar is clickable).
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("إضغط هنا", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.primary)
+                            Box(
+                                modifier = Modifier.size(26.dp).background(bento.primary.copy(alpha = 0.16f), CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(if (scripturePickerExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown, null, tint = bento.primary, modifier = Modifier.size(18.dp))
+                            }
+                        }
                     }
                 }
 
@@ -269,14 +247,47 @@ fun BibleReaderScreen(
                     }
                 }
 
-                // Sub-controls (Search, Appearance, etc.)
+                // Sub-controls (v1.9.1 #9): chapter steppers + search on the
+                // left, ON AIR toggle + appearance on the right. This row
+                // replaces the removed output-options card.
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    // Ashraf's mapping (Arabic is RTL): the LEFT arrow moves
+                    // to the NEXT chapter, the RIGHT arrow to the PREVIOUS
+                    // chapter. Chapter browsing never changes the live
+                    // outputs — the server holds the on-air verse.
+                    IconButton(onClick = onNextChapter) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Next chapter", tint = bento.textSecondary)
+                    }
+                    IconButton(onClick = onPrevChapter) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowForward, "Previous chapter", tint = bento.textSecondary)
+                    }
                     IconButton(onClick = { showSearchBar = !showSearchBar; if (!showSearchBar) onClearSearch() }) {
                         Icon(if (showSearchBar) Icons.Default.Close else Icons.Default.Search, null, tint = bento.textSecondary)
+                    }
+
+                    Spacer(modifier = Modifier.weight(1f))
+
+                    // ON AIR toggle: green while a verse is live. Pressing
+                    // it clears the verse from the outputs and the button
+                    // turns red; pressing again brings the SAME verse back.
+                    // It never stops the broadcast service or the feeds.
+                    val isOnAir = uiState.isLiveOnAir && uiState.activeVerse != null
+                    Button(
+                        onClick = onToggleLive,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (isOnAir) bento.green else bento.liveRed,
+                            contentColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            if (isOnAir) "ON AIR (على الهواء)" else "OFF AIR (خارج الهواء)",
+                            fontSize = 12.sp, fontWeight = FontWeight.Bold
+                        )
                     }
 
                     IconButton(onClick = { displayMenuExpanded = true }) {
@@ -295,6 +306,11 @@ fun BibleReaderScreen(
 
                 // Verse List
                 val versesToShow = if (uiState.isSearching) uiState.searchResults else uiState.displayedVerses
+                // v1.9.1: verses that appear in the sermon list get a finder
+                // tint in ANY chapter the operator browses to.
+                val sermonVerseIds = remember(uiState.sermonPlaylist) {
+                    uiState.sermonPlaylist.map { it.verse.id }.toSet()
+                }
                 if (uiState.isLoadingBible && versesToShow.isEmpty()) {
                     // First-launch database copy: show progress instead of a blank list.
                     Box(
@@ -334,10 +350,18 @@ fun BibleReaderScreen(
                                         dragX += dragAmount.x
                                         dragY += dragAmount.y
 
-                                        if (!swiped && abs(dragX) > 120f && abs(dragX) > abs(dragY) * 1.5f) {
+                                        // v1.9.1 (#9): sensitivity raised at
+                                        // Ashraf's request — ~36dp of travel
+                                        // (was 120 raw px) at a gentler 1.2:1
+                                        // direction ratio (was 1.5:1), so one
+                                        // natural flick turns the chapter.
+                                        if (!swiped && abs(dragX) > 36.dp.toPx() && abs(dragX) > abs(dragY) * 1.2f) {
                                             swiped = true
                                             change.consume()
-                                            if (dragX < 0) {
+                                            // v1.9.1 (#9): Arabic is RTL —
+                                            // swipe RIGHT = NEXT chapter
+                                            // (page turn), LEFT = previous.
+                                            if (dragX > 0) {
                                                 onNextChapter()
                                             } else {
                                                 onPrevChapter()
@@ -356,6 +380,8 @@ fun BibleReaderScreen(
                             verse = verse,
                             isCued = isCued,
                             isLiveOnAir = isCued && uiState.isLiveOnAir,
+                            isFocused = uiState.readerFocusVerseId == verse.id,
+                            inSermonList = verse.id in sermonVerseIds,
                             version = uiState.bibleVersion,
                             fontSizeSp = uiState.readerFontSize,
                             showCitation = uiState.isSearching,
@@ -406,7 +432,9 @@ fun BentoVerseCard(
     version: BibleVersion,
     fontSizeSp: Int,
     showCitation: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    isFocused: Boolean = false,
+    inSermonList: Boolean = false
 ) {
     val bento = LocalBentoColors.current
     val isDark = MaterialTheme.colorScheme.surface == BentoCardDark
@@ -415,15 +443,23 @@ fun BentoVerseCard(
     } else {
         bento.primary.copy(alpha = 0.25f)
     }
-    val bgColor by animateColorAsState(if (isCued) highlightColor else bento.card, label = "cardBg")
+    // v1.9.1 highlight priority: live > focused (jumped-to from a sermon
+    // row) > cued > in-sermon-list finder tint > plain card.
+    val targetColor = when {
+        isLiveOnAir || isCued -> highlightColor
+        isFocused -> bento.primaryContainer
+        inSermonList -> bento.secondary.copy(alpha = 0.35f)
+        else -> bento.card
+    }
+    val bgColor by animateColorAsState(targetColor, label = "cardBg")
     // v1.8: Use primary (theme-aware) instead of red for the verse highlight border.
-    val borderColor = if (isLiveOnAir || isCued) bento.primary else bento.border
+    val borderColor = if (isLiveOnAir || isCued || isFocused) bento.primary else bento.border
 
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
         Card(
             shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(containerColor = bgColor),
-            border = androidx.compose.foundation.BorderStroke(if (isCued) 2.dp else 1.dp, borderColor),
+            border = androidx.compose.foundation.BorderStroke(if (isCued || isFocused) 2.dp else 1.dp, borderColor),
             modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
         ) {
             Column(modifier = Modifier.padding(12.dp)) {
@@ -461,32 +497,3 @@ fun BentoVerseCard(
     }
 }
 
-@Composable
-fun BentoBroadcastControlsBar(
-    uiState: BibleNdiUiState,
-    onToggleLive: () -> Unit,
-    onClear: () -> Unit,
-    onNext: () -> Unit,
-    onPrev: () -> Unit
-) {
-    val bento = LocalBentoColors.current
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            IconButton(onClick = onPrev) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = bento.primary) }
-            IconButton(onClick = onNext) { Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = bento.primary) }
-            IconButton(onClick = onClear) { Icon(Icons.Default.LayersClear, null, tint = bento.liveRed) }
-        }
-
-        Button(
-            onClick = onToggleLive,
-            colors = ButtonDefaults.buttonColors(containerColor = if (uiState.isLiveOnAir) bento.liveRed else bento.primary),
-            shape = RoundedCornerShape(12.dp)
-        ) {
-            Text(if (uiState.isLiveOnAir) "CUT (إيقاف)" else "PUSH LIVE (بث)")
-        }
-    }
-}

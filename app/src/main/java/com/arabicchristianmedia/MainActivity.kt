@@ -33,13 +33,13 @@ import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.Cast
 import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.Palette
-import androidx.compose.material.icons.filled.PlaylistPlay
+import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.Radio
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Palette
-import androidx.compose.material.icons.outlined.PlaylistPlay
+import androidx.compose.material.icons.automirrored.outlined.PlaylistPlay
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -132,6 +132,11 @@ class MainActivity : ComponentActivity() {
                 // sermon list tab so the operator lands on the verses.
                 LaunchedEffect(uiState.sermonListNonce) {
                     if (uiState.sermonListNonce > 0) selectedTab = 3
+                }
+                // v1.9.1: a sermon row's book icon jumps to the Library tab
+                // at the focused verse (without putting it on air).
+                LaunchedEffect(uiState.readerJumpNonce) {
+                    if (uiState.readerJumpNonce > 0) selectedTab = 0
                 }
                 // v1.9: editor sub-tab (Lower Third / Full Show) hoisted here so it
                 // survives both rotation and main-tab switches.
@@ -313,7 +318,7 @@ class MainActivity : ComponentActivity() {
                                     onClick = { selectedTab = 3 },
                                     icon = {
                                         Icon(
-                                            imageVector = if (selectedTab == 3) Icons.Filled.PlaylistPlay else Icons.Outlined.PlaylistPlay,
+                                            imageVector = if (selectedTab == 3) Icons.AutoMirrored.Filled.PlaylistPlay else Icons.AutoMirrored.Outlined.PlaylistPlay,
                                             contentDescription = "Sermon list (verses shared from notes)"
                                         )
                                     },
@@ -346,9 +351,6 @@ class MainActivity : ComponentActivity() {
                                 onSearchChanged = { viewModel.onSearchQueryChanged(it) },
                                 onClearSearch = { viewModel.clearSearch() },
                                 onToggleLive = { viewModel.toggleLive() },
-                                onClearBroadcast = { viewModel.clearBroadcast() },
-                                onNextVerse = { viewModel.nextVerse() },
-                                onPrevVerse = { viewModel.prevVerse() },
                                 onIncreaseFontSize = { viewModel.increaseFontSize() },
                                 onDecreaseFontSize = { viewModel.decreaseFontSize() },
                                 onSetAppThemeMode = { viewModel.setAppThemeMode(it) }
@@ -367,6 +369,13 @@ class MainActivity : ComponentActivity() {
                                 onUpdateTemplate = { viewModel.updateActiveTemplate(it) },
                                 onUpdateShowTemplate = { viewModel.updateActiveShowTemplate(it) },
                                 onSaveAsNew = { name, base, isFull -> viewModel.saveAsNewTemplate(name, base, isFull) },
+                                onUpdateStyleInPlace = { isFull -> viewModel.updateStyleInPlace(isFull) },
+                                highlightedStyleIsFactory = com.arabicchristianmedia.data.TemplateRepository.isFactoryStyleId(
+                                    if (editorTab == 1) uiState.highlightedShowStyleId else uiState.highlightedLowerStyleId
+                                ),
+                                customFonts = uiState.customFonts,
+                                onImportCustomFont = { uri, name -> viewModel.importCustomFont(uri, name) },
+                                onDeleteCustomFont = { viewModel.deleteCustomFont(it) },
                                 onResetDefaults = { isFull -> viewModel.resetTemplate(isFull) },
                                 onDeleteTemplate = { id, isFull -> viewModel.deleteTemplate(id, isFull) },
                                 onExportTemplate = { id -> viewModel.exportTemplateJson(id) },
@@ -395,13 +404,23 @@ class MainActivity : ComponentActivity() {
                                 onToggleAdvancedNdi = { viewModel.toggleAdvancedNdi() },
                                 onRefreshNdiDiagnostics = { viewModel.refreshNdiDiagnostics() },
                                 onClearNdiDiagnostics = { viewModel.clearNdiDiagnostics() },
+                                onSetAdvertiseByName = { viewModel.setAdvertiseByName(it) },
+                                onSetAdvertiseName = { viewModel.setAdvertiseName(it) },
+                                onToggleAdvertiseTips = { viewModel.toggleAdvertiseTips() },
                                 onToggleTashkeel = { viewModel.setTashkeelEnabled(it) },
                                 onSelectEnglishVersion = { viewModel.setEnglishVersion(it) }
                             )
                             3 -> SermonListScreen(
                                 uiState = uiState,
                                 onShowVerse = { viewModel.showSermonVerse(it) },
-                                onClear = { viewModel.clearSermonPlaylist() }
+                                onOpenInReader = { viewModel.openSermonVerseInReader(it) },
+                                onRemove = { viewModel.removeSermonEntry(it) },
+                                onClear = { viewModel.clearSermonPlaylist() },
+                                onSave = { viewModel.saveCurrentSermon(it) },
+                                onOpenSaved = { id, merge -> viewModel.openSavedSermon(id, merge) },
+                                onRenameSaved = { id, name -> viewModel.renameSavedSermon(id, name) },
+                                onDeleteSaved = { viewModel.deleteSavedSermon(it) },
+                                onSelectSermonPair = { dark, id -> viewModel.setSermonShadePair(dark, id) }
                             )
                         }
                     }

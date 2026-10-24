@@ -83,4 +83,73 @@ object ArabicFonts {
 
     /** Display names for the editor dropdown, with "System" first. */
     val displayNames: List<String> = listOf(SYSTEM) + all.map { it.family }
+
+    /**
+     * v1.9.1: Arabic display names for the bundled families. The dropdown
+     * shows the Arabic name rendered in the font itself (the real preview —
+     * Latin names render in fallback glyphs on Arabic fonts), with the
+     * Latin family name kept small beside it.
+     */
+    val arabicNames: Map<String, String> = mapOf(
+        "System" to "خط النظام",
+        "Alan Sans" to "آلان سانس",
+        "Alexandria" to "الإسكندرية",
+        "Alkalami" to "القلمي",
+        "Almarai" to "المراعي",
+        "Alyamama" to "اليمامة",
+        "Amiri" to "الأميري",
+        "Aref Ruqaa" to "عارف رقعة",
+        "Aref Ruqaa Ink" to "عارف رقعة (حبري)",
+        "Badeen Display" to "بديع",
+        "Baloo Bhaijaan 2" to "بالو بهايجان ٢",
+        "Beiruti" to "بيروتي",
+        "Blaka" to "بلاكا",
+        "Blaka Hollow" to "بلاكا (مفرّغ)",
+        "Blaka Ink" to "بلاكا (حبري)",
+        "Cairo" to "القاهرة",
+        "Cairo Play" to "القاهرة بلاي",
+        "Cascadia Code" to "كاسكاديا كود",
+        "Cascadia Mono" to "كاسكاديا مونو",
+        "Changa" to "تشانغا",
+        "El Messiri" to "المسيري",
+        "Estedad" to "استعداد",
+        "Fustat" to "الفسطاط",
+        "Gulzar" to "جلزار",
+        "Handjet" to "هاندجت",
+        "Harmattan" to "هرمتان",
+        "IBM Plex Sans Arabic" to "بلكس العربية",
+        "Jomhuria" to "جمهورية",
+        "Katibeh" to "كاتبة",
+        "Kufam" to "كوفام",
+        "Lalezar" to "لاله زار",
+        "Lateef" to "لطيف",
+        "Lemonada" to "ليمونادا",
+        "Mada" to "مدى",
+        "Marhey" to "مرحي",
+        "Markazi Text" to "مركزي",
+        "Mirza" to "ميرزا",
+        "Noto Kufi Arabic" to "نوتو كوفي عربي",
+        "Noto Naskh Arabic" to "نوتو نسخ عربي",
+        "Noto Nastaliq Urdu" to "نوتو نستعليق أردو",
+        "Noto Sans Arabic" to "نوتو سانس عربي",
+        "Oi" to "أوي",
+        "Parastoo" to "برستو",
+        "Playpen Sans Arabic" to "بلاي بن عربي",
+        "Qahiri" to "قاهري",
+        "Rakkas" to "رقاص",
+        "Readex Pro" to "ريدكس برو",
+        "Reem Kufi" to "ريم كوفي",
+        "Reem Kufi Fun" to "ريم كوفي (مرح)",
+        "Reem Kufi Ink" to "ريم كوفي (حبري)",
+        "Rubik" to "روبيك",
+        "Ruwudu" to "روودو",
+        "Scheherazade New" to "شهرزاد الجديدة",
+        "Tajawal" to "تجول",
+        "Vazirmatn" to "وزير متن",
+        "Vibes" to "فايبز",
+        "Zain" to "زين"
+    )
+
+    /** The family's Arabic display name, or null when none is defined. */
+    fun arabicName(family: String): String? = arabicNames[family]
 }

@@ -41,8 +41,12 @@ production computer.
   (transparent, chroma green, black, dark studio) for keying anywhere.
 - `/remote` — a phone-friendly remote control page: trigger verses from
   anywhere in the room.
-- `/bibleshow.xml` + **vMix SetText push** — verse text flows straight into
-  your vMix GT titles over the LAN.
+- `/lower/bibleshow.xml` + `/full/bibleshow.xml`, `/lower/bibleshow.json` + `/full/bibleshow.json` (JSON mirror of the XML feed, with `onAir` + `stateVersion`) + **vMix SetText push** —
+  verse text flows straight into your vMix GT titles over the LAN, per feed.
+  Both feeds carry the Arabic and English text as **separate fields** (plus
+  the combined `Scripture`/`VerseText` for BibleShow compatibility), and
+  each slot declares its version — Arabic is Smith–Van Dyck (SVD); English
+  is the version you selected in the app (ASV/KJV).
 
 ### Background broadcasting
 Broadcasting runs in a foreground service: it continues with the screen off or
@@ -62,9 +66,18 @@ app — then:
    Eastern numerals, and English names/abbreviations all work.
 2. **Share** the note to Arabic Bible NDI (or select text → the app appears in
    the text-selection toolbar).
-3. Every reference becomes your **Sermon list**, in order, ranges expanded
-   verse by verse — and the **first verse is already live**. Tap any row to
-   put that verse on air.
+3. Every reference becomes a group in your **Sermon list** — ranges expanded
+   verse by verse, each reference shaded its own alternating color so you
+   can see where one selection ends and the next begins. **Nothing goes on
+   air automatically**: tap a row when you're ready and that verse goes
+   live, with the Library silently moving to it in the background.
+4. Build the service your way: share more notes and they stack on top,
+   swipe a verse away, jump from any row straight to that verse in the
+   Library (without airing it), and pick your sermon verses out of any
+   chapter at a glance — they're tinted in the reader.
+5. The list **survives closing the app**, and you can **save it under a
+   sermon name** and reopen it next week — replacing the current list or
+   merging into it — and keep adding to it.
 
 Text always comes from the app's own database, so your styles and tashkeel
 setting apply exactly as if you'd tapped the verse in the reader.
@@ -101,9 +114,12 @@ setting apply exactly as if you'd tapped the verse in the reader.
 - **69+ bundled fonts, zero downloads**: 57 Arabic display fonts (Aref Ruqaa,
   Katibeh, El Messiri, Scheherazade, Kufi…) and 12 classic Latin families
   (Cinzel, Playfair Display, Lora, EB Garamond…) — the same type renders on
-  NDI, HTTP, and the editor preview.
+  NDI, HTTP, and the editor preview. Need a font that isn't bundled?
+  **Import your own TTF/OTF** from the font menu — it works on every output,
+  still fully offline.
 - **Style sharing**: export/import styles as JSON, device to device;
-  long-press any style to export, update from an import, or delete.
+  long-press any style to export, update from an import, or delete. Tweaked
+  a style? **Update it in place** — no more delete-and-recreate.
 - What you see is what goes out: the editor preview, NDI, and HTTP render the
   same design — same fit, same wrapping, same spacing.
 

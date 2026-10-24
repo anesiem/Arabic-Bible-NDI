@@ -41,6 +41,20 @@ class TemplateRepository(context: Context) {
             "tpl_fs_starlit", "tpl_fs_garden", "tpl_fs_candle"
         )
 
+        /** v1.9.1: shipped styles (the current set, or any previous shipped
+         * set) can never be overwritten in place — the loader re-supplies
+         * them from code on every launch. */
+        fun isFactoryStyleId(id: String?): Boolean =
+            id != null && (DEFAULT_TEMPLATES.any { it.id == id } || id in LEGACY_FACTORY_IDS)
+
+        /** v1.9.1: the style list with the same-id entry replaced by
+         * [updated], order preserved. Pure — unit-tested. */
+        fun updatedTemplates(
+            list: List<LowerThirdTemplate>,
+            updated: LowerThirdTemplate
+        ): List<LowerThirdTemplate> =
+            list.map { if (it.id == updated.id) updated else it }
+
         val DEFAULT_TEMPLATES = listOf(
         // v1.9 redesign: 38 shipped styles as one designed set — motion-first,
         // harmonious color families, varied Arabic + Latin fonts, all 61 fields explicit.
@@ -104,7 +118,7 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 36.0f,
                 cardPaddingRightDp = 36.0f,
                 autoFitText = true,
-                autoFitMinVerseSp = 20,
+                autoFitMaxVerseSp = 30,
                 bilingualMode = false
             ),
             LowerThirdTemplate(
@@ -167,7 +181,7 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 36.0f,
                 cardPaddingRightDp = 36.0f,
                 autoFitText = true,
-                autoFitMinVerseSp = 20,
+                autoFitMaxVerseSp = 30,
                 bilingualMode = false
             ),
             LowerThirdTemplate(
@@ -230,7 +244,7 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 36.0f,
                 cardPaddingRightDp = 36.0f,
                 autoFitText = true,
-                autoFitMinVerseSp = 20,
+                autoFitMaxVerseSp = 30,
                 bilingualMode = false
             ),
             LowerThirdTemplate(
@@ -293,7 +307,7 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 36.0f,
                 cardPaddingRightDp = 36.0f,
                 autoFitText = true,
-                autoFitMinVerseSp = 20,
+                autoFitMaxVerseSp = 30,
                 bilingualMode = false
             ),
             LowerThirdTemplate(
@@ -356,7 +370,7 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 36.0f,
                 cardPaddingRightDp = 36.0f,
                 autoFitText = true,
-                autoFitMinVerseSp = 20,
+                autoFitMaxVerseSp = 30,
                 bilingualMode = false
             ),
             LowerThirdTemplate(
@@ -419,7 +433,7 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 36.0f,
                 cardPaddingRightDp = 36.0f,
                 autoFitText = true,
-                autoFitMinVerseSp = 20,
+                autoFitMaxVerseSp = 30,
                 bilingualMode = false
             ),
             LowerThirdTemplate(
@@ -482,7 +496,7 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 36.0f,
                 cardPaddingRightDp = 36.0f,
                 autoFitText = true,
-                autoFitMinVerseSp = 20,
+                autoFitMaxVerseSp = 30,
                 bilingualMode = false
             ),
             LowerThirdTemplate(
@@ -545,7 +559,7 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 36.0f,
                 cardPaddingRightDp = 36.0f,
                 autoFitText = true,
-                autoFitMinVerseSp = 20,
+                autoFitMaxVerseSp = 30,
                 bilingualMode = false
             ),
             LowerThirdTemplate(
@@ -608,7 +622,7 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 36.0f,
                 cardPaddingRightDp = 36.0f,
                 autoFitText = true,
-                autoFitMinVerseSp = 20,
+                autoFitMaxVerseSp = 30,
                 bilingualMode = false
             ),
             LowerThirdTemplate(
@@ -671,7 +685,7 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 36.0f,
                 cardPaddingRightDp = 36.0f,
                 autoFitText = true,
-                autoFitMinVerseSp = 20,
+                autoFitMaxVerseSp = 30,
                 bilingualMode = false
             ),
             LowerThirdTemplate(
@@ -734,7 +748,7 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 36.0f,
                 cardPaddingRightDp = 36.0f,
                 autoFitText = true,
-                autoFitMinVerseSp = 20,
+                autoFitMaxVerseSp = 30,
                 bilingualMode = false
             ),
             LowerThirdTemplate(
@@ -797,7 +811,7 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 36.0f,
                 cardPaddingRightDp = 36.0f,
                 autoFitText = true,
-                autoFitMinVerseSp = 20,
+                autoFitMaxVerseSp = 30,
                 bilingualMode = false
             ),
             LowerThirdTemplate(
@@ -860,7 +874,7 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 36.0f,
                 cardPaddingRightDp = 36.0f,
                 autoFitText = true,
-                autoFitMinVerseSp = 20,
+                autoFitMaxVerseSp = 30,
                 bilingualMode = false
             ),
             LowerThirdTemplate(
@@ -923,7 +937,7 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 36.0f,
                 cardPaddingRightDp = 36.0f,
                 autoFitText = true,
-                autoFitMinVerseSp = 20,
+                autoFitMaxVerseSp = 30,
                 bilingualMode = false
             ),
             LowerThirdTemplate(
@@ -986,7 +1000,7 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 36.0f,
                 cardPaddingRightDp = 36.0f,
                 autoFitText = true,
-                autoFitMinVerseSp = 20,
+                autoFitMaxVerseSp = 30,
                 bilingualMode = false
             ),
             LowerThirdTemplate(
@@ -1049,7 +1063,7 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 36.0f,
                 cardPaddingRightDp = 36.0f,
                 autoFitText = true,
-                autoFitMinVerseSp = 20,
+                autoFitMaxVerseSp = 30,
                 bilingualMode = false
             ),
             LowerThirdTemplate(
@@ -1112,7 +1126,7 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 36.0f,
                 cardPaddingRightDp = 36.0f,
                 autoFitText = true,
-                autoFitMinVerseSp = 20,
+                autoFitMaxVerseSp = 30,
                 bilingualMode = false
             ),
             LowerThirdTemplate(
@@ -1175,7 +1189,7 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 36.0f,
                 cardPaddingRightDp = 36.0f,
                 autoFitText = true,
-                autoFitMinVerseSp = 20,
+                autoFitMaxVerseSp = 30,
                 bilingualMode = false
             ),
             LowerThirdTemplate(
@@ -1238,7 +1252,7 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 36.0f,
                 cardPaddingRightDp = 36.0f,
                 autoFitText = true,
-                autoFitMinVerseSp = 20,
+                autoFitMaxVerseSp = 30,
                 bilingualMode = false
             ),
             LowerThirdTemplate(
@@ -1301,7 +1315,7 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 36.0f,
                 cardPaddingRightDp = 36.0f,
                 autoFitText = true,
-                autoFitMinVerseSp = 20,
+                autoFitMaxVerseSp = 30,
                 bilingualMode = false
             ),
             LowerThirdTemplate(
@@ -1364,7 +1378,7 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 36.0f,
                 cardPaddingRightDp = 36.0f,
                 autoFitText = true,
-                autoFitMinVerseSp = 20,
+                autoFitMaxVerseSp = 30,
                 bilingualMode = false
             ),
             LowerThirdTemplate(
@@ -1427,7 +1441,7 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 36.0f,
                 cardPaddingRightDp = 36.0f,
                 autoFitText = true,
-                autoFitMinVerseSp = 20,
+                autoFitMaxVerseSp = 30,
                 bilingualMode = false
             ),
             LowerThirdTemplate(
@@ -1490,7 +1504,7 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 36.0f,
                 cardPaddingRightDp = 36.0f,
                 autoFitText = true,
-                autoFitMinVerseSp = 20,
+                autoFitMaxVerseSp = 30,
                 bilingualMode = false
             ),
             LowerThirdTemplate(
@@ -1553,7 +1567,7 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 36.0f,
                 cardPaddingRightDp = 36.0f,
                 autoFitText = true,
-                autoFitMinVerseSp = 20,
+                autoFitMaxVerseSp = 30,
                 bilingualMode = false
             ),
             LowerThirdTemplate(
@@ -1616,7 +1630,7 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 36.0f,
                 cardPaddingRightDp = 36.0f,
                 autoFitText = true,
-                autoFitMinVerseSp = 20,
+                autoFitMaxVerseSp = 30,
                 bilingualMode = false
             ),
             LowerThirdTemplate(
@@ -1679,7 +1693,7 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 36.0f,
                 cardPaddingRightDp = 36.0f,
                 autoFitText = true,
-                autoFitMinVerseSp = 20,
+                autoFitMaxVerseSp = 30,
                 bilingualMode = false
             ),
             LowerThirdTemplate(
@@ -1742,7 +1756,7 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 36.0f,
                 cardPaddingRightDp = 36.0f,
                 autoFitText = true,
-                autoFitMinVerseSp = 20,
+                autoFitMaxVerseSp = 30,
                 bilingualMode = false
             ),
             LowerThirdTemplate(
@@ -1805,7 +1819,8 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 56.0f,
                 cardPaddingRightDp = 56.0f,
                 autoFitText = true,
-                autoFitMinVerseSp = 42,
+                autoFitMaxVerseSp = 64,
+                boxHeightPercent = 100,
                 bilingualMode = false
             ),
             LowerThirdTemplate(
@@ -1868,7 +1883,8 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 56.0f,
                 cardPaddingRightDp = 56.0f,
                 autoFitText = true,
-                autoFitMinVerseSp = 42,
+                autoFitMaxVerseSp = 64,
+                boxHeightPercent = 100,
                 bilingualMode = false
             ),
             LowerThirdTemplate(
@@ -1931,7 +1947,8 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 56.0f,
                 cardPaddingRightDp = 56.0f,
                 autoFitText = true,
-                autoFitMinVerseSp = 42,
+                autoFitMaxVerseSp = 64,
+                boxHeightPercent = 100,
                 bilingualMode = false
             ),
             LowerThirdTemplate(
@@ -1994,7 +2011,8 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 56.0f,
                 cardPaddingRightDp = 56.0f,
                 autoFitText = true,
-                autoFitMinVerseSp = 42,
+                autoFitMaxVerseSp = 64,
+                boxHeightPercent = 100,
                 bilingualMode = false
             ),
             LowerThirdTemplate(
@@ -2057,7 +2075,8 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 56.0f,
                 cardPaddingRightDp = 56.0f,
                 autoFitText = true,
-                autoFitMinVerseSp = 42,
+                autoFitMaxVerseSp = 64,
+                boxHeightPercent = 100,
                 bilingualMode = false
             ),
             LowerThirdTemplate(
@@ -2120,7 +2139,8 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 56.0f,
                 cardPaddingRightDp = 56.0f,
                 autoFitText = true,
-                autoFitMinVerseSp = 42,
+                autoFitMaxVerseSp = 64,
+                boxHeightPercent = 100,
                 bilingualMode = false
             ),
             LowerThirdTemplate(
@@ -2183,7 +2203,8 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 56.0f,
                 cardPaddingRightDp = 56.0f,
                 autoFitText = true,
-                autoFitMinVerseSp = 42,
+                autoFitMaxVerseSp = 64,
+                boxHeightPercent = 100,
                 bilingualMode = false
             ),
             LowerThirdTemplate(
@@ -2246,7 +2267,8 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 56.0f,
                 cardPaddingRightDp = 56.0f,
                 autoFitText = true,
-                autoFitMinVerseSp = 42,
+                autoFitMaxVerseSp = 64,
+                boxHeightPercent = 100,
                 bilingualMode = false
             ),
             LowerThirdTemplate(
@@ -2309,7 +2331,8 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 56.0f,
                 cardPaddingRightDp = 56.0f,
                 autoFitText = true,
-                autoFitMinVerseSp = 42,
+                autoFitMaxVerseSp = 64,
+                boxHeightPercent = 100,
                 bilingualMode = false
             ),
             LowerThirdTemplate(
@@ -2372,7 +2395,8 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 56.0f,
                 cardPaddingRightDp = 56.0f,
                 autoFitText = true,
-                autoFitMinVerseSp = 42,
+                autoFitMaxVerseSp = 64,
+                boxHeightPercent = 100,
                 bilingualMode = false
             ),
             LowerThirdTemplate(
@@ -2435,7 +2459,8 @@ class TemplateRepository(context: Context) {
                 cardPaddingLeftDp = 56.0f,
                 cardPaddingRightDp = 56.0f,
                 autoFitText = true,
-                autoFitMinVerseSp = 42,
+                autoFitMaxVerseSp = 64,
+                boxHeightPercent = 100,
                 bilingualMode = false
             ),
         )
@@ -2568,7 +2593,7 @@ class TemplateRepository(context: Context) {
             val obj = JSONObject(json)
             if (obj.optString("name", "").trim().isEmpty()) return null
             // Sanity: a real style carries several known keys.
-            val knownKeys = listOf("fontFamily", "bgColorHex", "textColorHex", "verseFontSize", "style", "showCrossEmblem", "emblem")
+            val knownKeys = listOf("fontFamily", "bgColorHex", "textColorHex", "verseFontSize", "style", "showCrossEmblem", "emblem", "autoFitMinVerseSp", "autoFitMaxVerseSp", "boxHeightPercent", "isFullScreen", "id")
             if (knownKeys.none { obj.has(it) }) return null
             fromJson(obj)
         } catch (e: Exception) {
@@ -2637,7 +2662,8 @@ class TemplateRepository(context: Context) {
             put("cardPaddingLeftDp", t.cardPaddingLeftDp.toDouble())
             put("cardPaddingRightDp", t.cardPaddingRightDp.toDouble())
             put("autoFitText", t.autoFitText)
-            put("autoFitMinVerseSp", t.autoFitMinVerseSp)
+            put("autoFitMaxVerseSp", t.autoFitMaxVerseSp)
+            put("boxHeightPercent", t.boxHeightPercent)
         }
     }
 
@@ -2729,7 +2755,18 @@ class TemplateRepository(context: Context) {
             cardPaddingLeftDp = obj.optDouble("cardPaddingLeftDp", 36.0).toFloat().coerceIn(0f, 300f),
             cardPaddingRightDp = obj.optDouble("cardPaddingRightDp", 36.0).toFloat().coerceIn(0f, 300f),
             autoFitText = obj.optBoolean("autoFitText", true),
-            autoFitMinVerseSp = obj.optInt("autoFitMinVerseSp", 28).coerceIn(10, 200)
+            // v1.9.1: the size setting changed meaning (floor -> CAP, Ashraf's
+            // model). Legacy saves carry only autoFitMinVerseSp: migrate its
+            // value as the cap. New key wins when both exist.
+            // Round-2 guard (Ashraf's Midnight Psalm case): a low legacy
+            // FLOOR was permissive ("shrink at most down to 16"), but as a
+            // CAP it is destructive ("never above 16") — a migrated cap
+            // never lands below the style's own verse size. Deliberate
+            // small caps remain settable afterwards in the Editor.
+            autoFitMaxVerseSp = (if (obj.has("autoFitMaxVerseSp")) obj.optInt("autoFitMaxVerseSp", 48)
+                                 else maxOf(obj.optInt("autoFitMinVerseSp", 48), obj.optInt("verseFontSize", 26))).coerceIn(10, 200),
+            boxHeightPercent = obj.optInt("boxHeightPercent",
+                if (obj.optBoolean("isFullScreen", false)) 100 else 45).coerceIn(10, 100)
         ).let { migrateLegacyVideo(it) }
     }
 

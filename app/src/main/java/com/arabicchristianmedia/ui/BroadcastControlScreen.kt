@@ -144,38 +144,30 @@ fun BroadcastControlScreen(
         (uiState.availableInterfaces.isNotEmpty() && uiState.availableInterfaces.none { it.isRecommended })
 
     val bibleBlock: @Composable () -> Unit = {
-        // The Bible strip: tashkeel (Ashraf's rule: always at the very top)
-        // and the English version picker, one card.
-        Surface(
-            shape = RoundedCornerShape(24.dp),
-            color = bento.card,
-            border = androidx.compose.foundation.BorderStroke(1.dp, bento.border),
-            modifier = Modifier.fillMaxWidth()
+        // The Bible strip: tashkeel (Ashraf's rule: always at the very top
+        // of the Setup tab) and the English version picker.
+        // v1.9.2 (#10a): now a collapsible SetupSection like every other
+        // Setup block — still FIRST, but closed it costs one summary line
+        // instead of ~a third of the tablet screen (in the wide layout the
+        // strip is pinned above the panes and could never scroll away).
+        SetupSection(
+            title = "الكتاب المقدس (Bible)",
+            summary = "Tashkeel " + (if (uiState.tashkeelEnabled) "On" else "Off") +
+                " · English: " + uiState.englishVersion.uppercase(),
+            seedExpanded = false
         ) {
             Column {
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
+                modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column {
-                        Text(
-                            text = "التشكيل (Tashkeel Diacritics)",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = bento.textPrimary
-                        )
-                        Text(
-                            text = "إظهار علامات التشكيل على النص العربي",
-                            fontSize = 11.sp,
-                            color = bento.textSecondary
-                        )
-                    }
-                }
-
+                Text(
+                    text = "التشكيل (Tashkeel Diacritics)",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = bento.textPrimary
+                )
                 Switch(
                     checked = uiState.tashkeelEnabled,
                     onCheckedChange = { onToggleTashkeel(it) },
@@ -185,8 +177,8 @@ fun BroadcastControlScreen(
                     )
                 )
             }
-                androidx.compose.material3.HorizontalDivider(color = bento.borderSubtle, modifier = Modifier.padding(horizontal = 16.dp))
-            Column(modifier = Modifier.padding(16.dp)) {
+                androidx.compose.material3.HorizontalDivider(color = bento.borderSubtle, modifier = Modifier.padding(vertical = 10.dp))
+            Column {
                 Text(
                     text = "الترجمة الإنجليزية (English Bible Version)",
                     fontSize = 13.sp,

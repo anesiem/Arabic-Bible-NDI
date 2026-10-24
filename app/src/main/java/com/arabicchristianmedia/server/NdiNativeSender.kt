@@ -121,6 +121,18 @@ class NdiNativeSender {
     var idlePollMs: Long = 120L
 
     /**
+     * v1.9.2: fully transparent frames sent on stop, BEFORE the native sender
+     * is destroyed. NDI receivers hold the last received frame when a source
+     * vanishes, so destroying without clearing left the verse frozen on the
+     * viewing client. A few clear frames (spaced so receivers present them)
+     * leave the client showing transparency instead. 0 disables the clear.
+     */
+    var clearFramesOnStop: Int = 3
+
+    /** Gap between the stop clear-frames, so receivers present each one. */
+    var clearFrameGapMs: Long = 40L
+
+    /**
      * Re-render cadence for motion mode (~30fps). Kept user-configurable per
      * project AI preferences; the Motion toggle stays fully in the user's
      * hands (slow tablets can turn it off entirely).
@@ -355,6 +367,39 @@ class NdiNativeSender {
         return true
     }
 
+    /**
+     * v1.9.2: teardown for one session, called with the feed's lock held.
+     * Sends the transparent clear-frames FIRST (receivers hold the last frame
+     * they received — clearing is the only way the picture actually goes
+     * away), then closes and destroys exactly as before. The clear is
+     * best-effort: it must never block the destroy.
+     */
+    private fun clearThenDestroyLocked(session: SenderSession) {
+        if (clearFramesOnStop > 0) {
+            try {
+                val clear = Bitmap.createBitmap(session.spec.width, session.spec.height, Bitmap.Config.ARGB_8888)
+                try {
+                    clear.eraseColor(Color.TRANSPARENT)
+                    for (i in 0 until clearFramesOnStop) {
+                        if (i > 0 && clearFrameGapMs > 0) Thread.sleep(clearFrameGapMs)
+                        sendBitmapToPtr(session, clear)
+                    }
+                } finally {
+                    try { clear.recycle() } catch (e: Exception) {}
+                }
+            } catch (e: Exception) {
+                reportError(session.spec.feedKey, "Stop clear-frames failed: ${e.message}")
+            }
+        }
+        // Mark closed BEFORE destroying: any in-flight triggerFrame()
+        // or send-loop iteration checks this inside the same lock.
+        session.closed = true
+        session.job?.cancel()
+        try { session.scaledBitmap?.recycle() } catch (e: Exception) {}
+        session.scaledBitmap = null
+        nativeDestroySender(session.ptr)
+    }
+
     fun stopSource(feedKey: String) {
         synchronized(activeSenders) {
             val session = activeSenders.remove(feedKey) ?: return
@@ -363,13 +408,7 @@ class NdiNativeSender {
             // Lock order is always activeSenders -> feedLock (never the reverse).
             synchronized(feedLock(feedKey)) {
                 try {
-                    // Mark closed BEFORE destroying: any in-flight triggerFrame()
-                    // or send-loop iteration checks this inside the same lock.
-                    session.closed = true
-                    session.job?.cancel()
-                    try { session.scaledBitmap?.recycle() } catch (e: Exception) {}
-                    session.scaledBitmap = null
-                    nativeDestroySender(session.ptr)
+                    clearThenDestroyLocked(session)
                 } catch (e: Exception) {
                     reportError(feedKey, "Error stopping source: ${e.message}")
                 }
@@ -507,11 +546,7 @@ class NdiNativeSender {
                 // downscale bitmap while its feed might be mid-send.
                 synchronized(feedLock(session.spec.feedKey)) {
                     try {
-                        session.closed = true
-                        session.job?.cancel()
-                        try { session.scaledBitmap?.recycle() } catch (e: Exception) {}
-                        session.scaledBitmap = null
-                        nativeDestroySender(session.ptr)
+                        clearThenDestroyLocked(session)
                     } catch (e: Exception) {
                         reportError(session.spec.feedKey, "Error stopping source: ${e.message}")
                     }

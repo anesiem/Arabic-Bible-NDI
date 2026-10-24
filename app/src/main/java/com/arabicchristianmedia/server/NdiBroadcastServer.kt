@@ -1261,35 +1261,49 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
     // v2.0: Real particle field on HTTP (mirrors NDI drawParticleField).
     // Previously HTTP only pulsed a CSS glow; now draws actual particles.
+    // v1.9.2 (#4): ONE time-based model, NDI's exact ranges — the old loop
+    // integrated per FRAME (so speed doubled on 120Hz screens) and ignored
+    // motionSpeed entirely, running ~2x faster than NDI. Velocities are
+    // px/sec at stage scale, integrated with the real frame delta:
+    // drift (6..24) x scale, rise (10..32) x scale, twinkle 0.8..3.0
+    // rad/s, radius (1.2..4.0) x scale, density = frame-area/15000 at
+    // 1080p-equivalent (NDI: area/(1920x1080) x 120, clamped 30..150).
     let particleAnimId = null;
     let particleColor = '#7DD3FC';
-    function startParticles(colorHex, opacity) {
+    let particleArgs = null; // v1.9.2 (#11): last start args, for resize restarts
+    function startParticles(colorHex, opacity, speed) {
       stopParticles();
       particleColor = colorHex;
+      particleArgs = [colorHex, opacity, speed];
+      const spd = (speed === undefined || speed === null) ? 1 : parseFloat(speed);
       const canvas = particleCanvas;
       const ctx = canvas.getContext('2d');
       const rect = animBgLayer.getBoundingClientRect();
       canvas.width = Math.max(1, Math.floor(rect.width));
       canvas.height = Math.max(1, Math.floor(rect.height));
       canvas.style.display = 'block';
-      const count = Math.min(120, Math.max(30, Math.floor((canvas.width * canvas.height) / 15000)));
+      const ss = getStageScale() || 1;
+      const count = Math.min(150, Math.max(30, Math.floor((canvas.width * canvas.height) / (ss * ss) / (1920 * 1080) * 120)));
       const particles = [];
       for (let i = 0; i < count; i++) {
         particles.push({
           x: Math.random() * canvas.width,
           y: Math.random() * canvas.height,
-          vx: (Math.random() - 0.5) * 0.4,
-          vy: -0.3 - Math.random() * 0.5,
-          r: 1 + Math.random() * 2.5,
+          vx: (6 + Math.random() * 18) * ss * spd,
+          vy: -(10 + Math.random() * 22) * ss * spd,
+          r: (1.2 + Math.random() * 2.8) * ss,
           tw: Math.random() * Math.PI * 2,
-          twSpeed: 0.02 + Math.random() * 0.05
+          twSpeed: (0.8 + Math.random() * 2.2) * spd
         });
       }
-      const baseAlpha = Math.floor(opacity * 255);
-      function frame() {
+      const baseAlpha = Math.max(25, Math.min(255, Math.floor(opacity * 255)));
+      let lastT = performance.now();
+      function frame(now) {
+        const dt = Math.min(0.1, Math.max(0, (now - lastT) / 1000));
+        lastT = now;
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         for (const p of particles) {
-          p.x += p.vx; p.y += p.vy; p.tw += p.twSpeed;
+          p.x += p.vx * dt; p.y += p.vy * dt; p.tw += p.twSpeed * dt;
           if (p.y < -5) { p.y = canvas.height + 5; p.x = Math.random() * canvas.width; }
           if (p.x < -5) p.x = canvas.width + 5;
           if (p.x > canvas.width + 5) p.x = -5;
@@ -1302,7 +1316,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         }
         particleAnimId = requestAnimationFrame(frame);
       }
-      frame();
+      particleAnimId = requestAnimationFrame(frame);
     }
     function stopParticles() {
       if (particleAnimId) { cancelAnimationFrame(particleAnimId); particleAnimId = null; }
@@ -1323,6 +1337,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     let revealToken = 0;
     let lastFitFn = null;
     let activeParticleKey = null;
+    let activeAnimKey = null; // v1.9.2 (#2): fingerprint of the applied motion-background config
     let cardGradOn = false; // v1.9.1: an inline animated gradient currently sits on the card (Lower placement)
     // v1.9.1: overlay self-diagnostics \u2014 the page times its own receive
     // -> apply -> fit path and reports it to /api/clientstat every 10s; the
@@ -1871,6 +1886,17 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       const animType = data.animatedBackground || 'none';
       const animOpacity = data.animatedBackgroundOpacity !== undefined ? data.animatedBackgroundOpacity : 0.65;
 
+      // v1.9.2 (#2): reconfiguring the layer RESTARTS its CSS animation
+      // (class wipe + re-add resets the phase to 0), and this section used
+      // to run on EVERY apply — so any state change (a verse tap, or the
+      // OTHER feed's template changing, which re-applies this page with an
+      // identical payload) restarted this page's motion background. Guard
+      // the whole section with a fingerprint of everything it consumes:
+      // when the animation config is unchanged, the running animation,
+      // the particle field and the video are left exactly as they are.
+      const animKey = [animType, animOpacity, data.motionSpeed, data.isPureTransparentBackground ? 1 : 0,
+        data.bgOpacity, data.customVideoId || '', data.videoLoopMode || '', isFull ? 1 : 0].join('|');
+      if (animKey !== activeAnimKey) {
       animBgLayer.className = 'animated-bg-layer';
       customVideoBg.style.display = 'none';
       // v1.9.1: don't tear the particle field down on every apply — it was
@@ -1905,16 +1931,19 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       } else if (animType === 'gold_particles') {
         animBgLayer.classList.add('anim-gold-particles');
         animBgLayer.style.opacity = animOpacity;
-        if (activeParticleKey !== 'gold_particles') {
-          startParticles('#FCD34D', animOpacity);
-          activeParticleKey = 'gold_particles';
+        // v1.9.2 (#4): the particle key carries the speed — a speed-only
+        // change must restart the field with the new velocities (the
+        // section guard alone would leave the old speed running).
+        if (activeParticleKey !== 'gold_particles@' + data.motionSpeed) {
+          startParticles('#FCD34D', animOpacity, data.motionSpeed);
+          activeParticleKey = 'gold_particles@' + data.motionSpeed;
         }
       } else if (animType === 'particles') {
         animBgLayer.classList.add('anim-particles');
         animBgLayer.style.opacity = animOpacity;
-        if (activeParticleKey !== 'particles') {
-          startParticles('#7DD3FC', animOpacity);
-          activeParticleKey = 'particles';
+        if (activeParticleKey !== 'particles@' + data.motionSpeed) {
+          startParticles('#7DD3FC', animOpacity, data.motionSpeed);
+          activeParticleKey = 'particles@' + data.motionSpeed;
         }
       } else if (animType === 'custom_video' && data.customVideoId) {
         // v1.7: videos are served by opaque ID from private storage (never by path).
@@ -2076,6 +2105,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // inline gradient left from a previous animated style.
         animBgLayer.style.backgroundImage = 'none';
       }
+      activeAnimKey = animKey;
+      } // v1.9.2 (#2): end of the motion-background fingerprint guard
 
       // 8. Entry Transitions
       container.className = isFull ? 'mode-full-show' : '';
@@ -2097,6 +2128,29 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       lastStyleKey = styleKey;
       finishApply();
     }
+
+    // v1.9.2 (#11): every overlay size is an absolute px value derived
+    // from the stage size at fit time. With no resize handling, tiling
+    // or resizing the browser window left the text and card at the old
+    // pixel sizes while the stage shrank — the card ballooned past its
+    // box (NDI re-renders every frame at the feed resolution and cannot
+    // drift). Re-run the last fit when the stage changes size, and
+    // restart the particle field so its canvas matches the new stage.
+    let resizeFitTimer = null;
+    function scheduleResizeFit() {
+      if (resizeFitTimer) clearTimeout(resizeFitTimer);
+      resizeFitTimer = setTimeout(function() {
+        resizeFitTimer = null;
+        if (lastFitFn) { try { lastFitFn(); } catch (e) { /* fit is best-effort */ } }
+        if (particleAnimId && particleArgs) {
+          startParticles(particleArgs[0], particleArgs[1], particleArgs[2]);
+        }
+      }, 120);
+    }
+    if (window.ResizeObserver) {
+      try { new ResizeObserver(scheduleResizeFit).observe(stage); } catch (e) { /* older browser */ }
+    }
+    window.addEventListener('resize', scheduleResizeFit);
 
     // Connect Server-Sent Events (SSE)
     // v1.9.1: shared forced reconnect (half-open socket recovery). The

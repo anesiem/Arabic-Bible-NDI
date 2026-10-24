@@ -2317,6 +2317,15 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         }
 
     /**
+     * v1.9.2: parks one feed's video decoder (no-op if none). Called when
+     * motion is switched off so the park is immediate even when no static
+     * draw follows (the static provider serves the cache).
+     */
+    fun parkVideoDecoder(isFull: Boolean) {
+        synchronized(videoRenderers) { videoRenderers[isFull]?.setMotionActive(false) }
+    }
+
+    /**
      * Resolves the template's custom video to a private-storage file.
      * Null = no video (feature off or file missing); callers fall back to the
      * normal background. Legacy raw URLs are migrated by TemplateRepository.
@@ -2938,6 +2947,14 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             videoRenderer.setSpeed(tpl.motionSpeed)
             // v2.0: Apply the template's loop mode (fade or cut).
             videoRenderer.loopMode = tpl.videoLoopMode.id
+            // v1.9.2: park the decoder when motion is off — static
+            // renders freeze on the last frame, but the player used to
+            // keep decoding frames nobody consumed. Motion ticks resume
+            // it; transition snapshots touch nothing (they borrow the
+            // live frame's state, and pausing there would churn every
+            // tick of a transition).
+            if (isMotionTick) videoRenderer.setMotionActive(true)
+            else if (!isTransitionSnapshot) videoRenderer.setMotionActive(false)
             if (isMotionTick || !videoRenderer.hasFrame()) videoRenderer.requestFrame()
             val videoRect = Rect(boxLeft.toInt(), boxTop.toInt(), boxRight.toInt(), boxBottom.toInt())
             if (radius > 0f) {

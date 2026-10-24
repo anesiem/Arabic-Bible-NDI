@@ -55,6 +55,38 @@ class VideoBackgroundRenderer(
     @Volatile private var alpha: Float = 1f
     /** v2.0: Loop mode (CUT or FADE). Set by the caller. */
     @Volatile var loopMode: String = "fade"
+    /**
+     * v1.9.2: Motion-mode gate. When false the decoder stays parked even
+     * if setSpeed/setSource would otherwise start it — without this, a
+     * draw-path pause would be undone by setSpeed's start on the next
+     * draw. Written on the caller thread, read on the decoder thread.
+     */
+    @Volatile private var motionActive = true
+    /** Last speed from setSpeed (decoder thread only). */
+    private var currentSpeed = 1.0f
+
+    /**
+     * v1.9.2: Tells the decoder whether motion mode is on. Motion off
+     * pauses the player (the last frame stays for the frozen-video
+     * state); motion on resumes it — but only when a nonzero speed is
+     * configured, so a speed-0 pause (the user's pause) survives
+     * motion-on. Safe to call on every draw: the post costs the same
+     * as the existing per-draw setSource/setSpeed posts.
+     */
+    fun setMotionActive(active: Boolean) {
+        motionActive = active
+        handler.post {
+            try {
+                if (active) {
+                    if (currentSpeed > 0f) {
+                        try { player?.start() } catch (e: Exception) { }
+                    }
+                } else {
+                    try { if (player?.isPlaying == true) player?.pause() } catch (e: Exception) { }
+                }
+            } catch (e: Exception) { }
+        }
+    }
 
     // Decoder-thread state only (except where noted):
     private var eglDisplay: EGLDisplay? = null
@@ -107,14 +139,19 @@ class VideoBackgroundRenderer(
             try {
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
                     val s = speed.coerceIn(0f, 3.0f)
+                    currentSpeed = s
                     if (s == 0f) {
                         player?.pause()
                     } else {
                         val params = player?.playbackParams ?: android.media.PlaybackParams()
                         params.speed = s
                         player?.playbackParams = params
-                        // Resume if was paused by speed=0
-                        try { player?.start() } catch (e: Exception) { }
+                        // Resume if was paused by speed=0 — but never when
+                        // motion is off: the decoder stays parked until
+                        // motion returns (setMotionActive).
+                        if (motionActive) {
+                            try { player?.start() } catch (e: Exception) { }
+                        }
                     }
                 }
             } catch (e: Exception) {

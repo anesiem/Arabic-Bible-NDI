@@ -198,7 +198,14 @@ class NdiService : Service() {
             val validFps = if (NdiNativeSender.FPS_OPTIONS.contains(fps)) fps else d.fps
             val spec = NdiSourceSpec(feedKey, res.first, res.second, validFps, motion)
             return if (prefs.getBoolean("${feedKey}_enabled", true)) {
-                snd.startSource(feedKey, isFullScreen, spec)
+                val started = snd.startSource(feedKey, isFullScreen, spec)
+                // v1.9.2: motion off parks the feed's video decoder
+                // immediately — the static provider serves the cache, so
+                // no draw may follow to park it via the draw path.
+                if (started && !motion) {
+                    try { server?.parkVideoDecoder(isFullScreen) } catch (e: Exception) { /* ignore */ }
+                }
+                started
             } else {
                 try { snd.stopSource(feedKey) } catch (e: Exception) { /* ignore */ }
                 false

@@ -1338,6 +1338,35 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     let lastFitFn = null;
     let activeParticleKey = null;
     let activeAnimKey = null; // v1.9.2 (#2): fingerprint of the applied motion-background config
+    // v1.9.2 (video-loop audit): rAF-driven loop fade for fade-mode
+    // custom video — ontimeupdate (~4Hz) stepped the 500ms fade visibly.
+    // The tick runs independently of applies and skips the DOM write when
+    // the value is unchanged (paused video, mid-video frames).
+    let videoFadeRaf = 0;
+    let videoFadeBase = 1;
+    let lastVideoFadeOp = null;
+    function stopVideoFade() {
+      if (videoFadeRaf) { cancelAnimationFrame(videoFadeRaf); videoFadeRaf = 0; }
+      lastVideoFadeOp = null;
+    }
+    function videoFadeTick() {
+      videoFadeRaf = 0;
+      var dur = customVideoBg.duration;
+      var pos = customVideoBg.currentTime;
+      var f = 1;
+      if (dur && dur > 0) {
+        var fadeS = 0.5;
+        if (pos >= dur - fadeS) f = Math.max(0, (dur - pos) / fadeS);
+        else if (pos < fadeS) f = Math.max(0, pos / fadeS);
+      }
+      var op = (videoFadeBase * f).toFixed(3);
+      if (op !== lastVideoFadeOp) { customVideoBg.style.opacity = op; lastVideoFadeOp = op; }
+      videoFadeRaf = requestAnimationFrame(videoFadeTick);
+    }
+    function startVideoFade() {
+      stopVideoFade();
+      videoFadeRaf = requestAnimationFrame(videoFadeTick);
+    }
     let cardGradOn = false; // v1.9.1: an inline animated gradient currently sits on the card (Lower placement)
     // v1.9.1: overlay self-diagnostics \u2014 the page times its own receive
     // -> apply -> fit path and reports it to /api/clientstat every 10s; the
@@ -1905,6 +1934,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       if (animKey !== activeAnimKey) {
       animBgLayer.className = 'animated-bg-layer';
       customVideoBg.style.display = 'none';
+      stopVideoFade(); // v1.9.2: the video branch restarts it below if still fade-mode
       // v1.9.1: don't tear the particle field down on every apply — it was
       // restarted (positions reset) by any state change, even a verse tap.
       // Round 2 (#7) stopped the canvas under Alpha 100%; the audit (A2)
@@ -1959,29 +1989,33 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // The customVideoMuted toggle only affects NDI.
         customVideoBg.muted = true;
         // v1.8: Apply motion speed to video playback rate.
-        const speed = parseFloat(data.motionSpeed) || 1.0;
-        if (customVideoBg.playbackRate !== speed) customVideoBg.playbackRate = speed;
+        // v1.9.2 (video-loop audit): speed 0 PAUSES (NDI parity) — the old
+        // `parseFloat(...) || 1.0` turned 0 into 1x, so the HTTP video
+        // ignored the pause while NDI froze.
+        const speed = parseFloat(data.motionSpeed);
+        const rate = isNaN(speed) ? 1.0 : speed;
+        if (rate === 0) {
+          customVideoBg.pause();
+        } else {
+          if (customVideoBg.playbackRate !== rate) customVideoBg.playbackRate = rate;
+          if (customVideoBg.paused) {
+            var pr = customVideoBg.play();
+            if (pr && pr.catch) pr.catch(function() {});
+          }
+        }
         customVideoBg.style.display = 'block';
         customVideoBg.style.opacity = animOpacity;
         animBgLayer.style.opacity = '1';
-        // v2.0: Crossfade on HTTP — fade the video element near the loop point
-        // (matches the NDI draw-time fade). timeupdate fires ~4x/sec; enough
-        // for a 500ms fade window.
+        // v1.9.2 (video-loop audit): loop fade driven by
+        // requestAnimationFrame, not ontimeupdate — the ~4Hz timeupdate
+        // stepped the 500ms fade visibly (2 samples). Matches NDI's
+        // per-frame fade; the old handler is cleared so it cannot fight
+        // the rAF loop with stepped writes.
+        videoFadeBase = animOpacity;
+        stopVideoFade();
+        customVideoBg.ontimeupdate = null;
         const wantFade = (data.videoLoopMode || 'fade') === 'fade';
-        if (wantFade) {
-          customVideoBg.ontimeupdate = function() {
-            const dur = customVideoBg.duration;
-            const pos = customVideoBg.currentTime;
-            if (!dur || dur <= 0) { customVideoBg.style.opacity = animOpacity; return; }
-            const fadeS = 0.5;
-            let f = 1;
-            if (pos >= dur - fadeS) f = Math.max(0, (dur - pos) / fadeS);
-            else if (pos < fadeS) f = Math.max(0, pos / fadeS);
-            customVideoBg.style.opacity = (animOpacity * f).toFixed(3);
-          };
-        } else {
-          customVideoBg.ontimeupdate = null;
-        }
+        if (wantFade) startVideoFade();
       } else {
         animBgLayer.style.opacity = '0';
       }

@@ -965,10 +965,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     }
     }
 
-    /* Stage Container (Full Show Mode: Centered vertically and horizontally) */
+    /* Stage Container (Full Show Mode) */
+    /* v1.9.2 (#7): the Full box is bottom-anchored and stretched like
+       Lower's — the container IS the slider box (margin / bottom / height
+       set inline from the payload), no longer the centered full frame. */
     #stage.mode-full-show {
-      justify-content: center !important;
-      align-items: center !important;
+      justify-content: flex-end !important;
+      align-items: stretch !important;
     }
 
     /* ==========================================================================
@@ -990,14 +993,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     }
 
     /* Full Show Mode Container */
+    /* v1.9.2 (#7): width/height/margins are NO longer locked to the full
+       frame — the apply code sets them from the style's box sliders
+       (inline styles win over this rule). The card fills the container. */
     #lowerthird-container.mode-full-show {
-      /* v1.9: fill the 16:9 stage, not the viewport (was 100vw/100vh). */
-      width: 100% !important;
-      height: 100% !important;
-      margin: 0 !important;
       display: flex !important;
       flex-direction: column !important;
-      align-items: center !important;
+      align-items: stretch !important;
       justify-content: center !important;
       /* v1.9.1: no transform lock here — a former "transform: none
          !important" in this rule silently killed every slide/zoom/bounce
@@ -1046,7 +1048,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       justify-content: center !important;
       align-items: center !important;
       /* v1.9: padding is set inline from the style's card padding (was 6vh 6vw). */
-      border-radius: 0 !important;
+      /* v1.9.2 (#7): no radius lock — the style's corner radius applies
+         to Full Show too (set inline by the apply code). */
       margin: 0 !important;
       text-align: center !important;
     }
@@ -1513,13 +1516,14 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
       // 4. Layout & Alignment (Ensures Full Show remains vertically & horizontally centered in middle)
       if (isFull) {
-        container.style.marginBottom = '0';
-        container.style.marginLeft = '0';
-        container.style.marginRight = '0';
-        // v1.9: fill the 16:9 stage, not the viewport — 100vw/100vh stretched
-        // the video background on non-16:9 windows while NDI stayed 16:9.
-        container.style.width = '100%';
-        container.style.height = '100%';
+        // v1.9.2 (#7): the Full container IS the slider box — same model
+        // as Lower (and as NDI): horizontal margin, bottom position, and
+        // box height come from the style; the stage bottom-anchors it.
+        container.style.marginBottom = (data.positionBottomPercent || 6) + 'vh';
+        container.style.marginLeft = (data.horizontalMarginPercent || 6) + 'vw';
+        container.style.marginRight = (data.horizontalMarginPercent || 6) + 'vw';
+        container.style.width = '';
+        container.style.height = (data.boxHeightPercent || 100) + '%';
 
         cardBox.style.display = 'flex';
         cardBox.style.flexDirection = 'column';
@@ -1562,6 +1566,17 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         container.style.marginBottom = botMargin;
         container.style.marginLeft = hMargin;
         container.style.marginRight = hMargin;
+        // v1.9.2 (#7): with auto-fit ON the drawn box IS the slider box
+        // (fixed dimensions — the text fits inside, the box never
+        // changes), exactly like NDI. With auto-fit OFF the card keeps
+        // hugging its content.
+        if (data.autoFitText !== false) {
+          container.style.height = (data.boxHeightPercent || 45) + '%';
+          cardBox.style.height = '100%';
+        } else {
+          container.style.height = '';
+          cardBox.style.height = '';
+        }
 
         if (data.alignment === 'CENTER') {
           container.style.direction = 'rtl';
@@ -1778,7 +1793,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       // v2.0: scaled like the fonts (NDI: cornerRadiusDp x 2 x frame scale).
       // Raw px made HTTP corners half as round as NDI at full size, drifting
       // further as the window shrank.
-      const radius = isFull ? '0' : scaledPx(data.cornerRadiusDp || 16);
+      // v1.9.2 (#7): the radius applies to Full Show too (was forced '0'
+      // while the Full card was the whole frame; the CSS lock is gone).
+      const radius = scaledPx(data.cornerRadiusDp || 16);
       cardBox.style.borderRadius = radius;
       if (!isFull) cardBox.style.padding = padT + ' ' + padR + ' ' + padB + ' ' + padL;
 
@@ -1792,8 +1809,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
       }
       function cardGlowShadow(shape, alpha) {
-        // Card glow only where a real card exists (not full-bleed fullscreen).
-        if (isFull || !data.cardGlowEnabled) return 'none';
+        // v1.9.2 (#3): the shadow draws whenever the card has a VISIBLE
+        // EDGE (any inset from the frame) — the same rule as NDI and the
+        // Editor preview — instead of the old blanket fullscreen ban.
+        // Lower's card is always inset in practice; Full is inset when
+        // any box slider leaves a gap.
+        if (!data.cardGlowEnabled) return 'none';
+        if (isFull && !(data.horizontalMarginPercent > 0 || data.positionBottomPercent > 0 || (data.boxHeightPercent || 100) < 100)) return 'none';
         var c = hexToRgb(data.cardGlowColorHex);
         if (!c) return 'none';
         return shape + ' rgba(' + c.r + ',' + c.g + ',' + c.b + ',' + alpha + ')';
@@ -2734,45 +2756,67 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         val secHeight = layouts.secHeight
         val citationHeight = layouts.citationHeight
         
-        // Full screen check for projector/full show mode
-        val boxHeight = if (tpl.isFullScreen) {
-            height.toFloat() 
-        } else {
-            (layouts.contentH + padT + padB + 16f * scale).coerceAtLeast(140f * scale)
+        // v1.9.2 (#7, Ashraf's Option 1): ONE box model for both feeds — the
+        // sliders (Horizontal Margin / Bottom Position / Text Box Height)
+        // define the box identically here, on the HTTP overlay, and in the
+        // Editor preview. Full Show no longer forces the box to the full
+        // frame: margin and bottom position the card, and the height slider
+        // sets its height (clamped so the top never leaves the frame).
+        // Drawn height: Full always draws the slider box; Lower draws the
+        // slider box when auto-fit is ON (his contract: with auto-fit the
+        // box dimensions never change and the text fits inside), and keeps
+        // its content-hugging card when auto-fit is OFF.
+        val sliderBoxH = (height * (tpl.boxHeightPercent / 100f))
+            .coerceIn(0f, height - marginB)
+        val boxHeight = when {
+            tpl.isFullScreen -> sliderBoxH
+            tpl.autoFitText -> sliderBoxH
+            else -> (layouts.contentH + padT + padB + 16f * scale).coerceAtLeast(140f * scale)
         }
-
-        val boxTop = if (tpl.isFullScreen) 0f else (height - marginB - boxHeight)
-        val boxBottom = if (tpl.isFullScreen) height.toFloat() else (height - marginB)
-        val boxLeft = if (tpl.isFullScreen) 0f else marginH
-        val boxRight = if (tpl.isFullScreen) width.toFloat() else (width - marginH)
+        val boxBottom = height - marginB
+        val boxTop = boxBottom - boxHeight
+        val boxLeft = marginH
+        val boxRight = width - marginH
         val rect = RectF(boxLeft, boxTop, boxRight, boxBottom)
-        val radius = if (tpl.isFullScreen) 0f else (tpl.cornerRadiusDp * scale * 2f)
+        // v1.9.2 (#7): the corner radius applies to Full Show too (was
+        // forced to 0 on every surface while the Full card was the frame).
+        val radius = tpl.cornerRadiusDp * scale * 2f
+        // v1.9.2 (#3): the card has a visible edge when any side is inset
+        // from the frame — the shadow rule on all three surfaces.
+        val cardHasVisibleEdge = boxLeft > 0f || boxTop > 0f ||
+            boxRight < width.toFloat() || boxBottom < height.toFloat()
 
         val paint = Paint(Paint.ANTI_ALIAS_FLAG)
 
-        // v1.8: Card glow drawn FIRST (behind video/card) so it appears as an
-        // outer halo without covering the video. The glow expands beyond the
-        // card bounds; drawing it first lets the video/card cover the inner part.
-        if (!tpl.isPureTransparentBackground) { // v1.9: toggle is the single authority (was: style check overrode it)
-            if (tpl.cardGlowEnabled && !tpl.isFullScreen) {
-                val glowCol = try { Color.parseColor(tpl.cardGlowColorHex) } catch (e: Exception) { Color.BLACK }
-                val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-                val layers = listOf(
-                    Triple(14f * scale, 0.30f, 4f * scale),
-                    Triple(30f * scale, 0.15f, 8f * scale)
-                )
-                for ((expand, alpha, radiusBump) in layers) {
-                    glowPaint.color = Color.argb(
-                        (255 * alpha).toInt().coerceIn(0, 255),
-                        Color.red(glowCol), Color.green(glowCol), Color.blue(glowCol)
-                    )
-                    canvas.drawRoundRect(
-                        RectF(rect.left - expand, rect.top - expand,
-                              rect.right + expand, rect.bottom + expand),
-                        radius + radiusBump, radius + radiusBump, glowPaint
-                    )
-                }
+        // v1.9.2 (#3): TRUE drop shadow (was a 2-step hard-edged halo,
+        // nearly invisible over transparency). Same parameters as the HTTP
+        // overlay's box-shadow per style family (offset Y / blur / alpha),
+        // rasterized with setShadowLayer — the frames are software bitmaps,
+        // so the shadow layer renders. The caster fill is clipped to
+        // OUTSIDE the card rect: only the shadow survives, the card's own
+        // fill (drawn after) covers the interior exactly. Drawn first,
+        // behind video/card, under the visible-card rule (not !pure).
+        if (!tpl.isPureTransparentBackground && tpl.cardGlowEnabled && cardHasVisibleEdge) {
+            val (shadowDyCss, shadowBlurCss, shadowAlphaF) = when (tpl.style) {
+                TemplateStyle.CLASSIC_BANNER -> Triple(12f, 36f, 0.6f)
+                TemplateStyle.ROYAL_LITURGICAL -> Triple(10f, 40f, 0.7f)
+                else -> Triple(16f, 40f, 0.55f)
             }
+            val glowCol = try { Color.parseColor(tpl.cardGlowColorHex) } catch (e: Exception) { Color.BLACK }
+            val shadowCol = Color.argb(
+                (255 * shadowAlphaF).toInt().coerceIn(0, 255),
+                Color.red(glowCol), Color.green(glowCol), Color.blue(glowCol)
+            )
+            val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = shadowCol
+                setShadowLayer(shadowBlurCss * scale, 0f, shadowDyCss * scale, shadowCol)
+            }
+            canvas.save()
+            canvas.clipOutPath(Path().apply {
+                addRoundRect(rect, radius, radius, Path.Direction.CW)
+            })
+            canvas.drawRoundRect(rect, radius, radius, shadowPaint)
+            canvas.restore()
         }
 
         // v1.7 custom video background (per feed). The video is the background
@@ -2995,7 +3039,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
         val contentTotalHeight = primaryLayout.height + citationHeight + secHeight
         val startY = if (tpl.isFullScreen) {
-            (height - contentTotalHeight) / 2f
+            // v1.9.2 (#7): centered in the BOX, not the frame (identical
+            // when the box is the full frame).
+            boxTop + (boxHeight - contentTotalHeight) / 2f
         } else {
             boxTop + padT
         }
@@ -3032,7 +3078,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             // exactly like Lower Third and every other surface.
             when (tpl.alignment) {
                     BroadcastTextAlignment.CENTER -> {
-                        val startX = (width - totalW) / 2f
+                        // v1.9.2 (#7): centered in the box (== frame center
+                        // whenever the box spans the frame, as Lower's does).
+                        val startX = boxLeft + (boxWidth - totalW) / 2f
                         refPaint.textAlign = Paint.Align.LEFT
                         canvas.drawText(citation, startX, citationY, refPaint)
                         drawEmblemAt(startX + citeW + emblemGap, Paint.Align.LEFT)
@@ -3053,7 +3101,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             when (tpl.alignment) {
                 BroadcastTextAlignment.CENTER -> {
                     refPaint.textAlign = Paint.Align.CENTER
-                    canvas.drawText(citation, width / 2f, citationY, refPaint)
+                    canvas.drawText(citation, (boxLeft + boxRight) / 2f, citationY, refPaint)
                 }
                 BroadcastTextAlignment.LEFT -> {
                     refPaint.textAlign = Paint.Align.LEFT
@@ -3068,7 +3116,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
         // v1.7: the verse block obeys the user's alignment on Full Show too.
         val translateX = if (tpl.alignment == BroadcastTextAlignment.CENTER) {
-            (width - contentWidth) / 2f
+            // v1.9.2 (#7): centered in the box, not the frame.
+            boxLeft + (boxWidth - contentWidth) / 2f
         } else if (tpl.alignment == BroadcastTextAlignment.RIGHT) {
             // v2.0: the verse/English block's right edge sits at the padding
             // edge (boxRight - padR) exactly like the HTTP overlay. The

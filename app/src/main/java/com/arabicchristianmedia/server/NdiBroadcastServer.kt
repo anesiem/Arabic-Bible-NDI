@@ -675,7 +675,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                     serveApiClear(out)
                 }
                 cleanPath == "/api/books" -> {
-                    serveApiBooks(out)
+                    serveApiBooks(out, fullPath)
                 }
                 cleanPath == "/api/chapter" -> {
                     serveApiChapter(out, fullPath)
@@ -3866,8 +3866,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         }
     }
 
-    /** GET /api/books — the book list for the /remote Bible browser. */
-    private fun serveApiBooks(out: OutputStream) {
+    /** GET /api/books — the book list for the /remote Bible browser.
+     * v1.9.2 (#5): with ?lang=ar the response also carries "nums": the
+     * chapter-number labels 1..maxChapters pre-formatted in Eastern Arabic
+     * numerals by ArabicTextFormatter — the ONE digit table in the app
+     * (the remote page must never grow a second one in JS). */
+    private fun serveApiBooks(out: OutputStream, fullPath: String) {
+        val lang = parseQueryParams(fullPath)["lang"]
         val books = try { com.arabicchristianmedia.data.BibleRepository.allBooks } catch (e: Exception) { emptyList() }
         val sb = StringBuilder()
         sb.append("{\"ok\":true,\"books\":[")
@@ -3875,7 +3880,17 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             if (i > 0) sb.append(",")
             sb.append("{\"id\":\"${jsonEscape(b.id)}\",\"ar\":\"${jsonEscape(b.arabicName)}\",\"en\":\"${jsonEscape(b.englishName)}\",\"chapters\":${b.totalChapters}}")
         }
-        sb.append("]}")
+        sb.append("]")
+        if (lang == "ar") {
+            val maxChapters = books.maxOfOrNull { it.totalChapters } ?: 0
+            sb.append(",\"nums\":[")
+            for (c in 1..maxChapters) {
+                if (c > 1) sb.append(",")
+                sb.append("\"${ArabicTextFormatter.toEasternArabicDigits(c)}\"")
+            }
+            sb.append("]")
+        }
+        sb.append("}")
         sendJson(out, 200, sb.toString())
     }
 
@@ -3889,11 +3904,16 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             return
         }
         val verses = try { com.arabicchristianmedia.data.BibleRepository.getVerses(bookId, chapter) } catch (e: Exception) { emptyList() }
+        // v1.9.2 (#5): "vn" is the verse number pre-formatted for the
+        // page's browse language (Eastern Arabic numerals for ar, via the
+        // app's one digit table); "v" stays numeric for tap handling.
+        val eastern = params["lang"] == "ar"
         val sb = StringBuilder()
         sb.append("{\"ok\":true,\"bookId\":\"${jsonEscape(bookId)}\",\"chapter\":$chapter,\"verses\":[")
         verses.forEachIndexed { i, v ->
             if (i > 0) sb.append(",")
-            sb.append("{\"v\":${v.verse},\"ar\":\"${jsonEscape(v.arabicText)}\",\"en\":\"${jsonEscape(v.englishText)}\"}")
+            val vn = if (eastern) ArabicTextFormatter.toEasternArabicDigits(v.verse) else v.verse.toString()
+            sb.append("{\"v\":${v.verse},\"vn\":\"$vn\",\"ar\":\"${jsonEscape(v.arabicText)}\",\"en\":\"${jsonEscape(v.englishText)}\"}")
         }
         sb.append("]}")
         sendJson(out, 200, sb.toString())
@@ -4598,8 +4618,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     .chips button { border-color: #475569; color: #cbd5e1; }
     .chips button.active { background: #f1f5f9; color: #0f172a; border-color: transparent; }
     .vrow { border-color: #334155; }
-    .livepill { color: #f1f5f9; }
-    .livepill.on { background: rgba(34,197,94,0.22); border-color: rgba(34,197,94,0.7); color: #bbf7d0; }
+    /* v1.9.2 (#6): the .livepill dark overrides used to live HERE, before
+       the base pill rules — equal specificity meant the later base rules
+       won and the dark colors were dead (near-black text on the gray pill
+       in dark mode). They now sit AFTER the base rules, below. */
   }
   header { padding: 16px 20px 8px; font-size: 20px; font-weight: 700; display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;  flex-wrap: wrap; }
   /* The live reference rides in the header as a slim pill \u2014 information
@@ -4619,6 +4641,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     position: absolute; right: 11px; top: 50%; transform: translateY(-50%); }
   .livepill.on .dot { background: #22c55e; box-shadow: 0 0 6px #22c55e; }
   .livepill .ref { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; unicode-bidi: plaintext; flex: 1; text-align: center; }
+  /* v1.9.2 (#6): dark-scheme pill colors AFTER the base rules so they
+     actually win the cascade in dark mode. Light mode is untouched. */
+  @media (prefers-color-scheme: dark) {
+    .livepill { color: #f1f5f9; }
+    .livepill.on { background: rgba(34,197,94,0.22); border-color: rgba(34,197,94,0.7); color: #bbf7d0; }
+  }
   @media (max-width: 480px) { .livepill { max-width: 100%; } }
   header .sub { font-size: 13px; font-weight: 400; opacity: 0.7; margin-top: 2px; }
   main { flex: 1; padding: 8px 16px 16px; display: flex; flex-direction: column; gap: 12px; max-width: 640px; width: 100%; margin: 0 auto; }
@@ -4656,7 +4684,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   .selrow #bookSel { flex: 2; }
   .selrow #chSel { flex: 1; }
   .selrow #langSel { flex: 1; }
-  .vlist { margin-top: 8px; max-height: 52vh; overflow-y: auto; }
+  .vlist { margin-top: 8px; max-height: 52vh; overflow-y: auto; min-height: 120px; transition: opacity 0.15s; }
+  /* v1.9.2 (#5): while a chapter loads, the current verses stay in place
+     (dimmed) — the list no longer collapses to a Loading line and flashes. */
+  .vlist.loading { opacity: 0.45; }
   /* Desktop / wide tablet: two columns — controls left, Bible browser
      right with a tall verse list. Narrow screens keep the stacked
      one-hand layout above. */
@@ -4713,6 +4744,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 </main>
 <script>
   var books = [];
+  var numLabels = null; // v1.9.2 (#5): server-formatted Eastern Arabic chapter labels (Arabic mode)
   var curBookIdx = -1;
   var curChapter = 0;
   var live = { onAir: false, bookId: '', chapter: 0, verse: 0 };
@@ -4735,8 +4767,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   langSel.addEventListener('change', function() {
     browseLang = langSel.value === 'en' ? 'en' : 'ar';
     try { localStorage.setItem('ndiBrowseLang', browseLang); } catch (e) {}
-    fillBooks();
-    if (curBookIdx >= 0 && curChapter > 0) loadChapter(curChapter);
+    // v1.9.2 (#5): the chapter labels live in the other language's
+    // numerals too — reload the books (for the server-formatted labels),
+    // refill the chapters, and reload the verses in the new language.
+    loadBooks(true);
   });
   bookSel.addEventListener('change', function() {
     var i = parseInt(bookSel.value, 10);
@@ -4763,19 +4797,31 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     }
     bookSel.innerHTML = html;
     bookSel.dir = browseLang === 'en' ? 'ltr' : 'rtl';
+    // v1.9.2 (#5): Arabic mode flips the whole browse card RTL — the
+    // selectors and verse rows right-align with it (the ON AIR button,
+    // pill and reference card stay neutral, as designed).
+    chSel.dir = browseLang === 'en' ? 'ltr' : 'rtl';
+    document.getElementById('browseCard').dir = browseLang === 'en' ? 'ltr' : 'rtl';
     if (curBookIdx >= 0 && books[curBookIdx]) bookSel.value = String(curBookIdx);
   }
 
-  function loadBooks() {
-    fetch('/api/books').then(function(r) { return r.json(); }).then(function(j) {
+  function loadBooks(keepPlace) {
+    fetch('/api/books?lang=' + browseLang).then(function(r) { return r.json(); }).then(function(j) {
       if (!j.ok) { setStatus('Could not load books', 'err'); return; }
       books = j.books;
+      numLabels = j.nums || null;
       fillBooks();
       if (books.length) {
-        curBookIdx = 0;
-        bookSel.value = '0';
-        fillChapters(books[0]);
-        loadChapter(1);
+        if (keepPlace && curBookIdx >= 0 && books[curBookIdx]) {
+          bookSel.value = String(curBookIdx);
+          fillChapters(books[curBookIdx]);
+          loadChapter(curChapter > 0 ? curChapter : 1);
+        } else {
+          curBookIdx = 0;
+          bookSel.value = '0';
+          fillChapters(books[0]);
+          loadChapter(1);
+        }
       }
     }).catch(function() { setStatus('Network error loading books', 'err'); });
   }
@@ -4783,29 +4829,41 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   function fillChapters(book) {
     var html = '';
     for (var c = 1; c <= book.chapters; c++) {
-      html += '<option value="' + c + '">' + c + '</option>';
+      // v1.9.2 (#5): Arabic mode labels chapters with the server's
+      // Eastern Arabic numerals (numLabels); the value stays numeric.
+      var label = (browseLang === 'ar' && numLabels && numLabels[c - 1]) ? numLabels[c - 1] : c;
+      html += '<option value="' + c + '">' + label + '</option>';
     }
     chSel.innerHTML = html;
     chSel.value = '1';
   }
 
+  var loadSeq = 0;
   function loadChapter(ch) {
     if (curBookIdx < 0) return;
     curChapter = ch;
     if (chSel.value !== String(ch)) chSel.value = String(ch);
     var book = books[curBookIdx];
-    vList.innerHTML = '<div class="hint">Loading…</div>';
-    fetch('/api/chapter?book=' + encodeURIComponent(book.id) + '&chapter=' + ch)
+    var seq = ++loadSeq;
+    // v1.9.2 (#5): keep the current verses in place (dimmed) until the
+    // new chapter arrives, then swap atomically — the old code blanked
+    // the list to a Loading line first, collapsing the page and flashing
+    // on every book/chapter/language change. A stale response (an
+    // earlier tap) never overwrites a newer chapter.
+    vList.classList.add('loading');
+    fetch('/api/chapter?book=' + encodeURIComponent(book.id) + '&chapter=' + ch + '&lang=' + browseLang)
       .then(function(r) { return r.json(); })
       .then(function(j) {
-        if (!j.ok) { vList.innerHTML = '<div class="hint">Could not load chapter</div>'; return; }
+        if (seq !== loadSeq) return;
+        vList.classList.remove('loading');
+        if (!j.ok) { if (!vList.querySelector('.vrow')) vList.innerHTML = '<div class="hint">Could not load chapter</div>'; return; }
         var html = '';
         for (var i = 0; i < j.verses.length; i++) {
           var v = j.verses[i];
           var textDiv = browseLang === 'en'
             ? '<div class="ve" dir="ltr">' + escapeHtml(v.en) + '</div>'
             : '<div class="va" dir="rtl" lang="ar">' + escapeHtml(v.ar) + '</div>';
-          html += '<div class="vrow" data-v="' + v.v + '"><div class="vn">' + v.v + '</div>' +
+          html += '<div class="vrow" data-v="' + v.v + '"><div class="vn">' + escapeHtml(v.vn || String(v.v)) + '</div>' +
                   '<div>' + textDiv + '</div></div>';
         }
         vList.innerHTML = html;
@@ -4817,7 +4875,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         }
         markLiveRow();
       })
-      .catch(function() { vList.innerHTML = '<div class="hint">Network error</div>'; });
+      .catch(function() {
+        if (seq !== loadSeq) return;
+        vList.classList.remove('loading');
+        if (!vList.querySelector('.vrow')) vList.innerHTML = '<div class="hint">Network error</div>';
+        else setStatus('Network error', 'err');
+      });
   }
 
   function escapeHtml(t) {

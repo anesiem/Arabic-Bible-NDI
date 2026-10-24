@@ -2074,6 +2074,14 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
           applyGrad(animBgLayer, gradIsRadial, !gradIsRadial);
           animBgLayer.style.opacity = '1';
           cardBox.style.backgroundColor = 'transparent';
+          // v1.9.2: no backdrop blur over the animated frame — the blur
+          // re-ran over the moving gradient every frame (the one real
+          // continuous CPU cost on this page), and NDI paints the gradient
+          // as the card with no blur, so this is parity too. Section 6
+          // rewrites the blur on every apply, so it returns automatically
+          // when the style stops being a Full gradient.
+          cardBox.style.backdropFilter = 'none';
+          cardBox.style.webkitBackdropFilter = 'none';
         } else {
           // Lower: the gradient belongs INSIDE the card (native paints
           // the card box only) — inline on the card, layer emptied.

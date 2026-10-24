@@ -1538,7 +1538,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         container.style.marginLeft = (data.horizontalMarginPercent || 6) + 'vw';
         container.style.marginRight = (data.horizontalMarginPercent || 6) + 'vw';
         container.style.width = '';
-        container.style.height = (data.boxHeightPercent || 100) + '%';
+        // v1.9.2 (#7): clamped like the renderers — box top stays in frame.
+        container.style.height = Math.min(data.boxHeightPercent || 100, 100 - (data.positionBottomPercent || 0)) + '%';
 
         cardBox.style.display = 'flex';
         cardBox.style.flexDirection = 'column';
@@ -1586,7 +1587,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // changes), exactly like NDI. With auto-fit OFF the card keeps
         // hugging its content.
         if (data.autoFitText !== false) {
-          container.style.height = (data.boxHeightPercent || 45) + '%';
+          container.style.height = Math.min(data.boxHeightPercent || 45, 100 - (data.positionBottomPercent || 0)) + '%';
           cardBox.style.height = '100%';
         } else {
           container.style.height = '';
@@ -1681,9 +1682,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         const padTopPx = parseFloat(padT) || 0;
         const padBotPx = parseFloat(padB) || 0;
         function contentHeight() { return cardBox.scrollHeight - padTopPx - padBotPx; }
+        // v1.9.2 (#7): the budget is the DRAWN box height — clamped so
+        // the box top stays in the frame, exactly as the native fit does.
+        const effBoxPct = Math.min(isFull ? (data.boxHeightPercent || 100) : (data.boxHeightPercent || 45), 100 - (data.positionBottomPercent || 0));
         const maxContentH = isFull
-          ? (stage.clientHeight * ((data.boxHeightPercent || 100) / 100) - padTopPx - padBotPx)
-          : (stage.clientHeight * ((data.boxHeightPercent || 45) / 100) - padTopPx - padBotPx - 16 * ss);
+          ? (stage.clientHeight * (effBoxPct / 100) - padTopPx - padBotPx)
+          : (stage.clientHeight * (effBoxPct / 100) - padTopPx - padBotPx - 16 * ss);
         function applyRatio(r) {
           verseText.style.fontSize = (baseVerse * r) + 'px';
           citationText.style.fontSize = (baseCite * r) + 'px';
@@ -2465,11 +2469,15 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         if (tpl.autoFitText) {
             val padT = tpl.cardPaddingTopDp * scale
             val padB = tpl.cardPaddingBottomDp * scale
+            // v1.9.2 (#7): the fit budget is the DRAWN box height — the
+            // slider height clamped so the box top stays in the frame
+            // (height + bottom <= 100%), exactly as drawFrameInto clamps.
+            val effBoxPct = minOf(tpl.boxHeightPercent, 100 - tpl.positionBottomPercent).coerceAtLeast(0)
             val maxContentH = if (tpl.isFullScreen) {
-                frameHeight * tpl.boxHeightPercent / 100f - padT - padB
+                frameHeight * effBoxPct / 100f - padT - padB
             } else {
                 // Lower third must not swallow the screen.
-                frameHeight * tpl.boxHeightPercent / 100f - padT - padB - 16f * scale
+                frameHeight * effBoxPct / 100f - padT - padB - 16f * scale
             }
             r = capRatio
             if (layouts.contentH > maxContentH && maxContentH > 0) {

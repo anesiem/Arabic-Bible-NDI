@@ -257,6 +257,20 @@ fun TemplateEditorScreen(
                     Text("تخصيص كامل وشامل لطبقات البث والعرض المباشر", fontSize = 12.sp, color = bento.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    // v1.9.2 (#7b): the editing target as a compact chip in
+                    // the header row — the standalone "You are editing" line
+                    // below the header is gone (it cost a full row).
+                    Surface(
+                        shape = RoundedCornerShape(999.dp),
+                        color = bento.primaryContainer
+                    ) {
+                        Text(
+                            if (editorTab == 0) "السفلي · Lower" else "الكامل · Full",
+                            fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.onPrimaryContainer,
+                            maxLines = 1,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        )
+                    }
                     // v1.9: info icon reopens the How-it-works tips when hidden.
                     if (!showHowItWorks) {
                         IconButton(onClick = {
@@ -275,14 +289,8 @@ fun TemplateEditorScreen(
         Spacer(Modifier.height(12.dp))
 
         // 2. Tab Switcher: Lower Third vs Full Show (v1.8: segmented, unmistakable active target).
-        Text(
-            if (editorTab == 0) "أنت تحرر: طبقة البث السفلى (You are editing: Lower Third)"
-            else "أنت تحرر: العرض الكامل (You are editing: Full Show)",
-            fontWeight = FontWeight.Bold,
-            fontSize = 14.sp,
-            color = bento.primary,
-            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
-        )
+        // v1.9.2 (#7b): the "You are editing" line that stood here moved
+        // into the header row as a compact chip; the line itself is deleted.
         Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(bento.surfaceVariant).padding(4.dp)) {
             EditorTabItem("طبقة البث السفلى (Lower Third)", editorTab == 0, { onEditorTabChange(0) }, Modifier.weight(1f))
             EditorTabItem("العرض الكامل (Full Show Projector)", editorTab == 1, { onEditorTabChange(1) }, Modifier.weight(1f))
@@ -454,41 +462,6 @@ fun TemplateEditorScreen(
                 }
                 Spacer(Modifier.height(6.dp))
                 BroadcastPreviewViewport(editingTemplate, displayVerse, previewBg, boxEditEnabled = boxEdit, onTemplateChange = { onUpdate(it) })
-                // Round 2 (#10): Quick Setup is dissolved - its two jobs live
-                // on the stage now. Alpha is judged against the backdrop above,
-                // and saving is the last step of the pick-tune-save flow.
-                Spacer(Modifier.height(10.dp))
-                FeatureToggleRow("خلفية شفافة تماماً 100% Alpha", editingTemplate.isPureTransparentBackground) { onUpdate(editingTemplate.copy(isPureTransparentBackground = it)) }
-                Spacer(Modifier.height(8.dp))
-                    Button(
-                        onClick = { newTemplateName = "${editingTemplate.name} النسخة"; showSaveDialog = true },
-                        colors = ButtonDefaults.buttonColors(containerColor = bento.primary),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Icon(Icons.Default.Add, null, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text("حفظ كنمط جديد (Save as new style)", fontSize = 13.sp)
-                    }
-                    // v1.9.1: update the highlighted style IN PLACE — shown only
-                    // when a style is highlighted and the working values differ
-                    // from it. Factory styles cannot be overwritten (the app
-                    // re-supplies them each launch), so for those this saves
-                    // the edit as the user's own copy under the same name —
-                    // explained in the factory dialog below.
-                    if (highlightedId != null && tabIsDirty) {
-                        Spacer(Modifier.height(8.dp))
-                        OutlinedButton(
-                            onClick = {
-                                if (highlightedStyleIsFactory) showFactoryUpdateDialog = true
-                                else onUpdateStyleInPlace(editorTab == 1)
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Icon(Icons.Default.Save, null, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("تحديث النمط الحالي (Update current style)", fontSize = 13.sp)
-                        }
-                    }
 
             }
         }
@@ -500,8 +473,11 @@ fun TemplateEditorScreen(
         // these are the numbers judged against the preview.
         CollapsibleSection(
             title = "الإطار والحشوة (Frame & Padding)",
-            initiallyExpanded = false,
-            syncKey = editingTemplate.id,
+            // v1.9.2 (#10b): the section opens itself while Edit Box is on —
+            // the drag handles and these sliders are two forms of the same
+            // three numbers, so they belong open together.
+            initiallyExpanded = boxEdit,
+            syncKey = editingTemplate.id to boxEdit,
             summary = "Box " + editingTemplate.boxHeightPercent + "% \u00b7 bottom " + editingTemplate.positionBottomPercent + "% \u00b7 margin " + editingTemplate.horizontalMarginPercent + "%"
         ) {
                     // Alignment
@@ -591,6 +567,44 @@ fun TemplateEditorScreen(
                     }
                     Spacer(Modifier.height(8.dp))
 
+        }
+
+        Spacer(Modifier.height(8.dp))
+
+        // v1.9.2 (#10b): stage order is now preview -> Frame & Padding ->
+        // Alpha -> Save/Update. Alpha used to sit inside the preview card
+        // (between the picture and the frame sliders) and saving sat above
+        // the frame controls; the flow now reads pick -> frame -> alpha ->
+        // save, with saving last.
+        FeatureToggleRow("خلفية شفافة تماماً 100% Alpha", editingTemplate.isPureTransparentBackground) { onUpdate(editingTemplate.copy(isPureTransparentBackground = it)) }
+        Spacer(Modifier.height(8.dp))
+        Button(
+            onClick = { newTemplateName = "${editingTemplate.name} النسخة"; showSaveDialog = true },
+            colors = ButtonDefaults.buttonColors(containerColor = bento.primary),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(Icons.Default.Add, null, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(6.dp))
+            Text("حفظ كنمط جديد (Save as new style)", fontSize = 13.sp)
+        }
+        // v1.9.1: update the highlighted style IN PLACE — shown only when a
+        // style is highlighted and the working values differ from it.
+        // Factory styles cannot be overwritten (the app re-supplies them
+        // each launch), so for those this saves the edit as the user's own
+        // copy under the same name — explained in the factory dialog below.
+        if (highlightedId != null && tabIsDirty) {
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(
+                onClick = {
+                    if (highlightedStyleIsFactory) showFactoryUpdateDialog = true
+                    else onUpdateStyleInPlace(editorTab == 1)
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Default.Save, null, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("تحديث النمط الحالي (Update current style)", fontSize = 13.sp)
+            }
         }
 
         Spacer(Modifier.height(8.dp))
@@ -751,46 +765,12 @@ CollapsibleSection(
                             )
                         }
                     }
-                    if (editingTemplate.animatedBackground != AnimatedBackgroundType.NONE) {
-                        // v1.8: opacity slider for ALL animated backgrounds (not just custom video).
-                        SliderWithLabel(
-                            label = "شفافية الحركة (Animation Opacity)",
-                            value = editingTemplate.animatedBackgroundOpacity,
-                            range = 0f..1f,
-                            onValueChange = { onUpdate(editingTemplate.copy(animatedBackgroundOpacity = it)) }
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        // v1.8: Motion speed slider (0 to 3.0x) — right after opacity.
-                        SliderWithLabel(
-                            "سرعة الحركة (Motion speed)",
-                            editingTemplate.motionSpeed,
-                            0f..3f
-                        ) {
-                            onUpdate(editingTemplate.copy(motionSpeed = it))
-                        }
-                        Spacer(modifier = Modifier.height(4.dp))
-                        // v2.0: Video loop mode — after transparency and speed.
-                        if (editingTemplate.animatedBackground == AnimatedBackgroundType.CUSTOM_VIDEO) {
-                            Text(
-                                "طريقة تكرار الفيديو (Video loop)",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = bento.textPrimary
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                VideoLoopMode.values().forEach { mode ->
-                                    FilterChip(
-                                        selected = editingTemplate.videoLoopMode == mode,
-                                        onClick = { onUpdate(editingTemplate.copy(videoLoopMode = mode)) },
-                                        label = { Text(mode.displayName, fontSize = 12.sp) }
-                                    )
-                                }
-                            }
-                            Spacer(modifier = Modifier.height(4.dp))
-                        }
-                        if (editingTemplate.animatedBackground == AnimatedBackgroundType.CUSTOM_VIDEO &&
-                            editingTemplate.customVideoId.isNotEmpty()) {
+                    // v1.9.2 (#8): when Custom Video is the selected type,
+                    // its file controls come FIRST under the chips — the
+                    // primary action (choose/replace the file) was buried at
+                    // the bottom of this section, below the sliders.
+                    if (editingTemplate.animatedBackground == AnimatedBackgroundType.CUSTOM_VIDEO) {
+                        if (editingTemplate.customVideoId.isNotEmpty()) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically,
@@ -846,6 +826,62 @@ CollapsibleSection(
                             Spacer(Modifier.width(6.dp))
                             Text(if (isImportingVideo) "جاري الاستيراد..." else "اختيار ملف فيديو مخصص (MP4)", fontSize = 12.sp)
                         }
+                        Spacer(modifier = Modifier.height(4.dp))
+                    }
+                    if (editingTemplate.animatedBackground != AnimatedBackgroundType.NONE) {
+                        // v2.0: Video loop mode — v1.9.2 (#8): for Custom
+                        // Video it now sits right under the file controls,
+                        // before Opacity/Speed (was after them).
+                        if (editingTemplate.animatedBackground == AnimatedBackgroundType.CUSTOM_VIDEO) {
+                            Text(
+                                "طريقة تكرار الفيديو (Video loop)",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = bento.textPrimary
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                VideoLoopMode.values().forEach { mode ->
+                                    FilterChip(
+                                        selected = editingTemplate.videoLoopMode == mode,
+                                        onClick = { onUpdate(editingTemplate.copy(videoLoopMode = mode)) },
+                                        label = { Text(mode.displayName, fontSize = 12.sp) }
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                        }
+                        // v1.8: opacity slider for ALL animated backgrounds (not just custom video).
+                        SliderWithLabel(
+                            label = "شفافية الحركة (Animation Opacity)",
+                            value = editingTemplate.animatedBackgroundOpacity,
+                            range = 0f..1f,
+                            onValueChange = { onUpdate(editingTemplate.copy(animatedBackgroundOpacity = it)) }
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        // v1.8: Motion speed slider (0 to 3.0x) — right after opacity.
+                        SliderWithLabel(
+                            "سرعة الحركة (Motion speed)",
+                            editingTemplate.motionSpeed,
+                            0f..3f
+                        ) {
+                            onUpdate(editingTemplate.copy(motionSpeed = it))
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        // v1.9.2 (#8): the loop chips, the set-video info and
+                        // the file picker for Custom Video moved ABOVE the
+                        // sliders (right under the type chips).
+                        if (editingTemplate.animatedBackground != AnimatedBackgroundType.CUSTOM_VIDEO) {
+                            Button(
+                                onClick = { launcher.launch("video/*") },
+                                enabled = !isImportingVideo,
+                                colors = ButtonDefaults.buttonColors(containerColor = bento.primary)
+                            ) {
+                                Icon(Icons.Default.VideoLibrary, null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text(if (isImportingVideo) "جاري الاستيراد..." else "اختيار ملف فيديو مخصص (MP4)", fontSize = 12.sp)
+                            }
+                        }
                     }
 
                     FeatureToggleRow("خلفية شفافة تماماً 100% Alpha", editingTemplate.isPureTransparentBackground) { onUpdate(editingTemplate.copy(isPureTransparentBackground = it)) }
@@ -869,7 +905,17 @@ CollapsibleSection(
                         }
                     }
 
-                    ColorGradePickerRow("لون إطار التمييز (Accent Color)", editingTemplate.accentColorHex, { onUpdate(editingTemplate.copy(accentColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
+                    // v1.9.2 (#9): accents group — the border flag comes
+                    // FIRST and the color follows it, shown only while the
+                    // flag is on (the picker used to render unconditionally,
+                    // above its own toggle, inviting a dead edit). Same
+                    // gated pattern as the Card Glow color in Shadow & Glow.
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        FeatureToggleRow("إظهار الحدود الملونة", editingTemplate.showAccentBorder) { onUpdate(editingTemplate.copy(showAccentBorder = it)) }
+                    }
+                    if (editingTemplate.showAccentBorder) {
+                        ColorGradePickerRow("لون إطار التمييز (Accent Color)", editingTemplate.accentColorHex, { onUpdate(editingTemplate.copy(accentColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
+                    }
 
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         // v1.7: free emblem — the user types any emoji/symbol with the
@@ -883,9 +929,6 @@ CollapsibleSection(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(8.dp)
                         )
-                    }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        FeatureToggleRow("إظهار الحدود الملونة", editingTemplate.showAccentBorder) { onUpdate(editingTemplate.copy(showAccentBorder = it)) }
                     }
                     // Independent text shadow and card glow (v1.6). Card glow only
                     // applies where a card exists — not on full-bleed Full Show.
@@ -1835,13 +1878,17 @@ fun BoxEditHandle(xPx: Float, yPx: Float, color: Color, onDrag: (Float, Float) -
 fun BoxEditOverlay(template: LowerThirdTemplate, stageW: Int, stageH: Int, onTemplateChange: (LowerThirdTemplate) -> Unit) {
     val bento = LocalBentoColors.current
     val density = LocalDensity.current
-    val isFS = template.isFullScreen
     val w = stageW.toFloat()
     val h = stageH.toFloat()
-    val left = if (isFS) 0f else w * template.horizontalMarginPercent / 100f
-    val right = if (isFS) w else w * (100 - template.horizontalMarginPercent) / 100f
+    // v1.9.2 (#7): ONE box model for both feeds (Full Show included) —
+    // margin insets the sides, Bottom Position anchors the bottom edge,
+    // and the height grows upward from there, clamped inside the stage.
+    // Full gains the side (margin) and bottom (position) handles it
+    // never had; its old centered region + bottom-height handle are gone.
+    val left = w * template.horizontalMarginPercent / 100f
+    val right = w * (100 - template.horizontalMarginPercent) / 100f
     val boxH = h * template.boxHeightPercent / 100f
-    val top = if (isFS) (h - boxH) / 2f else h - h * template.positionBottomPercent / 100f - boxH
+    val top = h - h * template.positionBottomPercent / 100f - boxH
     val midX = (left + right) / 2f
     val midY = top + boxH / 2f
     val accent = bento.primary
@@ -1853,9 +1900,9 @@ fun BoxEditOverlay(template: LowerThirdTemplate, stageW: Int, stageH: Int, onTem
             .border(2.dp, accent, RoundedCornerShape(6.dp))
     )
 
-    val wPct = if (isFS) 100 else 100 - 2 * template.horizontalMarginPercent
+    val wPct = 100 - 2 * template.horizontalMarginPercent
     val label = "Box $wPct% × ${template.boxHeightPercent}%" +
-        (if (isFS) "" else " · B ${template.positionBottomPercent}%") +
+        " · B ${template.positionBottomPercent}%" +
         " — ${wPct * 1920 / 100}×${template.boxHeightPercent * 1080 / 100} px @1080p"
     Box(
         modifier = Modifier
@@ -1866,31 +1913,25 @@ fun BoxEditOverlay(template: LowerThirdTemplate, stageW: Int, stageH: Int, onTem
         Text(label, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
     }
 
-    if (!isFS) {
-        BoxEditHandle(left, midY, accent) { dx, _ ->
-            val m = (template.horizontalMarginPercent + dx / w * 100f).coerceIn(0f, 30f)
-            onTemplateChange(template.copy(horizontalMarginPercent = m.toInt()))
-        }
-        BoxEditHandle(right, midY, accent) { dx, _ ->
-            val m = (template.horizontalMarginPercent - dx / w * 100f).coerceIn(0f, 30f)
-            onTemplateChange(template.copy(horizontalMarginPercent = m.toInt()))
-        }
-        BoxEditHandle(midX, top + boxH, accent) { _, dy ->
-            val b = (template.positionBottomPercent - dy / h * 100f).coerceIn(0f, 30f)
-            onTemplateChange(template.copy(positionBottomPercent = b.toInt()))
-        }
+    BoxEditHandle(left, midY, accent) { dx, _ ->
+        val m = (template.horizontalMarginPercent + dx / w * 100f).coerceIn(0f, 30f)
+        onTemplateChange(template.copy(horizontalMarginPercent = m.toInt()))
     }
-    // Top edge always drags the box height (Full's bottom edge does too —
-    // its region is centered; Lower's bottom edge drags the position).
+    BoxEditHandle(right, midY, accent) { dx, _ ->
+        val m = (template.horizontalMarginPercent - dx / w * 100f).coerceIn(0f, 30f)
+        onTemplateChange(template.copy(horizontalMarginPercent = m.toInt()))
+    }
+    BoxEditHandle(midX, top + boxH, accent) { _, dy ->
+        val b = (template.positionBottomPercent - dy / h * 100f).coerceIn(0f, 30f)
+        onTemplateChange(template.copy(positionBottomPercent = b.toInt()))
+    }
+    // Top edge drags the box height; the bottom stays anchored, and the
+    // height clamps so the top edge never leaves the stage (the same
+    // clamp the renderers apply).
     BoxEditHandle(midX, top, accent) { _, dy ->
-        val nh = (template.boxHeightPercent - dy / h * 100f).coerceIn(10f, 100f)
+        val nh = (template.boxHeightPercent - dy / h * 100f)
+            .coerceIn(10f, (100f - template.positionBottomPercent).coerceAtLeast(10f))
         onTemplateChange(template.copy(boxHeightPercent = nh.toInt()))
-    }
-    if (isFS) {
-        BoxEditHandle(midX, top + boxH, accent) { _, dy ->
-            val nh = (template.boxHeightPercent + dy / h * 100f).coerceIn(10f, 100f)
-            onTemplateChange(template.copy(boxHeightPercent = nh.toInt()))
-        }
     }
 }
 
@@ -1900,24 +1941,10 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
     val context = LocalContext.current
     // v1.9.1: stage size (px) for the visual box editor overlay.
     var stageSize by remember { mutableStateOf(IntSize.Zero) }
-    // v1.9: preview honors auto-fit (approximation of the NDI/HTTP shrink).
-    // Heuristic: ~45 chars per preview line; line budget scales with the
-    // template's box height (6 lines at Lower's 45%, 10 at Full's 100%).
-    // v1.9.1: the CAP applies first (short verse renders at min(size, cap));
-    // overflow shrinks below the cap toward the same 10sp hard floor.
-    val previewFitScale = remember(template, verse) {
-        if (!template.autoFitText || template.verseFontSize <= 0) 1f
-        else {
-            val capRatio = (template.autoFitMaxVerseSp.toFloat() / template.verseFontSize).coerceIn(0.05f, 1f)
-            val hardFloor = (10f / template.verseFontSize).coerceIn(0.05f, 1f)
-            val totalChars = verse.arabicText.length +
-                (if (template.languageMode != com.arabicchristianmedia.model.LanguageMode.ARABIC_ONLY) verse.englishText.length else 0)
-            val estLines = totalChars / 45f
-            val maxLines = (if (template.isFullScreen) 10f else 6f) *
-                (template.boxHeightPercent / (if (template.isFullScreen) 100f else 45f))
-            if (estLines <= maxLines) capRatio else (maxLines / estLines).coerceIn(hardFloor, capRatio)
-        }
-    }
+    // v1.9.2 (#7c): the preview fit is computed further below, once the
+    // stage metrics exist — it mirrors the renderers' inputs (real content
+    // width, real box height) instead of the old fixed 45-chars-per-line /
+    // 6-or-10-line budget, which over-shrank verses on air.
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -1974,8 +2001,40 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
         val stageWDp = if (stageSize.width > 0) stageSize.width / density.density else 720f
         val stageHDp = if (stageSize.height > 0) stageSize.height / density.density else 405f
         val stageUnit = stageWDp / 960f
-        val cardSidePad = if (isFS) 0.dp else if (stageSize.width > 0) (stageWDp * template.horizontalMarginPercent / 100f).dp else (template.horizontalMarginPercent * 0.4f).dp
-        val cardBottomPad = if (isFS) 0.dp else if (stageSize.height > 0) (stageHDp * template.positionBottomPercent / 100f).dp else (template.positionBottomPercent * 0.4f).dp
+        // v1.9.2 (#7): BOTH feeds place the card by the slider fractions —
+        // Full Show no longer zeroes its margin/bottom in the preview.
+        val cardSidePad = if (stageSize.width > 0) (stageWDp * template.horizontalMarginPercent / 100f).dp else (template.horizontalMarginPercent * 0.4f).dp
+        val cardBottomPad = if (stageSize.height > 0) (stageHDp * template.positionBottomPercent / 100f).dp else (template.positionBottomPercent * 0.4f).dp
+        // v1.9.2 (#7c): preview fit on the renderers' own inputs. Content
+        // height grows ~quadratically with font scale (halving the font
+        // doubles the chars per line AND halves the line height), so the
+        // fitting scale is sqrt(available / height-at-scale-1) — the old
+        // linear estimate (fixed 45 chars/line, 6/10 line budget) shrank
+        // verses far below what NDI/HTTP actually render. The CAP applies
+        // first (short verse renders at min(size, cap)); overflow shrinks
+        // below the cap toward the same 10sp hard floor.
+        val previewFitScale = remember(template, verse, stageSize) {
+            if (!template.autoFitText || template.verseFontSize <= 0) 1f
+            else {
+                val capRatio = (template.autoFitMaxVerseSp.toFloat() / template.verseFontSize).coerceIn(0.05f, 1f)
+                val hardFloor = (10f / template.verseFontSize).coerceIn(0.05f, 1f)
+                val verseDp = template.verseFontSize * stageUnit
+                val contentWDp = (stageWDp * (1f - 2f * template.horizontalMarginPercent / 100f) -
+                    (template.cardPaddingLeftDp + template.cardPaddingRightDp) * stageUnit * 0.5f).coerceAtLeast(80f)
+                val charsPerLine = (contentWDp / (0.5f * verseDp)).coerceAtLeast(6f)
+                val totalChars = verse.arabicText.length +
+                    (if (template.languageMode != com.arabicchristianmedia.model.LanguageMode.ARABIC_ONLY) verse.englishText.length else 0)
+                val linesAt1 = totalChars / charsPerLine
+                val heightAt1 = linesAt1 * verseDp * 1.25f + template.referenceFontSize * stageUnit * 1.3f
+                val boxHDp = stageHDp * minOf(template.boxHeightPercent, 100 - template.positionBottomPercent).coerceAtLeast(0) / 100f
+                val availH = (boxHDp - (template.cardPaddingTopDp + template.cardPaddingBottomDp) * stageUnit * 0.5f).coerceAtLeast(20f)
+                when {
+                    heightAt1 * capRatio * capRatio <= availH -> capRatio
+                    heightAt1 <= 0f -> capRatio
+                    else -> kotlin.math.sqrt(availH / heightAt1).coerceIn(hardFloor, capRatio)
+                }
+            }
+        }
         val bgCol = try { Color(android.graphics.Color.parseColor(template.bgColorHex)) } catch (e: Exception) { Color.Black }
         val textCol = try { Color(android.graphics.Color.parseColor(template.textColorHex)) } catch (e: Exception) { Color.White }
         val refCol = try { Color(android.graphics.Color.parseColor(template.referenceColorHex)) } catch (e: Exception) { Color.Yellow }
@@ -2001,7 +2060,12 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
         val glowCol = try { Color(android.graphics.Color.parseColor(template.cardGlowColorHex)) } catch (e: Exception) { Color.Black }
         val hasVisibleCard = !template.isPureTransparentBackground &&
                 template.style != com.arabicchristianmedia.model.TemplateStyle.TRANSPARENT_OUTLINE
-        val cardGlowModifier = if (template.cardGlowEnabled && !isFS && hasVisibleCard) {
+        // v1.9.2 (#3): visible-EDGE rule, same as NDI/HTTP — the shadow
+        // shows whenever the card is inset from the frame on any side
+        // (Full Show included), not never-on-Full as before.
+        val cardHasVisibleEdge = template.horizontalMarginPercent > 0 || template.positionBottomPercent > 0 ||
+            ((isFS || template.autoFitText) && template.boxHeightPercent < 100)
+        val cardGlowModifier = if (template.cardGlowEnabled && cardHasVisibleEdge && hasVisibleCard) {
             Modifier.drawBehind {
                 // Soft layered halo in the user's glow color (drawn outside the card bounds).
                 drawRoundRect(
@@ -2023,7 +2087,9 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
             modifier = Modifier
                 .fillMaxSize()
                 .padding(start = cardSidePad, end = cardSidePad, bottom = cardBottomPad),
-            contentAlignment = if (isFS) Alignment.Center else Alignment.BottomCenter
+            // v1.9.2 (#7): bottom-anchored for BOTH feeds — the box hangs
+            // from its Bottom Position like the renderers' box.
+            contentAlignment = Alignment.BottomCenter
         ) {
             val cardBg = when {
                 template.isPureTransparentBackground || template.style == TemplateStyle.TRANSPARENT_OUTLINE -> Color(0xFF1E293B).copy(alpha = 0.45f)
@@ -2031,13 +2097,24 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
             }
 
             Surface(
-                shape = RoundedCornerShape(if (isFS) 0.dp else (template.cornerRadiusDp * stageUnit).dp),
+                // v1.9.2 (#7): the corner radius applies to Full Show too.
+                shape = RoundedCornerShape((template.cornerRadiusDp * stageUnit).dp),
                 color = cardBg,
                 border = if (template.showAccentBorder) BorderStroke(1.5.dp, try { Color(android.graphics.Color.parseColor(template.accentColorHex)) } catch (e: Exception) { Color.Yellow }) else null,
-                shadowElevation = if (template.cardGlowEnabled && !isFS && hasVisibleCard) 12.dp else 0.dp,
+                shadowElevation = if (template.cardGlowEnabled && cardHasVisibleEdge && hasVisibleCard) 12.dp else 0.dp,
                 // Round 2 (#2): no extra fixed inset - the card edges now
                 // coincide with the box outline's true fractions.
-                modifier = cardGlowModifier.then(if (isFS) Modifier.fillMaxSize() else Modifier.fillMaxWidth())
+                // v1.9.2 (#7): the DRAWN card is the slider box for Full
+                // (always) and for Lower under auto-fit — an explicit stage
+                // height, bottom-anchored by the outer Box. Lower with
+                // auto-fit OFF keeps its content-hugging card.
+                modifier = cardGlowModifier.then(
+                    if (isFS || template.autoFitText)
+                        // Clamped like the renderers: the box top never
+                        // leaves the frame (height + bottom <= 100%).
+                        Modifier.fillMaxWidth().height((stageHDp * minOf(template.boxHeightPercent, 100 - template.positionBottomPercent).coerceAtLeast(0) / 100f).dp)
+                    else Modifier.fillMaxWidth()
+                )
             ) {
                 Column(
                     // v1.9: preview honors the style's per-side card padding

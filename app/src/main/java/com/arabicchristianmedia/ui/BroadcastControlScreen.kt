@@ -231,14 +231,14 @@ fun BroadcastControlScreen(
                             modifier = Modifier
                                 .size(10.dp)
                                 .clip(CircleShape)
-                                .background(if (uiState.isServerRunning) bento.green else bento.liveRed)
+                                .background(if (uiState.isNativeNdiActive || uiState.isNativeShowActive) bento.green else bento.liveRed)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = if (uiState.isServerRunning) "بث NDI 6 نشط (NDI Broadcast Active)" else "بث NDI متوقف (NDI Broadcast Standby)",
+                            text = if (uiState.isNativeNdiActive || uiState.isNativeShowActive) "بث NDI 6 نشط (NDI Broadcast Active)" else "بث NDI متوقف (NDI Broadcast Standby)",
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
-                            color = if (uiState.isServerRunning) bento.green else bento.textPrimary
+                            color = if (uiState.isNativeNdiActive || uiState.isNativeShowActive) bento.green else bento.textPrimary
                         )
                     }
 

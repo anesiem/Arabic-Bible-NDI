@@ -253,7 +253,7 @@ fun TemplateEditorScreen(
         BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("محرر القوالب والتصاميم (Template Editor)", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("Template Editor", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text("تخصيص كامل وشامل لطبقات البث والعرض المباشر", fontSize = 12.sp, color = bento.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {

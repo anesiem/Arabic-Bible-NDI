@@ -227,7 +227,7 @@ class MainActivity : ComponentActivity() {
                                             modifier = Modifier
                                                 .size(8.dp)
                                                 .clip(CircleShape)
-                                                .background(if (uiState.isLiveOnAir && uiState.activeVerse != null) bento.liveRedBright else bento.textSecondary)
+                                                .background(if (uiState.isLiveOnAir && uiState.activeVerse != null) bento.liveRedBright else if (uiState.isNativeNdiActive || uiState.isNativeShowActive) bento.green else bento.textSecondary)
                                         )
                                         Spacer(modifier = Modifier.width(6.dp))
                                         Text(

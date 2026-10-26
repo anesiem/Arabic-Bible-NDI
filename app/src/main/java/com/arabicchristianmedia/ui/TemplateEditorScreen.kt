@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import kotlin.math.roundToInt
@@ -282,7 +283,7 @@ fun TemplateEditorScreen(
     // jumped-to target. Harmless when the right column isn't on screen
     // (the compact layout never jumps).
     fun anchorModifier(id: String): Modifier = Modifier
-        .onGloballyPositioned { coords ->
+        .onGloballyPositioned { coords: LayoutCoordinates ->
             val offset = coords.boundsInRoot().top - rightColumnRootY + rightScrollState.value
             if (anchorOffsets[id] != offset) anchorOffsets[id] = offset
         }
@@ -1260,7 +1261,7 @@ CollapsibleSection(
                     Column(
                         Modifier.weight(0.56f).fillMaxHeight().padding(14.dp)
                             .verticalScroll(rightScrollState)
-                            .onGloballyPositioned { coords -> rightColumnRootY = coords.boundsInRoot().top }
+                            .onGloballyPositioned { coords: LayoutCoordinates -> rightColumnRootY = coords.boundsInRoot().top }
                     ) {
                         frameSectionBlock()
                         Spacer(Modifier.height(8.dp))

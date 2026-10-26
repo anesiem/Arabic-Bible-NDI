@@ -1,0 +1,29 @@
+name: Build check
+
+# Debug build + unit tests ONLY. No signing, no secrets, no release:
+# releases are signed by Ashraf in Android Studio, never here.
+on:
+  push:
+    branches: [fix/pixel-ndi-title]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v3
+      - name: Install pinned NDK and CMake
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;28.2.13676358" "cmake;3.22.1"
+      - name: Build debug APK
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug
+      - name: Unit tests
+        run: ./gradlew testDebugUnitTest

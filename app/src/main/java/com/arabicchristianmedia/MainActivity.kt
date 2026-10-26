@@ -84,6 +84,7 @@ import com.arabicchristianmedia.ui.SermonListScreen
 import com.arabicchristianmedia.ui.TemplateEditorScreen
 import com.arabicchristianmedia.ui.theme.LocalBentoColors
 import com.arabicchristianmedia.ui.theme.MyApplicationTheme
+import com.arabicchristianmedia.model.ColorThemes
 
 class MainActivity : ComponentActivity() {
 
@@ -129,7 +130,10 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            MyApplicationTheme(themeMode = uiState.appThemeMode) {
+            MyApplicationTheme(
+                themeMode = uiState.appThemeMode,
+                colorTheme = ColorThemes.byId(uiState.selectedThemeId, uiState.customThemes)
+            ) {
                 val bento = LocalBentoColors.current
                 val snackbarHostState = remember { SnackbarHostState() }
                 var selectedTab by rememberSaveable { mutableIntStateOf(0) }
@@ -464,8 +468,7 @@ class MainActivity : ComponentActivity() {
                                 onSave = { viewModel.saveCurrentSermon(it) },
                                 onOpenSaved = { id, merge -> viewModel.openSavedSermon(id, merge) },
                                 onRenameSaved = { id, name -> viewModel.renameSavedSermon(id, name) },
-                                onDeleteSaved = { viewModel.deleteSavedSermon(it) },
-                                onSelectSermonPair = { dark, id -> viewModel.setSermonShadePair(dark, id) }
+                                onDeleteSaved = { viewModel.deleteSavedSermon(it) }
                             )
                         }
                     }

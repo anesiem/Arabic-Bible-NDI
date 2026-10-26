@@ -58,7 +58,6 @@ import com.arabicchristianmedia.model.AppThemeMode
 import com.arabicchristianmedia.model.BibleBook
 import com.arabicchristianmedia.model.BibleVerse
 import com.arabicchristianmedia.model.BibleVersion
-import com.arabicchristianmedia.model.SermonShadePairs
 import com.arabicchristianmedia.model.Testament
 import com.arabicchristianmedia.ui.theme.*
 import kotlin.math.abs
@@ -91,6 +90,7 @@ fun BibleReaderScreen(
     var scripturePickerExpanded by remember { mutableStateOf(false) }
 
     val bento = LocalBentoColors.current
+    val listColors = LocalListColors.current
     val lazyListState = rememberLazyListState()
 
     // Auto-scroll to active verse
@@ -348,8 +348,7 @@ fun BibleReaderScreen(
                         // Item 9: fixed 75% height (was content-sized, ~50%).
                         // Items 6+7: chapter bands (same pair as the Library)
                         // own the row background; rows are Arabic-only.
-                        val recentsIsDark = MaterialTheme.colorScheme.surface == BentoCardDark
-                        val recentsPair = SermonShadePairs.forMode(recentsIsDark, uiState.sermonPairDarkId, uiState.sermonPairLightId)
+                        // Theme bands (same pair as the Sermon list, from the theme).
                         val recentsBandA = remember(uiState.recentVerses) {
                             var bandA = true
                             var prevKey: Pair<String, Int>? = null
@@ -394,7 +393,7 @@ fun BibleReaderScreen(
                                         Column(
                                             modifier = Modifier.fillMaxWidth()
                                                 .clip(RoundedCornerShape(VerseRowSpec.CardCorner))
-                                                .background(if (recentsBandA[index]) Color(recentsPair.shadeA) else Color(recentsPair.shadeB))
+                                                .background(if (recentsBandA[index]) listColors.bandA else listColors.bandB)
                                                 .clickable {
                                                     showRecentsSheet = false
                                                     onClearSearch()
@@ -438,8 +437,7 @@ fun BibleReaderScreen(
                 // the shade flips at each chapter boundary vs the previous
                 // row (so single-chapter views are uniformly band A, while
                 // search results spanning chapters alternate).
-                val isDarkMode = MaterialTheme.colorScheme.surface == BentoCardDark
-                val chapterPair = SermonShadePairs.forMode(isDarkMode, uiState.sermonPairDarkId, uiState.sermonPairLightId)
+                // Theme bands (same pair as the Sermon list, from the theme).
                 val chapterBandA = remember(versesToShow) {
                     var bandA = true
                     var prevKey: Pair<String, Int>? = null
@@ -522,7 +520,7 @@ fun BibleReaderScreen(
                             isFocused = uiState.readerFocusVerseId == verse.id,
                             inSermonList = verse.id in sermonVerseIds,
                             isRecent = verse.id in recentVerseIds,
-                            bandColor = if (chapterBandA[index]) Color(chapterPair.shadeA) else Color(chapterPair.shadeB),
+                            bandColor = if (chapterBandA[index]) listColors.bandA else listColors.bandB,
                             version = uiState.bibleVersion,
                             fontSizeSp = uiState.readerFontSize,
                             showCitation = uiState.isSearching,
@@ -580,9 +578,9 @@ fun BentoVerseCard(
     bandColor: Color? = null
 ) {
     val bento = LocalBentoColors.current
-    val isDark = MaterialTheme.colorScheme.surface == BentoCardDark
+    val listColors = LocalListColors.current
     val highlightColor = if (isLiveOnAir) {
-        if (isDark) VerseLiveHighlightDark else VerseLiveHighlightLight
+        listColors.verseLiveHighlight
     } else {
         bento.primary.copy(alpha = 0.25f)
     }
@@ -599,7 +597,7 @@ fun BentoVerseCard(
     // v1.8: Use primary (theme-aware) instead of red for the verse highlight border.
     val borderColor = when {
         isLiveOnAir || isCued || isFocused -> bento.primary
-        isRecent -> RecentsMarker
+        isRecent -> listColors.recents
         inSermonList -> bento.secondary
         else -> bento.border
     }

@@ -12,6 +12,12 @@ import com.arabicchristianmedia.data.RecentStore
 import com.arabicchristianmedia.data.SermonStore
 import com.arabicchristianmedia.data.TemplateRepository
 import com.arabicchristianmedia.model.AppThemeMode
+import com.arabicchristianmedia.model.ColorTheme
+import com.arabicchristianmedia.model.ColorThemes
+import com.arabicchristianmedia.model.SermonShadePairs
+import com.arabicchristianmedia.model.colorThemeFromJson
+import com.arabicchristianmedia.model.toJson
+import org.json.JSONArray
 import com.arabicchristianmedia.model.BibleBook
 import com.arabicchristianmedia.model.BibleVerse
 import com.arabicchristianmedia.model.BibleVersion
@@ -97,9 +103,9 @@ data class BibleNdiUiState(
     val showWorkingDirty: Boolean = false,
     val statusMessage: String? = null,
     val appThemeMode: AppThemeMode = AppThemeMode.SYSTEM,
-    // v1.9.1: sermon list alternating-color pair picks (per screen mode).
-    val sermonPairDarkId: String = "d1",
-    val sermonPairLightId: String = "l1",
+    // App color theme: selected theme id (built-in or custom) + user custom themes.
+    val selectedThemeId: String = "classic",
+    val customThemes: List<ColorTheme> = emptyList(),
     val readerFontSize: Int = 18,
     val isKeepScreenOn: Boolean = true,
     // True while the Bible databases are being copied/loaded on first launch.
@@ -373,7 +379,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             statusMessage = "Ready. Tap a verse to go LIVE."
         )
         loadPersistedNdiSpecs()
-        loadSermonShadePairs()
+        loadThemePrefs()
         // v1.9.1: restore the persisted sermon working list + saved sermons.
         restoreSermonState()
         restoreRecentState()
@@ -679,22 +685,98 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    private fun loadSermonShadePairs() {
-        val prefs = getSermonPrefs()
-        _uiState.value = _uiState.value.copy(
-            sermonPairDarkId = prefs?.getString("sermon_pair_dark", "d1") ?: "d1",
-            sermonPairLightId = prefs?.getString("sermon_pair_light", "l1") ?: "l1"
-        )
+    // App color themes (own prefs file; the old sermon pair keys stay
+    // readable only for the one-time migration below).
+    private fun getThemePrefs(): SharedPreferences? {
+        return try {
+            getApplication<Application>()?.getSharedPreferences("app_theme_prefs", Context.MODE_PRIVATE)
+        } catch (e: Exception) {
+            null
+        }
     }
 
-    fun setSermonShadePair(dark: Boolean, pairId: String) {
-        if (dark) {
-            _uiState.value = _uiState.value.copy(sermonPairDarkId = pairId)
-            getSermonPrefs()?.edit()?.putString("sermon_pair_dark", pairId)?.apply()
-        } else {
-            _uiState.value = _uiState.value.copy(sermonPairLightId = pairId)
-            getSermonPrefs()?.edit()?.putString("sermon_pair_light", pairId)?.apply()
+    private fun persistThemePrefs() {
+        val prefs = getThemePrefs() ?: return
+        val customsJson = JSONArray()
+        for (theme in _uiState.value.customThemes) {
+            customsJson.put(theme.toJson())
         }
+        prefs.edit()
+            .putString("selected_theme_id", _uiState.value.selectedThemeId)
+            .putString("custom_themes_json", customsJson.toString())
+            .apply()
+    }
+
+    private fun loadThemePrefs() {
+        val prefs = getThemePrefs()
+        val customs = mutableListOf<ColorTheme>()
+        try {
+            val raw = prefs?.getString("custom_themes_json", null)
+            if (raw != null) {
+                val arr = JSONArray(raw)
+                for (i in 0 until arr.length()) {
+                    colorThemeFromJson(arr.getJSONObject(i))?.let { customs.add(it) }
+                }
+            }
+        } catch (e: Exception) {
+            customs.clear()
+        }
+        var selectedId = prefs?.getString("selected_theme_id", "classic") ?: "classic"
+        // One-time migration: a user with non-default pair picks keeps
+        // their exact look as a custom theme (Classic chrome + picked
+        // bands + teal recents); everyone else lands on Classic.
+        if (prefs?.getBoolean("theme_migrated_v1", false) != true) {
+            val sermonPrefs = getSermonPrefs()
+            val darkId = sermonPrefs?.getString("sermon_pair_dark", "d1") ?: "d1"
+            val lightId = sermonPrefs?.getString("sermon_pair_light", "l1") ?: "l1"
+            if (darkId != "d1" || lightId != "l1") {
+                val darkPair = SermonShadePairs.dark(darkId)
+                val lightPair = SermonShadePairs.light(lightId)
+                val classic = ColorThemes.CLASSIC
+                val migrated = ColorTheme(
+                    id = "custom_migrated",
+                    name = "My colors",
+                    dark = classic.dark.copy(bandA = darkPair.shadeA, bandB = darkPair.shadeB),
+                    light = classic.light.copy(bandA = lightPair.shadeA, bandB = lightPair.shadeB)
+                )
+                customs.removeAll { it.id == migrated.id }
+                customs.add(migrated)
+                selectedId = migrated.id
+            }
+            prefs?.edit()?.putBoolean("theme_migrated_v1", true)?.apply()
+        }
+        _uiState.value = _uiState.value.copy(
+            selectedThemeId = selectedId,
+            customThemes = customs
+        )
+        // Persist the migrated selection/customs so the server (which reads
+        // these prefs directly) sees the same theme as the app.
+        persistThemePrefs()
+    }
+
+    fun selectTheme(themeId: String) {
+        _uiState.value = _uiState.value.copy(selectedThemeId = themeId)
+        persistThemePrefs()
+    }
+
+    /** Save-as-new: a working copy becomes a new custom theme and is selected. */
+    fun saveNewCustomTheme(theme: ColorTheme) {
+        val customs = _uiState.value.customThemes.toMutableList()
+        customs.removeAll { it.id == theme.id }
+        customs.add(theme)
+        _uiState.value = _uiState.value.copy(
+            selectedThemeId = theme.id,
+            customThemes = customs
+        )
+        persistThemePrefs()
+    }
+
+    /** Update: a custom theme's tokens are replaced (built-ins cannot be updated). */
+    fun updateCustomTheme(theme: ColorTheme) {
+        if (ColorThemes.isBuiltIn(theme.id)) return
+        val customs = _uiState.value.customThemes.map { if (it.id == theme.id) theme else it }
+        _uiState.value = _uiState.value.copy(customThemes = customs)
+        persistThemePrefs()
     }
 
     private fun persistNdiEnabled(feedKey: String, enabled: Boolean) {

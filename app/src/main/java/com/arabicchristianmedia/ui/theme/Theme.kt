@@ -10,6 +10,10 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import com.arabicchristianmedia.model.AppThemeMode
+import com.arabicchristianmedia.model.ColorTheme
+import com.arabicchristianmedia.model.ColorThemeTokens
+import com.arabicchristianmedia.model.ColorThemes
+import com.arabicchristianmedia.model.onPrimaryFor
 
 data class BentoColors(
     val bg: Color,
@@ -53,89 +57,85 @@ val LocalBentoColors = staticCompositionLocalOf {
     )
 }
 
-private val LightBentoColors = BentoColors(
-    bg = BentoBgLight,
-    card = BentoCardWhiteLight,
-    surfaceContainer = BentoSurfaceContainerLight,
-    surfaceVariant = BentoSurfaceVariantLight,
-    border = BentoBorderLight,
-    borderSubtle = BentoBorderSubtleLight,
-    textPrimary = BentoTextPrimaryLight,
-    textSecondary = BentoTextSecondaryLight,
-    primary = BentoPrimaryLight,
-    onPrimary = BentoOnPrimaryLight,
-    primaryContainer = BentoPrimaryContainerLight,
-    onPrimaryContainer = BentoOnPrimaryContainerLight,
-    secondary = BentoSecondaryLight,
-    onSecondary = BentoOnSecondaryLight,
-    liveRed = BentoLiveRed,
-    liveRedBright = BentoLiveRedBright,
-    green = BentoGreen
+/**
+ * List colors: chapter bands + recents marker + live-row treatments, all
+ * resolved from the selected app theme for the current mode. Every list
+ * (Library, Sermon, recents sheet, remote page tokens) reads these — never
+ * a scattered hex, and never the old per-screen pair lookup. Sermon-live
+ * and verse-live-highlight stay at Classic values in v1 (theme model).
+ */
+data class ListColors(
+    val bandA: Color,
+    val bandB: Color,
+    val recents: Color,
+    val sermonLiveNavy: Color,
+    val sermonLiveYellow: Color,
+    val sermonLivePaleYellow: Color,
+    val verseLiveHighlight: Color
 )
 
-private val DarkBentoColors = BentoColors(
-    bg = BentoBgDark,
-    card = BentoCardDark,
-    surfaceContainer = BentoSurfaceContainerDark,
-    surfaceVariant = BentoSurfaceVariantDark,
-    border = BentoBorderDark,
-    borderSubtle = BentoBorderSubtleDark,
-    textPrimary = BentoTextPrimaryDark,
-    textSecondary = BentoTextSecondaryDark,
-    primary = BentoPrimaryDark,
-    onPrimary = BentoOnPrimaryDark,
-    primaryContainer = BentoPrimaryContainerDark,
-    onPrimaryContainer = BentoOnPrimaryContainerDark,
-    secondary = BentoSecondaryDark,
-    onSecondary = BentoOnSecondaryDark,
-    liveRed = BentoLiveRed,
-    liveRedBright = BentoLiveRedBright,
-    green = BentoGreen
-)
+val LocalListColors = staticCompositionLocalOf {
+    ListColors(
+        bandA = Color(ColorThemes.CLASSIC.light.bandA),
+        bandB = Color(ColorThemes.CLASSIC.light.bandB),
+        recents = Color(0xFF0D9488),
+        sermonLiveNavy = SermonLiveNavy,
+        sermonLiveYellow = SermonLiveYellow,
+        sermonLivePaleYellow = SermonLivePaleYellow,
+        verseLiveHighlight = VerseLiveHighlightLight
+    )
+}
 
-private val BentoLightColorScheme = lightColorScheme(
-    primary = BentoPrimaryLight,
-    onPrimary = BentoOnPrimaryLight,
-    primaryContainer = BentoPrimaryContainerLight,
-    onPrimaryContainer = BentoOnPrimaryContainerLight,
-    secondary = BentoSecondaryLight,
-    onSecondary = BentoOnSecondaryLight,
-    tertiary = BentoGreen,
-    background = BentoBgLight,
-    onBackground = BentoTextPrimaryLight,
-    surface = BentoCardWhiteLight,
-    onSurface = BentoTextPrimaryLight,
-    surfaceVariant = BentoSurfaceContainerLight,
-    onSurfaceVariant = BentoTextSecondaryLight,
-    outline = BentoBorderLight,
-    outlineVariant = BentoBorderSubtleLight,
-    error = BentoLiveRed,
-    onError = Color.White
-)
+/** Bento chrome + Material scheme, both built from one theme token set. */
+private fun bentoColorsFromTheme(tokens: ColorThemeTokens, isDark: Boolean): BentoColors {
+    return BentoColors(
+        bg = Color(tokens.bg),
+        card = Color(tokens.card),
+        surfaceContainer = Color(tokens.surfaceContainer),
+        surfaceVariant = Color(tokens.surfaceVariant),
+        border = Color(tokens.border),
+        borderSubtle = Color(tokens.borderSubtle),
+        textPrimary = Color(tokens.textPrimary),
+        textSecondary = Color(tokens.textSecondary),
+        primary = Color(tokens.primary),
+        onPrimary = Color(onPrimaryFor(tokens.primary)),
+        primaryContainer = Color(tokens.primaryContainer),
+        onPrimaryContainer = if (isDark) BentoOnPrimaryContainerDark else BentoOnPrimaryContainerLight,
+        secondary = if (isDark) BentoSecondaryDark else BentoSecondaryLight,
+        onSecondary = if (isDark) BentoOnSecondaryDark else BentoOnSecondaryLight,
+        liveRed = BentoLiveRed,
+        liveRedBright = BentoLiveRedBright,
+        green = BentoGreen
+    )
+}
 
-private val BentoDarkColorScheme = darkColorScheme(
-    primary = BentoPrimaryDark,
-    onPrimary = BentoOnPrimaryDark,
-    primaryContainer = BentoPrimaryContainerDark,
-    onPrimaryContainer = BentoOnPrimaryContainerDark,
-    secondary = BentoSecondaryDark,
-    onSecondary = BentoOnSecondaryDark,
-    tertiary = BentoGreen,
-    background = BentoBgDark,
-    onBackground = BentoTextPrimaryDark,
-    surface = BentoCardDark,
-    onSurface = BentoTextPrimaryDark,
-    surfaceVariant = BentoSurfaceContainerDark,
-    onSurfaceVariant = BentoTextSecondaryDark,
-    outline = BentoBorderDark,
-    outlineVariant = BentoBorderSubtleDark,
-    error = BentoLiveRed,
-    onError = Color.White
-)
+private fun colorSchemeFromTheme(bento: BentoColors, isDark: Boolean): ColorScheme {
+    val scheme = if (isDark) darkColorScheme() else lightColorScheme()
+    return scheme.copy(
+        primary = bento.primary,
+        onPrimary = bento.onPrimary,
+        primaryContainer = bento.primaryContainer,
+        onPrimaryContainer = bento.onPrimaryContainer,
+        secondary = bento.secondary,
+        onSecondary = bento.onSecondary,
+        tertiary = bento.green,
+        background = bento.bg,
+        onBackground = bento.textPrimary,
+        surface = bento.card,
+        onSurface = bento.textPrimary,
+        surfaceVariant = bento.surfaceContainer,
+        onSurfaceVariant = bento.textSecondary,
+        outline = bento.border,
+        outlineVariant = bento.borderSubtle,
+        error = bento.liveRed,
+        onError = Color.White
+    )
+}
 
 @Composable
 fun MyApplicationTheme(
     themeMode: AppThemeMode = AppThemeMode.SYSTEM,
+    colorTheme: ColorTheme = ColorThemes.CLASSIC,
     content: @Composable () -> Unit,
 ) {
     val isDark = when (themeMode) {
@@ -144,10 +144,23 @@ fun MyApplicationTheme(
         AppThemeMode.DARK -> true
     }
 
-    val colorScheme = if (isDark) BentoDarkColorScheme else BentoLightColorScheme
-    val bentoColors = if (isDark) DarkBentoColors else LightBentoColors
+    val tokens = colorTheme.tokens(isDark)
+    val bentoColors = bentoColorsFromTheme(tokens, isDark)
+    val colorScheme = colorSchemeFromTheme(bentoColors, isDark)
+    val listColors = ListColors(
+        bandA = Color(tokens.bandA),
+        bandB = Color(tokens.bandB),
+        recents = Color(tokens.recents),
+        sermonLiveNavy = SermonLiveNavy,
+        sermonLiveYellow = SermonLiveYellow,
+        sermonLivePaleYellow = SermonLivePaleYellow,
+        verseLiveHighlight = if (isDark) VerseLiveHighlightDark else VerseLiveHighlightLight
+    )
 
-    CompositionLocalProvider(LocalBentoColors provides bentoColors) {
+    CompositionLocalProvider(
+        LocalBentoColors provides bentoColors,
+        LocalListColors provides listColors
+    ) {
         MaterialTheme(
             colorScheme = colorScheme,
             typography = Typography,

@@ -17,7 +17,7 @@ class BibleDatabaseHelper(private val context: Context) {
          * Bump when the bundled database assets in assets/bible change: stale on-device
          * copies are recopied on the next launch.
          */
-        const val DATA_VERSION = 4 // v1.9.1: speech brackets [ ] stripped from tashkeelWord (2,025 verses; plain text untouched) + Psalm 52:1 fill from v3 (data-only fixes; bump REQUIRED so upgraded installs recopy)
+        const val DATA_VERSION = 5 // Search-only searchWord column (matching-only normalized text; word untouched) — bump REQUIRED so upgraded installs recopy. Prev v4 (v1.9.1): speech brackets [ ] stripped from tashkeelWord (2,025 verses; plain text untouched) + Psalm 52:1 fill from v3.
         private const val PREFS = "bible_db_prefs"
     }
 

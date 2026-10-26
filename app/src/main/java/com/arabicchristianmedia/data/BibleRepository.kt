@@ -248,7 +248,13 @@ object BibleRepository {
     }
 
     fun searchVerses(query: String): List<BibleVerse> {
-        // v2.0: strip tashkeel from query so search works regardless of diacritics
+        // v2.0: strip tashkeel from query so search works regardless of diacritics.
+        // The match runs against the search-only searchWord column (same
+        // stripping, applied to the stored text at build time): the word
+        // column is only partly unvocalized, so matching against it missed
+        // verses whose stored text kept a stray diacritic (e.g. Mark 12:26
+        // stored العلّيقة while the query stripped to العليقة). word itself
+        // is NEVER touched, so it can still be updated/corrected later.
         val q = stripTashkeel(query.trim())
         if (q.isEmpty()) return emptyList()
         val helper = dbHelper ?: return emptyList()
@@ -258,7 +264,7 @@ object BibleRepository {
 
         arDb?.let { db ->
             val cursor = db.rawQuery(
-                "SELECT bookNum, chNum, verseNum, word FROM words WHERE word LIKE ? LIMIT 100",
+                "SELECT bookNum, chNum, verseNum, word FROM words WHERE searchWord LIKE ? LIMIT 100",
                 arrayOf("%$q%")
             )
             if (cursor.moveToFirst()) {

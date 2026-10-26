@@ -100,6 +100,7 @@ data class LowerThirdTemplate(
     val secondaryReferenceIsItalic: Boolean = true,
     val useEasternArabicNumerals: Boolean = true,
     val useArabicPunctuation: Boolean = true,
+    val useSystemFontForBrackets: Boolean = true,
     val alignment: BroadcastTextAlignment = BroadcastTextAlignment.RIGHT,
     val positionBottomPercent: Int = 8,
     val horizontalMarginPercent: Int = 5,

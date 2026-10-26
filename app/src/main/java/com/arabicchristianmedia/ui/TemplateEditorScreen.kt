@@ -725,6 +725,7 @@ CollapsibleSection(
                     SliderWithLabel("حجم النص العربي", editingTemplate.verseFontSize.toFloat(), 10f..180f) { onUpdate(editingTemplate.copy(verseFontSize = it.toInt())) }
                     FeatureToggleRow("علامات الترقيم العربية (Use Arabic punctuation ، ؛ ؟)", editingTemplate.useArabicPunctuation) { onUpdate(editingTemplate.copy(useArabicPunctuation = it)) }
                     FeatureToggleRow("الأرقام العربية المشرقية (Eastern Arabic numerals ١٢٣)", editingTemplate.useEasternArabicNumerals) { onUpdate(editingTemplate.copy(useEasternArabicNumerals = it)) }
+                    FeatureToggleRow("تصحيح الأقواس بخط النظام (Use system font for brackets ( ) [ ] { })", editingTemplate.useSystemFontForBrackets) { onUpdate(editingTemplate.copy(useSystemFontForBrackets = it)) }
 
                     // v1.8: Three-way language mode (replaces the bilingual toggle).
                 

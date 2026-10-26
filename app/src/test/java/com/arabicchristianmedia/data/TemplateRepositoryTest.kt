@@ -416,4 +416,19 @@ class TemplateRepositoryTest {
         assertFalse("a user style id (tpl_<timestamp>) is not factory", TemplateRepository.isFactoryStyleId("tpl_1730000000000"))
         assertFalse("null is not factory", TemplateRepository.isFactoryStyleId(null))
     }
+
+    @Test
+    fun `bracket system-font flag round-trips through persistence`() {
+        val saved = baseTemplate("brk_1", false).copy(useSystemFontForBrackets = false)
+        repo.saveTemplates(listOf(saved))
+        val loaded = repo.getAllTemplates().first { it.id == "brk_1" }
+        assertFalse("an OFF bracket flag must survive save and load", loaded.useSystemFontForBrackets)
+    }
+
+    @Test
+    fun `bracket system-font flag defaults to true when absent from JSON`() {
+        val parsed = repo.templateFromJsonString("""{"name":"T","id":"brk_2"}""")
+        assertNotNull("a minimal JSON with a known key must parse", parsed)
+        assertTrue("a missing bracket flag must default to ON", parsed!!.useSystemFontForBrackets)
+    }
 }

@@ -69,6 +69,10 @@ import com.arabicchristianmedia.model.SermonShadePairs
 import com.arabicchristianmedia.ui.theme.LocalBentoColors
 import com.arabicchristianmedia.ui.theme.BentoCardDark
 import com.arabicchristianmedia.ui.theme.RecentsMarker
+import com.arabicchristianmedia.ui.theme.SermonLiveNavy
+import com.arabicchristianmedia.ui.theme.SermonLivePaleYellow
+import com.arabicchristianmedia.ui.theme.SermonLiveYellow
+import com.arabicchristianmedia.ui.theme.VerseRowSpec
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -105,8 +109,7 @@ fun SermonListScreen(
     // v1.9.1: alternating row colors — user-picked pair per screen mode
     // (same dark detection idiom as the reader screen).
     val isDark = MaterialTheme.colorScheme.surface == BentoCardDark
-    val sermonPair = if (isDark) SermonShadePairs.dark(uiState.sermonPairDarkId)
-                     else SermonShadePairs.light(uiState.sermonPairLightId)
+    val sermonPair = SermonShadePairs.forMode(isDark, uiState.sermonPairDarkId, uiState.sermonPairLightId)
     // Item 6: the same recents color marks recent verses here as in the
     // Library list (live still wins over the marker).
     val recentVerseIds = remember(uiState.recentVerses) {
@@ -208,7 +211,7 @@ fun SermonListScreen(
                 }
             } else {
                 LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(VerseRowSpec.RowSpacing),
                     modifier = Modifier.fillMaxSize()
                 ) {
                     itemsIndexed(
@@ -444,11 +447,8 @@ fun SermonListScreen(
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
-// v1.9.1: on-air row colors — dark blue with light yellow (Ashraf's
-// pick, replacing the red tint). Fixed in both screen modes.
-private val SermonLiveNavy = Color(0xFF1B3A5C)
-private val SermonLiveYellow = Color(0xFFF5D76E)
-private val SermonLivePaleYellow = Color(0xFFFDE9A8)
+// R1: the sermon live colors moved to the token file (ui/theme/Color.kt)
+// — same values, now defined once for every list.
 
 /** One selectable shade pair in the sermon colors dialog. */
 @Composable
@@ -513,7 +513,7 @@ private fun SermonRow(
         }
     ) {
         Card(
-            shape = RoundedCornerShape(16.dp),
+            shape = RoundedCornerShape(VerseRowSpec.CardCorner),
             colors = CardDefaults.cardColors(
                 containerColor = when {
                     isLive -> SermonLiveNavy
@@ -528,7 +528,7 @@ private fun SermonRow(
             modifier = Modifier.fillMaxWidth().clickable { onTap() }
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth().padding(12.dp),
+                modifier = Modifier.fillMaxWidth().padding(VerseRowSpec.RowPadding),
                 verticalAlignment = Alignment.Top
             ) {
                 Surface(
@@ -553,7 +553,7 @@ private fun SermonRow(
                     ) {
                         Text(
                             text = verse.getFormattedArabicCitation(true),
-                            fontSize = 11.sp,
+                            fontSize = VerseRowSpec.CitationSize,
                             fontWeight = FontWeight.Bold,
                             color = if (isLive) SermonLivePaleYellow else bento.primary
                         )
@@ -572,7 +572,7 @@ private fun SermonRow(
                             }
                         }
                     }
-                    Spacer(modifier = Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.height(VerseRowSpec.CitationBodySpacing))
                     Text(
                         text = verse.arabicText,
                         fontSize = 15.sp,

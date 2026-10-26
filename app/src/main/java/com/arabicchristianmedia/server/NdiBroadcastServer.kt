@@ -29,6 +29,7 @@ import com.arabicchristianmedia.data.ArabicTextFormatter
 import com.arabicchristianmedia.data.BibleRepository
 import com.arabicchristianmedia.data.SermonStore
 import com.arabicchristianmedia.data.TemplateRepository
+import com.arabicchristianmedia.model.SermonShadePairs
 import com.arabicchristianmedia.model.AnimatedBackgroundType
 import com.arabicchristianmedia.model.BundledFonts
 import com.arabicchristianmedia.model.BibleVerse
@@ -863,6 +864,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
      * Same citation formatting as the full state (Lower template), a
      * fraction of the payload for what can be several polling remotes.
      */
+    /** R5: an ARGB Long as a #RRGGBB CSS hex (alpha dropped). */
+    private fun bandHex(argb: Long): String = "#%06X".format(argb and 0xFFFFFF)
+
     private fun buildLightJsonState(): String {
         val tpl = currentTemplate
         val verse = currentVerse
@@ -874,6 +878,15 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             put("bookId", verse?.bookId ?: "")
             put("chapterNum", verse?.chapter ?: 0)
             put("verseNum", verse?.verse ?: 0)
+            // R5: the remote page mirrors the app's picked sermon pair
+            // (bands), read fresh from the same prefs the app uses.
+            val sermonPrefs = try { context.getSharedPreferences("sermon_ui_prefs", Context.MODE_PRIVATE) } catch (e: Exception) { null }
+            val darkBandPair = SermonShadePairs.dark(sermonPrefs?.getString("sermon_pair_dark", "d1"))
+            val lightBandPair = SermonShadePairs.light(sermonPrefs?.getString("sermon_pair_light", "l1"))
+            put("bandDarkA", bandHex(darkBandPair.shadeA))
+            put("bandDarkB", bandHex(darkBandPair.shadeB))
+            put("bandLightA", bandHex(lightBandPair.shadeA))
+            put("bandLightB", bandHex(lightBandPair.shadeB))
             // Item 6+7: recents for the remote page — Arabic citation +
             // Arabic text only (no English line, same as the Library
             // sheet); the English citation stays as the trigger ref, with
@@ -4871,8 +4884,6 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     .chips button { border-color: #cbd5e1; color: #334155; }
     .chips button.active { background: #0f172a; color: #fff; border-color: transparent; }
     .vrow { border-color: #e2e8f0; }
-    .vrow.band-a { background: #EAE3F6; }
-    .vrow.band-b { background: #DFE9F3; }
   }
   @media (prefers-color-scheme: dark) {
     body { background: #0f172a; color: #f1f5f9; }
@@ -4882,8 +4893,6 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     .chips button { border-color: #475569; color: #cbd5e1; }
     .chips button.active { background: #f1f5f9; color: #0f172a; border-color: transparent; }
     .vrow { border-color: #334155; }
-    .vrow.band-a { background: #3B3052; }
-    .vrow.band-b { background: #2B3A42; }
     /* v1.9.2 (#6): the .livepill dark overrides used to live HERE, before
        the base pill rules — equal specificity meant the later base rules
        won and the dark colors were dead (near-black text on the gray pill
@@ -4934,8 +4943,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     border: none; border-radius: 16px; cursor: pointer; min-height: 60px;
     letter-spacing: 0.4px;
   }
-  .onair.on { background: #dc2626; color: #fff; }
-  .onair.off { background: #6b7280; color: #fff; }
+  .onair.on { background: var(--onair-on, #dc2626); color: #fff; }
+  .onair.off { background: var(--onair-off, #6b7280); color: #fff; }
   .onair:active { transform: scale(0.98); opacity: 0.9; }
   .status { text-align: center; font-size: 14px; min-height: 22px; font-weight: 600; }
   .status.ok { color: #16a34a; }
@@ -4973,10 +4982,19 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     .status { grid-area: status; }
     .vlist { max-height: 66vh; }
   }
-  .vrow { display: flex; gap: 10px; padding: 10px 8px; border-bottom: 1px solid; cursor: pointer; align-items: flex-start; }
+  .vrow { display: flex; gap: 10px; padding: 12px; border-bottom: 1px solid; cursor: pointer; align-items: flex-start; }
   .vrow:active { opacity: 0.7; }
-  .vrow.live { background: rgba(22,163,74,0.18); border-radius: 10px; }
-  .vrow.recent { border-inline-start: 3px solid #0D9488; padding-inline-start: 5px; }
+  /* R5: row tokens — bands follow the app's picked pair (set by JS from
+     the light state); the fallbacks are the default pair. Order matters:
+     base bands, then the dark fallbacks, then live (live wins over bands). */
+  .vrow.band-a { background: var(--band-a, #EAE3F6); }
+  .vrow.band-b { background: var(--band-b, #DFE9F3); }
+  @media (prefers-color-scheme: dark) {
+    .vrow.band-a { background: var(--band-a, #3B3052); }
+    .vrow.band-b { background: var(--band-b, #2B3A42); }
+  }
+  .vrow.live { background: var(--live-bg, rgba(22,163,74,0.18)); border-radius: 10px; }
+  .vrow.recent { border-inline-start: 3px solid var(--recents, #0D9488); padding-inline-start: 9px; }
   .vn { font-weight: 800; min-width: 30px; text-align: center; opacity: 0.65; padding-top: 2px; }
   .va { font-size: 17px; line-height: 1.8; }
   .ve { font-size: 13px; opacity: 0.75; margin-top: 2px; line-height: 1.5; }
@@ -5302,6 +5320,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         cit ? (live.onAir ? cit : 'Off air — ' + cit) : 'Off air';
       pill.className = 'livepill' + (live.onAir && cit ? ' on' : '');
       pill.title = cit || '';
+      // R5: mirror the app's picked sermon pair into the band variables
+      // (dark/light by the page's color scheme; re-applied every poll).
+      if (j.bandDarkA) {
+        var darkMode = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        document.documentElement.style.setProperty('--band-a', darkMode ? j.bandDarkA : j.bandLightA);
+        document.documentElement.style.setProperty('--band-b', darkMode ? j.bandDarkB : j.bandLightB);
+      }
       renderOnAir();
       markLiveRow();
       markRecentRows();

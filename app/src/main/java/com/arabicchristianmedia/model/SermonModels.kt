@@ -78,6 +78,10 @@ object SermonShadePairs {
 
     fun dark(id: String?): SermonShadePair = DARK.firstOrNull { it.id == id } ?: DARK[0]
     fun light(id: String?): SermonShadePair = LIGHT.firstOrNull { it.id == id } ?: LIGHT[0]
+
+    /** R1: the ONE band-pair resolution — every list uses this. */
+    fun forMode(isDark: Boolean, darkId: String?, lightId: String?): SermonShadePair =
+        if (isDark) dark(darkId) else light(lightId)
 }
 
 object SermonGrouping {

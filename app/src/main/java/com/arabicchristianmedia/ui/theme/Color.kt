@@ -34,12 +34,30 @@ val BentoOnPrimaryContainerDark = Color(0xFFEADDFF)
 val BentoSecondaryDark = Color(0xFFCCC2DC)
 val BentoOnSecondaryDark = Color(0xFF332D41)
 
+/**
+ * R1: the list color tokens, defined ONCE here — every list (Library,
+ * Sermon, recents sheet, remote page) references these, never a scattered
+ * hex. Chapter bands come from the user-picked sermon pair (see
+ * SermonShadePairs.forMode); the pair values live in SermonModels, and
+ * the remote page mirrors the picked pair through CSS variables (R5).
+ *
+ * R3 precedence, used everywhere: live > recents marker > sermon marker
+ * > chapter band background > plain row.
+ */
 // Item 6: the recents marker color — one color for previously-selected
 // verses in the Library list, the Sermon list, and the remote chapter list.
 // Teal: distinct from live red, sermon navy/yellow, and primary purple,
-// and readable on both light and dark rows. (R1 will fold it into the
-// token system; the value stays the same.)
+// and readable on both light and dark rows.
 val RecentsMarker = Color(0xFF0D9488)
+
+// Sermon live row (moved from SermonListScreen, same values).
+val SermonLiveNavy = Color(0xFF1B3A5C)
+val SermonLiveYellow = Color(0xFFF5D76E)
+val SermonLivePaleYellow = Color(0xFFFDE9A8)
+
+// Library live highlight (moved from BentoVerseCard, same values).
+val VerseLiveHighlightDark = Color(0xFF1E293B)
+val VerseLiveHighlightLight = Color(0xFFE0F2FE)
 
 // Default / Theme-driven aliases
 val BentoBg = BentoBgLight

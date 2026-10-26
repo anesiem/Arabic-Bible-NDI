@@ -315,6 +315,10 @@ fun BibleReaderScreen(
                 }
 
                 if (showSearchBar) {
+                    // Item 8: the search field is RTL — the "بحث…" placeholder
+                    // used to inherit the system (LTR) direction, which put
+                    // the ellipsis BEFORE the word; in RTL it lands after it.
+                    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
                     OutlinedTextField(
                         value = uiState.searchQuery, onValueChange = onSearchChanged,
                         placeholder = { Text("بحث…", maxLines = 1) },
@@ -332,6 +336,7 @@ fun BibleReaderScreen(
                             }
                         }
                     )
+                    }
                 }
 
                 // Session recents sheet: verses opened this session, most
@@ -344,8 +349,7 @@ fun BibleReaderScreen(
                         // Items 6+7: chapter bands (same pair as the Library)
                         // own the row background; rows are Arabic-only.
                         val recentsIsDark = MaterialTheme.colorScheme.surface == BentoCardDark
-                        val recentsPair = if (recentsIsDark) SermonShadePairs.dark(uiState.sermonPairDarkId)
-                                          else SermonShadePairs.light(uiState.sermonPairLightId)
+                        val recentsPair = SermonShadePairs.forMode(recentsIsDark, uiState.sermonPairDarkId, uiState.sermonPairLightId)
                         val recentsBandA = remember(uiState.recentVerses) {
                             var bandA = true
                             var prevKey: Pair<String, Int>? = null
@@ -383,28 +387,28 @@ fun BibleReaderScreen(
                                 Spacer(modifier = Modifier.height(16.dp))
                             } else {
                                 LazyColumn(
-                                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(VerseRowSpec.RowSpacing),
                                     contentPadding = PaddingValues(bottom = 16.dp)
                                 ) {
                                     itemsIndexed(uiState.recentVerses) { index, verse ->
                                         Column(
                                             modifier = Modifier.fillMaxWidth()
-                                                .clip(RoundedCornerShape(10.dp))
+                                                .clip(RoundedCornerShape(VerseRowSpec.CardCorner))
                                                 .background(if (recentsBandA[index]) Color(recentsPair.shadeA) else Color(recentsPair.shadeB))
                                                 .clickable {
                                                     showRecentsSheet = false
                                                     onClearSearch()
                                                     onOpenRecentVerse(verse)
                                                 }
-                                                .padding(12.dp)
+                                                .padding(VerseRowSpec.RowPadding)
                                         ) {
                                             Text(
                                                 text = verse.getFormattedArabicCitation(),
-                                                fontSize = 13.sp,
+                                                fontSize = VerseRowSpec.CitationSize,
                                                 fontWeight = FontWeight.Bold,
                                                 color = bento.primary
                                             )
-                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Spacer(modifier = Modifier.height(VerseRowSpec.CitationBodySpacing))
                                             Text(
                                                 text = verse.arabicText,
                                                 fontSize = 14.sp,
@@ -435,8 +439,7 @@ fun BibleReaderScreen(
                 // row (so single-chapter views are uniformly band A, while
                 // search results spanning chapters alternate).
                 val isDarkMode = MaterialTheme.colorScheme.surface == BentoCardDark
-                val chapterPair = if (isDarkMode) SermonShadePairs.dark(uiState.sermonPairDarkId)
-                                  else SermonShadePairs.light(uiState.sermonPairLightId)
+                val chapterPair = SermonShadePairs.forMode(isDarkMode, uiState.sermonPairDarkId, uiState.sermonPairLightId)
                 val chapterBandA = remember(versesToShow) {
                     var bandA = true
                     var prevKey: Pair<String, Int>? = null
@@ -508,7 +511,7 @@ fun BibleReaderScreen(
                             }
                         },
                     contentPadding = PaddingValues(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    verticalArrangement = Arrangement.spacedBy(VerseRowSpec.RowSpacing)
                 ) {
                     itemsIndexed(versesToShow) { index, verse ->
                         val isCued = uiState.activeVerse?.id == verse.id
@@ -579,7 +582,7 @@ fun BentoVerseCard(
     val bento = LocalBentoColors.current
     val isDark = MaterialTheme.colorScheme.surface == BentoCardDark
     val highlightColor = if (isLiveOnAir) {
-        if (isDark) Color(0xFF1E293B) else Color(0xFFE0F2FE)
+        if (isDark) VerseLiveHighlightDark else VerseLiveHighlightLight
     } else {
         bento.primary.copy(alpha = 0.25f)
     }
@@ -603,17 +606,17 @@ fun BentoVerseCard(
 
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
         Card(
-            shape = RoundedCornerShape(16.dp),
+            shape = RoundedCornerShape(VerseRowSpec.CardCorner),
             colors = CardDefaults.cardColors(containerColor = bgColor),
             border = androidx.compose.foundation.BorderStroke(if (isCued || isFocused || isRecent || inSermonList) 2.dp else 1.dp, borderColor),
             modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
         ) {
-            Column(modifier = Modifier.padding(12.dp)) {
+            Column(modifier = Modifier.padding(VerseRowSpec.RowPadding)) {
                 if (showCitation || isCued) {
                     Text(
                         text = verse.getFormattedArabicCitation(true),
-                        fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.primary,
-                        modifier = Modifier.padding(bottom = 4.dp)
+                        fontSize = VerseRowSpec.CitationSize, fontWeight = FontWeight.Bold, color = bento.primary,
+                        modifier = Modifier.padding(bottom = VerseRowSpec.CitationBodySpacing)
                     )
                 }
                 

@@ -27,6 +27,7 @@ import android.text.TextPaint
 import android.text.style.TypefaceSpan
 import com.arabicchristianmedia.data.ArabicTextFormatter
 import com.arabicchristianmedia.data.BibleRepository
+import com.arabicchristianmedia.data.SermonStore
 import com.arabicchristianmedia.data.TemplateRepository
 import com.arabicchristianmedia.model.AnimatedBackgroundType
 import com.arabicchristianmedia.model.BundledFonts
@@ -873,16 +874,16 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             put("bookId", verse?.bookId ?: "")
             put("chapterNum", verse?.chapter ?: 0)
             put("verseNum", verse?.verse ?: 0)
-            // v1.9.3 patch (item 12): session recents for the remote page.
-            // Same rows as the Library sheet: Arabic citation + texts, plus
-            // the English citation as the trigger ref and the numeric keys
-            // so the remote page can highlight the live row.
+            // Item 6+7: recents for the remote page — Arabic citation +
+            // Arabic text only (no English line, same as the Library
+            // sheet); the English citation stays as the trigger ref, with
+            // the numeric keys so the page can highlight the live row and
+            // mark recent chapter rows.
             val recents = JSONArray()
             for (v in recentVersesState) {
                 recents.put(JSONObject().apply {
                     put("citation", v.getFormattedArabicCitation())
                     put("arabic", v.arabicText)
-                    put("english", v.englishText)
                     put("ref", v.getFormattedEnglishCitation())
                     put("bookId", v.bookId)
                     put("chapterNum", v.chapter)
@@ -4128,6 +4129,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             sb.append("{\"id\":\"${jsonEscape(b.id)}\",\"ar\":\"${jsonEscape(b.arabicName)}\",\"en\":\"${jsonEscape(b.englishName)}\",\"chapters\":${b.totalChapters}}")
         }
         sb.append("]")
+        // Item 5: the remote page's initial browse position — the first
+        // sermon-list verse, or John 3 when the sermon list is empty
+        // (read fresh per request; the store is persisted on every
+        // sermon mutation, so it is never stale).
+        val firstSermon = try { SermonStore(context).loadWorking().firstOrNull() } catch (e: Exception) { null }
+        sb.append(",\"initialBook\":\"${jsonEscape(firstSermon?.bookId ?: "jhn")}\",\"initialChapter\":${firstSermon?.chapter ?: 3}")
         if (lang == "ar") {
             val maxChapters = books.maxOfOrNull { it.totalChapters } ?: 0
             sb.append(",\"nums\":[")
@@ -4969,6 +4976,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   .vrow { display: flex; gap: 10px; padding: 10px 8px; border-bottom: 1px solid; cursor: pointer; align-items: flex-start; }
   .vrow:active { opacity: 0.7; }
   .vrow.live { background: rgba(22,163,74,0.18); border-radius: 10px; }
+  .vrow.recent { border-inline-start: 3px solid #0D9488; padding-inline-start: 5px; }
   .vn { font-weight: 800; min-width: 30px; text-align: center; opacity: 0.65; padding-top: 2px; }
   .va { font-size: 17px; line-height: 1.8; }
   .ve { font-size: 13px; opacity: 0.75; margin-top: 2px; line-height: 1.5; }
@@ -5082,10 +5090,18 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
           fillChapters(books[curBookIdx]);
           loadChapter(curChapter > 0 ? curChapter : 1);
         } else {
-          curBookIdx = 0;
-          bookSel.value = '0';
-          fillChapters(books[0]);
-          loadChapter(1);
+          // Item 5: open on the first sermon verse (or John 3 when the
+          // sermon list is empty); Genesis 1 if that book is missing.
+          var idx = 0, ch = 1;
+          if (j.initialBook) {
+            for (var b = 0; b < books.length; b++) {
+              if (books[b].id === j.initialBook) { idx = b; ch = j.initialChapter || 1; break; }
+            }
+          }
+          curBookIdx = idx;
+          bookSel.value = String(idx);
+          fillChapters(books[idx]);
+          loadChapter(ch);
         }
       }
     }).catch(function() { setStatus('Network error loading books', 'err'); });
@@ -5142,6 +5158,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
           });
         }
         markLiveRow();
+        markRecentRows();
       })
       .catch(function() {
         if (seq !== loadSeq) return;
@@ -5161,6 +5178,23 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     var match = book && live.bookId === book.id && live.chapter === curChapter;
     for (var k = 0; k < rows.length; k++) {
       rows[k].classList.toggle('live', !!(match && parseInt(rows[k].getAttribute('data-v'), 10) === live.verse));
+    }
+  }
+
+  // Item 6: the same recents color marks recent verses in the chapter
+  // list. A row is never both live and recent-marked — live wins, so
+  // the live row keeps its green highlight without a teal edge.
+  function markRecentRows() {
+    var rows = vList.querySelectorAll('.vrow');
+    var book = books[curBookIdx];
+    var recentKeys = {};
+    for (var i = 0; i < lastRecents.length; i++) {
+      var r = lastRecents[i];
+      recentKeys[r.bookId + ':' + r.chapterNum + ':' + r.verseNum] = true;
+    }
+    for (var k = 0; k < rows.length; k++) {
+      var key = (book ? book.id : '') + ':' + curChapter + ':' + rows[k].getAttribute('data-v');
+      rows[k].classList.toggle('recent', !rows[k].classList.contains('live') && !!recentKeys[key]);
     }
   }
 
@@ -5208,24 +5242,30 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     }
   }
 
-  // v1.9.3 patch (item 12): session recents mirrored from the master.
-  // Re-renders only when the list actually changed, so the 3 s poll never
-  // rebuilds the DOM or steals the list's scroll position.
+  // Item 6+7+10: recents mirrored from the master (persisted now, not
+  // session-only). Re-renders only when the list actually changed, so
+  // the 3 s poll never rebuilds the DOM or steals the list's scroll
+  // position. Rows are Arabic-only and chapter-banded like the app.
   var lastRecentsJson = '';
+  var lastRecents = [];
   function renderRecents(recents) {
     var rj = JSON.stringify(recents);
     if (rj === lastRecentsJson) return;
     lastRecentsJson = rj;
+    lastRecents = recents;
     var list = document.getElementById('recentList');
-    if (!recents.length) { list.innerHTML = '<div class="hint">لم تفتح أي آية بعد في هذه الجلسة.</div>'; return; }
+    if (!recents.length) { list.innerHTML = '<div class="hint">لم تفتح أي آية بعد.</div>'; markRecentRows(); return; }
     var html = '';
+    var bandA = true, prevKey = null;
     for (var i = 0; i < recents.length; i++) {
       var r = recents[i];
+      var key = r.bookId + ':' + r.chapterNum;
+      if (prevKey !== null && key !== prevKey) bandA = !bandA;
+      prevKey = key;
       var liveCls = (live.bookId === r.bookId && live.chapter === r.chapterNum && live.verse === r.verseNum) ? ' live' : '';
-      html += '<div class="vrow' + liveCls + '" data-i="' + i + '"><div style="flex:1;min-width:0">' +
+      html += '<div class="vrow band-' + (bandA ? 'a' : 'b') + liveCls + '" data-i="' + i + '"><div style="flex:1;min-width:0">' +
         '<div class="vcit" dir="rtl" lang="ar">' + escapeHtml(r.citation) + '</div>' +
         '<div class="va" dir="rtl" lang="ar">' + escapeHtml(r.arabic) + '</div>' +
-        (r.english ? '<div class="ve" dir="ltr">' + escapeHtml(r.english) + '</div>' : '') +
         '</div></div>';
     }
     list.innerHTML = html;
@@ -5236,6 +5276,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         triggerRecent(r.ref);
       });
     }
+    markRecentRows();
   }
 
   function triggerRecent(ref) {
@@ -5263,6 +5304,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       pill.title = cit || '';
       renderOnAir();
       markLiveRow();
+      markRecentRows();
       renderRecents(j.recents || []);
     }).catch(function() {});
   }

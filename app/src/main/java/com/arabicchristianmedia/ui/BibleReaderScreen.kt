@@ -77,6 +77,7 @@ fun BibleReaderScreen(
     onSearchChanged: (String) -> Unit,
     onClearSearch: () -> Unit,
     onOpenRecentVerse: (BibleVerse) -> Unit = {},
+    onClearRecents: () -> Unit = {},
     onToggleLive: () -> Unit,
     onIncreaseFontSize: () -> Unit = {},
     onDecreaseFontSize: () -> Unit = {},
@@ -339,17 +340,43 @@ fun BibleReaderScreen(
                 // as usual). No permanent screen space is taken.
                 if (showRecentsSheet) {
                     ModalBottomSheet(onDismissRequest = { showRecentsSheet = false }) {
-                        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-                            Text(
-                                text = "الآيات الأخيرة",
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = bento.textPrimary
-                            )
+                        // Item 9: fixed 75% height (was content-sized, ~50%).
+                        // Items 6+7: chapter bands (same pair as the Library)
+                        // own the row background; rows are Arabic-only.
+                        val recentsIsDark = MaterialTheme.colorScheme.surface == BentoCardDark
+                        val recentsPair = if (recentsIsDark) SermonShadePairs.dark(uiState.sermonPairDarkId)
+                                          else SermonShadePairs.light(uiState.sermonPairLightId)
+                        val recentsBandA = remember(uiState.recentVerses) {
+                            var bandA = true
+                            var prevKey: Pair<String, Int>? = null
+                            uiState.recentVerses.map { verse ->
+                                val key = verse.bookId to verse.chapter
+                                if (prevKey != null && key != prevKey) bandA = !bandA
+                                prevKey = key
+                                bandA
+                            }
+                        }
+                        Column(modifier = Modifier.fillMaxWidth().fillMaxHeight(0.75f).padding(horizontal = 16.dp, vertical = 8.dp)) {
+                            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = "الآيات الأخيرة",
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = bento.textPrimary,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                // Item 10: user reset for the persisted recents
+                                // (stays open so the empty state confirms it).
+                                if (uiState.recentVerses.isNotEmpty()) {
+                                    TextButton(onClick = { onClearRecents() }) {
+                                        Text("مسح (Clear)", fontSize = 12.sp)
+                                    }
+                                }
+                            }
                             Spacer(modifier = Modifier.height(8.dp))
                             if (uiState.recentVerses.isEmpty()) {
                                 Text(
-                                    text = "لم تفتح أي آية بعد في هذه الجلسة.",
+                                    text = "لم تفتح أي آية بعد.",
                                     fontSize = 13.sp,
                                     color = bento.textSecondary
                                 )
@@ -359,11 +386,11 @@ fun BibleReaderScreen(
                                     verticalArrangement = Arrangement.spacedBy(8.dp),
                                     contentPadding = PaddingValues(bottom = 16.dp)
                                 ) {
-                                    items(uiState.recentVerses) { verse ->
+                                    itemsIndexed(uiState.recentVerses) { index, verse ->
                                         Column(
                                             modifier = Modifier.fillMaxWidth()
                                                 .clip(RoundedCornerShape(10.dp))
-                                                .background(bento.surfaceVariant)
+                                                .background(if (recentsBandA[index]) Color(recentsPair.shadeA) else Color(recentsPair.shadeB))
                                                 .clickable {
                                                     showRecentsSheet = false
                                                     onClearSearch()
@@ -383,14 +410,6 @@ fun BibleReaderScreen(
                                                 fontSize = 14.sp,
                                                 color = bento.textPrimary
                                             )
-                                            if (verse.englishText.isNotBlank()) {
-                                                Spacer(modifier = Modifier.height(2.dp))
-                                                Text(
-                                                    text = verse.englishText,
-                                                    fontSize = 12.sp,
-                                                    color = bento.textSecondary
-                                                )
-                                            }
                                         }
                                     }
                                 }
@@ -405,6 +424,10 @@ fun BibleReaderScreen(
                 // tint in ANY chapter the operator browses to.
                 val sermonVerseIds = remember(uiState.sermonPlaylist) {
                     uiState.sermonPlaylist.map { it.verse.id }.toSet()
+                }
+                // Item 6: recents marker set (same verses the sheet lists).
+                val recentVerseIds = remember(uiState.recentVerses) {
+                    uiState.recentVerses.map { it.id }.toSet()
                 }
                 // Item 2: chapter bands — the same user-picked shade pair as
                 // the sermon list. A whole (book, chapter) shares one shade;
@@ -495,6 +518,7 @@ fun BibleReaderScreen(
                             isLiveOnAir = isCued && uiState.isLiveOnAir,
                             isFocused = uiState.readerFocusVerseId == verse.id,
                             inSermonList = verse.id in sermonVerseIds,
+                            isRecent = verse.id in recentVerseIds,
                             bandColor = if (chapterBandA[index]) Color(chapterPair.shadeA) else Color(chapterPair.shadeB),
                             version = uiState.bibleVersion,
                             fontSizeSp = uiState.readerFontSize,
@@ -549,6 +573,7 @@ fun BentoVerseCard(
     onClick: () -> Unit,
     isFocused: Boolean = false,
     inSermonList: Boolean = false,
+    isRecent: Boolean = false,
     bandColor: Color? = null
 ) {
     val bento = LocalBentoColors.current
@@ -558,25 +583,29 @@ fun BentoVerseCard(
     } else {
         bento.primary.copy(alpha = 0.25f)
     }
-    // v1.9.1 highlight priority: live > focused (jumped-to from a sermon
-    // row) > cued > in-sermon-list finder tint > chapter band (item 2) >
-    // plain card. Item 6 turns the finder tint into a marker, letting the
-    // band show through on sermon rows too.
+    // Item 6 composition (R3): chapter bands own the row background;
+    // sermon/recents are a MARKER channel (border), recents wins when a
+    // verse is in both. Priority: live > focused > cued > recents marker
+    // > sermon marker > chapter band > plain card.
     val targetColor = when {
         isLiveOnAir || isCued -> highlightColor
         isFocused -> bento.primaryContainer
-        inSermonList -> bento.secondary.copy(alpha = 0.35f)
         else -> bandColor ?: bento.card
     }
     val bgColor by animateColorAsState(targetColor, label = "cardBg")
     // v1.8: Use primary (theme-aware) instead of red for the verse highlight border.
-    val borderColor = if (isLiveOnAir || isCued || isFocused) bento.primary else bento.border
+    val borderColor = when {
+        isLiveOnAir || isCued || isFocused -> bento.primary
+        isRecent -> RecentsMarker
+        inSermonList -> bento.secondary
+        else -> bento.border
+    }
 
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
         Card(
             shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(containerColor = bgColor),
-            border = androidx.compose.foundation.BorderStroke(if (isCued || isFocused) 2.dp else 1.dp, borderColor),
+            border = androidx.compose.foundation.BorderStroke(if (isCued || isFocused || isRecent || inSermonList) 2.dp else 1.dp, borderColor),
             modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
         ) {
             Column(modifier = Modifier.padding(12.dp)) {

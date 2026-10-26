@@ -68,6 +68,7 @@ import com.arabicchristianmedia.model.SermonShadePair
 import com.arabicchristianmedia.model.SermonShadePairs
 import com.arabicchristianmedia.ui.theme.LocalBentoColors
 import com.arabicchristianmedia.ui.theme.BentoCardDark
+import com.arabicchristianmedia.ui.theme.RecentsMarker
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -106,6 +107,11 @@ fun SermonListScreen(
     val isDark = MaterialTheme.colorScheme.surface == BentoCardDark
     val sermonPair = if (isDark) SermonShadePairs.dark(uiState.sermonPairDarkId)
                      else SermonShadePairs.light(uiState.sermonPairLightId)
+    // Item 6: the same recents color marks recent verses here as in the
+    // Library list (live still wins over the marker).
+    val recentVerseIds = remember(uiState.recentVerses) {
+        uiState.recentVerses.map { it.id }.toSet()
+    }
     var showColorDialog by remember { mutableStateOf(false) }
 
     var showSaveDialog by remember { mutableStateOf(false) }
@@ -213,6 +219,7 @@ fun SermonListScreen(
                             entry = entry,
                             index = index,
                             isLive = uiState.activeVerse?.id == entry.verse.id && uiState.isLiveOnAir,
+                            isRecent = entry.verse.id in recentVerseIds,
                             onTap = { onShowVerse(entry) },
                             onOpenInReader = { onOpenInReader(entry) },
                             onRemove = { onRemove(entry) },
@@ -470,7 +477,8 @@ private fun SermonRow(
     onOpenInReader: () -> Unit,
     onRemove: () -> Unit,
     shadeColorA: Color,
-    shadeColorB: Color
+    shadeColorB: Color,
+    isRecent: Boolean = false
 ) {
     val bento = LocalBentoColors.current
     val verse = entry.verse
@@ -514,8 +522,8 @@ private fun SermonRow(
                 }
             ),
             border = androidx.compose.foundation.BorderStroke(
-                if (isLive) 2.dp else 1.dp,
-                if (isLive) SermonLiveYellow else bento.border
+                if (isLive || isRecent) 2.dp else 1.dp,
+                if (isLive) SermonLiveYellow else if (isRecent) RecentsMarker else bento.border
             ),
             modifier = Modifier.fillMaxWidth().clickable { onTap() }
         ) {

@@ -392,6 +392,7 @@ class MainActivity : ComponentActivity() {
                                 onSearchChanged = { viewModel.onSearchQueryChanged(it) },
                                 onClearSearch = { viewModel.clearSearch() },
                                 onOpenRecentVerse = { viewModel.openRecentVerseInReader(it) },
+                                onClearRecents = { viewModel.clearRecents() },
                                 onToggleLive = { viewModel.toggleLive() },
                                 onIncreaseFontSize = { viewModel.increaseFontSize() },
                                 onDecreaseFontSize = { viewModel.decreaseFontSize() },

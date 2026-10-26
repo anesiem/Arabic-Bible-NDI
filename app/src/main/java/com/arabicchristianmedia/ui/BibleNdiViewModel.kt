@@ -7,6 +7,8 @@ import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.arabicchristianmedia.data.BibleRepository
+import com.arabicchristianmedia.data.RecentRef
+import com.arabicchristianmedia.data.RecentStore
 import com.arabicchristianmedia.data.SermonStore
 import com.arabicchristianmedia.data.TemplateRepository
 import com.arabicchristianmedia.model.AppThemeMode
@@ -120,9 +122,9 @@ data class BibleNdiUiState(
     val readerFocusVerseId: String? = null,
     // v1.9.1: bumped when the reader should open at the focused verse.
     val readerJumpNonce: Long = 0,
-    // Session recents: verses opened this session (reader/search/sermon/
-    // remote), most recent first, capped at 20. In-memory only — a fresh
-    // app start means an empty list. Never persisted.
+    // Item 10: recents — verses opened (reader/search/sermon/remote),
+    // most recent first, capped at 20. Persisted like the sermon list
+    // (references only, see RecentStore); cleared only by the user.
     val recentVerses: List<BibleVerse> = emptyList(),
     // v1.9.1: user-imported fonts (TTF/OTF), shown in both font dropdowns.
     val customFonts: List<CustomFont> = emptyList()
@@ -175,6 +177,8 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
     private val templateRepo = TemplateRepository(getApplication())
     /** v1.9.1: sermon list persistence (working list + saved sermons). */
     private val sermonStore = SermonStore(getApplication())
+    /** Item 10: recents persistence (same reference-only pattern). */
+    private val recentStore = RecentStore(getApplication())
     /**
      * v1.9: the broadcast server is owned by [NdiService] (foreground service) so
      * broadcasting survives backgrounding. Always resolve through the service
@@ -372,6 +376,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         loadSermonShadePairs()
         // v1.9.1: restore the persisted sermon working list + saved sermons.
         restoreSermonState()
+        restoreRecentState()
         refreshCustomFonts()
 
         // v1.9: if the service is mid auto-resume (flag set but the server isn't
@@ -900,8 +905,9 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             recentVerses = (listOf(displayVerse) + _uiState.value.recentVerses.filterNot { it.id == displayVerse.id }).take(20)
         )
 
-        // v1.9.3 patch (item 12): mirror the session recents to the remote page.
+        // v1.9.3 patch (item 12): mirror the recents to the remote page.
         broadcastServer.setRecentVerses(_uiState.value.recentVerses)
+        persistRecentState()
 
         broadcastServer.updateVerse(verse, live = true)
         triggerAllFrames()
@@ -959,8 +965,9 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
                 recentVerses = (listOf(verse) + _uiState.value.recentVerses.filterNot { it.id == verse.id }).take(20)
             )
 
-            // v1.9.3 patch (item 12): mirror the session recents to the remote page.
+            // v1.9.3 patch (item 12): mirror the recents to the remote page.
             broadcastServer.setRecentVerses(_uiState.value.recentVerses)
+            persistRecentState()
 
             // v1.9.1 (#14): keep the Library reader in sync, exactly like a
             // sermon-row tap — the operator who walks back to the tablet
@@ -1065,7 +1072,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
     }
 
     /**
-     * Session recents: open a recent verse in the reader WITHOUT putting
+     * Recents: open a recent verse in the reader WITHOUT putting
      * it on air — same mechanism as the sermon book-icon jump (focus +
      * scroll, MainActivity switches to the Library tab via
      * [BibleNdiUiState.readerJumpNonce]).
@@ -1287,6 +1294,32 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         _uiState.value = _uiState.value.copy(
             statusMessage = "تم حذف الخط «${font.name}»"
         )
+    }
+
+    /** Item 10: restore the persisted recents at launch (same re-expansion
+     * as the sermon list — references only, text from the database). */
+    private fun restoreRecentState() {
+        val verses = recentStore.load().mapNotNull { ref ->
+            BibleRepository.getVerses(ref.bookId, ref.chapter)
+                .firstOrNull { it.verse == ref.verse }
+        }
+        _uiState.value = _uiState.value.copy(recentVerses = verses)
+        broadcastServer.setRecentVerses(verses)
+    }
+
+    private fun persistRecentState() {
+        recentStore.save(
+            _uiState.value.recentVerses.map {
+                RecentRef(bookId = it.bookId, chapter = it.chapter, verse = it.verse)
+            }
+        )
+    }
+
+    /** Item 10: user reset — clears recents everywhere (app + remote). */
+    fun clearRecents() {
+        _uiState.value = _uiState.value.copy(recentVerses = emptyList())
+        recentStore.clear()
+        broadcastServer.setRecentVerses(emptyList())
     }
 
     /** v1.9.1: restore the persisted working list + saved sermons at launch. */

@@ -34,6 +34,13 @@ val BentoOnPrimaryContainerDark = Color(0xFFEADDFF)
 val BentoSecondaryDark = Color(0xFFCCC2DC)
 val BentoOnSecondaryDark = Color(0xFF332D41)
 
+// Item 6: the recents marker color — one color for previously-selected
+// verses in the Library list, the Sermon list, and the remote chapter list.
+// Teal: distinct from live red, sermon navy/yellow, and primary purple,
+// and readable on both light and dark rows. (R1 will fold it into the
+// token system; the value stays the same.)
+val RecentsMarker = Color(0xFF0D9488)
+
 // Default / Theme-driven aliases
 val BentoBg = BentoBgLight
 val BentoCardWhite = BentoCardWhiteLight

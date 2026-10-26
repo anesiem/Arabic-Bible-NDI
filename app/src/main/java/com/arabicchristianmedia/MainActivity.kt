@@ -31,10 +31,12 @@ import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.Cast
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.Radio
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material.icons.outlined.AutoAwesome
@@ -44,6 +46,7 @@ import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
@@ -58,6 +61,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -65,6 +69,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -142,6 +147,11 @@ class MainActivity : ComponentActivity() {
                 // survives both rotation and main-tab switches.
                 var editorTab by rememberSaveable { mutableIntStateOf(0) }
                 val context = LocalContext.current
+                // Editor tips visibility, hoisted so the top-bar info icon
+                // (wide Editor layout) can reopen the tips card. Persisted
+                // in the same prefs the Editor screen already uses, so it
+                // also survives rotation and process death.
+                var editorTipsVisible by remember { mutableStateOf(context.getSharedPreferences("editor_ui_prefs", android.content.Context.MODE_PRIVATE).getBoolean("show_how_it_works", true)) }
 
                 LaunchedEffect(uiState.statusMessage) {
                     uiState.statusMessage?.let { msg ->
@@ -206,6 +216,37 @@ class MainActivity : ComponentActivity() {
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis
                                         )
+                                    }
+                                }
+
+                                // Wide Editor layout: the Editor's header chips
+                                // live on this line, beside the NDI pill, so the
+                                // Editor gains a full row of scroll room.
+                                if (selectedTab == 1 && LocalConfiguration.current.screenWidthDp >= 900) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        Surface(
+                                            shape = RoundedCornerShape(999.dp),
+                                            color = bento.primaryContainer
+                                        ) {
+                                            Text(
+                                                if (editorTab == 0) "السفلي · Lower" else "الكامل · Full",
+                                                fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.onPrimaryContainer,
+                                                maxLines = 1,
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                            )
+                                        }
+                                        if (if (editorTab == 0) uiState.lowerWorkingDirty else uiState.showWorkingDirty) {
+                                            Surface(shape = RoundedCornerShape(10.dp), color = bento.primaryContainer) {
+                                                Text("معدّل (Modified)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.onPrimaryContainer, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
+                                            }
+                                        }
+                                        if (!editorTipsVisible) {
+                                            IconButton(onClick = {
+                                                context.getSharedPreferences("editor_ui_prefs", android.content.Context.MODE_PRIVATE).edit().putBoolean("show_how_it_works", true).apply()
+                                                editorTipsVisible = true
+                                            }) { Icon(Icons.Filled.Info, "كيفية الاستخدام", tint = bento.primary) }
+                                        }
+                                        IconButton(onClick = { viewModel.resetTemplate(editorTab == 1) }) { Icon(Icons.Filled.Refresh, "إعادة تعيين", tint = bento.primary) }
                                     }
                                 }
 
@@ -382,7 +423,9 @@ class MainActivity : ComponentActivity() {
                                 onUpdateTemplateFromJson = { id, json, isFull -> viewModel.updateTemplateFromJson(id, json, isFull) },
                                 onImportNewTemplate = { json, isFull -> viewModel.importNewTemplate(json, isFull) },
                                 editorTab = editorTab,
-                                onEditorTabChange = { editorTab = it }
+                                onEditorTabChange = { editorTab = it },
+                                showHowItWorks = editorTipsVisible,
+                                onShowHowItWorksChange = { editorTipsVisible = it }
                             )
                             2 -> BroadcastControlScreen(
                                 uiState = uiState,

@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import kotlin.math.roundToInt
 import com.arabicchristianmedia.data.ArabicTextFormatter
@@ -55,6 +56,7 @@ import com.arabicchristianmedia.model.*
 import com.arabicchristianmedia.server.VideoStore
 import com.arabicchristianmedia.ui.theme.*
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
@@ -141,6 +143,10 @@ fun TemplateEditorScreen(
     onImportNewTemplate: (String, Boolean) -> Boolean,
     editorTab: Int,
     onEditorTabChange: (Int) -> Unit,
+    // Wide layout: tips visibility is hoisted to MainActivity so the
+    // top-bar info icon can reopen the tips card.
+    showHowItWorks: Boolean,
+    onShowHowItWorksChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var showSaveDialog by remember { mutableStateOf(false) }
@@ -156,7 +162,6 @@ fun TemplateEditorScreen(
     // v1.9: How-it-works tips visibility, persisted. Shown expanded on first run,
     // collapsible thereafter, with a "don't show again" option.
     val tipsPrefs = remember { context.getSharedPreferences("editor_ui_prefs", android.content.Context.MODE_PRIVATE) }
-    var showHowItWorks by remember { mutableStateOf(tipsPrefs.getBoolean("show_how_it_works", true)) }
     var howItWorksExpanded by rememberSaveable { mutableStateOf(tipsPrefs.getBoolean("show_how_it_works", true)) }
 
     // Dynamic Recent Colors with delete (x) button
@@ -241,65 +246,73 @@ fun TemplateEditorScreen(
         val highlightedId = if (editorTab == 0) highlightedLowerStyleId else highlightedShowStyleId
         val tabIsDirty = if (editorTab == 0) lowerWorkingDirty else showWorkingDirty
 
-    // Round 2 (#10): the Editor is arranged the way the user works - a
-    // STAGE (pick a style, see it live, tune its frame, save) and a SPEC
-    // SHEET (every remaining section as a slim summary row). Compact
-    // screens stack them in one scroll; wide screens (>= 900dp) pin the
-    // stage beside the sheet so the preview never scrolls away while
-    // adjusting. The blocks below are shared verbatim by both layouts.
-    val headerBlock: @Composable () -> Unit = {
-        // 1. Header & Quick Actions (responsive: compact icon actions on narrow
-        // screens so the title never crushes the buttons under large fonts)
-        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("Template Editor", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text("تخصيص كامل وشامل لطبقات البث والعرض المباشر", fontSize = 12.sp, color = bento.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    // v1.9.2 (#7b): the editing target as a compact chip in
-                    // the header row — the standalone "You are editing" line
-                    // below the header is gone (it cost a full row).
-                    Surface(
-                        shape = RoundedCornerShape(999.dp),
-                        color = bento.primaryContainer
-                    ) {
-                        Text(
-                            if (editorTab == 0) "السفلي · Lower" else "الكامل · Full",
-                            fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.onPrimaryContainer,
-                            maxLines = 1,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                        )
-                    }
-                    // v1.9: info icon reopens the How-it-works tips when hidden.
-                    if (!showHowItWorks) {
-                        IconButton(onClick = {
-                            tipsPrefs.edit().putBoolean("show_how_it_works", true).apply()
-                            showHowItWorks = true
-                            howItWorksExpanded = true
-                        }) { Icon(Icons.Default.Info, "كيفية الاستخدام", tint = bento.primary) }
-                    }
-                    IconButton(onClick = { onResetDefaults(editorTab == 1) }) { Icon(Icons.Default.Refresh, "إعادة تعيين", tint = bento.primary) }
-                    // v1.9: header save button removed — the single save action lives
-                    // in Quick Setup below, next to the style picker.
-                }
-            }
+    // Wide two-pane layout: right-panel anchor jumps. Each AnchorTarget
+    // records its offset inside the scrolling right column (root Y minus
+    // the column's root Y plus the scroll value at layout time — stable
+    // across scrolls either way the callback fires). A jump scrolls to
+    // the target, or to its parent section when the target isn't laid
+    // out (e.g. its section is collapsed), and flashes a border.
+    val rightScrollState = rememberScrollState()
+    val anchorOffsets = remember { mutableStateMapOf<String, Float>() }
+    var rightColumnRootY by remember { mutableStateOf(0f) }
+    var highlightedAnchor by remember { mutableStateOf<String?>(null) }
+    val anchorScope = rememberCoroutineScope()
+    val anchorParent = mapOf(
+        "frame-align" to "frame", "frame-position" to "frame",
+        "frame-padding" to "frame", "frame-autofit" to "frame",
+        "arabic-citation" to "arabic", "arabic-verse" to "arabic",
+        "english-citation" to "english", "english-verse" to "english",
+        "bg-motion" to "bg", "bg-emblem" to "bg",
+        "bg-transition" to "bg", "bg-stream" to "bg",
+        "shadow-text" to "shadow", "shadow-glow" to "shadow"
+    )
+    fun jumpToAnchor(id: String) {
+        val target = anchorOffsets[id] ?: anchorOffsets[anchorParent[id]] ?: return
+        highlightedAnchor = id
+        anchorScope.launch { rightScrollState.animateScrollTo(target.toInt()) }
+    }
+    LaunchedEffect(highlightedAnchor) {
+        if (highlightedAnchor != null) {
+            delay(1600)
+            highlightedAnchor = null
         }
+    }
+    // Modifier that records a composable's offset inside the right column
+    // for anchor jumps (see jumpToAnchor), and flashes a border on the
+    // jumped-to target. Harmless when the right column isn't on screen
+    // (the compact layout never jumps).
+    fun anchorModifier(id: String): Modifier = Modifier
+        .onGloballyPositioned { coords ->
+            val offset = coords.positionInRoot().y - rightColumnRootY + rightScrollState.value
+            if (anchorOffsets[id] != offset) anchorOffsets[id] = offset
+        }
+        .then(if (highlightedAnchor == id) Modifier.border(2.dp, bento.primary, RoundedCornerShape(12.dp)) else Modifier)
 
-        Spacer(Modifier.height(12.dp))
-
-        // 2. Tab Switcher: Lower Third vs Full Show (v1.8: segmented, unmistakable active target).
-        // v1.9.2 (#7b): the "You are editing" line that stood here moved
-        // into the header row as a compact chip; the line itself is deleted.
+    // Round 2 (#10): the Editor is arranged the way the user works.
+    // Compact screens stack everything in one scroll. Wide screens
+    // (>= 900dp) use two panes: tabs + style bar full-width, then
+    // left = title + preview + anchors, right = all controls, each
+    // panel scrolling on its own so control scrolling never moves
+    // the preview. The blocks below are shared by both layouts.
+    // Wide two-pane layout: the header is split into granular blocks so
+    // the wide layout can place each piece (title in the left column,
+    // tabs + style bar full-width, chips in MainActivity's top bar)
+    // while the compact layout keeps the original stacked header.
+    val editorTitleBlock: @Composable () -> Unit = {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Text("Template Editor", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text("تخصيص كامل وشامل لطبقات البث والعرض المباشر", fontSize = 12.sp, color = bento.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+    val tabSwitcherBlock: @Composable () -> Unit = {
         Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(bento.surfaceVariant).padding(4.dp)) {
             EditorTabItem("طبقة البث السفلى (Lower Third)", editorTab == 0, { onEditorTabChange(0) }, Modifier.weight(1f))
             EditorTabItem("العرض الكامل (Full Show Projector)", editorTab == 1, { onEditorTabChange(1) }, Modifier.weight(1f))
         }
-
-        Spacer(Modifier.height(12.dp))
-
+    }
+    val tipsBlock: @Composable () -> Unit = {
         // 2b. Workflow tips: collapsible, with "don't show again". Hidden entirely
-        // once dismissed (reopen via the ⓘ icon in the header).
+        // once dismissed (reopen via the ⓘ icon in the header / top bar).
         if (showHowItWorks) {
             Card(shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = bento.primaryContainer), modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -308,7 +321,7 @@ fun TemplateEditorScreen(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             TextButton(onClick = {
                                 tipsPrefs.edit().putBoolean("show_how_it_works", false).apply()
-                                showHowItWorks = false
+                                onShowHowItWorksChange(false)
                             }) {
                                 Text("عدم الإظهار مجدداً", fontSize = 10.sp, color = bento.onPrimaryContainer)
                             }
@@ -335,26 +348,60 @@ fun TemplateEditorScreen(
                     }
                 }
             }
+        }
+    }
+    val headerBlock: @Composable () -> Unit = {
+        // 1. Header & Quick Actions (responsive: compact icon actions on narrow
+        // screens so the title never crushes the buttons under large fonts)
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Box(modifier = Modifier.weight(1f)) { editorTitleBlock() }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    // v1.9.2 (#7b): the editing target as a compact chip in
+                    // the header row — the standalone "You are editing" line
+                    // below the header is gone (it cost a full row).
+                    Surface(
+                        shape = RoundedCornerShape(999.dp),
+                        color = bento.primaryContainer
+                    ) {
+                        Text(
+                            if (editorTab == 0) "السفلي · Lower" else "الكامل · Full",
+                            fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.onPrimaryContainer,
+                            maxLines = 1,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        )
+                    }
+                    // v1.9: info icon reopens the How-it-works tips when hidden.
+                    if (!showHowItWorks) {
+                        IconButton(onClick = {
+                            tipsPrefs.edit().putBoolean("show_how_it_works", true).apply()
+                            onShowHowItWorksChange(true)
+                            howItWorksExpanded = true
+                        }) { Icon(Icons.Default.Info, "كيفية الاستخدام", tint = bento.primary) }
+                    }
+                    IconButton(onClick = { onResetDefaults(editorTab == 1) }) { Icon(Icons.Default.Refresh, "إعادة تعيين", tint = bento.primary) }
+                    // v1.9: header save button removed — the single save action lives
+                    // in Quick Setup below, next to the style picker.
+                }
+            }
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        // 2. Tab Switcher: Lower Third vs Full Show (v1.8: segmented, unmistakable active target).
+        // v1.9.2 (#7b): the "You are editing" line that stood here moved
+        // into the header row as a compact chip; the line itself is deleted.
+        tabSwitcherBlock()
+
+        Spacer(Modifier.height(12.dp))
+
+        tipsBlock()
+        if (showHowItWorks) {
             Spacer(Modifier.height(12.dp))
         }
 
     }
-    val stageBlock: @Composable () -> Unit = {
-        // 4. Style Selector (per-tab collection; highlight = selected style id, NOT the working template id)
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text("اختر النمط (Select Style)", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = bento.textPrimary)
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (tabIsDirty) {
-                    Surface(shape = RoundedCornerShape(10.dp), color = bento.primaryContainer) {
-                        Text("معدّل (Modified)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.onPrimaryContainer, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
-                    }
-                }
-                TextButton(onClick = { importTargetTpl = null; showImportDialog = true }) {
-                    Text("استيراد (Import)", fontSize = 11.sp)
-                }
-            }
-        }
-        Text("اضغط مطولاً على أي نمط للتصدير / التحديث بالاستيراد / الحذف • التعديل بدون حفظ يمسح التمييز", fontSize = 10.sp, color = bento.textSecondary, modifier = Modifier.padding(top = 2.dp))
+    val styleCardsRow: @Composable () -> Unit = {
         LazyRow(modifier = Modifier.padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             // Strict partition: each tab shows ONLY its own collection. An empty tab
             // shows an empty-state hint — never the other tab's styles.
@@ -422,11 +469,11 @@ fun TemplateEditorScreen(
                 }
             }
         }
-
-        Spacer(Modifier.height(8.dp))
-
+    }
+    @Composable
+    fun previewBlock(onPreviewClick: (() -> Unit)?) {
         // 3. Compact Live Preview Card with Functional Background Modes
-        Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = bento.card), modifier = Modifier.fillMaxWidth()) {
+        Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = bento.card), modifier = Modifier.fillMaxWidth().then(if (onPreviewClick != null) Modifier.clickable { onPreviewClick() } else Modifier)) {
             Column(Modifier.padding(14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text(if (editorTab == 0) "معاينة البث (Lower Third Preview)" else "معاينة العرض (Full Show Preview)", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = bento.textPrimary)
@@ -465,13 +512,10 @@ fun TemplateEditorScreen(
 
             }
         }
-
-        Spacer(Modifier.height(16.dp))
-
-        // Round 2 (#10): the frame cluster (alignment, position, box height,
-        // padding, auto-fit) moved out of Background & Effects onto the stage -
-        // these are the numbers judged against the preview.
+    }
+    val frameSectionBlock: @Composable () -> Unit = {
         CollapsibleSection(
+            modifier = anchorModifier("frame"),
             title = "الإطار والحشوة (Frame & Padding)",
             // v1.9.2 (#10b): the section opens itself while Edit Box is on —
             // the drag handles and these sliders are two forms of the same
@@ -483,7 +527,7 @@ fun TemplateEditorScreen(
                     // Alignment
                     Text("محاذاة النص (Alignment)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
                     Spacer(Modifier.height(4.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(modifier = anchorModifier("frame-align"), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         BroadcastTextAlignment.entries.forEach { align ->
                             FilterChip(selected = editingTemplate.alignment == align, onClick = { onUpdate(editingTemplate.copy(alignment = align)) }, label = { Text(align.displayName, fontSize = 10.sp) })
                         }
@@ -493,7 +537,7 @@ fun TemplateEditorScreen(
                     // v1.9.1: position / margins / corner radius — template
                     // fields the renderers always honored but the Editor
                     // never exposed (no write path existed anywhere).
-                    SliderWithLabel("المسافة من أسفل الشاشة (Bottom Position %)", editingTemplate.positionBottomPercent.toFloat(), 0f..30f) { onUpdate(editingTemplate.copy(positionBottomPercent = it.toInt())) }
+                    SliderWithLabel("المسافة من أسفل الشاشة (Bottom Position %)", editingTemplate.positionBottomPercent.toFloat(), 0f..30f, modifier = anchorModifier("frame-position")) { onUpdate(editingTemplate.copy(positionBottomPercent = it.toInt())) }
                     SliderWithLabel("الهامش الأفقي (Horizontal Margin %)", editingTemplate.horizontalMarginPercent.toFloat(), 0f..30f) { onUpdate(editingTemplate.copy(horizontalMarginPercent = it.toInt())) }
                     // v1.9.1: the text box height auto-fit fits into (was a
                     // hardcoded 45% for Lower). Editable visually too — the
@@ -510,7 +554,8 @@ fun TemplateEditorScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable { paddingExpanded = !paddingExpanded }
-                            .padding(vertical = 4.dp),
+                            .padding(vertical = 4.dp)
+                            .then(anchorModifier("frame-padding")),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -546,7 +591,7 @@ fun TemplateEditorScreen(
                     // v1.9: Auto-fit — shrink a too-long verse (with its citation
                     // and English section) to fit the text box instead of
                     // overflowing the card or screen. Short verses are untouched.
-                    FeatureToggleRow("ملاءمة تلقائية للنص (Auto-fit text)", editingTemplate.autoFitText) { onUpdate(editingTemplate.copy(autoFitText = it)) }
+                    FeatureToggleRow("ملاءمة تلقائية للنص (Auto-fit text)", editingTemplate.autoFitText, modifier = anchorModifier("frame-autofit")) { onUpdate(editingTemplate.copy(autoFitText = it)) }
                     if (editingTemplate.autoFitText) {
                         SliderWithLabel("أكبر حجم للنص (Max size)", editingTemplate.autoFitMaxVerseSp.toFloat(), 10f..120f) { onUpdate(editingTemplate.copy(autoFitMaxVerseSp = it.toInt())) }
                     }
@@ -568,6 +613,36 @@ fun TemplateEditorScreen(
                     Spacer(Modifier.height(8.dp))
 
         }
+    }
+
+    val stageBlock: @Composable () -> Unit = {
+        // 4. Style Selector (per-tab collection; highlight = selected style id, NOT the working template id)
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text("اختر النمط (Select Style)", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = bento.textPrimary)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (tabIsDirty) {
+                    Surface(shape = RoundedCornerShape(10.dp), color = bento.primaryContainer) {
+                        Text("معدّل (Modified)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.onPrimaryContainer, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
+                    }
+                }
+                TextButton(onClick = { importTargetTpl = null; showImportDialog = true }) {
+                    Text("استيراد (Import)", fontSize = 11.sp)
+                }
+            }
+        }
+        Text("اضغط مطولاً على أي نمط للتصدير / التحديث بالاستيراد / الحذف • التعديل بدون حفظ يمسح التمييز", fontSize = 10.sp, color = bento.textSecondary, modifier = Modifier.padding(top = 2.dp))
+        styleCardsRow()
+
+        Spacer(Modifier.height(8.dp))
+
+        previewBlock(null)
+
+        Spacer(Modifier.height(16.dp))
+
+        // Round 2 (#10): the frame cluster (alignment, position, box height,
+        // padding, auto-fit) moved out of Background & Effects onto the stage -
+        // these are the numbers judged against the preview.
+        frameSectionBlock()
 
         Spacer(Modifier.height(8.dp))
 
@@ -618,6 +693,7 @@ fun TemplateEditorScreen(
                 // Style Preset Selector
                 // Primary Typography (Arabic Verse & Citation)
 CollapsibleSection(
+                    modifier = anchorModifier("arabic"),
                     title = "تنسيق الخط العربي (Arabic Typography)",
                     initiallyExpanded = true,
                     summary = editingTemplate.fontFamily + " \u00b7 verse " + editingTemplate.verseFontSize + " \u00b7 citation " + editingTemplate.referenceFontSize
@@ -630,7 +706,7 @@ CollapsibleSection(
                         onDeleteCustomFont = { fontToDelete = it }
                     )
                 
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(modifier = anchorModifier("arabic-citation"), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text("الشاهد:", fontSize = 11.sp, color = bento.textSecondary)
                         StyleToggle("B", editingTemplate.referenceIsBold) { onUpdate(editingTemplate.copy(referenceIsBold = it)) }
                         StyleToggle("I", editingTemplate.referenceIsItalic) { onUpdate(editingTemplate.copy(referenceIsItalic = it)) }
@@ -638,7 +714,7 @@ CollapsibleSection(
                     ColorGradePickerRow("لون الشاهد العربي (Citation Color)", editingTemplate.referenceColorHex, { onUpdate(editingTemplate.copy(referenceColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
                     SliderWithLabel("حجم الشاهد العربي", editingTemplate.referenceFontSize.toFloat(), 10f..120f) { onUpdate(editingTemplate.copy(referenceFontSize = it.toInt())) }
 
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(modifier = anchorModifier("arabic-verse"), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text("الآية:", fontSize = 11.sp, color = bento.textSecondary)
                         StyleToggle("B", editingTemplate.verseIsBold) { onUpdate(editingTemplate.copy(verseIsBold = it)) }
                         StyleToggle("I", editingTemplate.verseIsItalic) { onUpdate(editingTemplate.copy(verseIsItalic = it)) }
@@ -653,6 +729,7 @@ CollapsibleSection(
                 }
 HorizontalDivider(color = bento.borderSubtle)
 CollapsibleSection(
+                    modifier = anchorModifier("language"),
                     title = "لغة العرض (Language)",
                     initiallyExpanded = false,
                     summary = when (editingTemplate.languageMode) {
@@ -690,6 +767,7 @@ CollapsibleSection(
                     
                 }
 CollapsibleSection(
+                    modifier = anchorModifier("english"),
                     title = "تنسيق الخط الإنجليزي (English Typography)",
                     initiallyExpanded = editingTemplate.languageMode != com.arabicchristianmedia.model.LanguageMode.ARABIC_ONLY,
                     syncKey = editingTemplate.id to editingTemplate.languageMode,
@@ -697,7 +775,7 @@ CollapsibleSection(
                 ) {
                     
                         // English Citation Controls
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Row(modifier = anchorModifier("english-citation"), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             Text("الشاهد الإنجليزي:", fontSize = 11.sp, color = bento.textSecondary)
                             StyleToggle("B", editingTemplate.secondaryReferenceIsBold) { onUpdate(editingTemplate.copy(secondaryReferenceIsBold = it)) }
                             StyleToggle("I", editingTemplate.secondaryReferenceIsItalic) { onUpdate(editingTemplate.copy(secondaryReferenceIsItalic = it)) }
@@ -713,7 +791,7 @@ CollapsibleSection(
                             onImportFont = launchFontPicker,
                             onDeleteCustomFont = { fontToDelete = it }
                         )
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Row(modifier = anchorModifier("english-verse"), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             Text("الآية الإنجليزية:", fontSize = 11.sp, color = bento.textSecondary)
                             StyleToggle("B", editingTemplate.secondaryVerseIsBold) { onUpdate(editingTemplate.copy(secondaryVerseIsBold = it)) }
                             StyleToggle("I", editingTemplate.secondaryVerseIsItalic) { onUpdate(editingTemplate.copy(secondaryVerseIsItalic = it)) }
@@ -730,6 +808,7 @@ CollapsibleSection(
                 }
 HorizontalDivider(color = bento.borderSubtle)
 CollapsibleSection(
+                    modifier = anchorModifier("bg"),
                     title = "الخلفية والمؤثرات البصرية (Background & Effects)",
                     initiallyExpanded = editingTemplate.animatedBackground != AnimatedBackgroundType.NONE || editingTemplate.customVideoId.isNotEmpty(),
                     syncKey = editingTemplate.id to editingTemplate.animatedBackground,
@@ -740,7 +819,7 @@ CollapsibleSection(
                     // via style presets; manual override UI removed for simplicity.
 
                     // Animated Motion Backgrounds (Layer 1: Bottom background layer)
-                    Text("الخلفيات المتحركة (Motion Video Backgrounds) — طبقة الخلفية", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
+                    Text("الخلفيات المتحركة (Motion Video Backgrounds) — طبقة الخلفية", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary, modifier = anchorModifier("bg-motion"))
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(AnimatedBackgroundType.entries) { type ->
                             FilterChip(
@@ -917,7 +996,7 @@ CollapsibleSection(
                         ColorGradePickerRow("لون إطار التمييز (Accent Color)", editingTemplate.accentColorHex, { onUpdate(editingTemplate.copy(accentColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
                     }
 
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(Modifier.fillMaxWidth().then(anchorModifier("bg-emblem")), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         // v1.7: free emblem — the user types any emoji/symbol with the
                         // system keyboard. Empty = no emblem.
                         OutlinedTextField(
@@ -934,7 +1013,7 @@ CollapsibleSection(
                     // applies where a card exists — not on full-bleed Full Show.
                     // v1.9: verse-change transition (HTTP overlays animate with this;
                     // NDI applies the frame immediately).
-                    Text("حركة انتقال الآية (Transition)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
+                    Text("حركة انتقال الآية (Transition)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary, modifier = anchorModifier("bg-transition"))
                     Spacer(Modifier.height(4.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
                         TransitionType.entries.forEach { t ->
@@ -954,7 +1033,7 @@ CollapsibleSection(
                     // so the chips live in the Lower tab only. In the Full Show
                     // tab this is an explanatory note instead of a dead control
                     // (Ashraf's bug report: changing it in Full changed nothing).
-                    Text("خلفية البث (Stream Background)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
+                    Text("خلفية البث (Stream Background)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary, modifier = anchorModifier("bg-stream"))
                     Spacer(Modifier.height(4.dp))
                     if (editorTab == 0) {
                         Text(
@@ -981,12 +1060,13 @@ CollapsibleSection(
                 
                 }
 CollapsibleSection(
+                    modifier = anchorModifier("shadow"),
                     title = "الظل والتوهج (Shadow & Glow)",
                     initiallyExpanded = editingTemplate.textShadowEnabled || editingTemplate.cardGlowEnabled,
                     syncKey = editingTemplate.id,
                     summary = "Shadow " + (if (editingTemplate.textShadowEnabled) "on" else "off") + " \u00b7 Glow " + (if (editingTemplate.cardGlowEnabled) "on" else "off")
                 ) {
-                    FeatureToggleRow("ظل النص (Text Shadow)", editingTemplate.textShadowEnabled) { onUpdate(editingTemplate.copy(textShadowEnabled = it)) }
+                    FeatureToggleRow("ظل النص (Text Shadow)", editingTemplate.textShadowEnabled, modifier = anchorModifier("shadow-text")) { onUpdate(editingTemplate.copy(textShadowEnabled = it)) }
                     if (editingTemplate.textShadowEnabled) {
                         ColorGradePickerRow("لون ظل النص (Text Shadow Color)", editingTemplate.textShadowColorHex, { onUpdate(editingTemplate.copy(textShadowColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
                         // v1.8: shadow thickness (blur), distance (offset), and 8-direction compass.
@@ -1044,7 +1124,7 @@ CollapsibleSection(
                         } // Close Box (v1.8: constrains compass size on tablets)
                     }
                     if (!editingTemplate.isFullScreen) {
-                        FeatureToggleRow("توهج الكارت (Card Glow)", editingTemplate.cardGlowEnabled) { onUpdate(editingTemplate.copy(cardGlowEnabled = it)) }
+                        FeatureToggleRow("توهج الكارت (Card Glow)", editingTemplate.cardGlowEnabled, modifier = anchorModifier("shadow-glow")) { onUpdate(editingTemplate.copy(cardGlowEnabled = it)) }
                         if (editingTemplate.cardGlowEnabled) {
                             ColorGradePickerRow("لون توهج الكارت (Card Glow Color)", editingTemplate.cardGlowColorHex, { onUpdate(editingTemplate.copy(cardGlowColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
                         }
@@ -1056,20 +1136,140 @@ CollapsibleSection(
         }
 
     }
+    // Wide two-pane layout: the anchor index under the preview. Tapping
+    // a row jumps the right panel to that section (or sub-group) and
+    // flashes it; the right panel always shows every control — anchors
+    // only point, they never hide anything.
+    val anchorSections: List<Pair<String, Pair<String, List<Pair<String, String>>>>> = listOf(
+        "frame" to ("الإطار والحشوة (Frame & Padding)" to listOf(
+            "frame-align" to "محاذاة النص (Alignment)",
+            "frame-position" to "الموضع والهوامش (Position & Margins)",
+            "frame-padding" to "حشوة البطاقة (Card Padding)",
+            "frame-autofit" to "ملاءمة تلقائية (Auto-fit)"
+        )),
+        "alpha" to ("شفافية 100% (Alpha)" to emptyList()),
+        "arabic" to ("تنسيق الخط العربي (Arabic Typography)" to listOf(
+            "arabic-citation" to "الشاهد (Citation)",
+            "arabic-verse" to "الآية (Verse)"
+        )),
+        "language" to ("لغة العرض (Language)" to emptyList()),
+        "english" to ("تنسيق الخط الإنجليزي (English Typography)" to listOf(
+            "english-citation" to "الشاهد الإنجليزي (English Citation)",
+            "english-verse" to "الآية الإنجليزية (English Verse)"
+        )),
+        "bg" to ("الخلفية والمؤثرات البصرية (Background & Effects)" to listOf(
+            "bg-motion" to "الخلفيات المتحركة (Motion Backgrounds)",
+            "bg-emblem" to "رمز / إيموجي (Emblem)",
+            "bg-transition" to "حركة انتقال الآية (Transition)",
+            "bg-stream" to "خلفية البث (Stream Background)"
+        )),
+        "shadow" to ("الظل والتوهج (Shadow & Glow)" to listOf(
+            "shadow-text" to "ظل النص (Text Shadow)",
+            "shadow-glow" to "توهج الكارت (Card Glow)"
+        ))
+    )
+    val anchorsBlock: @Composable () -> Unit = {
+        Card(shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = bento.card), modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("الانتقال السريع (Jump to)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = bento.textPrimary, modifier = Modifier.padding(bottom = 4.dp))
+                anchorSections.forEach { (sectionId, section) ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (highlightedAnchor == sectionId) bento.primaryContainer else Color.Transparent)
+                            .clickable { jumpToAnchor(sectionId) }
+                            .padding(vertical = 6.dp, horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(section.first, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary)
+                    }
+                    section.second.forEach { (subId, subTitle) ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (highlightedAnchor == subId) bento.primaryContainer else Color.Transparent)
+                                .clickable { jumpToAnchor(subId) }
+                                .padding(start = 16.dp, top = 2.dp, bottom = 2.dp, end = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(subTitle, fontSize = 11.sp, color = bento.textSecondary)
+                        }
+                    }
+                }
+            }
+        }
+    }
     BoxWithConstraints(modifier = modifier.fillMaxSize().background(bento.bg)) {
         if (maxWidth >= 900.dp) {
+            // Wide two-pane layout: tabs + style bar full-width, then
+            // left = title + preview + anchors, right = all controls.
+            // Each panel scrolls on its own; scrolling the right panel
+            // never moves the preview.
             Column(Modifier.fillMaxSize()) {
-                Column(Modifier.padding(start = 14.dp, end = 14.dp, top = 14.dp)) { headerBlock() }
+                Column(Modifier.padding(start = 14.dp, end = 14.dp, top = 14.dp)) { tabSwitcherBlock() }
+                Spacer(Modifier.height(12.dp))
+                Column(Modifier.padding(horizontal = 14.dp)) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text("اختر النمط (Select Style)", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = bento.textPrimary)
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            TextButton(onClick = { importTargetTpl = null; showImportDialog = true }) {
+                                Text("استيراد (Import)", fontSize = 11.sp)
+                            }
+                            Button(
+                                onClick = { newTemplateName = "${editingTemplate.name} النسخة"; showSaveDialog = true },
+                                colors = ButtonDefaults.buttonColors(containerColor = bento.primary),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                            ) {
+                                Icon(Icons.Default.Add, null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("حفظ كنمط جديد (Save as new style)", fontSize = 11.sp)
+                            }
+                            if (highlightedId != null && tabIsDirty) {
+                                OutlinedButton(
+                                    onClick = {
+                                        if (highlightedStyleIsFactory) showFactoryUpdateDialog = true
+                                        else onUpdateStyleInPlace(editorTab == 1)
+                                    },
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                ) {
+                                    Icon(Icons.Default.Save, null, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("تحديث النمط الحالي (Update current style)", fontSize = 11.sp)
+                                }
+                            }
+                        }
+                    }
+                    Text("اضغط مطولاً على أي نمط للتصدير / التحديث بالاستيراد / الحذف • التعديل بدون حفظ يمسح التمييز", fontSize = 10.sp, color = bento.textSecondary, modifier = Modifier.padding(top = 2.dp))
+                    styleCardsRow()
+                }
+                if (showHowItWorks) {
+                    Column(Modifier.padding(start = 14.dp, end = 14.dp, top = 12.dp)) { tipsBlock() }
+                }
                 Row(Modifier.weight(1f).fillMaxWidth()) {
                     Column(
                         Modifier.weight(0.44f).fillMaxHeight().padding(14.dp)
                             .verticalScroll(rememberScrollState())
-                    ) { stageBlock() }
+                    ) {
+                        editorTitleBlock()
+                        Spacer(Modifier.height(12.dp))
+                        previewBlock(onPreviewClick = { jumpToAnchor("frame") })
+                        Spacer(Modifier.height(16.dp))
+                        anchorsBlock()
+                    }
                     Box(Modifier.width(1.dp).fillMaxHeight().background(bento.borderSubtle))
                     Column(
                         Modifier.weight(0.56f).fillMaxHeight().padding(14.dp)
-                            .verticalScroll(rememberScrollState())
-                    ) { sheetBlock() }
+                            .verticalScroll(rightScrollState)
+                            .onGloballyPositioned { rightColumnRootY = it.positionInRoot().y }
+                    ) {
+                        frameSectionBlock()
+                        Spacer(Modifier.height(8.dp))
+                        Box(modifier = anchorModifier("alpha")) {
+                            FeatureToggleRow("خلفية شفافة تماماً 100% Alpha", editingTemplate.isPureTransparentBackground) { onUpdate(editingTemplate.copy(isPureTransparentBackground = it)) }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        sheetBlock()
+                    }
                 }
             }
         } else {
@@ -1491,6 +1691,7 @@ CollapsibleSection(
         initiallyExpanded: Boolean = true,
         syncKey: Any? = null,
         summary: String = "",
+        modifier: Modifier = Modifier,
         content: @Composable () -> Unit
     ) {
         val bento = LocalBentoColors.current
@@ -1498,7 +1699,7 @@ CollapsibleSection(
         // language mode) changes — e.g. English Typography auto-expands when
         // the style has English. Manual toggles are preserved otherwise.
         var expanded by remember(syncKey) { mutableStateOf(initiallyExpanded) }
-        Column {
+        Column(modifier = modifier) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1543,9 +1744,9 @@ CollapsibleSection(
     }
 
 @Composable
-fun SliderWithLabel(label: String, value: Float, range: ClosedFloatingPointRange<Float>, onValueChange: (Float) -> Unit) {
+fun SliderWithLabel(label: String, value: Float, range: ClosedFloatingPointRange<Float>, onValueChange: (Float) -> Unit, modifier: Modifier = Modifier) {
     val bento = LocalBentoColors.current
-    Column {
+    Column(modifier = modifier) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(label, fontSize = 11.sp, color = bento.textSecondary)
             // Opacity-style 0..1 ranges read better as a percentage.
@@ -1835,9 +2036,9 @@ fun ColorGradeSpectrumModal(
 }
 
 @Composable
-fun FeatureToggleRow(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+fun FeatureToggleRow(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit, modifier: Modifier = Modifier) {
     val bento = LocalBentoColors.current
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+    Row(modifier = modifier.then(Modifier.fillMaxWidth()), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
         Text(label, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = bento.textPrimary, modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
         Switch(checked = checked, onCheckedChange = onCheckedChange, colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = bento.primary))
     }

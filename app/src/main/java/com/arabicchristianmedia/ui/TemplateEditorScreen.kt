@@ -283,7 +283,7 @@ fun TemplateEditorScreen(
     // (the compact layout never jumps).
     fun anchorModifier(id: String): Modifier = Modifier
         .onGloballyPositioned { coords ->
-            val offset = coords.positionInRoot().y - rightColumnRootY + rightScrollState.value
+            val offset = coords.boundsInRoot().top - rightColumnRootY + rightScrollState.value
             if (anchorOffsets[id] != offset) anchorOffsets[id] = offset
         }
         .then(if (highlightedAnchor == id) Modifier.border(2.dp, bento.primary, RoundedCornerShape(12.dp)) else Modifier)
@@ -1260,7 +1260,7 @@ CollapsibleSection(
                     Column(
                         Modifier.weight(0.56f).fillMaxHeight().padding(14.dp)
                             .verticalScroll(rightScrollState)
-                            .onGloballyPositioned { coords -> rightColumnRootY = coords.positionInRoot().y }
+                            .onGloballyPositioned { coords -> rightColumnRootY = coords.boundsInRoot().top }
                     ) {
                         frameSectionBlock()
                         Spacer(Modifier.height(8.dp))

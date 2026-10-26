@@ -17,6 +17,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.Box
@@ -1487,7 +1488,6 @@ fun BroadcastControlScreen(
  * controlled via [controlledExpanded] + [onToggleControlled] (the
  * Advanced section, whose state lives in the UI state as before).
  */
-@Composable
 // Bidi-safe label: a mixed Arabic/Latin string is rendered as separate
 // unidirectional pieces so the bidi engine cannot reorder runs across a
 // boundary (e.g. a trailing "(Latin):" flipping). The pieces concatenate
@@ -1495,6 +1495,7 @@ fun BroadcastControlScreen(
 // Scope: short direct labels only. SetupSection titles stay single-string
 // (changing that API is out of scope), as do flowing paragraphs, guide
 // sentences, and interpolated/dynamic lines.
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SplitLabel(
     parts: List<String>,
@@ -1503,13 +1504,14 @@ private fun SplitLabel(
     color: Color,
     modifier: Modifier = Modifier
 ) {
-    FlowRow(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
+    FlowRow(modifier = modifier) {
         parts.forEach { part ->
             Text(part, fontSize = fontSize, fontWeight = fontWeight, color = color)
         }
     }
 }
 
+@Composable
 private fun SetupSection(
     title: String,
     summary: String = "",

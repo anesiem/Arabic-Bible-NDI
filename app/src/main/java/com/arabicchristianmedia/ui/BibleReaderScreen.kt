@@ -61,6 +61,7 @@ import com.arabicchristianmedia.model.Testament
 import com.arabicchristianmedia.ui.theme.*
 import kotlin.math.abs
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BibleReaderScreen(
     uiState: BibleNdiUiState,

@@ -686,12 +686,15 @@ fun BroadcastControlScreen(
             summary = "Lower " + loSpec.width + "×" + loSpec.height + "@" + loSpec.fps + " · Full " + fuSpec.width + "×" + fuSpec.height + "@" + fuSpec.fps
         ) {
                                 // NDI Source Settings: per-source resolution + frame rate dropdowns
-                                SplitLabel(
-                                    parts = listOf("إعدادات مصادر ", "NDI", " (الدقة ومعدل الإطارات):"),
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = bento.textPrimary
-                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    SplitLabel(
+                                        parts = listOf("إعدادات مصادر ", "NDI", " (الدقة ومعدل الإطارات):"),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = bento.textPrimary
+                                    )
+                                    InfoPopupButton("إعدادات مصادر NDI (الدقة ومعدل الإطارات)", "اختر الدقة ومعدل الإطارات لكل مصدر. التغيير يُعاد تشغيل المصدر فوراً.")
+                                }
                                 Surface(
                                     shape = RoundedCornerShape(10.dp),
                                     color = bento.card,
@@ -699,11 +702,6 @@ fun BroadcastControlScreen(
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Column(modifier = Modifier.padding(10.dp)) {
-                                        Text(
-                                            "اختر الدقة ومعدل الإطارات لكل مصدر. التغيير يُعاد تشغيل المصدر فوراً.",
-                                            fontSize = 10.sp,
-                                            color = bento.textSecondary
-                                        )
                                         val specOf = { feed: String -> uiState.ndiSourceSpecs[feed] ?: NdiNativeSender.defaultSpec(feed) }
                                         NdiSourceSettingsRow(
                                             feedKey = NdiNativeSender.FEED_LOWER,
@@ -821,18 +819,14 @@ fun BroadcastControlScreen(
                         )
                     }
 
-                    Column {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         SplitLabel(
                             parts = listOf("إبقاء الشاشة مفعلة ", "(Keep Screen Awake)"),
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold,
                             color = bento.textPrimary
                         )
-                        Text(
-                            text = "يمنع خمول الشاشة أو توقف معالج الجهاز أثناء البث المباشر",
-                            fontSize = 11.sp,
-                            color = bento.textSecondary
-                        )
+                        InfoPopupButton("إبقاء الشاشة مفعلة (Keep Screen Awake)", "يمنع خمول الشاشة أو توقف معالج الجهاز أثناء البث المباشر")
                     }
                 }
 
@@ -1660,13 +1654,9 @@ private fun NdiSourceSettingsRow(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Column(modifier = Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                 Text("الحركة (Motion)", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = tint)
-                Text(
-                    "إعادة رسم الخلفيات المتحركة باستمرار (بحد أقصى 30 إطار/ثا)",
-                    fontSize = 9.sp,
-                    color = textSecondary
-                )
+                InfoPopupButton("الحركة (Motion)", "إعادة رسم الخلفيات المتحركة باستمرار (بحد أقصى 30 إطار/ثا)")
             }
             Switch(
                 checked = spec.motionEnabled,

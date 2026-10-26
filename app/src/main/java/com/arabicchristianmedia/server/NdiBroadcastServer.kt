@@ -4955,10 +4955,17 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     width: 46px; padding: 9px 0; font-size: 15px; font-weight: 600;
     border: 1px solid; border-radius: 10px; background: transparent; cursor: pointer;
   }
-  .selrow { display: flex; gap: 8px; }
-  .selrow #bookSel { flex: 2; }
-  .selrow #chSel { flex: 1; }
-  .selrow #langSel { flex: 1; }
+  /* Item 13: the single control line — book + chapter + version +
+     reference + citation + ON AIR in one wrapping flex row. */
+  #controlBar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  #controlBar select, #controlBar input { width: auto; min-width: 0; }
+  #controlBar #bookSel { flex: 2 1 140px; }
+  #controlBar #chSel { flex: 1 1 64px; }
+  #controlBar #langSel { flex: 1 1 80px; }
+  #controlBar #ref { flex: 2 1 140px; }
+  #controlBar #goBtn { width: auto; flex: none; padding: 12px 14px; min-height: 48px; font-size: 16px; }
+  #controlBar .onair { width: auto; flex: none; padding: 12px 18px; min-height: 48px; font-size: 16px; }
+  #controlBar .livepill { max-width: none; flex: 1 1 140px; margin-top: 0; }
   .vlist { margin-top: 8px; max-height: 52vh; overflow-y: auto; min-height: 120px; transition: opacity 0.15s; }
   /* v1.9.2 (#5): while a chapter loads, the current verses stay in place
      (dimmed) — the list no longer collapses to a Loading line and flashes. */
@@ -4971,16 +4978,14 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       max-width: 1180px;
       display: grid;
       grid-template-columns: 340px 1fr;
-      grid-template-areas: "onair browse" "ref browse" "go browse" "status browse" "recent browse";
-      align-items: start;
+      grid-template-areas: "control control" "recent browse" "status status";
+      align-items: stretch;
     }
-    #onAirBtn { grid-area: onair; }
-    #recentCard { grid-area: recent; }
-    #browseCard { grid-area: browse; }
-    #refCard { grid-area: ref; }
-    #goBtn { grid-area: go; }
+    #controlBar { grid-area: control; }
+    #recentCard { grid-area: recent; display: flex; flex-direction: column; }
+    #browseCard { grid-area: browse; display: flex; flex-direction: column; }
     .status { grid-area: status; }
-    .vlist { max-height: 66vh; }
+    .vlist { max-height: 66vh; flex: 1; }
   }
   .vrow { display: flex; gap: 10px; padding: 12px; border-bottom: 1px solid; cursor: pointer; align-items: flex-start; }
   .vrow:active { opacity: 0.7; }
@@ -5006,31 +5011,31 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   <div>📖 Bible Remote
     <div class="sub">Arabic Bible NDI — remote device: tap a verse to show it</div>
   </div>
-  <span class="livepill" id="livePill"><span class="dot"></span><span class="ref" id="liveRef" dir="auto">—</span></span>
 </header>
 <main>
-  <button class="onair off" id="onAirBtn" onclick="toggleOnAir()">OFF AIR</button>
+  <!-- Item 13: one control line — book + chapter + version + reference
+       + live citation + ON AIR. It wraps gracefully on narrow screens.
+       The ref hint line is gone: the placeholder already carries the
+       examples (John 3:16 / يوحنا 3:16 / Jn 3:16). -->
+  <div class="card" id="controlBar">
+    <select id="bookSel" aria-label="Book"><option value="">Loading books…</option></select>
+    <select id="chSel" aria-label="Chapter"></select>
+    <select id="langSel" aria-label="Version"><option value="ar">العربية</option><option value="en">English</option></select>
+    <input id="ref" type="text" inputmode="text" autocomplete="off"
+           placeholder="John 3:16  •  يوحنا 3:16  •  Jn 3:16"
+           enterkeyhint="go" aria-label="Quick reference">
+    <button class="btn" id="goBtn" onclick="triggerRef()">▶</button>
+    <span class="livepill" id="livePill"><span class="dot"></span><span class="ref" id="liveRef" dir="auto">—</span></span>
+    <button class="onair off" id="onAirBtn" onclick="toggleOnAir()">OFF AIR</button>
+  </div>
   <div class="card" id="recentCard">
     <label>الآيات الأخيرة — Recent verses</label>
     <div id="recentList" class="vlist"></div>
   </div>
   <div class="card" id="browseCard">
     <label for="bookSel">Browse the Bible — اختر سفراً</label>
-    <div class="selrow">
-      <select id="bookSel"><option value="">Loading books…</option></select>
-      <select id="chSel" aria-label="Chapter"></select>
-      <select id="langSel" aria-label="Version"><option value="ar">العربية</option><option value="en">English</option></select>
-    </div>
     <div class="vlist" id="vList"></div>
   </div>
-  <div class="card" id="refCard">
-    <label for="ref">Quick reference</label>
-    <input id="ref" type="text" inputmode="text" autocomplete="off"
-           placeholder="John 3:16  •  يوحنا 3:16  •  Jn 3:16"
-           enterkeyhint="go">
-    <div class="hint">Or type a reference — English, Arabic, or abbreviation. Examples: <b>Rom 8:28</b>, <b>مزمور 23:1</b></div>
-  </div>
-  <button class="btn" id="goBtn" onclick="triggerRef()">▶ Show Verse</button>
   <div class="status" id="status"></div>
 </main>
 <script>

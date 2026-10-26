@@ -520,7 +520,7 @@ fun TemplateEditorScreen(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     FilterChip(selected = boxEdit, onClick = { val next = !boxEdit; boxEdit = next; if (next) setSectionExpanded("frame", true) }, label = { Text("تعديل الصندوق (Edit Box)", fontSize = 10.sp) })
                     if (boxEdit) {
-                        Text("اسحب حواف الصندوق — drag the box edges", fontSize = 10.sp, color = bento.textSecondary, modifier = Modifier.padding(start = 8.dp))
+                        InfoPopupButton("تعديل الصندوق (Edit Box)", "اسحب حواف الصندوق — drag the box edges")
                     }
                 }
                 Spacer(Modifier.height(6.dp))
@@ -1037,18 +1037,19 @@ CollapsibleSection(
                         ColorGradePickerRow("لون إطار التمييز (Accent Color)", editingTemplate.accentColorHex, { onUpdate(editingTemplate.copy(accentColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
                     }
 
-                    Row(Modifier.fillMaxWidth().then(anchorModifier("bg-emblem")), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(Modifier.fillMaxWidth().then(anchorModifier("bg-emblem")), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                         // v1.7: free emblem — the user types any emoji/symbol with the
-                        // system keyboard. Empty = no emblem.
+                        // system keyboard. Empty = no emblem (hint behind the (i)).
                         OutlinedTextField(
                             value = editingTemplate.emblem,
                             onValueChange = { onUpdate(editingTemplate.copy(emblem = it)) },
-                            label = { Text("رمز / إيموجي (Emblem) — اتركه فارغاً للإخفاء", fontSize = 10.sp) },
+                            label = { Text("رمز / إيموجي (Emblem)", fontSize = 10.sp) },
                             placeholder = { Text("✝", fontSize = 14.sp) },
                             singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(8.dp)
                         )
+                        InfoPopupButton("رمز / إيموجي (Emblem)", "اتركه فارغاً للإخفاء")
                     }
                     // Independent text shadow and card glow (v1.6). Card glow only
                     // applies where a card exists — not on full-bleed Full Show.
@@ -1074,14 +1075,12 @@ CollapsibleSection(
                     // so the chips live in the Lower tab only. In the Full Show
                     // tab this is an explanatory note instead of a dead control
                     // (Ashraf's bug report: changing it in Full changed nothing).
-                    Text("خلفية البث (Stream Background)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary, modifier = anchorModifier("bg-stream"))
+                    Row(modifier = anchorModifier("bg-stream"), verticalAlignment = Alignment.CenterVertically) {
+                        Text("خلفية البث (Stream Background)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary, modifier = Modifier.weight(1f))
+                        InfoPopupButton("خلفية البث (Stream Background)", if (editorTab == 0) "تؤثر فقط في بث MJPEG ‏(/stream) حول تصميم الثلث السفلي — لا تؤثر في NDI ولا في صفحات /lower و/full." else "تُضبط خلفية البث من تبويب الثلث السفلي (Lower Third) — فبث MJPEG ‏(/stream) يعرض دائماً تصميم الثلث السفلي.")
+                    }
                     Spacer(Modifier.height(4.dp))
                     if (editorTab == 0) {
-                        Text(
-                            "تؤثر فقط في بث MJPEG ‏(/stream) حول تصميم الثلث السفلي — لا تؤثر في NDI ولا في صفحات /lower و/full.",
-                            fontSize = 10.sp, color = bento.textSecondary
-                        )
-                        Spacer(Modifier.height(4.dp))
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             StreamBackgroundMode.entries.forEach { mode ->
                                 FilterChip(
@@ -1091,11 +1090,6 @@ CollapsibleSection(
                                 )
                             }
                         }
-                    } else {
-                        Text(
-                            "تُضبط خلفية البث من تبويب الثلث السفلي (Lower Third) — فبث MJPEG ‏(/stream) يعرض دائماً تصميم الثلث السفلي.",
-                            fontSize = 10.sp, color = bento.textSecondary
-                        )
                     }
                     Spacer(Modifier.height(8.dp))
                 

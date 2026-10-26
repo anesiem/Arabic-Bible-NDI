@@ -29,7 +29,8 @@ import com.arabicchristianmedia.data.ArabicTextFormatter
 import com.arabicchristianmedia.data.BibleRepository
 import com.arabicchristianmedia.data.SermonStore
 import com.arabicchristianmedia.data.TemplateRepository
-import com.arabicchristianmedia.model.SermonShadePairs
+import com.arabicchristianmedia.model.ColorThemes
+import com.arabicchristianmedia.model.colorThemeFromJson
 import com.arabicchristianmedia.model.AnimatedBackgroundType
 import com.arabicchristianmedia.model.BundledFonts
 import com.arabicchristianmedia.model.BibleVerse
@@ -878,15 +879,28 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             put("bookId", verse?.bookId ?: "")
             put("chapterNum", verse?.chapter ?: 0)
             put("verseNum", verse?.verse ?: 0)
-            // R5: the remote page mirrors the app's picked sermon pair
-            // (bands), read fresh from the same prefs the app uses.
-            val sermonPrefs = try { context.getSharedPreferences("sermon_ui_prefs", Context.MODE_PRIVATE) } catch (e: Exception) { null }
-            val darkBandPair = SermonShadePairs.dark(sermonPrefs?.getString("sermon_pair_dark", "d1"))
-            val lightBandPair = SermonShadePairs.light(sermonPrefs?.getString("sermon_pair_light", "l1"))
-            put("bandDarkA", bandHex(darkBandPair.shadeA))
-            put("bandDarkB", bandHex(darkBandPair.shadeB))
-            put("bandLightA", bandHex(lightBandPair.shadeA))
-            put("bandLightB", bandHex(lightBandPair.shadeB))
+            // Theme bands + recents: the remote page mirrors the app's
+            // selected theme, read fresh from the same prefs the app
+            // uses. Fresh installs (no theme prefs) fall back to Classic,
+            // which is exactly the previous d1/l1 bands + teal recents.
+            // (Live-row highlight intentionally NOT themed here: the
+            // remote live tint stays green, and Classic dark's highlight
+            // equals the remote dark card, so it would go invisible.)
+            val themePrefs = try { context.getSharedPreferences("app_theme_prefs", Context.MODE_PRIVATE) } catch (e: Exception) { null }
+            val customThemes = try {
+                val raw = themePrefs?.getString("custom_themes_json", null)
+                if (raw == null) emptyList() else {
+                    val arr = JSONArray(raw)
+                    (0 until arr.length()).mapNotNull { i -> colorThemeFromJson(arr.getJSONObject(i)) }
+                }
+            } catch (e: Exception) { emptyList() }
+            val theme = ColorThemes.byId(themePrefs?.getString("selected_theme_id", "classic"), customThemes)
+            put("bandDarkA", bandHex(theme.dark.bandA))
+            put("bandDarkB", bandHex(theme.dark.bandB))
+            put("bandLightA", bandHex(theme.light.bandA))
+            put("bandLightB", bandHex(theme.light.bandB))
+            put("recentsDark", bandHex(theme.dark.recents))
+            put("recentsLight", bandHex(theme.light.recents))
             // Item 6+7: recents for the remote page — Arabic citation +
             // Arabic text only (no English line, same as the Library
             // sheet); the English citation stays as the trigger ref, with
@@ -5325,12 +5339,14 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         cit ? (live.onAir ? cit : 'Off air — ' + cit) : 'Off air';
       pill.className = 'livepill' + (live.onAir && cit ? ' on' : '');
       pill.title = cit || '';
-      // R5: mirror the app's picked sermon pair into the band variables
-      // (dark/light by the page's color scheme; re-applied every poll).
+      // Theme bands + recents: mirror the app's selected theme into the
+      // list variables (dark/light by the page's color scheme;
+      // re-applied every poll). Live-row tint stays green (see CSS).
       if (j.bandDarkA) {
         var darkMode = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
         document.documentElement.style.setProperty('--band-a', darkMode ? j.bandDarkA : j.bandLightA);
         document.documentElement.style.setProperty('--band-b', darkMode ? j.bandDarkB : j.bandLightB);
+        document.documentElement.style.setProperty('--recents', darkMode ? (j.recentsDark || '#0D9488') : (j.recentsLight || '#0D9488'));
       }
       renderOnAir();
       markLiveRow();

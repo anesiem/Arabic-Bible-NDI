@@ -153,7 +153,7 @@ fun BibleReaderScreen(
                         // narrow phones + large font cannot break the bar.
                         Text(
                             "الكتاب المقدس - إضغط هنا",
-                            fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.primary,
+                            fontSize = 13.sp, fontWeight = FontWeight.Bold, color = bento.primary,
                             modifier = Modifier.weight(1f),
                             textAlign = TextAlign.Center,
                             maxLines = 1, overflow = TextOverflow.Ellipsis

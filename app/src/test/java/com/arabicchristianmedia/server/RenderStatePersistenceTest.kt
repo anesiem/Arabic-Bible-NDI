@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.arabicchristianmedia.data.TemplateRepository
 import com.arabicchristianmedia.model.BibleVerse
+import com.arabicchristianmedia.model.TransitionType
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -127,5 +128,39 @@ class RenderStatePersistenceTest {
         val a = NdiService.ensureSender(context)
         val b = NdiService.ensureSender(context)
         assertSame(a, b)
+    }
+
+    @Test
+    fun `clear starts a clear transition on the outgoing verse`() {
+        val server = NdiBroadcastServer(context, 8091)
+        server.updateTemplate(TemplateRepository.DEFAULT_TEMPLATES[0].copy(transition = TransitionType.FADE, transitionDurationMs = 2000))
+        server.updateVerse(verse, live = true)
+        server.setLiveState(false)
+        assertTrue("clear must animate while the window runs", server.isClearTransitionActiveFor(false))
+        val p = server.clearProgressFor(false)
+        assertTrue("clear progress must start in range", p >= 0f && p <= 1f)
+    }
+
+    @Test
+    fun `go-live starts a go-live transition from transparent`() {
+        val server = NdiBroadcastServer(context, 8091)
+        server.updateTemplate(TemplateRepository.DEFAULT_TEMPLATES[0].copy(transition = TransitionType.FADE, transitionDurationMs = 2000))
+        server.setLiveState(false)
+        server.updateVerse(verse, live = false)
+        server.setLiveState(true)
+        assertTrue("go-live must animate while the window runs", server.isGoLiveTransitionActiveFor(false))
+        val p = server.goLiveProgressFor(false)
+        assertTrue("go-live progress must start in range", p >= 0f && p <= 1f)
+    }
+
+    @Test
+    fun `CUT disables go-live and clear transitions`() {
+        val server = NdiBroadcastServer(context, 8091)
+        server.updateTemplate(TemplateRepository.DEFAULT_TEMPLATES[0].copy(transition = TransitionType.CUT, transitionDurationMs = 2000))
+        server.updateVerse(verse, live = true)
+        server.setLiveState(false)
+        assertFalse("CUT clear must be instant", server.isClearTransitionActiveFor(false))
+        server.setLiveState(true)
+        assertFalse("CUT go-live must be instant", server.isGoLiveTransitionActiveFor(false))
     }
 }

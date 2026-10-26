@@ -396,6 +396,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     @Volatile private var transitionPrevVerse: BibleVerse? = null
     @Volatile private var transitionStartMs: Long = 0L
 
+    // Item 11: go-live / clear transitions use the same selected transition
+    // and duration as verse changes, but from transparent (go-live) or to
+    // transparent (clear). Timing is shared; type/duration stay per-feed.
+    @Volatile private var goLiveStartMs: Long = 0L
+    @Volatile private var clearStartMs: Long = 0L
+    @Volatile private var clearVerse: BibleVerse? = null
+
     /** True while a verse-change crossfade is still animating for this feed. */
     fun isTransitionActiveFor(isFull: Boolean): Boolean {
         if (transitionPrevVerse == null) return false
@@ -422,16 +429,82 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         return ((SystemClock.elapsedRealtime() - transitionStartMs).toFloat() / dur).coerceIn(0f, 1f)
     }
 
+    /** True while a go-live fade/slide-in is still animating for this feed. */
+    fun isGoLiveTransitionActiveFor(isFull: Boolean): Boolean {
+        if (goLiveStartMs == 0L) return false
+        if (!isLive) return false
+        val tpl = if (isFull) currentShowTemplate else currentTemplate
+        val dur = tpl.transitionDurationMs
+        if (tpl.transition == TransitionType.CUT || dur <= 0) return false
+        val elapsed = SystemClock.elapsedRealtime() - goLiveStartMs
+        if (elapsed >= dur) {
+            goLiveStartMs = 0L
+            invalidateBitmapCache()
+            return false
+        }
+        return true
+    }
+
+    fun goLiveProgressFor(isFull: Boolean): Float {
+        if (!isGoLiveTransitionActiveFor(isFull)) return 1f
+        val tpl = if (isFull) currentShowTemplate else currentTemplate
+        val dur = tpl.transitionDurationMs.coerceAtLeast(1)
+        return ((SystemClock.elapsedRealtime() - goLiveStartMs).toFloat() / dur).coerceIn(0f, 1f)
+    }
+
+    /** True while a clear fade/slide-out is still animating for this feed. */
+    fun isClearTransitionActiveFor(isFull: Boolean): Boolean {
+        if (clearStartMs == 0L || clearVerse == null) return false
+        if (isLive) return false
+        val tpl = if (isFull) currentShowTemplate else currentTemplate
+        val dur = tpl.transitionDurationMs
+        if (tpl.transition == TransitionType.CUT || dur <= 0) return false
+        val elapsed = SystemClock.elapsedRealtime() - clearStartMs
+        if (elapsed >= dur) {
+            clearStartMs = 0L
+            clearVerse = null
+            invalidateBitmapCache()
+            return false
+        }
+        return true
+    }
+
+    fun clearProgressFor(isFull: Boolean): Float {
+        if (!isClearTransitionActiveFor(isFull)) return 1f
+        val tpl = if (isFull) currentShowTemplate else currentTemplate
+        val dur = tpl.transitionDurationMs.coerceAtLeast(1)
+        return ((SystemClock.elapsedRealtime() - clearStartMs).toFloat() / dur).coerceIn(0f, 1f)
+    }
+
     fun invalidateBitmapCache() {
         isCacheDirtyLower = true
         isCacheDirtyShow = true
         _frameVersion.incrementAndGet()
     }
 
+    /**
+     * Records a live-state edge for the go-live / clear transitions.
+     * [outgoingVerse] is the verse that was on air when going off-air
+     * (the frame the clear animation fades out from).
+     */
+    private fun noteLiveChange(wasLive: Boolean, nowLive: Boolean, outgoingVerse: BibleVerse?) {
+        if (nowLive && !wasLive) {
+            goLiveStartMs = SystemClock.elapsedRealtime()
+            clearStartMs = 0L
+            clearVerse = null
+        } else if (!nowLive && wasLive) {
+            clearStartMs = SystemClock.elapsedRealtime()
+            clearVerse = outgoingVerse
+            goLiveStartMs = 0L
+        }
+    }
+
     fun updateVerse(verse: BibleVerse, live: Boolean = true) {
         val prev = currentVerse
+        val wasLive = isLive
         currentVerse = verse
         isLive = live
+        noteLiveChange(wasLive, live, prev)
         // v2.0: snapshot the replaced verse so the next frames can crossfade
         // (only on a real verse change, and only when going live with content).
         if (prev != null && prev.id != verse.id && isLive && live) {
@@ -550,7 +623,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     }
 
     fun setLiveState(live: Boolean) {
+        val wasLive = isLive
         isLive = live
+        noteLiveChange(wasLive, live, currentVerse)
         invalidateBitmapCache()
         broadcastStateToClients()
         persistVerseState()
@@ -1453,6 +1528,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       }
       diag.lastVersion = data.stateVersion || diag.lastVersion;
       applyT0 = performance.now();
+      // Item 11: show/hide takes the selected transition's duration (CUT =
+      // instant), so go-live and clear match the verse-change timing
+      // instead of the fixed 0.4s in the stylesheet.
+      const visDur = data.transition === 'CUT' ? 0 : (data.transitionDurationMs !== undefined ? data.transitionDurationMs : 350);
+      container.style.transitionDuration = visDur + 'ms';
       if (!data.isLive || !data.arabicText) {
         container.classList.remove('visible');
         // v1.9.1: cancel any pending font-gated reveal and force the next
@@ -2764,9 +2844,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         val isFull = tpl.isFullScreen
 
         // Fast Path: Return cached Bitmap if state hasn't changed (0ms allocation-free)
-        // v2.0: never serve the cache mid verse-transition — the crossfade
-        // must be re-rendered every frame until it completes.
-        if (allowSharedCache && !isForStream && overrideTemplate == null && width == 1920 && height == 1080 && !isTransitionActiveFor(isFull)) {
+        // v2.0: never serve the cache mid transition — crossfades and
+        // go-live/clear animations must be re-rendered every frame until
+        // they complete.
+        if (allowSharedCache && !isForStream && overrideTemplate == null && width == 1920 && height == 1080 && !isTransitionActiveFor(isFull) && !isGoLiveTransitionActiveFor(isFull) && !isClearTransitionActiveFor(isFull)) {
             if (isFull && !isCacheDirtyShow && cachedShowBitmap != null && !cachedShowBitmap!!.isRecycled) {
                 return cachedShowBitmap!!
             }
@@ -2831,7 +2912,44 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // When off-air, return a 100% transparent alpha frame for BOTH feeds
         // (v1.9.1 F1: the old Full Show exemption kept the Full feed showing
         // the verse after OFF AIR — removed; OFF AIR blanks every output).
-        if (!isLive && !isForStream) {
+        // Item 11: a clear transition still animates first — the verse that
+        // was on air fades/slides out with the selected transition, then the
+        // frame goes transparent when the window expires. Transition
+        // snapshots bypass this gate so they can render their verse.
+        if (!isLive && !isForStream && !isTransitionSnapshot) {
+            if (isClearTransitionActiveFor(isFull)) {
+                val cv = clearVerse
+                if (cv != null) {
+                    val p = clearProgressFor(isFull)
+                    try {
+                        val scratch = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                        drawFrameInto(scratch, width, height, isForStream, tpl, isFull, verseOverride = cv, isTransitionSnapshot = true)
+                        val layerPaint = Paint().apply { alpha = ((1f - p) * 255f).toInt().coerceIn(0, 255) }
+                        val layer = canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), layerPaint)
+                        // Exit = reverse of entry: the frame moves TOWARD the
+                        // entry offset while fading out.
+                        when (tpl.transition) {
+                            TransitionType.SLIDE_UP -> canvas.translate(0f, p * 50f * (width / 1920f))
+                            TransitionType.SLIDE_DOWN -> canvas.translate(0f, -p * 50f * (width / 1920f))
+                            TransitionType.SLIDE_RIGHT -> canvas.translate(p * 60f * (width / 1920f), 0f)
+                            TransitionType.SLIDE_LEFT -> canvas.translate(-p * 60f * (width / 1920f), 0f)
+                            TransitionType.SCALE_ZOOM -> {
+                                val s = 1.0f - 0.08f * p
+                                canvas.scale(s, s, width / 2f, height / 2f)
+                            }
+                            TransitionType.BOUNCE -> {
+                                val s = 1.0f - 0.12f * p
+                                canvas.scale(s, s, width / 2f, height / 2f)
+                            }
+                            else -> {}
+                        }
+                        canvas.drawBitmap(scratch, 0f, 0f, null)
+                        canvas.restoreToCount(layer)
+                        scratch.recycle()
+                    } catch (_: OutOfMemoryError) { /* fall through: transparent */ }
+                    catch (_: Exception) { /* fall through: transparent */ }
+                }
+            }
             return
         }
 
@@ -2842,36 +2960,44 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // recursive call that produces the old frame) skip this block.
         var transitionScratch: Bitmap? = null
         var transitionLayer = -1
-        if (!isTransitionSnapshot && isTransitionActiveFor(isFull)) {
-            val prevVerse = transitionPrevVerse
-            if (prevVerse != null) {
-                val p = transitionProgressFor(isFull)
-                try {
-                    val scratch = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-                    drawFrameInto(scratch, width, height, isForStream, tpl, isFull, verseOverride = prevVerse, isTransitionSnapshot = true)
-                    val outPaint = Paint().apply { alpha = ((1f - p) * 255f).toInt().coerceIn(0, 255) }
-                    canvas.drawBitmap(scratch, 0f, 0f, outPaint)
-                    transitionScratch = scratch
-                } catch (_: OutOfMemoryError) { /* fall through: plain fade-in */
-                } catch (_: Exception) { /* fall through: plain fade-in */ }
-                val layerPaint = Paint().apply { alpha = (p * 255f).toInt().coerceIn(0, 255) }
-                transitionLayer = canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), layerPaint)
-                // Apply directional motion or scaling during transition
-                when (tpl.transition) {
-                    TransitionType.SLIDE_UP -> canvas.translate(0f, (1f - p) * 50f * (width / 1920f))
-                    TransitionType.SLIDE_DOWN -> canvas.translate(0f, -(1f - p) * 50f * (width / 1920f))
-                    TransitionType.SLIDE_RIGHT -> canvas.translate((1f - p) * 60f * (width / 1920f), 0f)
-                    TransitionType.SLIDE_LEFT -> canvas.translate(-(1f - p) * 60f * (width / 1920f), 0f)
-                    TransitionType.SCALE_ZOOM -> {
-                        val s = 0.92f + 0.08f * p
-                        canvas.scale(s, s, width / 2f, height / 2f)
-                    }
-                    TransitionType.BOUNCE -> {
-                        val bp = if (p < 0.7f) (p / 0.7f) * 1.05f else 1.05f - (p - 0.7f) / 0.3f * 0.05f
-                        canvas.scale(bp, bp, width / 2f, height / 2f)
-                    }
-                    else -> {}
+        // Verse-change crossfade, or (item 11) a go-live fade/slide-in from
+        // transparent when there is no verse-change snapshot (same verse, or
+        // first go-live). The layer + transform are shared; only the
+        // outgoing snapshot layer is verse-change-only.
+        val verseChangeActive = !isTransitionSnapshot && isTransitionActiveFor(isFull)
+        val goLiveActive = !isTransitionSnapshot && !verseChangeActive && isGoLiveTransitionActiveFor(isFull)
+        if (verseChangeActive || goLiveActive) {
+            val p = if (verseChangeActive) transitionProgressFor(isFull) else goLiveProgressFor(isFull)
+            if (verseChangeActive) {
+                val prevVerse = transitionPrevVerse
+                if (prevVerse != null) {
+                    try {
+                        val scratch = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                        drawFrameInto(scratch, width, height, isForStream, tpl, isFull, verseOverride = prevVerse, isTransitionSnapshot = true)
+                        val outPaint = Paint().apply { alpha = ((1f - p) * 255f).toInt().coerceIn(0, 255) }
+                        canvas.drawBitmap(scratch, 0f, 0f, outPaint)
+                        transitionScratch = scratch
+                    } catch (_: OutOfMemoryError) { /* fall through: plain fade-in */
+                    } catch (_: Exception) { /* fall through: plain fade-in */ }
                 }
+            }
+            val layerPaint = Paint().apply { alpha = (p * 255f).toInt().coerceIn(0, 255) }
+            transitionLayer = canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), layerPaint)
+            // Apply directional motion or scaling during transition
+            when (tpl.transition) {
+                TransitionType.SLIDE_UP -> canvas.translate(0f, (1f - p) * 50f * (width / 1920f))
+                TransitionType.SLIDE_DOWN -> canvas.translate(0f, -(1f - p) * 50f * (width / 1920f))
+                TransitionType.SLIDE_RIGHT -> canvas.translate((1f - p) * 60f * (width / 1920f), 0f)
+                TransitionType.SLIDE_LEFT -> canvas.translate(-(1f - p) * 60f * (width / 1920f), 0f)
+                TransitionType.SCALE_ZOOM -> {
+                    val s = 0.92f + 0.08f * p
+                    canvas.scale(s, s, width / 2f, height / 2f)
+                }
+                TransitionType.BOUNCE -> {
+                    val bp = if (p < 0.7f) (p / 0.7f) * 1.05f else 1.05f - (p - 0.7f) / 0.3f * 0.05f
+                    canvas.scale(bp, bp, width / 2f, height / 2f)
+                }
+                else -> {}
             }
         }
 

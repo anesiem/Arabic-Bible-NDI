@@ -120,6 +120,10 @@ data class BibleNdiUiState(
     val readerFocusVerseId: String? = null,
     // v1.9.1: bumped when the reader should open at the focused verse.
     val readerJumpNonce: Long = 0,
+    // Session recents: verses opened this session (reader/search/sermon/
+    // remote), most recent first, capped at 20. In-memory only — a fresh
+    // app start means an empty list. Never persisted.
+    val recentVerses: List<BibleVerse> = emptyList(),
     // v1.9.1: user-imported fonts (TTF/OTF), shown in both font dropdowns.
     val customFonts: List<CustomFont> = emptyList()
 )
@@ -891,7 +895,8 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             isLiveOnAir = true,
             readerFocusVerseId = null,
             statusMessage = "Cued & Live: ${displayVerse.getFormattedArabicCitation()}",
-            isSearching = false // Close search view on click
+            isSearching = false, // Close search view on click
+            recentVerses = (listOf(displayVerse) + _uiState.value.recentVerses.filterNot { it.id == displayVerse.id }).take(20)
         )
 
         broadcastServer.updateVerse(verse, live = true)
@@ -946,7 +951,8 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             _uiState.value = _uiState.value.copy(
                 activeVerse = verse,
                 isLiveOnAir = true,
-                statusMessage = "Remote trigger: ${verse.getFormattedArabicCitation()}"
+                statusMessage = "Remote trigger: ${verse.getFormattedArabicCitation()}",
+                recentVerses = (listOf(verse) + _uiState.value.recentVerses.filterNot { it.id == verse.id }).take(20)
             )
 
             // v1.9.1 (#14): keep the Library reader in sync, exactly like a
@@ -1046,6 +1052,19 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
      */
     fun openSermonVerseInReader(entry: SermonEntry) {
         syncReaderToVerse(entry.verse, focus = true)
+        _uiState.value = _uiState.value.copy(
+            readerJumpNonce = _uiState.value.readerJumpNonce + 1
+        )
+    }
+
+    /**
+     * Session recents: open a recent verse in the reader WITHOUT putting
+     * it on air — same mechanism as the sermon book-icon jump (focus +
+     * scroll, MainActivity switches to the Library tab via
+     * [BibleNdiUiState.readerJumpNonce]).
+     */
+    fun openRecentVerseInReader(verse: BibleVerse) {
+        syncReaderToVerse(verse, focus = true)
         _uiState.value = _uiState.value.copy(
             readerJumpNonce = _uiState.value.readerJumpNonce + 1
         )

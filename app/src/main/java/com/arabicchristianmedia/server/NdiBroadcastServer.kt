@@ -4709,19 +4709,19 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   /* v1.9.1: ON AIR tints the WHOLE pill, not just the dot, and the citation
      gets an explicit high-contrast color (was: inherited page color washed
      out on the pill's gray tint) + more breathing room around the text. */
-  .livepill.on { background: rgba(34,197,94,0.18); border-color: rgba(34,197,94,0.65); color: #14532d; }
+  .livepill.on { background: rgba(220,38,38,0.18); border-color: rgba(220,38,38,0.65); color: #7f1d1d; }
   /* Round 2 (#8): the status dot is pinned to the pill's right edge and
      the citation centers in the space left over - a long citation can
      never slide under the dot. */
   .livepill .dot { width: 8px; height: 8px; border-radius: 50%; background: #9ca3af; flex: none;
     position: absolute; right: 11px; top: 50%; transform: translateY(-50%); }
-  .livepill.on .dot { background: #22c55e; box-shadow: 0 0 6px #22c55e; }
+  .livepill.on .dot { background: #dc2626; box-shadow: 0 0 6px #dc2626; }
   .livepill .ref { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; unicode-bidi: plaintext; flex: 1; text-align: center; }
   /* v1.9.2 (#6): dark-scheme pill colors AFTER the base rules so they
      actually win the cascade in dark mode. Light mode is untouched. */
   @media (prefers-color-scheme: dark) {
     .livepill { color: #f1f5f9; }
-    .livepill.on { background: rgba(34,197,94,0.22); border-color: rgba(34,197,94,0.7); color: #bbf7d0; }
+    .livepill.on { background: rgba(220,38,38,0.22); border-color: rgba(220,38,38,0.7); color: #fecaca; }
   }
   @media (max-width: 480px) { .livepill { max-width: 100%; } }
   header .sub { font-size: 13px; font-weight: 400; opacity: 0.7; margin-top: 2px; }
@@ -4744,8 +4744,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     border: none; border-radius: 16px; cursor: pointer; min-height: 60px;
     letter-spacing: 0.4px;
   }
-  .onair.on { background: #16a34a; color: #fff; }
-  .onair.off { background: #dc2626; color: #fff; }
+  .onair.on { background: #dc2626; color: #fff; }
+  .onair.off { background: #6b7280; color: #fff; }
   .onair:active { transform: scale(0.98); opacity: 0.9; }
   .status { text-align: center; font-size: 14px; min-height: 22px; font-weight: 600; }
   .status.ok { color: #16a34a; }

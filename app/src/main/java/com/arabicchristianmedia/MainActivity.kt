@@ -391,6 +391,7 @@ class MainActivity : ComponentActivity() {
                                 onSelectVersion = { viewModel.setBibleVersion(it) },
                                 onSearchChanged = { viewModel.onSearchQueryChanged(it) },
                                 onClearSearch = { viewModel.clearSearch() },
+                                onOpenRecentVerse = { viewModel.openRecentVerseInReader(it) },
                                 onToggleLive = { viewModel.toggleLive() },
                                 onIncreaseFontSize = { viewModel.increaseFontSize() },
                                 onDecreaseFontSize = { viewModel.decreaseFontSize() },

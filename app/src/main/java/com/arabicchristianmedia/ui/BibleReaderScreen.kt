@@ -28,6 +28,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
@@ -71,6 +73,7 @@ fun BibleReaderScreen(
     onSelectVersion: (BibleVersion) -> Unit,
     onSearchChanged: (String) -> Unit,
     onClearSearch: () -> Unit,
+    onOpenRecentVerse: (BibleVerse) -> Unit = {},
     onToggleLive: () -> Unit,
     onIncreaseFontSize: () -> Unit = {},
     onDecreaseFontSize: () -> Unit = {},
@@ -78,6 +81,8 @@ fun BibleReaderScreen(
     modifier: Modifier = Modifier
 ) {
     var showSearchBar by remember { mutableStateOf(false) }
+    var showRecentsSheet by remember { mutableStateOf(false) }
+    val searchFocusRequester = remember { FocusRequester() }
     var displayMenuExpanded by remember { mutableStateOf(false) }
     var scripturePickerExpanded by remember { mutableStateOf(false) }
 
@@ -141,17 +146,22 @@ fun BibleReaderScreen(
                                 fontSize = 14.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary
                             )
                         }
-                        // v1.9.1: labeled affordance — a lone chevron read as
-                        // decoration and users missed that the bar opens the
-                        // book/chapter picker (the whole bar is clickable).
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text("إضغط هنا", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.primary)
-                            Box(
-                                modifier = Modifier.size(26.dp).background(bento.primary.copy(alpha = 0.16f), CircleShape),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(if (scripturePickerExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown, null, tint = bento.primary, modifier = Modifier.size(18.dp))
-                            }
+                        // The middle label names what the bar opens (the v1.9.1
+                        // "إضغط هنا" alone still read as unclear). The whole bar
+                        // stays clickable; the label is one line + ellipsis so
+                        // narrow phones + large font cannot break the bar.
+                        Text(
+                            "الكتاب المقدس - إضغط هنا",
+                            fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.primary,
+                            modifier = Modifier.weight(1f),
+                            textAlign = TextAlign.Center,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis
+                        )
+                        Box(
+                            modifier = Modifier.size(26.dp).background(bento.primary.copy(alpha = 0.16f), CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(if (scripturePickerExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown, null, tint = bento.primary, modifier = Modifier.size(18.dp))
                         }
                     }
                 }
@@ -267,18 +277,23 @@ fun BibleReaderScreen(
                     IconButton(onClick = { showSearchBar = !showSearchBar; if (!showSearchBar) onClearSearch() }) {
                         Icon(if (showSearchBar) Icons.Default.Close else Icons.Default.Search, null, tint = bento.textSecondary)
                     }
+                    IconButton(onClick = { showRecentsSheet = true }) {
+                        Icon(Icons.Default.History, "Recent verses", tint = bento.textSecondary)
+                    }
 
                     Spacer(modifier = Modifier.weight(1f))
 
-                    // ON AIR toggle: green while a verse is live. Pressing
+                    // ON AIR toggle: red while a verse is live. Pressing
                     // it clears the verse from the outputs and the button
-                    // turns red; pressing again brings the SAME verse back.
+                    // turns grey; pressing again brings the SAME verse back.
                     // It never stops the broadcast service or the feeds.
+                    // Muted grey is fixed (not textSecondary: too light for
+                    // white text on either theme).
                     val isOnAir = uiState.isLiveOnAir && uiState.activeVerse != null
                     Button(
                         onClick = onToggleLive,
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = if (isOnAir) bento.green else bento.liveRed,
+                            containerColor = if (isOnAir) bento.liveRed else Color(0xFF6B7280),
                             contentColor = Color.White
                         ),
                         shape = RoundedCornerShape(10.dp),
@@ -299,9 +314,86 @@ fun BibleReaderScreen(
                     OutlinedTextField(
                         value = uiState.searchQuery, onValueChange = onSearchChanged,
                         placeholder = { Text("بحث…", maxLines = 1) },
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
-                        shape = RoundedCornerShape(12.dp)
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)
+                            .focusRequester(searchFocusRequester),
+                        shape = RoundedCornerShape(12.dp),
+                        trailingIcon = {
+                            if (uiState.searchQuery.isNotEmpty()) {
+                                IconButton(onClick = {
+                                    onClearSearch()
+                                    searchFocusRequester.requestFocus()
+                                }) {
+                                    Icon(Icons.Default.Close, "Clear search", tint = bento.textSecondary)
+                                }
+                            }
+                        }
                     )
+                }
+
+                // Session recents sheet: verses opened this session, most
+                // recent first. Tapping one jumps the reader to it WITHOUT
+                // putting it on air (the verse itself is tapped for that,
+                // as usual). No permanent screen space is taken.
+                if (showRecentsSheet) {
+                    ModalBottomSheet(onDismissRequest = { showRecentsSheet = false }) {
+                        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                            Text(
+                                text = "الآيات الأخيرة",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = bento.textPrimary
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            if (uiState.recentVerses.isEmpty()) {
+                                Text(
+                                    text = "لم تفتح أي آية بعد في هذه الجلسة.",
+                                    fontSize = 13.sp,
+                                    color = bento.textSecondary
+                                )
+                                Spacer(modifier = Modifier.height(16.dp))
+                            } else {
+                                LazyColumn(
+                                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                                    contentPadding = PaddingValues(bottom = 16.dp)
+                                ) {
+                                    items(uiState.recentVerses) { verse ->
+                                        Column(
+                                            modifier = Modifier.fillMaxWidth()
+                                                .clip(RoundedCornerShape(10.dp))
+                                                .background(bento.surfaceVariant)
+                                                .clickable {
+                                                    showRecentsSheet = false
+                                                    onClearSearch()
+                                                    onOpenRecentVerse(verse)
+                                                }
+                                                .padding(12.dp)
+                                        ) {
+                                            Text(
+                                                text = verse.getFormattedArabicCitation(),
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = bento.primary
+                                            )
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text(
+                                                text = verse.arabicText,
+                                                fontSize = 14.sp,
+                                                color = bento.textPrimary
+                                            )
+                                            if (verse.englishText.isNotBlank()) {
+                                                Spacer(modifier = Modifier.height(2.dp))
+                                                Text(
+                                                    text = verse.englishText,
+                                                    fontSize = 12.sp,
+                                                    color = bento.textSecondary
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
 
                 // Verse List

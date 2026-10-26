@@ -1260,7 +1260,7 @@ CollapsibleSection(
                     Column(
                         Modifier.weight(0.56f).fillMaxHeight().padding(14.dp)
                             .verticalScroll(rightScrollState)
-                            .onGloballyPositioned { rightColumnRootY = it.positionInRoot().y }
+                            .onGloballyPositioned { coords -> rightColumnRootY = coords.positionInRoot().y }
                     ) {
                         frameSectionBlock()
                         Spacer(Modifier.height(8.dp))
@@ -1744,7 +1744,7 @@ CollapsibleSection(
     }
 
 @Composable
-fun SliderWithLabel(label: String, value: Float, range: ClosedFloatingPointRange<Float>, onValueChange: (Float) -> Unit, modifier: Modifier = Modifier) {
+fun SliderWithLabel(label: String, value: Float, range: ClosedFloatingPointRange<Float>, modifier: Modifier = Modifier, onValueChange: (Float) -> Unit) {
     val bento = LocalBentoColors.current
     Column(modifier = modifier) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -2036,7 +2036,7 @@ fun ColorGradeSpectrumModal(
 }
 
 @Composable
-fun FeatureToggleRow(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit, modifier: Modifier = Modifier) {
+fun FeatureToggleRow(label: String, checked: Boolean, modifier: Modifier = Modifier, onCheckedChange: (Boolean) -> Unit) {
     val bento = LocalBentoColors.current
     Row(modifier = modifier.then(Modifier.fillMaxWidth()), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
         Text(label, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = bento.textPrimary, modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)

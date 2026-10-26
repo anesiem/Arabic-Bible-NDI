@@ -325,9 +325,11 @@ fun TemplateEditorScreen(
     // tabs + style bar full-width, chips in MainActivity's top bar)
     // while the compact layout keeps the original stacked header.
     val editorTitleBlock: @Composable () -> Unit = {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            Text("Template Editor", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text("تخصيص كامل وشامل لطبقات البث والعرض المباشر", fontSize = 12.sp, color = bento.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        // Item 4: title smaller (20sp -> 16sp); its description moved behind
+        // the (i) beside the title — that popup keeps ONLY the description.
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("Template Editor", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            InfoPopupButton("Template Editor", "تخصيص كامل وشامل لطبقات البث والعرض المباشر")
         }
     }
     val tabSwitcherBlock: @Composable () -> Unit = {
@@ -383,20 +385,8 @@ fun TemplateEditorScreen(
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Box(modifier = Modifier.weight(1f)) { editorTitleBlock() }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    // v1.9.2 (#7b): the editing target as a compact chip in
-                    // the header row — the standalone "You are editing" line
-                    // below the header is gone (it cost a full row).
-                    Surface(
-                        shape = RoundedCornerShape(999.dp),
-                        color = bento.primaryContainer
-                    ) {
-                        Text(
-                            if (editorTab == 0) "السفلي · Lower" else "الكامل · Full",
-                            fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.onPrimaryContainer,
-                            maxLines = 1,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                        )
-                    }
+                    // Item 4: the feed indicator moved to the style row as the
+                    // import button (feedButtonBlock) — one feed control, not two.
                     // v1.9: info icon reopens the How-it-works tips when hidden.
                     if (!showHowItWorks) {
                         IconButton(onClick = {
@@ -642,22 +632,39 @@ fun TemplateEditorScreen(
         }
     }
 
-    val stageBlock: @Composable () -> Unit = {
-        // 4. Style Selector (per-tab collection; highlight = selected style id, NOT the working template id)
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text("اختر النمط (Select Style)", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = bento.textPrimary)
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (tabIsDirty) {
-                    Surface(shape = RoundedCornerShape(10.dp), color = bento.primaryContainer) {
-                        Text("معدّل (Modified)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.onPrimaryContainer, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
-                    }
-                }
-                TextButton(onClick = { importTargetTpl = null; showImportDialog = true }) {
-                    Text("استيراد (Import)", fontSize = 11.sp)
-                }
+    // Item 4: the style row's feed button — its label follows the current
+    // feed, and tapping it opens that feed's import box (the old Import
+    // button is gone). Modified sits immediately before it.
+    val modifiedBadgeBlock: @Composable () -> Unit = {
+        if (tabIsDirty) {
+            Surface(shape = RoundedCornerShape(10.dp), color = bento.primaryContainer) {
+                Text("معدّل (Modified)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.onPrimaryContainer, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
             }
         }
-        Text("اضغط مطولاً على أي نمط للتصدير / التحديث بالاستيراد / الحذف • التعديل بدون حفظ يمسح التمييز", fontSize = 10.sp, color = bento.textSecondary, modifier = Modifier.padding(top = 2.dp))
+    }
+    val feedButtonBlock: @Composable () -> Unit = {
+        Surface(
+            shape = RoundedCornerShape(999.dp),
+            color = bento.primaryContainer,
+            onClick = { importTargetTpl = null; showImportDialog = true }
+        ) {
+            Text(
+                if (editorTab == 0) "السفلي · Lower" else "الكامل · Full",
+                fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.onPrimaryContainer,
+                maxLines = 1,
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+            )
+        }
+    }
+    val stageBlock: @Composable () -> Unit = {
+        // 4. Style Selector (per-tab collection; highlight = selected style id, NOT the working template id)
+        // Item 4: no "Select style" label (the cards are self-evident);
+        // Modified + feed button + (i) for the style help, then the cards.
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            modifiedBadgeBlock()
+            feedButtonBlock()
+            InfoPopupButton("اختر النمط (Select Style)", "اضغط مطولاً على أي نمط للتصدير / التحديث بالاستيراد / الحذف • التعديل بدون حفظ يمسح التمييز")
+        }
         styleCardsRow()
 
         Spacer(Modifier.height(8.dp))
@@ -1245,11 +1252,15 @@ CollapsibleSection(
                 Spacer(Modifier.height(12.dp))
                 Column(Modifier.padding(horizontal = 14.dp)) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Text("اختر النمط (Select Style)", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = bento.textPrimary)
+                        // Item 4: same redesign as the compact row — Modified +
+                        // feed button + (i) on the start side, Save/Update kept
+                        // at the end. No "Select style" label, no Import button.
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            modifiedBadgeBlock()
+                            feedButtonBlock()
+                            InfoPopupButton("اختر النمط (Select Style)", "اضغط مطولاً على أي نمط للتصدير / التحديث بالاستيراد / الحذف • التعديل بدون حفظ يمسح التمييز")
+                        }
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            TextButton(onClick = { importTargetTpl = null; showImportDialog = true }) {
-                                Text("استيراد (Import)", fontSize = 11.sp)
-                            }
                             Button(
                                 onClick = { newTemplateName = "${editingTemplate.name} النسخة"; showSaveDialog = true },
                                 colors = ButtonDefaults.buttonColors(containerColor = bento.primary),
@@ -1274,7 +1285,6 @@ CollapsibleSection(
                             }
                         }
                     }
-                    Text("اضغط مطولاً على أي نمط للتصدير / التحديث بالاستيراد / الحذف • التعديل بدون حفظ يمسح التمييز", fontSize = 10.sp, color = bento.textSecondary, modifier = Modifier.padding(top = 2.dp))
                     styleCardsRow()
                 }
                 if (showHowItWorks) {
@@ -1783,6 +1793,26 @@ CollapsibleSection(
             HorizontalDivider(color = bento.borderSubtle, modifier = Modifier.padding(vertical = 4.dp))
         }
     }
+
+// One (i) component for the whole app (item 4; reused by the item-14
+// sweep): an info icon that opens one popup style — a dialog with the
+// subject as title and the explanation as body.
+@Composable
+fun InfoPopupButton(infoTitle: String, infoText: String) {
+    var showInfo by remember { mutableStateOf(false) }
+    val bento = LocalBentoColors.current
+    IconButton(onClick = { showInfo = true }, modifier = Modifier.size(32.dp)) {
+        Icon(Icons.Default.Info, infoTitle, tint = bento.primary, modifier = Modifier.size(18.dp))
+    }
+    if (showInfo) {
+        AlertDialog(
+            onDismissRequest = { showInfo = false },
+            title = { Text(infoTitle) },
+            text = { Text(infoText) },
+            confirmButton = { TextButton(onClick = { showInfo = false }) { Text("تم") } }
+        )
+    }
+}
 
 @Composable
 fun SliderWithLabel(label: String, value: Float, range: ClosedFloatingPointRange<Float>, modifier: Modifier = Modifier, onValueChange: (Float) -> Unit) {

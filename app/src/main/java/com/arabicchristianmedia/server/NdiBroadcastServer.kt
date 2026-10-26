@@ -42,6 +42,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.ByteArrayOutputStream
@@ -440,6 +441,15 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         persistVerseState()
     }
 
+    // v1.9.3 patch (item 12): session recents mirrored to the remote page.
+    // Pushed by the ViewModel whenever recents change; the remote page polls
+    // /api/verse?light=1 every 3 s, so no SSE broadcast is needed here.
+    private var recentVersesState: List<BibleVerse> = emptyList()
+
+    fun setRecentVerses(verses: List<BibleVerse>) {
+        recentVersesState = verses
+    }
+
     private var lastTemplateUpdateMs = 0L
     private var trailingBroadcastJob: Job? = null
 
@@ -786,6 +796,23 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             put("bookId", verse?.bookId ?: "")
             put("chapterNum", verse?.chapter ?: 0)
             put("verseNum", verse?.verse ?: 0)
+            // v1.9.3 patch (item 12): session recents for the remote page.
+            // Same rows as the Library sheet: Arabic citation + texts, plus
+            // the English citation as the trigger ref and the numeric keys
+            // so the remote page can highlight the live row.
+            val recents = JSONArray()
+            for (v in recentVersesState) {
+                recents.put(JSONObject().apply {
+                    put("citation", v.getFormattedArabicCitation())
+                    put("arabic", v.arabicText)
+                    put("english", v.englishText)
+                    put("ref", v.getFormattedEnglishCitation())
+                    put("bookId", v.bookId)
+                    put("chapterNum", v.chapter)
+                    put("verseNum", v.verse)
+                })
+            }
+            put("recents", recents)
         }
         return root.toString()
     }
@@ -4772,10 +4799,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       max-width: 1180px;
       display: grid;
       grid-template-columns: 340px 1fr;
-      grid-template-areas: "onair browse" "ref browse" "go browse" "status browse";
+      grid-template-areas: "onair browse" "ref browse" "go browse" "status browse" "recent browse";
       align-items: start;
     }
     #onAirBtn { grid-area: onair; }
+    #recentCard { grid-area: recent; }
     #browseCard { grid-area: browse; }
     #refCard { grid-area: ref; }
     #goBtn { grid-area: go; }
@@ -4788,6 +4816,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   .vn { font-weight: 800; min-width: 30px; text-align: center; opacity: 0.65; padding-top: 2px; }
   .va { font-size: 17px; line-height: 1.8; }
   .ve { font-size: 13px; opacity: 0.75; margin-top: 2px; line-height: 1.5; }
+  .vcit { font-weight: 800; font-size: 15px; }
 </style>
 </head>
 <body>
@@ -4799,6 +4828,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 </header>
 <main>
   <button class="onair off" id="onAirBtn" onclick="toggleOnAir()">OFF AIR</button>
+  <div class="card" id="recentCard">
+    <label>الآيات الأخيرة — Recent verses</label>
+    <div id="recentList" class="vlist"></div>
+  </div>
   <div class="card" id="browseCard">
     <label for="bookSel">Browse the Bible — اختر سفراً</label>
     <div class="selrow">
@@ -5016,6 +5049,47 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     }
   }
 
+  // v1.9.3 patch (item 12): session recents mirrored from the master.
+  // Re-renders only when the list actually changed, so the 3 s poll never
+  // rebuilds the DOM or steals the list's scroll position.
+  var lastRecentsJson = '';
+  function renderRecents(recents) {
+    var rj = JSON.stringify(recents);
+    if (rj === lastRecentsJson) return;
+    lastRecentsJson = rj;
+    var list = document.getElementById('recentList');
+    if (!recents.length) { list.innerHTML = '<div class="hint">لم تفتح أي آية بعد في هذه الجلسة.</div>'; return; }
+    var html = '';
+    for (var i = 0; i < recents.length; i++) {
+      var r = recents[i];
+      var liveCls = (live.bookId === r.bookId && live.chapter === r.chapterNum && live.verse === r.verseNum) ? ' live' : '';
+      html += '<div class="vrow' + liveCls + '" data-i="' + i + '"><div style="flex:1;min-width:0">' +
+        '<div class="vcit" dir="rtl" lang="ar">' + escapeHtml(r.citation) + '</div>' +
+        '<div class="va" dir="rtl" lang="ar">' + escapeHtml(r.arabic) + '</div>' +
+        (r.english ? '<div class="ve" dir="ltr">' + escapeHtml(r.english) + '</div>' : '') +
+        '</div></div>';
+    }
+    list.innerHTML = html;
+    var rows = list.querySelectorAll('.vrow');
+    for (var k = 0; k < rows.length; k++) {
+      rows[k].addEventListener('click', function() {
+        var r = recents[parseInt(this.getAttribute('data-i'), 10)];
+        triggerRecent(r.ref);
+      });
+    }
+  }
+
+  function triggerRecent(ref) {
+    setStatus('Sending…', '');
+    fetch('/api/trigger?ref=' + encodeURIComponent(ref))
+      .then(function(r) { return r.json(); })
+      .then(function(j) {
+        if (j.ok) { setStatus('✓ ' + ref, 'ok'); pollNow(); }
+        else setStatus('✗ ' + (j.error || 'failed'), 'err');
+      })
+      .catch(function() { setStatus('✗ Network error', 'err'); });
+  }
+
   function pollNow() {
     fetch('/api/verse?light=1').then(function(r) { return r.json(); }).then(function(j) {
       live.onAir = !!j.isLive;
@@ -5030,6 +5104,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       pill.title = cit || '';
       renderOnAir();
       markLiveRow();
+      renderRecents(j.recents || []);
     }).catch(function() {});
   }
 

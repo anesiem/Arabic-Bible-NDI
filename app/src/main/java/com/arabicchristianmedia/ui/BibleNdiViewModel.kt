@@ -738,6 +738,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         _uiState.value = _uiState.value.copy(
             isServerRunning = false,
             isNativeNdiActive = false,
+            isNativeShowActive = false,
             statusMessage = "NDI Server Stopped"
         )
     }
@@ -899,6 +900,9 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             recentVerses = (listOf(displayVerse) + _uiState.value.recentVerses.filterNot { it.id == displayVerse.id }).take(20)
         )
 
+        // v1.9.3 patch (item 12): mirror the session recents to the remote page.
+        broadcastServer.setRecentVerses(_uiState.value.recentVerses)
+
         broadcastServer.updateVerse(verse, live = true)
         triggerAllFrames()
     }
@@ -954,6 +958,9 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
                 statusMessage = "Remote trigger: ${verse.getFormattedArabicCitation()}",
                 recentVerses = (listOf(verse) + _uiState.value.recentVerses.filterNot { it.id == verse.id }).take(20)
             )
+
+            // v1.9.3 patch (item 12): mirror the session recents to the remote page.
+            broadcastServer.setRecentVerses(_uiState.value.recentVerses)
 
             // v1.9.1 (#14): keep the Library reader in sync, exactly like a
             // sermon-row tap — the operator who walks back to the tablet

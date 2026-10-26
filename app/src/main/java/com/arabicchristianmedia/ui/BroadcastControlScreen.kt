@@ -686,7 +686,7 @@ fun BroadcastControlScreen(
         ) {
                                 // NDI Source Settings: per-source resolution + frame rate dropdowns
                                 SplitLabel(
-                                    parts = listOf("٤. إعدادات مصادر ", "NDI", " (الدقة ومعدل الإطارات):"),
+                                    parts = listOf("إعدادات مصادر ", "NDI", " (الدقة ومعدل الإطارات):"),
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     color = bento.textPrimary

@@ -17,6 +17,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,6 +34,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MenuAnchorType
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cast
@@ -162,8 +164,8 @@ fun BroadcastControlScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "التشكيل (Tashkeel Diacritics)",
+                SplitLabel(
+                    parts = listOf("التشكيل ", "(Tashkeel Diacritics)"),
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Bold,
                     color = bento.textPrimary
@@ -234,17 +236,25 @@ fun BroadcastControlScreen(
                                 .background(if (uiState.isNativeNdiActive || uiState.isNativeShowActive) bento.green else bento.liveRed)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = if (uiState.isNativeNdiActive || uiState.isNativeShowActive) "بث NDI 6 نشط (NDI Broadcast Active)" else "بث NDI متوقف (NDI Broadcast Standby)",
+                        SplitLabel(
+                            parts = if (uiState.isNativeNdiActive || uiState.isNativeShowActive)
+                                listOf("بث ", "NDI 6", " نشط ", "(NDI Broadcast Active)")
+                            else
+                                listOf("بث ", "NDI", " متوقف ", "(NDI Broadcast Standby)"),
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
                             color = if (uiState.isNativeNdiActive || uiState.isNativeShowActive) bento.green else bento.textPrimary
                         )
                     }
 
-                    // Single Unified Start/Stop NDI Broadcast Button
-                    val bothActive = uiState.isNativeNdiActive && uiState.isNativeShowActive
-                    if (uiState.isServerRunning && bothActive) {
+                    // Single Unified Start/Stop NDI Broadcast Button.
+                    // The button follows the SENDERS only: STOP whenever
+                    // either sender is active (it stops both), START only
+                    // when neither is. The HTTP server flag must NOT gate
+                    // it — in partial states it hid STOP and left only the
+                    // per-feed toggles able to stop.
+                    val anyActive = uiState.isNativeNdiActive || uiState.isNativeShowActive
+                    if (anyActive) {
                         Surface(
                             shape = RoundedCornerShape(16.dp),
                             color = bento.liveRed.copy(alpha = 0.12f),
@@ -309,11 +319,11 @@ fun BroadcastControlScreen(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = if (uiState.isServerRunning)
-                                    "خادم البث المباشر نشط (Live Broadcast Active)"
+                            SplitLabel(
+                                parts = if (uiState.isServerRunning)
+                                    listOf("خادم البث المباشر نشط ", "(Live Broadcast Active)")
                                 else
-                                    "خادم البث في وضع الاستعداد (Ready to Start)",
+                                    listOf("خادم البث في وضع الاستعداد ", "(Ready to Start)"),
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = if (uiState.isServerRunning) bento.green else bento.textSecondary
@@ -412,8 +422,8 @@ fun BroadcastControlScreen(
                                 androidx.compose.material3.HorizontalDivider(color = bento.borderSubtle)
 
                                 // Broadcast URL 1: HTML5 Transparent Overlay URL (Browser Source)
-                                Text(
-                                    text = "١. رابط التغذية الشفافة (Lower Third Overlay):",
+                                SplitLabel(
+                                    parts = listOf("١. رابط التغذية الشفافة ", "(Lower Third Overlay):"),
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     color = bento.textPrimary
@@ -509,8 +519,8 @@ fun BroadcastControlScreen(
                                 }
 
                                 // Broadcast URL 2: Full Show Projector URL
-                                Text(
-                                    text = "٢. رابط عرض الشاشة الكامل (Full Show Projector):",
+                                SplitLabel(
+                                    parts = listOf("٢. رابط عرض الشاشة الكامل ", "(Full Show Projector):"),
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     color = bento.textPrimary
@@ -599,8 +609,8 @@ fun BroadcastControlScreen(
                                 }
 
                                 // Native NDI Section
-                                Text(
-                                    text = "٣. مصادر NDI الأصلية (Native NDI 6 Sources):",
+                                SplitLabel(
+                                    parts = listOf("٣. مصادر ", "NDI", " الأصلية ", "(Native NDI 6 Sources):"),
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     color = bento.textPrimary
@@ -613,7 +623,12 @@ fun BroadcastControlScreen(
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Column(modifier = Modifier.padding(10.dp)) {
-                                        Text("ابحث في برامج vMix/OBS عن المصادر التالية:", fontSize = 10.sp, color = bento.textSecondary)
+                                        SplitLabel(
+                                            parts = listOf("ابحث في برامج ", "vMix/OBS", " عن المصادر التالية:"),
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Normal,
+                                            color = bento.textSecondary
+                                        )
                                         Spacer(modifier = Modifier.height(6.dp))
                                         // Exact on-air names: "<TabletModel> - <FeedName>" (never localhost/IP)
                                         // Exactly two genuine NDI senders: Lower Third and Full Show.
@@ -670,8 +685,8 @@ fun BroadcastControlScreen(
             summary = "Lower " + loSpec.width + "×" + loSpec.height + "@" + loSpec.fps + " · Full " + fuSpec.width + "×" + fuSpec.height + "@" + fuSpec.fps
         ) {
                                 // NDI Source Settings: per-source resolution + frame rate dropdowns
-                                Text(
-                                    text = "٤. إعدادات مصادر NDI (الدقة ومعدل الإطارات):",
+                                SplitLabel(
+                                    parts = listOf("٤. إعدادات مصادر ", "NDI", " (الدقة ومعدل الإطارات):"),
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     color = bento.textPrimary
@@ -806,8 +821,8 @@ fun BroadcastControlScreen(
                     }
 
                     Column {
-                        Text(
-                            text = "إبقاء الشاشة مفعلة (Keep Screen Awake)",
+                        SplitLabel(
+                            parts = listOf("إبقاء الشاشة مفعلة ", "(Keep Screen Awake)"),
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold,
                             color = bento.textPrimary
@@ -853,8 +868,8 @@ fun BroadcastControlScreen(
                                                 modifier = Modifier.size(14.dp)
                                             )
                                             Spacer(modifier = Modifier.width(6.dp))
-                                            Text(
-                                                text = "روابط الربط لبرامج البث (OBS / vMix / Projector):",
+                                            SplitLabel(
+                                                parts = listOf("روابط الربط لبرامج البث ", "(OBS / vMix / Projector):"),
                                                 fontSize = 10.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 color = bento.green
@@ -885,8 +900,8 @@ fun BroadcastControlScreen(
                         )
                     }
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "طريقة الربط مع OBS Studio (3 خطوات سريعة):",
+                    SplitLabel(
+                        parts = listOf("طريقة الربط مع ", "OBS Studio", " (3 خطوات سريعة):"),
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
                         color = bento.textPrimary
@@ -1185,7 +1200,12 @@ fun BroadcastControlScreen(
                                             horizontalArrangement = Arrangement.SpaceBetween
                                         ) {
                                             Column(modifier = Modifier.weight(1f)) {
-                                                Text("عنوان البث (Advertise address)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary)
+                                                SplitLabel(
+                                                    parts = listOf("عنوان البث ", "(Advertise address)"),
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = bento.textPrimary
+                                                )
                                                 Text("إظهار الروابط بعنوان IP أو باسم الجهاز على الشبكة", fontSize = 10.sp, color = bento.textSecondary)
                                             }
                                             Switch(
@@ -1324,8 +1344,8 @@ fun BroadcastControlScreen(
                                         }
             Spacer(modifier = Modifier.height(12.dp))
                                 // Broadcast URL 4: Direct MJPEG Video Stream URL
-                                Text(
-                                    text = "٤. رابط بث الفيديو المباشر (Direct Video Stream / MJPEG في vMix و OBS):",
+                                SplitLabel(
+                                    parts = listOf("٤. رابط بث الفيديو المباشر ", "(Direct Video Stream / MJPEG في vMix و OBS):"),
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     color = bento.textPrimary
@@ -1468,6 +1488,28 @@ fun BroadcastControlScreen(
  * Advanced section, whose state lives in the UI state as before).
  */
 @Composable
+// Bidi-safe label: a mixed Arabic/Latin string is rendered as separate
+// unidirectional pieces so the bidi engine cannot reorder runs across a
+// boundary (e.g. a trailing "(Latin):" flipping). The pieces concatenate
+// exactly to the original string, and FlowRow preserves line wrapping.
+// Scope: short direct labels only. SetupSection titles stay single-string
+// (changing that API is out of scope), as do flowing paragraphs, guide
+// sentences, and interpolated/dynamic lines.
+@Composable
+private fun SplitLabel(
+    parts: List<String>,
+    fontSize: TextUnit,
+    fontWeight: FontWeight,
+    color: Color,
+    modifier: Modifier = Modifier
+) {
+    FlowRow(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
+        parts.forEach { part ->
+            Text(part, fontSize = fontSize, fontWeight = fontWeight, color = color)
+        }
+    }
+}
+
 private fun SetupSection(
     title: String,
     summary: String = "",

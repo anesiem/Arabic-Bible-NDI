@@ -20,9 +20,11 @@ import android.os.Build
 import android.os.SystemClock
 import android.util.Log
 import android.text.Layout
+import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.StaticLayout
 import android.text.TextPaint
+import android.text.style.TypefaceSpan
 import com.arabicchristianmedia.data.ArabicTextFormatter
 import com.arabicchristianmedia.data.BibleRepository
 import com.arabicchristianmedia.data.TemplateRepository
@@ -1214,6 +1216,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       font-weight: 600;
       word-spacing: 2px;
     }
+    .sys-bracket { font-family: system-ui, sans-serif; }
 
     .english-section {
       width: 100%;
@@ -1509,11 +1512,20 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       const verseChanged = lastVerseText !== null && lastVerseText !== data.arabicText;
       lastVerseText = data.arabicText;
 
+      // Bracket fix: wrap ( ) [ ] { } in a system-font span so they mirror
+      // correctly with Arabic fonts (which lack a mirrored pair). Escaped
+      // first because this path sets innerHTML.
+      function bracketSpanHtml(s) {
+        return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+          .replace(/[()\[\]{}]/g, function(c) { return '<span class="sys-bracket">' + c + '</span>'; });
+      }
+
       function applyVerseTextContent() {
         if (showArabic) {
           verseText.style.display = '';
           citationText.style.display = '';
-          verseText.textContent = data.arabicText;
+          if (data.useSystemFontForBrackets !== false) verseText.innerHTML = bracketSpanHtml(data.arabicText);
+          else verseText.textContent = data.arabicText;
           citationText.textContent = data.arabicCitation;
         } else {
           verseText.style.display = 'none';
@@ -2621,9 +2633,21 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             verseTextPaint.textSkewX = -0.25f
         }
 
+        // Bracket fix: when the toggle is ON, bracket glyphs render with the
+        // system font — Arabic fonts carry no mirrored pair, so an opening
+        // bracket renders unmirrored while its closer falls through elsewhere.
+        val layoutVerseText: CharSequence = if (tpl.useSystemFontForBrackets) {
+            val spanned = SpannableStringBuilder(verseText)
+            val sysTypeface = Typeface.create(Typeface.DEFAULT, verseTextPaint.typeface?.style ?: Typeface.NORMAL)
+            for (i in verseText.indices) {
+                if (verseText[i] in "()[]{}") spanned.setSpan(TypefaceSpan(sysTypeface), i, i + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
+            spanned
+        } else verseText
+
         val staticLayout: StaticLayout? = if (showArabic) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            StaticLayout.Builder.obtain(verseText, 0, verseText.length, verseTextPaint, contentWidth)
+            StaticLayout.Builder.obtain(layoutVerseText, 0, layoutVerseText.length, verseTextPaint, contentWidth)
                 .setAlignment(alignment)
                 .setLineSpacing(6f * scale * fitRatio, 1.25f)
                 .setIncludePad(true)
@@ -2634,7 +2658,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 .build()
         } else {
             @Suppress("DEPRECATION")
-            StaticLayout(verseText, verseTextPaint, contentWidth, alignment, 1.25f, 6f * scale * fitRatio, true)
+            StaticLayout(layoutVerseText, verseTextPaint, contentWidth, alignment, 1.25f, 6f * scale * fitRatio, true)
         }
         } else null
 

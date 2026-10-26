@@ -268,10 +268,34 @@ fun TemplateEditorScreen(
         "bg-transition" to "bg", "bg-stream" to "bg",
         "shadow-text" to "shadow", "shadow-glow" to "shadow"
     )
+    // Items 1 + 12: expanded state for the collapsible sections, hoisted
+    // here so it survives editor-tab switches (the old remember(syncKey)
+    // re-seeded on every template change) and so anchor jumps can expand
+    // a section before scrolling to it. First view still uses each
+    // section's initiallyExpanded; manual toggles stick after that.
+    val sectionExpanded = remember { mutableStateMapOf<String, Boolean>() }
+    val collapsibleSectionIds = setOf("frame", "arabic", "language", "english", "bg", "shadow")
+    // Collapses prune their sub-anchors' offsets — a collapsed section's
+    // content isn't composed, so any saved offset for it is stale.
+    fun setSectionExpanded(sectionId: String, value: Boolean) {
+        sectionExpanded[sectionId] = value
+        if (!value) {
+            anchorParent.forEach { (subId, parentId) -> if (parentId == sectionId) anchorOffsets.remove(subId) }
+        }
+    }
     fun jumpToAnchor(id: String) {
-        val target = anchorOffsets[id] ?: anchorOffsets[anchorParent[id]] ?: return
+        // Item 1: jumping to a section (or its sub-group) first expands
+        // it — sub-anchors only compose when expanded, so a collapsed
+        // section's saved offsets are stale. Scroll after layout settles.
+        val sectionId = anchorParent[id] ?: id
+        if (sectionId in collapsibleSectionIds) setSectionExpanded(sectionId, true)
         highlightedAnchor = id
-        anchorScope.launch { rightScrollState.animateScrollTo(target.toInt()) }
+        anchorScope.launch {
+            withFrameNanos {}
+            withFrameNanos {}
+            val target = anchorOffsets[id] ?: anchorOffsets[anchorParent[id]] ?: return@launch
+            rightScrollState.animateScrollTo(target.toInt())
+        }
     }
     LaunchedEffect(highlightedAnchor) {
         if (highlightedAnchor != null) {
@@ -504,7 +528,7 @@ fun TemplateEditorScreen(
                 Text(previewBg.displayNameAr, fontSize = 10.sp, color = bento.textSecondary, modifier = Modifier.padding(top = 2.dp))
                 Spacer(Modifier.height(8.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    FilterChip(selected = boxEdit, onClick = { boxEdit = !boxEdit }, label = { Text("تعديل الصندوق (Edit Box)", fontSize = 10.sp) })
+                    FilterChip(selected = boxEdit, onClick = { val next = !boxEdit; boxEdit = next; if (next) setSectionExpanded("frame", true) }, label = { Text("تعديل الصندوق (Edit Box)", fontSize = 10.sp) })
                     if (boxEdit) {
                         Text("اسحب حواف الصندوق — drag the box edges", fontSize = 10.sp, color = bento.textSecondary, modifier = Modifier.padding(start = 8.dp))
                     }
@@ -523,7 +547,8 @@ fun TemplateEditorScreen(
             // the drag handles and these sliders are two forms of the same
             // three numbers, so they belong open together.
             initiallyExpanded = boxEdit,
-            syncKey = editingTemplate.id to boxEdit,
+            expanded = sectionExpanded.getOrPut("frame") { boxEdit },
+            onExpandedChange = { setSectionExpanded("frame", it) },
             summary = "Box " + editingTemplate.boxHeightPercent + "% \u00b7 bottom " + editingTemplate.positionBottomPercent + "% \u00b7 margin " + editingTemplate.horizontalMarginPercent + "%"
         ) {
                     // Alignment
@@ -698,6 +723,8 @@ CollapsibleSection(
                     modifier = anchorModifier("arabic"),
                     title = "تنسيق الخط العربي (Arabic Typography)",
                     initiallyExpanded = true,
+                    expanded = sectionExpanded.getOrPut("arabic") { true },
+                    onExpandedChange = { setSectionExpanded("arabic", it) },
                     summary = editingTemplate.fontFamily + " \u00b7 verse " + editingTemplate.verseFontSize + " \u00b7 citation " + editingTemplate.referenceFontSize
                 ) {
                     FontDropdown(
@@ -735,6 +762,8 @@ CollapsibleSection(
                     modifier = anchorModifier("language"),
                     title = "لغة العرض (Language)",
                     initiallyExpanded = false,
+                    expanded = sectionExpanded.getOrPut("language") { false },
+                    onExpandedChange = { setSectionExpanded("language", it) },
                     summary = when (editingTemplate.languageMode) {
                         com.arabicchristianmedia.model.LanguageMode.ARABIC_ONLY -> "العربية (Arabic only)"
                         com.arabicchristianmedia.model.LanguageMode.ENGLISH_ONLY -> "English only"
@@ -773,7 +802,8 @@ CollapsibleSection(
                     modifier = anchorModifier("english"),
                     title = "تنسيق الخط الإنجليزي (English Typography)",
                     initiallyExpanded = editingTemplate.languageMode != com.arabicchristianmedia.model.LanguageMode.ARABIC_ONLY,
-                    syncKey = editingTemplate.id to editingTemplate.languageMode,
+                    expanded = sectionExpanded.getOrPut("english") { editingTemplate.languageMode != com.arabicchristianmedia.model.LanguageMode.ARABIC_ONLY },
+                    onExpandedChange = { setSectionExpanded("english", it) },
                     summary = editingTemplate.secondaryFontFamily + " \u00b7 verse " + editingTemplate.secondaryVerseFontSize + " \u00b7 citation " + editingTemplate.secondaryReferenceFontSize
                 ) {
                     
@@ -814,7 +844,8 @@ CollapsibleSection(
                     modifier = anchorModifier("bg"),
                     title = "الخلفية والمؤثرات البصرية (Background & Effects)",
                     initiallyExpanded = editingTemplate.animatedBackground != AnimatedBackgroundType.NONE || editingTemplate.customVideoId.isNotEmpty(),
-                    syncKey = editingTemplate.id to editingTemplate.animatedBackground,
+                    expanded = sectionExpanded.getOrPut("bg") { editingTemplate.animatedBackground != AnimatedBackgroundType.NONE || editingTemplate.customVideoId.isNotEmpty() },
+                    onExpandedChange = { setSectionExpanded("bg", it) },
                     summary = "Motion: " + editingTemplate.animatedBackground.displayNameAr + " \u00b7 bg " + (editingTemplate.bgOpacity * 100).toInt() + "%"
                 ) {
                     // v2.0: Card style is now auto-coordinated via motion background picker
@@ -1066,7 +1097,8 @@ CollapsibleSection(
                     modifier = anchorModifier("shadow"),
                     title = "الظل والتوهج (Shadow & Glow)",
                     initiallyExpanded = editingTemplate.textShadowEnabled || editingTemplate.cardGlowEnabled,
-                    syncKey = editingTemplate.id,
+                    expanded = sectionExpanded.getOrPut("shadow") { editingTemplate.textShadowEnabled || editingTemplate.cardGlowEnabled },
+                    onExpandedChange = { setSectionExpanded("shadow", it) },
                     summary = "Shadow " + (if (editingTemplate.textShadowEnabled) "on" else "off") + " \u00b7 Glow " + (if (editingTemplate.cardGlowEnabled) "on" else "off")
                 ) {
                     FeatureToggleRow("ظل النص (Text Shadow)", editingTemplate.textShadowEnabled, modifier = anchorModifier("shadow-text")) { onUpdate(editingTemplate.copy(textShadowEnabled = it)) }
@@ -1695,18 +1727,24 @@ CollapsibleSection(
         syncKey: Any? = null,
         summary: String = "",
         modifier: Modifier = Modifier,
+        expanded: Boolean? = null,
+        onExpandedChange: ((Boolean) -> Unit)? = null,
         content: @Composable () -> Unit
     ) {
         val bento = LocalBentoColors.current
         // v1.9: syncKey re-seeds the expanded state when the template (or its
         // language mode) changes — e.g. English Typography auto-expands when
         // the style has English. Manual toggles are preserved otherwise.
-        var expanded by remember(syncKey) { mutableStateOf(initiallyExpanded) }
+        var internalExpanded by remember(syncKey) { mutableStateOf(initiallyExpanded) }
+        // Controlled mode (expanded != null): the caller owns the state
+        // (Editor sections, hoisted so tab switches + anchor jumps can
+        // drive it). Uncontrolled sites keep the old remember behavior.
+        val isExpanded = expanded ?: internalExpanded
         Column(modifier = modifier) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { expanded = !expanded }
+                    .clickable { if (onExpandedChange != null) onExpandedChange(!isExpanded) else internalExpanded = !isExpanded }
                     .padding(vertical = 8.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
@@ -1728,18 +1766,18 @@ CollapsibleSection(
                     Spacer(Modifier.width(6.dp))
                     Column {
                         Text(title, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary)
-                        if (!expanded && summary.isNotEmpty()) {
+                        if (!isExpanded && summary.isNotEmpty()) {
                             Text(summary, fontSize = 11.sp, color = bento.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                     }
                 }
                 Text(
-                    if (expanded) "▼" else "▶",
+                    if (isExpanded) "▼" else "▶",
                     fontSize = 12.sp,
                     color = bento.textSecondary
                 )
             }
-            if (expanded) {
+            if (isExpanded) {
                 content()
             }
             HorizontalDivider(color = bento.borderSubtle, modifier = Modifier.padding(vertical = 4.dp))

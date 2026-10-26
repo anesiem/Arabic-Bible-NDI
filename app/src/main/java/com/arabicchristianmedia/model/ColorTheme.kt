@@ -232,3 +232,25 @@ fun colorThemeFromJson(obj: JSONObject): ColorTheme? {
         null
     }
 }
+
+/**
+ * One-time migration (v1): a user with non-default sermon pair picks
+ * keeps their exact look as a custom theme — Classic chrome + picked
+ * bands + Classic (teal) recents. Returns null when both picks are the
+ * defaults (d1/l1), meaning the user lands on Classic unchanged.
+ * Pure function (no prefs) so the migration is unit-testable.
+ */
+fun migratedThemeFromPairs(darkPairId: String?, lightPairId: String?): ColorTheme? {
+    val darkId = darkPairId ?: "d1"
+    val lightId = lightPairId ?: "l1"
+    if (darkId == "d1" && lightId == "l1") return null
+    val classic = ColorThemes.CLASSIC
+    val darkPair = SermonShadePairs.dark(darkId)
+    val lightPair = SermonShadePairs.light(lightId)
+    return ColorTheme(
+        id = "custom_migrated",
+        name = "My colors",
+        dark = classic.dark.copy(bandA = darkPair.shadeA, bandB = darkPair.shadeB),
+        light = classic.light.copy(bandA = lightPair.shadeA, bandB = lightPair.shadeB)
+    )
+}

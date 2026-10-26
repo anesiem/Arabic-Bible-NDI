@@ -14,8 +14,8 @@ import com.arabicchristianmedia.data.TemplateRepository
 import com.arabicchristianmedia.model.AppThemeMode
 import com.arabicchristianmedia.model.ColorTheme
 import com.arabicchristianmedia.model.ColorThemes
-import com.arabicchristianmedia.model.SermonShadePairs
 import com.arabicchristianmedia.model.colorThemeFromJson
+import com.arabicchristianmedia.model.migratedThemeFromPairs
 import com.arabicchristianmedia.model.toJson
 import org.json.JSONArray
 import com.arabicchristianmedia.model.BibleBook
@@ -729,16 +729,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             val sermonPrefs = getSermonPrefs()
             val darkId = sermonPrefs?.getString("sermon_pair_dark", "d1") ?: "d1"
             val lightId = sermonPrefs?.getString("sermon_pair_light", "l1") ?: "l1"
-            if (darkId != "d1" || lightId != "l1") {
-                val darkPair = SermonShadePairs.dark(darkId)
-                val lightPair = SermonShadePairs.light(lightId)
-                val classic = ColorThemes.CLASSIC
-                val migrated = ColorTheme(
-                    id = "custom_migrated",
-                    name = "My colors",
-                    dark = classic.dark.copy(bandA = darkPair.shadeA, bandB = darkPair.shadeB),
-                    light = classic.light.copy(bandA = lightPair.shadeA, bandB = lightPair.shadeB)
-                )
+            migratedThemeFromPairs(darkId, lightId)?.let { migrated ->
                 customs.removeAll { it.id == migrated.id }
                 customs.add(migrated)
                 selectedId = migrated.id

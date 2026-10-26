@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -57,6 +58,7 @@ import com.arabicchristianmedia.model.AppThemeMode
 import com.arabicchristianmedia.model.BibleBook
 import com.arabicchristianmedia.model.BibleVerse
 import com.arabicchristianmedia.model.BibleVersion
+import com.arabicchristianmedia.model.SermonShadePairs
 import com.arabicchristianmedia.model.Testament
 import com.arabicchristianmedia.ui.theme.*
 import kotlin.math.abs
@@ -404,6 +406,24 @@ fun BibleReaderScreen(
                 val sermonVerseIds = remember(uiState.sermonPlaylist) {
                     uiState.sermonPlaylist.map { it.verse.id }.toSet()
                 }
+                // Item 2: chapter bands — the same user-picked shade pair as
+                // the sermon list. A whole (book, chapter) shares one shade;
+                // the shade flips at each chapter boundary vs the previous
+                // row (so single-chapter views are uniformly band A, while
+                // search results spanning chapters alternate).
+                val isDarkMode = MaterialTheme.colorScheme.surface == BentoCardDark
+                val chapterPair = if (isDarkMode) SermonShadePairs.dark(uiState.sermonPairDarkId)
+                                  else SermonShadePairs.light(uiState.sermonPairLightId)
+                val chapterBandA = remember(versesToShow) {
+                    var bandA = true
+                    var prevKey: Pair<String, Int>? = null
+                    versesToShow.map { verse ->
+                        val key = verse.bookId to verse.chapter
+                        if (prevKey != null && key != prevKey) bandA = !bandA
+                        prevKey = key
+                        bandA
+                    }
+                }
                 if (uiState.isLoadingBible && versesToShow.isEmpty()) {
                     // First-launch database copy: show progress instead of a blank list.
                     Box(
@@ -467,7 +487,7 @@ fun BibleReaderScreen(
                     contentPadding = PaddingValues(12.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    items(versesToShow) { verse ->
+                    itemsIndexed(versesToShow) { index, verse ->
                         val isCued = uiState.activeVerse?.id == verse.id
                         BentoVerseCard(
                             verse = verse,
@@ -475,6 +495,7 @@ fun BibleReaderScreen(
                             isLiveOnAir = isCued && uiState.isLiveOnAir,
                             isFocused = uiState.readerFocusVerseId == verse.id,
                             inSermonList = verse.id in sermonVerseIds,
+                            bandColor = if (chapterBandA[index]) Color(chapterPair.shadeA) else Color(chapterPair.shadeB),
                             version = uiState.bibleVersion,
                             fontSizeSp = uiState.readerFontSize,
                             showCitation = uiState.isSearching,
@@ -527,7 +548,8 @@ fun BentoVerseCard(
     showCitation: Boolean,
     onClick: () -> Unit,
     isFocused: Boolean = false,
-    inSermonList: Boolean = false
+    inSermonList: Boolean = false,
+    bandColor: Color? = null
 ) {
     val bento = LocalBentoColors.current
     val isDark = MaterialTheme.colorScheme.surface == BentoCardDark
@@ -537,12 +559,14 @@ fun BentoVerseCard(
         bento.primary.copy(alpha = 0.25f)
     }
     // v1.9.1 highlight priority: live > focused (jumped-to from a sermon
-    // row) > cued > in-sermon-list finder tint > plain card.
+    // row) > cued > in-sermon-list finder tint > chapter band (item 2) >
+    // plain card. Item 6 turns the finder tint into a marker, letting the
+    // band show through on sermon rows too.
     val targetColor = when {
         isLiveOnAir || isCued -> highlightColor
         isFocused -> bento.primaryContainer
         inSermonList -> bento.secondary.copy(alpha = 0.35f)
-        else -> bento.card
+        else -> bandColor ?: bento.card
     }
     val bgColor by animateColorAsState(targetColor, label = "cardBg")
     // v1.8: Use primary (theme-aware) instead of red for the verse highlight border.

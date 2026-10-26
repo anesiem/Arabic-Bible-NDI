@@ -4864,6 +4864,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     .chips button { border-color: #cbd5e1; color: #334155; }
     .chips button.active { background: #0f172a; color: #fff; border-color: transparent; }
     .vrow { border-color: #e2e8f0; }
+    .vrow.band-a { background: #EAE3F6; }
+    .vrow.band-b { background: #DFE9F3; }
   }
   @media (prefers-color-scheme: dark) {
     body { background: #0f172a; color: #f1f5f9; }
@@ -4873,6 +4875,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     .chips button { border-color: #475569; color: #cbd5e1; }
     .chips button.active { background: #f1f5f9; color: #0f172a; border-color: transparent; }
     .vrow { border-color: #334155; }
+    .vrow.band-a { background: #3B3052; }
+    .vrow.band-b { background: #2B3A42; }
     /* v1.9.2 (#6): the .livepill dark overrides used to live HERE, before
        the base pill rules — equal specificity meant the later base rules
        won and the dark colors were dead (near-black text on the gray pill
@@ -5124,7 +5128,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
           var textDiv = browseLang === 'en'
             ? '<div class="ve" dir="ltr">' + escapeHtml(v.en) + '</div>'
             : '<div class="va" dir="rtl" lang="ar">' + escapeHtml(v.ar) + '</div>';
-          html += '<div class="vrow" data-v="' + v.v + '"><div class="vn">' + escapeHtml(v.vn || String(v.v)) + '</div>' +
+          // Item 2: chapter band — a single-chapter list is uniformly
+          // band-a; multi-chapter lists (recents, item 6) flip at each
+          // chapter boundary between band-a and band-b.
+          html += '<div class="vrow band-a" data-v="' + v.v + '"><div class="vn">' + escapeHtml(v.vn || String(v.v)) + '</div>' +
                   '<div>' + textDiv + '</div></div>';
         }
         vList.innerHTML = html;

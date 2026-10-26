@@ -457,7 +457,12 @@ class MainActivity : ComponentActivity() {
                                 onSetAdvertiseName = { viewModel.setAdvertiseName(it) },
                                 onToggleAdvertiseTips = { viewModel.toggleAdvertiseTips() },
                                 onToggleTashkeel = { viewModel.setTashkeelEnabled(it) },
-                                onSelectEnglishVersion = { viewModel.setEnglishVersion(it) }
+                                onSelectEnglishVersion = { viewModel.setEnglishVersion(it) },
+                                selectedTheme = ColorThemes.byId(uiState.selectedThemeId, uiState.customThemes),
+                                customThemes = uiState.customThemes,
+                                onSelectTheme = { viewModel.selectTheme(it) },
+                                onSaveNewTheme = { viewModel.saveNewCustomTheme(it) },
+                                onUpdateTheme = { viewModel.updateCustomTheme(it) }
                             )
                             3 -> SermonListScreen(
                                 uiState = uiState,

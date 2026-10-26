@@ -49,6 +49,7 @@ import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.NetworkCheck
 import androidx.compose.material.icons.filled.OpenInBrowser
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Router
@@ -97,6 +98,8 @@ import com.arabicchristianmedia.server.InterfaceType
 import com.arabicchristianmedia.server.NdiNativeSender
 import com.arabicchristianmedia.server.NdiSourceSpec
 import com.arabicchristianmedia.server.NetworkInterfaceInfo
+import com.arabicchristianmedia.model.ColorTheme
+import com.arabicchristianmedia.model.ColorThemes
 import com.arabicchristianmedia.ui.theme.*
 
 @Composable
@@ -122,6 +125,11 @@ fun BroadcastControlScreen(
     onToggleAdvertiseTips: () -> Unit = {},
     onToggleTashkeel: (Boolean) -> Unit = {},
     onSelectEnglishVersion: (String) -> Unit = {},
+    selectedTheme: ColorTheme = ColorThemes.CLASSIC,
+    customThemes: List<ColorTheme> = emptyList(),
+    onSelectTheme: (String) -> Unit = {},
+    onSaveNewTheme: (ColorTheme) -> Unit = {},
+    onUpdateTheme: (ColorTheme) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -134,12 +142,14 @@ fun BroadcastControlScreen(
 
     var copiedUrlType by remember { mutableStateOf<String?>(null) }
     var showHelpGuide by remember { mutableStateOf(false) }
+    var showThemeDialog by remember { mutableStateOf(false) }
 
     // Setup redesign (same treatment as the Editor): the page is a CONSOLE
     // (Bible strip + broadcast console) over a SPEC SHEET of summary
     // sections. Summaries = each section's one-line current state.
     val loSpec = uiState.ndiSourceSpecs[NdiNativeSender.FEED_LOWER] ?: NdiNativeSender.defaultSpec(NdiNativeSender.FEED_LOWER)
     val fuSpec = uiState.ndiSourceSpecs[NdiNativeSender.FEED_FULL] ?: NdiNativeSender.defaultSpec(NdiNativeSender.FEED_FULL)
+    val specOf = { feed: String -> uiState.ndiSourceSpecs[feed] ?: NdiNativeSender.defaultSpec(feed) }
     val netSummary = (uiState.selectedInterface?.labelAr
         ?: uiState.availableInterfaces.firstOrNull { it.ip == uiState.activeIpAddress }?.labelAr
         ?: "الشبكة") + " · " + uiState.activeIpAddress
@@ -211,7 +221,7 @@ fun BroadcastControlScreen(
             }
         }
     }
-    val consoleBlock: @Composable () -> Unit = {
+    val broadcastStatusBlock: @Composable () -> Unit = {
         // Card 1: NDI & Stream Server Status + Master Controls
         Surface(
             shape = RoundedCornerShape(24.dp),
@@ -340,389 +350,11 @@ fun BroadcastControlScreen(
                         }
                     }
                 }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                // Output URLs and OBS / vMix Setup Guide Section (Expanded by default for immediate accessibility)
-                var showOutputUrls by remember { mutableStateOf(true) }
-
-                Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = bento.surfaceContainer,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, bento.border),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(14.dp))
-                                .clickable { showOutputUrls = !showOutputUrls }
-                                .padding(horizontal = 12.dp, vertical = 10.dp)
-                                .testTag("toggle_output_urls"),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Default.Link,
-                                    contentDescription = null,
-                                    tint = bento.primary,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Column {
-                                    Text(
-                                        text = "روابط الإخراج المباشر لـ OBS و vMix (شفافية 100%)",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = bento.textPrimary
-                                    )
-                                    Text(
-                                        text = if (showOutputUrls) "انقر للطي" else "انقر لعرض روابط Browser Source و MJPEG للبرامج الأخرى",
-                                        fontSize = 9.sp,
-                                        color = bento.textSecondary
-                                    )
-                                }
-                            }
-
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(bento.primaryContainer.copy(alpha = 0.6f))
-                                    .padding(horizontal = 8.dp, vertical = 3.dp)
-                            ) {
-                                Text(
-                                    text = if (showOutputUrls) "طي" else "عرض",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = bento.primary
-                                )
-                                Spacer(modifier = Modifier.width(2.dp))
-                                Icon(
-                                    imageVector = if (showOutputUrls) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                                    contentDescription = null,
-                                    tint = bento.primary,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
-                        }
-
-                        AnimatedVisibility(
-                            visible = showOutputUrls,
-                            enter = expandVertically() + fadeIn(),
-                            exit = shrinkVertically() + fadeOut()
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
-                                verticalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                androidx.compose.material3.HorizontalDivider(color = bento.borderSubtle)
-
-                                // Broadcast URL 1: HTML5 Transparent Overlay URL (Browser Source)
-                                SplitLabel(
-                                    parts = listOf("١. رابط التغذية الشفافة ", "(Lower Third Overlay):"),
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = bento.textPrimary
-                                )
-
-                                Surface(
-                                    shape = RoundedCornerShape(10.dp),
-                                    color = bento.card,
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, bento.border),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = 10.dp, vertical = 8.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(
-                                            text = if (uiState.serverUrl.isNotBlank()) uiState.serverUrl else "http://192.168.x.x:${uiState.serverPort}/lower",
-                                            fontSize = 11.sp,
-                                            fontFamily = FontFamily.Monospace,
-                                            fontWeight = FontWeight.Bold,
-                                            color = bento.primary,
-                                            modifier = Modifier.weight(1f)
-                                        )
-
-                                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                            val isCopied = copiedUrlType == "OVERLAY"
-                                            Surface(
-                                                shape = RoundedCornerShape(8.dp),
-                                                color = if (isCopied) bento.green else bento.primary,
-                                                modifier = Modifier
-                                                    .clip(RoundedCornerShape(8.dp))
-                                                    .clickable {
-                                                        if (uiState.serverUrl.isBlank()) {
-                                                            Toast.makeText(context, "لا يوجد اتصال شبكة محلية (Wi-Fi) — الرابط غير متاح", Toast.LENGTH_SHORT).show()
-                                                        } else {
-                                                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                                            val clip = ClipData.newPlainText("Bible NDI Overlay URL", uiState.serverUrl)
-                                                            clipboard.setPrimaryClip(clip)
-                                                            copiedUrlType = "OVERLAY"
-                                                            Toast.makeText(context, "تم نسخ رابط التغذية الشفافة!", Toast.LENGTH_SHORT).show()
-                                                        }
-                                                    }
-                                                    .padding(horizontal = 8.dp, vertical = 5.dp)
-                                            ) {
-                                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                                    Icon(
-                                                        imageVector = if (isCopied) Icons.Default.Check else Icons.Default.ContentCopy,
-                                                        contentDescription = "Copy URL",
-                                                        tint = Color.White,
-                                                        modifier = Modifier.size(12.dp)
-                                                    )
-                                                    Spacer(modifier = Modifier.width(4.dp))
-                                                    Text(
-                                                        text = if (isCopied) "تم النسخ" else "نسخ",
-                                                        fontSize = 10.sp,
-                                                        color = Color.White,
-                                                        fontWeight = FontWeight.Bold
-                                                    )
-                                                }
-                                            }
-
-                                            Surface(
-                                                shape = RoundedCornerShape(8.dp),
-                                                color = bento.surfaceVariant,
-                                                modifier = Modifier
-                                                    .clip(RoundedCornerShape(8.dp))
-                                                    .clickable {
-                                                        if (uiState.serverUrl.isBlank()) {
-                                                            Toast.makeText(context, "لا يوجد اتصال شبكة محلية (Wi-Fi) — الرابط غير متاح", Toast.LENGTH_SHORT).show()
-                                                        } else {
-                                                            try {
-                                                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(uiState.serverUrl))
-                                                                context.startActivity(intent)
-                                                            } catch (e: Exception) {
-                                                                Toast.makeText(context, "تعذر فتح المتصفح", Toast.LENGTH_SHORT).show()
-                                                            }
-                                                        }
-                                                    }
-                                                    .padding(horizontal = 7.dp, vertical = 5.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.OpenInBrowser,
-                                                    contentDescription = "Open in Browser",
-                                                    tint = bento.textPrimary,
-                                                    modifier = Modifier.size(14.dp)
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-
-                                // Broadcast URL 2: Full Show Projector URL
-                                SplitLabel(
-                                    parts = listOf("٢. رابط عرض الشاشة الكامل ", "(Full Show Projector):"),
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = bento.textPrimary
-                                )
-
-                                Surface(
-                                    shape = RoundedCornerShape(10.dp),
-                                    color = bento.card,
-                                    border = BorderStroke(1.dp, bento.border),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    val showUrl = uiState.serverUrl.replace("/lower", "/full")
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = 10.dp, vertical = 8.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(
-                                            text = showUrl,
-                                            fontSize = 11.sp,
-                                            fontFamily = FontFamily.Monospace,
-                                            fontWeight = FontWeight.Bold,
-                                            color = bento.primary,
-                                            modifier = Modifier.weight(1f)
-                                        )
-
-                                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                            val isCopied = copiedUrlType == "SHOW"
-                                            Surface(
-                                                shape = RoundedCornerShape(8.dp),
-                                                color = if (isCopied) bento.green else bento.primary,
-                                                modifier = Modifier
-                                                    .clip(RoundedCornerShape(8.dp))
-                                                    .clickable {
-                                                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                                        val clip = ClipData.newPlainText("Bible NDI Show URL", showUrl)
-                                                        clipboard.setPrimaryClip(clip)
-                                                        copiedUrlType = "SHOW"
-                                                        Toast.makeText(context, "تم نسخ رابط العرض الكامل!", Toast.LENGTH_SHORT).show()
-                                                    }
-                                                    .padding(horizontal = 8.dp, vertical = 5.dp)
-                                            ) {
-                                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                                    Icon(
-                                                        imageVector = if (isCopied) Icons.Default.Check else Icons.Default.ContentCopy,
-                                                        contentDescription = "Copy URL",
-                                                        tint = Color.White,
-                                                        modifier = Modifier.size(12.dp)
-                                                    )
-                                                    Spacer(modifier = Modifier.width(4.dp))
-                                                    Text(
-                                                        text = if (isCopied) "تم النسخ" else "نسخ",
-                                                        fontSize = 10.sp,
-                                                        color = Color.White,
-                                                        fontWeight = FontWeight.Bold
-                                                    )
-                                                }
-                                            }
-                                            
-                                            Surface(
-                                                shape = RoundedCornerShape(8.dp),
-                                                color = bento.surfaceVariant,
-                                                modifier = Modifier
-                                                    .clip(RoundedCornerShape(8.dp))
-                                                    .clickable {
-                                                        try {
-                                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(showUrl))
-                                                            context.startActivity(intent)
-                                                        } catch (e: Exception) {
-                                                            Toast.makeText(context, "تعذر فتح المتصفح", Toast.LENGTH_SHORT).show()
-                                                        }
-                                                    }
-                                                    .padding(horizontal = 7.dp, vertical = 5.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.OpenInBrowser,
-                                                    contentDescription = "Open in Browser",
-                                                    tint = bento.textPrimary,
-                                                    modifier = Modifier.size(14.dp)
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-
-                                // Native NDI Section
-                                SplitLabel(
-                                    parts = listOf("٣. مصادر ", "NDI", " الأصلية ", "(Native NDI 6 Sources):"),
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = bento.textPrimary
-                                )
-                                
-                                Surface(
-                                    shape = RoundedCornerShape(10.dp),
-                                    color = bento.card,
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, bento.border),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Column(modifier = Modifier.padding(10.dp)) {
-                                        SplitLabel(
-                                            parts = listOf("ابحث في برامج ", "vMix/OBS", " عن المصادر التالية:"),
-                                            fontSize = 10.sp,
-                                            fontWeight = FontWeight.Normal,
-                                            color = bento.textSecondary
-                                        )
-                                        Spacer(modifier = Modifier.height(6.dp))
-                                        // Exact on-air names: "<TabletModel> - <FeedName>" (never localhost/IP)
-                                        // Exactly two genuine NDI senders: Lower Third and Full Show.
-                                        NdiSourceRow(
-                                            feedKey = NdiNativeSender.FEED_LOWER,
-                                            toggleKey = "lower",
-                                            tierLabel = specLabel(NdiNativeSender.FEED_LOWER, "Lower Third • شفاف"),
-                                            enabled = uiState.ndiLowerEnabled,
-                                            active = uiState.isNativeNdiActive,
-                                            tint = bento.primary,
-                                            textSecondary = bento.textSecondary,
-                                            onToggle = onToggleNdiSource
-                                        )
-                                        NdiSourceRow(
-                                            feedKey = NdiNativeSender.FEED_FULL,
-                                            toggleKey = "full",
-                                            tierLabel = specLabel(NdiNativeSender.FEED_FULL, "Full Show • شفاف"),
-                                            enabled = uiState.ndiFullShowEnabled,
-                                            active = uiState.isNativeShowActive,
-                                            tint = bento.green,
-                                            textSecondary = bento.textSecondary,
-                                            onToggle = onToggleNdiSource
-                                        )
-                                    }
-                                }
-
-                                // Error banner: visible even when Advanced is off, so the user always knows
-                                if (!uiState.showAdvancedNdi && uiState.ndiErrorEvents.isNotEmpty()) {
-                                    Spacer(modifier = Modifier.height(6.dp))
-                                    Surface(
-                                        shape = RoundedCornerShape(10.dp),
-                                        color = bento.liveRed.copy(alpha = 0.12f),
-                                        border = androidx.compose.foundation.BorderStroke(1.dp, bento.liveRed),
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        Text(
-                                            text = "⚠ تم تسجيل ${uiState.ndiErrorEvents.size} من أخطاء NDI — فعّل «الخيارات المتقدمة» بالأسفل لعرض التفاصيل",
-                                            fontSize = 10.sp,
-                                            color = bento.liveRed,
-                                            modifier = Modifier.padding(10.dp)
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
             }
         }
     }
-    val feedBlock: @Composable () -> Unit = {
-        SetupSection(
-            title = "إعدادات المصادر (Feed Settings)",
-            summary = "Lower " + loSpec.width + "×" + loSpec.height + "@" + loSpec.fps + " · Full " + fuSpec.width + "×" + fuSpec.height + "@" + fuSpec.fps
-        ) {
-                                // NDI Source Settings: per-source resolution + frame rate dropdowns
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    SplitLabel(
-                                        parts = listOf("إعدادات مصادر ", "NDI", " (الدقة ومعدل الإطارات):"),
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = bento.textPrimary
-                                    )
-                                    InfoPopupButton("إعدادات مصادر NDI (الدقة ومعدل الإطارات)", "اختر الدقة ومعدل الإطارات لكل مصدر. التغيير يُعاد تشغيل المصدر فوراً.")
-                                }
-                                Surface(
-                                    shape = RoundedCornerShape(10.dp),
-                                    color = bento.card,
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, bento.border),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Column(modifier = Modifier.padding(10.dp)) {
-                                        val specOf = { feed: String -> uiState.ndiSourceSpecs[feed] ?: NdiNativeSender.defaultSpec(feed) }
-                                        NdiSourceSettingsRow(
-                                            feedKey = NdiNativeSender.FEED_LOWER,
-                                            spec = specOf(NdiNativeSender.FEED_LOWER),
-                                            tint = bento.primary,
-                                            textSecondary = bento.textSecondary,
-                                            onUpdate = onUpdateNdiSourceSpec,
-                                            onToggleMotion = onToggleNdiMotion
-                                        )
-                                        NdiSourceSettingsRow(
-                                            feedKey = NdiNativeSender.FEED_FULL,
-                                            spec = specOf(NdiNativeSender.FEED_FULL),
-                                            tint = bento.green,
-                                            textSecondary = bento.textSecondary,
-                                            onUpdate = onUpdateNdiSourceSpec,
-                                            onToggleMotion = onToggleNdiMotion
-                                        )
-                                    }
-                                }
 
-            Spacer(modifier = Modifier.height(10.dp))
+    val overlayBlock: @Composable () -> Unit = {
         // Card 3: Fullscreen Transparent Overlay Option
         Surface(
             shape = RoundedCornerShape(24.dp),
@@ -784,64 +416,568 @@ fun BroadcastControlScreen(
                 }
             }
         }
-            Spacer(modifier = Modifier.height(10.dp))
-        // Card: Keep Screen Awake
+    }
+
+    val urlsCardBlock: @Composable () -> Unit = {
+        // Output URLs card (expanded by default for immediate accessibility)
+        var showOutputUrls by remember { mutableStateOf(true) }
+
         Surface(
-            shape = RoundedCornerShape(20.dp),
+            shape = RoundedCornerShape(14.dp),
+            color = bento.surfaceContainer,
+            border = androidx.compose.foundation.BorderStroke(1.dp, bento.border),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .clickable { showOutputUrls = !showOutputUrls }
+                        .padding(horizontal = 12.dp, vertical = 10.dp)
+                        .testTag("toggle_output_urls"),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Link,
+                            contentDescription = null,
+                            tint = bento.primary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column {
+                            Text(
+                                text = "روابط الإخراج المباشر لـ OBS و vMix (شفافية 100%)",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = bento.textPrimary
+                            )
+                            Text(
+                                text = if (showOutputUrls) "انقر للطي" else "انقر لعرض روابط Browser Source و MJPEG للبرامج الأخرى",
+                                fontSize = 9.sp,
+                                color = bento.textSecondary
+                            )
+                        }
+                    }
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(bento.primaryContainer.copy(alpha = 0.6f))
+                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                    ) {
+                        Text(
+                            text = if (showOutputUrls) "طي" else "عرض",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = bento.primary
+                        )
+                        Spacer(modifier = Modifier.width(2.dp))
+                        Icon(
+                            imageVector = if (showOutputUrls) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                            contentDescription = null,
+                            tint = bento.primary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+
+                AnimatedVisibility(
+                    visible = showOutputUrls,
+                    enter = expandVertically() + fadeIn(),
+                    exit = shrinkVertically() + fadeOut()
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        androidx.compose.material3.HorizontalDivider(color = bento.borderSubtle)
+
+                        // Broadcast URL 1: HTML5 Transparent Overlay URL (Browser Source)
+                        SplitLabel(
+                            parts = listOf("١. رابط التغذية الشفافة ", "(Lower Third Overlay):"),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = bento.textPrimary
+                        )
+
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = bento.card,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, bento.border),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = if (uiState.serverUrl.isNotBlank()) uiState.serverUrl else "http://192.168.x.x:${uiState.serverPort}/lower",
+                                    fontSize = 11.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold,
+                                    color = bento.primary,
+                                    modifier = Modifier.weight(1f)
+                                )
+
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    val isCopied = copiedUrlType == "OVERLAY"
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = if (isCopied) bento.green else bento.primary,
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .clickable {
+                                                if (uiState.serverUrl.isBlank()) {
+                                                    Toast.makeText(context, "لا يوجد اتصال شبكة محلية (Wi-Fi) — الرابط غير متاح", Toast.LENGTH_SHORT).show()
+                                                } else {
+                                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                                    val clip = ClipData.newPlainText("Bible NDI Overlay URL", uiState.serverUrl)
+                                                    clipboard.setPrimaryClip(clip)
+                                                    copiedUrlType = "OVERLAY"
+                                                    Toast.makeText(context, "تم نسخ رابط التغذية الشفافة!", Toast.LENGTH_SHORT).show()
+                                                }
+                                            }
+                                            .padding(horizontal = 8.dp, vertical = 5.dp)
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(
+                                                imageVector = if (isCopied) Icons.Default.Check else Icons.Default.ContentCopy,
+                                                contentDescription = "Copy URL",
+                                                tint = Color.White,
+                                                modifier = Modifier.size(12.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                text = if (isCopied) "تم النسخ" else "نسخ",
+                                                fontSize = 10.sp,
+                                                color = Color.White,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    }
+
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = bento.surfaceVariant,
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .clickable {
+                                                if (uiState.serverUrl.isBlank()) {
+                                                    Toast.makeText(context, "لا يوجد اتصال شبكة محلية (Wi-Fi) — الرابط غير متاح", Toast.LENGTH_SHORT).show()
+                                                } else {
+                                                    try {
+                                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(uiState.serverUrl))
+                                                        context.startActivity(intent)
+                                                    } catch (e: Exception) {
+                                                        Toast.makeText(context, "تعذر فتح المتصفح", Toast.LENGTH_SHORT).show()
+                                                    }
+                                                }
+                                            }
+                                            .padding(horizontal = 7.dp, vertical = 5.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.OpenInBrowser,
+                                            contentDescription = "Open in Browser",
+                                            tint = bento.textPrimary,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // Broadcast URL 2: Full Show Projector URL
+                        SplitLabel(
+                            parts = listOf("٢. رابط عرض الشاشة الكامل ", "(Full Show Projector):"),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = bento.textPrimary
+                        )
+
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = bento.card,
+                            border = BorderStroke(1.dp, bento.border),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            val showUrl = uiState.serverUrl.replace("/lower", "/full")
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = showUrl,
+                                    fontSize = 11.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold,
+                                    color = bento.primary,
+                                    modifier = Modifier.weight(1f)
+                                )
+
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    val isCopied = copiedUrlType == "SHOW"
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = if (isCopied) bento.green else bento.primary,
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .clickable {
+                                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                                val clip = ClipData.newPlainText("Bible NDI Show URL", showUrl)
+                                                clipboard.setPrimaryClip(clip)
+                                                copiedUrlType = "SHOW"
+                                                Toast.makeText(context, "تم نسخ رابط العرض الكامل!", Toast.LENGTH_SHORT).show()
+                                            }
+                                            .padding(horizontal = 8.dp, vertical = 5.dp)
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(
+                                                imageVector = if (isCopied) Icons.Default.Check else Icons.Default.ContentCopy,
+                                                contentDescription = "Copy URL",
+                                                tint = Color.White,
+                                                modifier = Modifier.size(12.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                text = if (isCopied) "تم النسخ" else "نسخ",
+                                                fontSize = 10.sp,
+                                                color = Color.White,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    }
+
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = bento.surfaceVariant,
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .clickable {
+                                                try {
+                                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(showUrl))
+                                                    context.startActivity(intent)
+                                                } catch (e: Exception) {
+                                                    Toast.makeText(context, "تعذر فتح المتصفح", Toast.LENGTH_SHORT).show()
+                                                }
+                                            }
+                                            .padding(horizontal = 7.dp, vertical = 5.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.OpenInBrowser,
+                                            contentDescription = "Open in Browser",
+                                            tint = bento.textPrimary,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+
+                        // Error banner: visible even when Diagnostics is collapsed, so the user always knows
+                        if (!uiState.showAdvancedNdi && uiState.ndiErrorEvents.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = bento.liveRed.copy(alpha = 0.12f),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, bento.liveRed),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = "⚠ تم تسجيل ${uiState.ndiErrorEvents.size} من أخطاء NDI — افتح «التشخيص» في قسم البث لعرض التفاصيل",
+                                    fontSize = 10.sp,
+                                    color = bento.liveRed,
+                                    modifier = Modifier.padding(10.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    val mjpegBlock: @Composable () -> Unit = {
+        // Broadcast URL 4: Direct MJPEG Video Stream URL
+        SplitLabel(
+            parts = listOf("٤. رابط بث الفيديو المباشر ", "(Direct Video Stream / MJPEG في vMix و OBS):"),
+            fontSize = 11.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = bento.textPrimary
+        )
+
+        Surface(
+            shape = RoundedCornerShape(10.dp),
             color = bento.card,
-            border = BorderStroke(1.dp, bento.border),
+            border = androidx.compose.foundation.BorderStroke(1.dp, bento.border),
             modifier = Modifier.fillMaxWidth()
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(14.dp),
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                Text(
+                    text = if (uiState.streamUrl.isNotBlank()) uiState.streamUrl else "http://192.168.x.x:${uiState.serverPort}/stream",
+                    fontSize = 11.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    color = bento.green,
                     modifier = Modifier.weight(1f)
+                )
+
+                val isCopied = copiedUrlType == "STREAM"
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = if (isCopied) bento.green else bento.green,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable {
+                            if (uiState.streamUrl.isBlank()) {
+                                Toast.makeText(context, "لا يوجد اتصال شبكة محلية (Wi-Fi) — الرابط غير متاح", Toast.LENGTH_SHORT).show()
+                            } else {
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                val clip = ClipData.newPlainText("Bible NDI Stream URL", uiState.streamUrl)
+                                clipboard.setPrimaryClip(clip)
+                                copiedUrlType = "STREAM"
+                                Toast.makeText(context, "تم نسخ رابط بث الفيديو المباشر!", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                        .padding(horizontal = 8.dp, vertical = 5.dp)
+                        .testTag("copy_stream_button")
                 ) {
-                    Box(
-                        contentAlignment = Alignment.Center,
-                        modifier = Modifier
-                            .size(38.dp)
-                            .clip(CircleShape)
-                            .background(if (uiState.isKeepScreenOn) bento.primaryContainer else bento.surfaceVariant)
-                    ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
-                            imageVector = if (uiState.isKeepScreenOn) Icons.Default.LiveTv else Icons.Default.Tv,
-                            contentDescription = null,
-                            tint = if (uiState.isKeepScreenOn) bento.primary else bento.textSecondary,
-                            modifier = Modifier.size(20.dp)
+                            imageVector = if (isCopied) Icons.Default.Check else Icons.Default.Videocam,
+                            contentDescription = "Copy Stream URL",
+                            tint = Color.White,
+                            modifier = Modifier.size(12.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = if (isCopied) "تم النسخ" else "نسخ البث",
+                            fontSize = 10.sp,
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold
                         )
                     }
+                }
+            }
+        }
+    }
 
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        SplitLabel(
-                            parts = listOf("إبقاء الشاشة مفعلة ", "(Keep Screen Awake)"),
+    val allUrlsBlock: @Composable () -> Unit = {
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        // Card: All available URLs
+        AllUrlsCard(
+            baseUrl = uiState.serverUrl,
+            textPrimary = bento.textPrimary,
+            textSecondary = bento.textSecondary,
+            cardColor = bento.card,
+            borderColor = bento.border,
+            onCopy = { label, url ->
+                val clip = ClipData.newPlainText("URL", url)
+                clipboard.setPrimaryClip(clip)
+                Toast.makeText(context, "تم نسخ: $label", Toast.LENGTH_SHORT).show()
+            }
+        )
+    }
+
+    val lowerBlock: @Composable () -> Unit = {
+        SetupSection(
+            title = "الثلث السفلي (Lower Third)",
+            summary = "Lower " + loSpec.width + "×" + loSpec.height + "@" + loSpec.fps
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "اختر الدقة ومعدل الإطارات. التغيير يُعاد تشغيل المصدر فوراً.",
+                    fontSize = 11.sp,
+                    color = bento.textSecondary,
+                    modifier = Modifier.weight(1f)
+                )
+                InfoPopupButton(
+                    title = "الثلث السفلي (Lower Third)",
+                    description = "اختر الدقة ومعدل الإطارات. التغيير يُعاد تشغيل المصدر فوراً."
+                )
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            NdiSourceRow(
+                feedKey = NdiNativeSender.FEED_LOWER,
+                toggleKey = "lower",
+                tierLabel = specLabel(NdiNativeSender.FEED_LOWER, "Lower Third • شفاف"),
+                enabled = uiState.ndiLowerEnabled,
+                active = uiState.isNativeNdiActive,
+                tint = bento.primary,
+                textSecondary = bento.textSecondary,
+                onToggle = onToggleNdiSource
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            NdiSourceSettingsRow(
+                feedKey = NdiNativeSender.FEED_LOWER,
+                spec = specOf(NdiNativeSender.FEED_LOWER),
+                tint = bento.primary,
+                textSecondary = bento.textSecondary,
+                onUpdate = onUpdateNdiSourceSpec,
+                onToggleMotion = onToggleNdiMotion
+            )
+        }
+    }
+
+    val fullBlock: @Composable () -> Unit = {
+        SetupSection(
+            title = "العرض الكامل (Full Show)",
+            summary = "Full " + fuSpec.width + "×" + fuSpec.height + "@" + fuSpec.fps
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "اختر الدقة ومعدل الإطارات. التغيير يُعاد تشغيل المصدر فوراً.",
+                    fontSize = 11.sp,
+                    color = bento.textSecondary,
+                    modifier = Modifier.weight(1f)
+                )
+                InfoPopupButton(
+                    title = "العرض الكامل (Full Show)",
+                    description = "اختر الدقة ومعدل الإطارات. التغيير يُعاد تشغيل المصدر فوراً."
+                )
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            NdiSourceRow(
+                feedKey = NdiNativeSender.FEED_FULL,
+                toggleKey = "full",
+                tierLabel = specLabel(NdiNativeSender.FEED_FULL, "Full Show • شفاف"),
+                enabled = uiState.ndiFullShowEnabled,
+                active = uiState.isNativeShowActive,
+                tint = bento.green,
+                textSecondary = bento.textSecondary,
+                onToggle = onToggleNdiSource
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            NdiSourceSettingsRow(
+                feedKey = NdiNativeSender.FEED_FULL,
+                spec = specOf(NdiNativeSender.FEED_FULL),
+                tint = bento.green,
+                textSecondary = bento.textSecondary,
+                onUpdate = onUpdateNdiSourceSpec,
+                onToggleMotion = onToggleNdiMotion
+            )
+        }
+    }
+
+    val customBlock: @Composable () -> Unit = {
+        SetupSection(
+            title = "التخصيص (Customizations)",
+            summary = selectedTheme.name
+        ) {
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = bento.card,
+                border = androidx.compose.foundation.BorderStroke(1.dp, bento.border),
+                modifier = Modifier.fillMaxWidth().clickable { showThemeDialog = true }
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Palette,
+                        contentDescription = "App theme",
+                        tint = bento.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "مظهر التطبيق (App theme)",
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold,
                             color = bento.textPrimary
                         )
-                        InfoPopupButton("إبقاء الشاشة مفعلة (Keep Screen Awake)", "يمنع خمول الشاشة أو توقف معالج الجهاز أثناء البث المباشر")
+                        Text(
+                            text = selectedTheme.name,
+                            fontSize = 11.sp,
+                            color = bento.textSecondary
+                        )
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Box(modifier = Modifier.size(22.dp).background(Color(selectedTheme.light.bandA), RoundedCornerShape(6.dp)))
+                        Box(modifier = Modifier.size(22.dp).background(Color(selectedTheme.light.bandB), RoundedCornerShape(6.dp)))
+                        Box(modifier = Modifier.size(22.dp).background(Color(selectedTheme.light.recents), RoundedCornerShape(6.dp)))
                     }
                 }
+            }
+            Spacer(modifier = Modifier.height(10.dp))
+            // Card: Keep Screen Awake
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = bento.card,
+                border = BorderStroke(1.dp, bento.border),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(CircleShape)
+                                .background(if (uiState.isKeepScreenOn) bento.primaryContainer else bento.surfaceVariant)
+                        ) {
+                            Icon(
+                                imageVector = if (uiState.isKeepScreenOn) Icons.Default.LiveTv else Icons.Default.Tv,
+                                contentDescription = null,
+                                tint = if (uiState.isKeepScreenOn) bento.primary else bento.textSecondary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
 
-                Switch(
-                    checked = uiState.isKeepScreenOn,
-                    onCheckedChange = { onToggleKeepScreenOn() },
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = Color.White,
-                        checkedTrackColor = bento.primary
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            SplitLabel(
+                                parts = listOf("إبقاء الشاشة مفعلة ", "(Keep Screen Awake)"),
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = bento.textPrimary
+                            )
+                            InfoPopupButton("إبقاء الشاشة مفعلة (Keep Screen Awake)", "يمنع خمول الشاشة أو توقف معالج الجهاز أثناء البث المباشر")
+                        }
+                    }
+
+                    Switch(
+                        checked = uiState.isKeepScreenOn,
+                        onCheckedChange = { onToggleKeepScreenOn() },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White,
+                            checkedTrackColor = bento.primary
+                        )
                     )
-                )
+                }
             }
         }
-        }
     }
+
     val obsBlock: @Composable () -> Unit = {
         SetupSection(
             title = "الربط مع OBS Studio (OBS Guide)",
@@ -1260,169 +1396,86 @@ fun BroadcastControlScreen(
                                 }
         }
     }
-    val advancedBlock: @Composable () -> Unit = {
+    val diagnosticsBlock: @Composable () -> Unit = {
         SetupSection(
-            title = "خيارات متقدمة (Advanced)",
+            title = "تشخيص NDI (NDI Diagnostics)",
             summary = "أخطاء NDI: " + uiState.ndiErrorEvents.size + " · متصل الآن: " + uiState.sseConnectedNow,
             controlledExpanded = uiState.showAdvancedNdi,
             onToggleControlled = onToggleAdvancedNdi
         ) {
-                                        if (uiState.showAdvancedNdi) {
-                                            LaunchedEffect(Unit) { onRefreshNdiDiagnostics() }
-                                            Spacer(modifier = Modifier.height(8.dp))
-                                            HorizontalDivider(color = bento.border)
-                                            Spacer(modifier = Modifier.height(8.dp))
-                                            val activeOf = mapOf(
-                                                NdiNativeSender.FEED_LOWER to uiState.isNativeNdiActive,
-                                                NdiNativeSender.FEED_FULL to uiState.isNativeShowActive
-                                            )
-                                            NdiNativeSender.ALL_FEEDS.forEach { feed ->
-                                                val spec = uiState.ndiSourceSpecs[feed] ?: NdiNativeSender.defaultSpec(feed)
-                                                val running = activeOf[feed] == true
-                                                Text(
-                                                    text = "${NdiNativeSender.displayName(feed)}: ${spec.width}×${spec.height} @ ${spec.fps}fps — " +
-                                                        if (running) "يعمل ✓" else "متوقف",
-                                                    fontSize = 10.sp,
-                                                    fontFamily = FontFamily.Monospace,
-                                                    color = if (running) bento.green else bento.textSecondary
-                                                )
-                                                Spacer(modifier = Modifier.height(2.dp))
-                                            }
-                                            Text(
-                                                "صحة بث HTTP (الأوفرلاي):",
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = bento.textPrimary
-                                            )
-                                            Text(
-                                                text = "متصل الآن: ${uiState.sseConnectedNow} • جلسات الاتصال: ${uiState.sseConnectTotal} • الانقطاعات: ${uiState.sseDropTotal}" +
-                                                    if (uiState.sseLastDropReason.isNotEmpty() && uiState.sseLastDropAgoSec >= 0)
-                                                        " • آخر انقطاع: ${uiState.sseLastDropReason} (قبل ${uiState.sseLastDropAgoSec} ث)"
-                                                    else "",
-                                                fontSize = 10.sp,
-                                                fontFamily = FontFamily.Monospace,
-                                                color = if (uiState.sseLastDropAgoSec in 0..60) bento.liveRed else bento.textSecondary
-                                            )
-                                            Spacer(modifier = Modifier.height(8.dp))
-                                            Text(
-                                                "سجل الأخطاء (${uiState.ndiErrorEvents.size}):",
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = bento.textPrimary
-                                            )
-                                            if (uiState.ndiErrorEvents.isEmpty()) {
-                                                Text(
-                                                    "لا توجد أخطاء مسجلة — جميع المصادر تعمل بشكل طبيعي.",
-                                                    fontSize = 10.sp,
-                                                    color = bento.green
-                                                )
-                                            } else {
-                                                uiState.ndiErrorEvents.takeLast(20).reversed().forEach { e ->
-                                                    Text(
-                                                        "${e.time} • ${e.source}: ${e.message}",
-                                                        fontSize = 9.sp,
-                                                        fontFamily = FontFamily.Monospace,
-                                                        color = bento.liveRed
-                                                    )
-                                                    Spacer(modifier = Modifier.height(2.dp))
-                                                }
-                                            }
-                                            Spacer(modifier = Modifier.height(6.dp))
-                                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                                androidx.compose.material3.TextButton(onClick = { onRefreshNdiDiagnostics() }) {
-                                                    Text("تحديث", fontSize = 10.sp)
-                                                }
-                                                androidx.compose.material3.TextButton(onClick = { onClearNdiDiagnostics() }) {
-                                                    Text("مسح السجل", fontSize = 10.sp)
-                                                }
-                                            }
-                                        }
-            Spacer(modifier = Modifier.height(12.dp))
-                                // Broadcast URL 4: Direct MJPEG Video Stream URL
-                                SplitLabel(
-                                    parts = listOf("٤. رابط بث الفيديو المباشر ", "(Direct Video Stream / MJPEG في vMix و OBS):"),
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = bento.textPrimary
-                                )
-
-                                Surface(
-                                    shape = RoundedCornerShape(10.dp),
-                                    color = bento.card,
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, bento.border),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = 10.dp, vertical = 8.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(
-                                            text = if (uiState.streamUrl.isNotBlank()) uiState.streamUrl else "http://192.168.x.x:${uiState.serverPort}/stream",
-                                            fontSize = 11.sp,
-                                            fontFamily = FontFamily.Monospace,
-                                            fontWeight = FontWeight.Bold,
-                                            color = bento.green,
-                                            modifier = Modifier.weight(1f)
-                                        )
-
-                                        val isCopied = copiedUrlType == "STREAM"
-                                        Surface(
-                                            shape = RoundedCornerShape(8.dp),
-                                            color = if (isCopied) bento.green else bento.green,
-                                            modifier = Modifier
-                                                .clip(RoundedCornerShape(8.dp))
-                                                .clickable {
-                                                    if (uiState.streamUrl.isBlank()) {
-                                                        Toast.makeText(context, "لا يوجد اتصال شبكة محلية (Wi-Fi) — الرابط غير متاح", Toast.LENGTH_SHORT).show()
-                                                    } else {
-                                                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                                        val clip = ClipData.newPlainText("Bible NDI Stream URL", uiState.streamUrl)
-                                                        clipboard.setPrimaryClip(clip)
-                                                        copiedUrlType = "STREAM"
-                                                        Toast.makeText(context, "تم نسخ رابط بث الفيديو المباشر!", Toast.LENGTH_SHORT).show()
-                                                    }
-                                                }
-                                                .padding(horizontal = 8.dp, vertical = 5.dp)
-                                                .testTag("copy_stream_button")
-                                        ) {
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                Icon(
-                                                    imageVector = if (isCopied) Icons.Default.Check else Icons.Default.Videocam,
-                                                    contentDescription = "Copy Stream URL",
-                                                    tint = Color.White,
-                                                    modifier = Modifier.size(12.dp)
-                                                )
-                                                Spacer(modifier = Modifier.width(4.dp))
-                                                Text(
-                                                    text = if (isCopied) "تم النسخ" else "نسخ البث",
-                                                    fontSize = 10.sp,
-                                                    color = Color.White,
-                                                    fontWeight = FontWeight.Bold
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-            Spacer(modifier = Modifier.height(12.dp))
-            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-            // Card: All available URLs
-            AllUrlsCard(
-                baseUrl = uiState.serverUrl,
-                textPrimary = bento.textPrimary,
-                textSecondary = bento.textSecondary,
-                cardColor = bento.card,
-                borderColor = bento.border,
-                onCopy = { label, url ->
-                    val clip = ClipData.newPlainText("URL", url)
-                    clipboard.setPrimaryClip(clip)
-                    Toast.makeText(context, "تم نسخ: $label", Toast.LENGTH_SHORT).show()
+            if (uiState.showAdvancedNdi) {
+                LaunchedEffect(Unit) { onRefreshNdiDiagnostics() }
+                Spacer(modifier = Modifier.height(8.dp))
+                HorizontalDivider(color = bento.border)
+                Spacer(modifier = Modifier.height(8.dp))
+                val activeOf = mapOf(
+                    NdiNativeSender.FEED_LOWER to uiState.isNativeNdiActive,
+                    NdiNativeSender.FEED_FULL to uiState.isNativeShowActive
+                )
+                NdiNativeSender.ALL_FEEDS.forEach { feed ->
+                    val spec = uiState.ndiSourceSpecs[feed] ?: NdiNativeSender.defaultSpec(feed)
+                    val running = activeOf[feed] == true
+                    Text(
+                        text = "${NdiNativeSender.displayName(feed)}: ${spec.width}×${spec.height} @ ${spec.fps}fps — " +
+                            if (running) "يعمل ✓" else "متوقف",
+                        fontSize = 10.sp,
+                        fontFamily = FontFamily.Monospace,
+                        color = if (running) bento.green else bento.textSecondary
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
                 }
-            )
+                Text(
+                    "صحة بث HTTP (الأوفرلاي):",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = bento.textPrimary
+                )
+                Text(
+                    text = "متصل الآن: ${uiState.sseConnectedNow} • جلسات الاتصال: ${uiState.sseConnectTotal} • الانقطاعات: ${uiState.sseDropTotal}" +
+                        if (uiState.sseLastDropReason.isNotEmpty() && uiState.sseLastDropAgoSec >= 0)
+                            " • آخر انقطاع: ${uiState.sseLastDropReason} (قبل ${uiState.sseLastDropAgoSec} ث)"
+                        else "",
+                    fontSize = 10.sp,
+                    fontFamily = FontFamily.Monospace,
+                    color = if (uiState.sseLastDropAgoSec in 0..60) bento.liveRed else bento.textSecondary
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    "سجل الأخطاء (${uiState.ndiErrorEvents.size}):",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = bento.textPrimary
+                )
+                if (uiState.ndiErrorEvents.isEmpty()) {
+                    Text(
+                        "لا توجد أخطاء مسجلة — جميع المصادر تعمل بشكل طبيعي.",
+                        fontSize = 10.sp,
+                        color = bento.green
+                    )
+                } else {
+                    uiState.ndiErrorEvents.takeLast(20).reversed().forEach { e ->
+                        Text(
+                            "${e.time} • ${e.source}: ${e.message}",
+                            fontSize = 9.sp,
+                            fontFamily = FontFamily.Monospace,
+                            color = bento.liveRed
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                    }
+                }
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    androidx.compose.material3.TextButton(onClick = { onRefreshNdiDiagnostics() }) {
+                        Text("تحديث", fontSize = 10.sp)
+                    }
+                    androidx.compose.material3.TextButton(onClick = { onClearNdiDiagnostics() }) {
+                        Text("مسح السجل", fontSize = 10.sp)
+                    }
+                }
+            }
         }
     }
+
     BoxWithConstraints(modifier = modifier.fillMaxSize().background(bento.bg)) {
         if (maxWidth >= 900.dp) {
             Column(Modifier.fillMaxSize()) {
@@ -1432,12 +1485,28 @@ fun BroadcastControlScreen(
                         Modifier.weight(0.5f).fillMaxHeight().padding(start = 14.dp, end = 6.dp, top = 12.dp, bottom = 14.dp)
                             .verticalScroll(rememberScrollState()),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) { consoleBlock(); feedBlock() }
+                    ) {
+                        SetupSectionHeader("البث (Broadcast)")
+                        broadcastStatusBlock()
+                        overlayBlock()
+                        diagnosticsBlock()
+                        lowerBlock()
+                        fullBlock()
+                    }
                     Column(
                         Modifier.weight(0.5f).fillMaxHeight().padding(start = 6.dp, end = 14.dp, top = 12.dp, bottom = 14.dp)
                             .verticalScroll(rememberScrollState()),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) { obsBlock(); vmixBlock(); networkBlock(); advancedBlock() }
+                    ) {
+                        SetupSectionHeader("الروابط (URLs)")
+                        urlsCardBlock()
+                        mjpegBlock()
+                        allUrlsBlock()
+                        networkBlock()
+                        obsBlock()
+                        vmixBlock()
+                        customBlock()
+                    }
                 }
         // App version footer: confirms which build is installed on this tablet.
         Text(
@@ -1454,12 +1523,20 @@ fun BroadcastControlScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 bibleBlock()
-                consoleBlock()
-                feedBlock()
+                SetupSectionHeader("البث (Broadcast)")
+                broadcastStatusBlock()
+                overlayBlock()
+                diagnosticsBlock()
+                lowerBlock()
+                fullBlock()
+                SetupSectionHeader("الروابط (URLs)")
+                urlsCardBlock()
+                mjpegBlock()
+                allUrlsBlock()
+                networkBlock()
                 obsBlock()
                 vmixBlock()
-                networkBlock()
-                advancedBlock()
+                customBlock()
         // App version footer: confirms which build is installed on this tablet.
         Text(
             text = "Arabic Bible NDI v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE}) • ${BuildConfig.BUILD_DATE}",
@@ -1471,6 +1548,28 @@ fun BroadcastControlScreen(
             }
         }
     }
+    if (showThemeDialog) {
+        ThemeDialog(
+            selectedTheme = selectedTheme,
+            customThemes = customThemes,
+            onSelectTheme = onSelectTheme,
+            onSaveNewTheme = onSaveNewTheme,
+            onUpdateTheme = onUpdateTheme,
+            onDismiss = { showThemeDialog = false }
+        )
+    }
+}
+
+@Composable
+private fun SetupSectionHeader(title: String) {
+    val bento = LocalBentoColors.current
+    Text(
+        text = title,
+        fontSize = 13.sp,
+        fontWeight = FontWeight.Bold,
+        color = bento.textSecondary,
+        modifier = Modifier.padding(top = 2.dp)
+    )
 }
 
 /**
@@ -1480,7 +1579,7 @@ fun BroadcastControlScreen(
  * [seedExpanded], re-seeded when [seedKey] changes - e.g. the Network
  * section opens itself when a connection warning appears), or fully
  * controlled via [controlledExpanded] + [onToggleControlled] (the
- * Advanced section, whose state lives in the UI state as before).
+ * Diagnostics section, whose state lives in the UI state as before).
  */
 // Bidi-safe label: a mixed Arabic/Latin string is rendered as separate
 // unidirectional pieces so the bidi engine cannot reorder runs across a

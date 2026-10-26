@@ -11,6 +11,7 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.animateScrollTo
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -30,6 +31,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -77,13 +79,18 @@ import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.tooling.preview.Preview
@@ -94,6 +101,8 @@ import androidx.compose.ui.text.style.TextAlign
 import com.arabicchristianmedia.BuildConfig
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import com.arabicchristianmedia.server.InterfaceType
 import com.arabicchristianmedia.server.NdiNativeSender
 import com.arabicchristianmedia.server.NdiSourceSpec
@@ -143,6 +152,46 @@ fun BroadcastControlScreen(
     var copiedUrlType by remember { mutableStateOf<String?>(null) }
     var showHelpGuide by remember { mutableStateOf(false) }
     var showThemeDialog by remember { mutableStateOf(false) }
+
+    // Setup anchors (tablet wide layout only, same mechanism as the Editor):
+    // each section header registers its offset inside its scroll column;
+    // the chip strip above the columns jumps to it and flashes its border.
+    // Setup headers are always composed (even collapsed), so unlike the
+    // Editor no expand step is needed before scrolling.
+    val leftSetupScrollState = rememberScrollState()
+    val rightSetupScrollState = rememberScrollState()
+    val setupAnchorOffsets = remember { mutableStateMapOf<String, Float>() }
+    var leftSetupColumnRootY by remember { mutableStateOf(0f) }
+    var rightSetupColumnRootY by remember { mutableStateOf(0f) }
+    var highlightedSetupAnchor by remember { mutableStateOf<String?>(null) }
+    val setupAnchorScope = rememberCoroutineScope()
+    val setupAnchorColumn = mapOf(
+        "broadcast" to "left", "lower" to "left", "full" to "left",
+        "urls" to "right", "custom" to "right"
+    )
+    fun jumpToSetupAnchor(id: String) {
+        highlightedSetupAnchor = id
+        setupAnchorScope.launch {
+            val target = setupAnchorOffsets[id] ?: return@launch
+            if (setupAnchorColumn[id] == "right") rightSetupScrollState.animateScrollTo(target.toInt())
+            else leftSetupScrollState.animateScrollTo(target.toInt())
+        }
+    }
+    LaunchedEffect(highlightedSetupAnchor) {
+        if (highlightedSetupAnchor != null) {
+            delay(1600)
+            highlightedSetupAnchor = null
+        }
+    }
+    fun setupAnchorModifier(id: String): Modifier = Modifier
+        .onGloballyPositioned { coords: LayoutCoordinates ->
+            val isRight = setupAnchorColumn[id] == "right"
+            val rootY = if (isRight) rightSetupColumnRootY else leftSetupColumnRootY
+            val scrollValue = if (isRight) rightSetupScrollState.value else leftSetupScrollState.value
+            val offset = coords.boundsInRoot().top - rootY + scrollValue
+            if (setupAnchorOffsets[id] != offset) setupAnchorOffsets[id] = offset
+        }
+        .then(if (highlightedSetupAnchor == id) Modifier.border(2.dp, bento.primary, RoundedCornerShape(12.dp)) else Modifier)
 
     // Setup redesign (same treatment as the Editor): the page is a CONSOLE
     // (Bible strip + broadcast console) over a SPEC SHEET of summary
@@ -1480,32 +1529,55 @@ fun BroadcastControlScreen(
         if (maxWidth >= 900.dp) {
             Column(Modifier.fillMaxSize()) {
                 Column(Modifier.padding(start = 14.dp, end = 14.dp, top = 14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) { bibleBlock() }
+                // Setup anchors (wide only): fixed chip strip above the
+                // two scroll columns — same jump + flash as the Editor.
+                Row(
+                    Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 4.dp)
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf(
+                        "broadcast" to "البث (Broadcast)",
+                        "lower" to "الثلث السفلي (Lower Third)",
+                        "full" to "العرض الكامل (Full Show)",
+                        "urls" to "الروابط (URLs)",
+                        "custom" to "التخصيص (Customizations)"
+                    ).forEach { (id, label) ->
+                        FilterChip(
+                            selected = false,
+                            onClick = { jumpToSetupAnchor(id) },
+                            label = { Text(label, fontSize = 12.sp) }
+                        )
+                    }
+                }
                 Row(Modifier.weight(1f).fillMaxWidth()) {
                     Column(
                         Modifier.weight(0.5f).fillMaxHeight().padding(start = 14.dp, end = 6.dp, top = 12.dp, bottom = 14.dp)
-                            .verticalScroll(rememberScrollState()),
+                            .onGloballyPositioned { leftSetupColumnRootY = it.boundsInRoot().top }
+                            .verticalScroll(leftSetupScrollState),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        SetupSectionHeader("البث (Broadcast)")
+                        Box(setupAnchorModifier("broadcast")) { SetupSectionHeader("البث (Broadcast)") }
                         broadcastStatusBlock()
                         overlayBlock()
                         diagnosticsBlock()
-                        lowerBlock()
-                        fullBlock()
+                        Box(setupAnchorModifier("lower")) { lowerBlock() }
+                        Box(setupAnchorModifier("full")) { fullBlock() }
                     }
                     Column(
                         Modifier.weight(0.5f).fillMaxHeight().padding(start = 6.dp, end = 14.dp, top = 12.dp, bottom = 14.dp)
-                            .verticalScroll(rememberScrollState()),
+                            .onGloballyPositioned { rightSetupColumnRootY = it.boundsInRoot().top }
+                            .verticalScroll(rightSetupScrollState),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        SetupSectionHeader("الروابط (URLs)")
+                        Box(setupAnchorModifier("urls")) { SetupSectionHeader("الروابط (URLs)") }
                         urlsCardBlock()
                         mjpegBlock()
                         allUrlsBlock()
                         networkBlock()
                         obsBlock()
                         vmixBlock()
-                        customBlock()
+                        Box(setupAnchorModifier("custom")) { customBlock() }
                     }
                 }
         // App version footer: confirms which build is installed on this tablet.

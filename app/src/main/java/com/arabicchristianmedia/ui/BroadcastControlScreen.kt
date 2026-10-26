@@ -508,9 +508,9 @@ fun BroadcastControlScreen(
                                     }
                                 }
 
-                                // Broadcast URL 1.1: Full Show Projector URL
+                                // Broadcast URL 2: Full Show Projector URL
                                 Text(
-                                    text = "١.١ رابط عرض الشاشة الكامل (Full Show Projector):",
+                                    text = "٢. رابط عرض الشاشة الكامل (Full Show Projector):",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     color = bento.textPrimary
@@ -862,7 +862,7 @@ fun BroadcastControlScreen(
                                         }
                                         Spacer(modifier = Modifier.height(4.dp))
                                         Text(
-                                            text = "• للآيات أسفل الشاشة (Lower Third): استخدم الرابط رقم ١.\n• للعرض الكامل (Projector/Full): استخدم الرابط رقم ١.١.\n• لبرامج المونتاج القديمة: استخدم رابط MJPEG رقم ٢.\n• للأداء الأقصى وجودة NDI 6: ابحث عن المصادر رقم ٣ مباشرة.",
+                                            text = "• للآيات أسفل الشاشة (Lower Third): استخدم الرابط رقم ١.\n• للعرض الكامل (Projector/Full): استخدم الرابط رقم ٢.\n• للأداء الأقصى وجودة NDI 6: ابحث عن المصادر رقم ٣ مباشرة.\n• لبرامج المونتاج القديمة: استخدم رابط MJPEG رقم ٤.",
                                             fontSize = 9.sp,
                                             color = bento.green,
                                             lineHeight = 14.sp
@@ -1323,9 +1323,9 @@ fun BroadcastControlScreen(
                                             }
                                         }
             Spacer(modifier = Modifier.height(12.dp))
-                                // Broadcast URL 2: Direct MJPEG Video Stream URL
+                                // Broadcast URL 4: Direct MJPEG Video Stream URL
                                 Text(
-                                    text = "٢. رابط بث الفيديو المباشر (Direct Video Stream / MJPEG في vMix و OBS):",
+                                    text = "٤. رابط بث الفيديو المباشر (Direct Video Stream / MJPEG في vMix و OBS):",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     color = bento.textPrimary

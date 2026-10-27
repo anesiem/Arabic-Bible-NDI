@@ -149,13 +149,17 @@ fun TemplateEditorScreen(
     // top-bar info icon can reopen the tips card.
     showHowItWorks: Boolean,
     onShowHowItWorksChange: (Boolean) -> Unit,
+    // Batch item 5: import-dialog state hoisted the same way, so the
+    // top-bar feed chip can open the import dialog.
+    showImportDialog: Boolean,
+    importTargetTpl: LowerThirdTemplate?,
+    onShowImportDialogChange: (Boolean) -> Unit,
+    onImportTargetTplChange: (LowerThirdTemplate?) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var showSaveDialog by remember { mutableStateOf(false) }
     var templateToDelete by remember { mutableStateOf<LowerThirdTemplate?>(null) }
     var styleMenuTpl by remember { mutableStateOf<LowerThirdTemplate?>(null) } // long-press actions menu
-    var importTargetTpl by remember { mutableStateOf<LowerThirdTemplate?>(null) } // null = import as new
-    var showImportDialog by remember { mutableStateOf(false) }
     var newTemplateName by remember { mutableStateOf("") }
     var previewBg by remember { mutableStateOf(PreviewBackground.SIMULATED_STUDIO_CAMERA) }
     // v1.9.1: visual text-box editing on the preview (drag the box edges).
@@ -646,7 +650,7 @@ fun TemplateEditorScreen(
         Surface(
             shape = RoundedCornerShape(999.dp),
             color = bento.primaryContainer,
-            onClick = { importTargetTpl = null; showImportDialog = true }
+            onClick = { onImportTargetTplChange(null); onShowImportDialogChange(true) }
         ) {
             Text(
                 if (editorTab == 0) "استيراد · Lower" else "استيراد · Full",
@@ -1245,15 +1249,11 @@ CollapsibleSection(
                 Column(Modifier.padding(start = 14.dp, end = 14.dp, top = 14.dp)) { tabSwitcherBlock() }
                 Spacer(Modifier.height(12.dp))
                 Column(Modifier.padding(horizontal = 14.dp)) {
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        // Item 4: same redesign as the compact row — Modified +
-                        // feed button + (i) on the start side, Save/Update kept
-                        // at the end. No "Select style" label, no Import button.
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            modifiedBadgeBlock()
-                            feedButtonBlock()
-                            InfoPopupButton("اختر النمط (Select Style)", "اضغط مطولاً على أي نمط للتصدير / التحديث بالاستيراد / الحذف • التعديل بدون حفظ يمسح التمييز")
-                        }
+                    // Batch item 5: the start-side row (Modified + feed +
+                    // style-help) is gone — those live in the app-bar line
+                    // now (MainActivity top bar). Save/Update stay at the
+                    // end until item 6 folds them into the Modified menu.
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             Button(
                                 onClick = { newTemplateName = "${editingTemplate.name} النسخة"; showSaveDialog = true },
@@ -1419,7 +1419,7 @@ CollapsibleSection(
                             modifier = Modifier.fillMaxWidth()
                         ) { Text("تصدير / مشاركة (Export / Share)", fontSize = 13.sp) }
                         TextButton(
-                            onClick = { importTargetTpl = tpl; showImportDialog = true; styleMenuTpl = null },
+                            onClick = { onImportTargetTplChange(tpl); onShowImportDialogChange(true); styleMenuTpl = null },
                             modifier = Modifier.fillMaxWidth()
                         ) { Text("تحديث باستيراد JSON (Update from import)", fontSize = 13.sp) }
                         // Factory styles cannot be deleted (they are
@@ -1444,7 +1444,7 @@ CollapsibleSection(
         if (showImportDialog) {
             val targetName = importTargetTpl?.name
             AlertDialog(
-                onDismissRequest = { showImportDialog = false; importTargetTpl = null },
+                onDismissRequest = { onShowImportDialogChange(false); onImportTargetTplChange(null) },
                 title = {
                     Text(
                         if (targetName == null) "استيراد قالب جديد (Import new style)" else "تحديث \"$targetName\" بالاستيراد",
@@ -1482,15 +1482,15 @@ CollapsibleSection(
                             onImportNewTemplate(importText, editorTab == 1)
                         }
                         if (ok) {
-                            showImportDialog = false
-                            importTargetTpl = null
+                            onShowImportDialogChange(false)
+                            onImportTargetTplChange(null)
                         } else {
                             importError = "JSON غير صالح — تحقق من النص وحاول مجدداً (invalid style JSON)"
                         }
                     }) { Text("استيراد (Import)") }
                 },
                 dismissButton = {
-                    TextButton(onClick = { showImportDialog = false; importTargetTpl = null }) { Text("إلغاء") }
+                    TextButton(onClick = { onShowImportDialogChange(false); onImportTargetTplChange(null) }) { Text("إلغاء") }
                 }
             )
         }

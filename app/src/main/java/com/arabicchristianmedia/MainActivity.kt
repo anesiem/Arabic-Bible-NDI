@@ -81,7 +81,9 @@ import com.arabicchristianmedia.ui.BibleReaderScreen
 import com.arabicchristianmedia.ui.BroadcastControlScreen
 import com.arabicchristianmedia.ui.FullscreenOverlayActivity
 import com.arabicchristianmedia.ui.SermonListScreen
+import com.arabicchristianmedia.ui.InfoPopupButton
 import com.arabicchristianmedia.ui.TemplateEditorScreen
+import com.arabicchristianmedia.model.LowerThirdTemplate
 import com.arabicchristianmedia.ui.theme.LocalBentoColors
 import com.arabicchristianmedia.ui.theme.MyApplicationTheme
 import com.arabicchristianmedia.model.ColorThemes
@@ -156,6 +158,11 @@ class MainActivity : ComponentActivity() {
                 // in the same prefs the Editor screen already uses, so it
                 // also survives rotation and process death.
                 var editorTipsVisible by remember { mutableStateOf(context.getSharedPreferences("editor_ui_prefs", android.content.Context.MODE_PRIVATE).getBoolean("show_how_it_works", true)) }
+                // Batch item 5: import-dialog state hoisted from the Editor
+                // (same precedent as the tips) so the top-bar feed chip
+                // can open the import dialog.
+                var editorShowImportDialog by remember { mutableStateOf(false) }
+                var editorImportTargetTpl by remember { mutableStateOf<LowerThirdTemplate?>(null) }
 
                 LaunchedEffect(uiState.statusMessage) {
                     uiState.statusMessage?.let { msg ->
@@ -228,9 +235,14 @@ class MainActivity : ComponentActivity() {
                                 // Editor gains a full row of scroll room.
                                 if (selectedTab == 1 && LocalConfiguration.current.screenWidthDp >= 900) {
                                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        // Batch item 5: the feed chip is also the
+                                        // import entry (was the removed row's
+                                        // feed button) — tapping it opens the
+                                        // import dialog for a new style.
                                         Surface(
                                             shape = RoundedCornerShape(999.dp),
-                                            color = bento.primaryContainer
+                                            color = bento.primaryContainer,
+                                            onClick = { editorImportTargetTpl = null; editorShowImportDialog = true }
                                         ) {
                                             Text(
                                                 if (editorTab == 0) "السفلي · Lower" else "الكامل · Full",
@@ -244,6 +256,11 @@ class MainActivity : ComponentActivity() {
                                                 Text("معدّل (Modified)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.onPrimaryContainer, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
                                             }
                                         }
+                                        // Batch item 5: style help, moved up from
+                                        // the removed row. A dialog — the info
+                                        // shows fully and plainly, never as a
+                                        // collapsed section.
+                                        InfoPopupButton("اختر النمط (Select Style)", "اضغط مطولاً على أي نمط للتصدير / التحديث بالاستيراد / الحذف • التعديل بدون حفظ يمسح التمييز")
                                         if (!editorTipsVisible) {
                                             IconButton(onClick = {
                                                 context.getSharedPreferences("editor_ui_prefs", android.content.Context.MODE_PRIVATE).edit().putBoolean("show_how_it_works", true).apply()
@@ -431,7 +448,11 @@ class MainActivity : ComponentActivity() {
                                 editorTab = editorTab,
                                 onEditorTabChange = { editorTab = it },
                                 showHowItWorks = editorTipsVisible,
-                                onShowHowItWorksChange = { editorTipsVisible = it }
+                                onShowHowItWorksChange = { editorTipsVisible = it },
+                                showImportDialog = editorShowImportDialog,
+                                importTargetTpl = editorImportTargetTpl,
+                                onShowImportDialogChange = { editorShowImportDialog = it },
+                                onImportTargetTplChange = { editorImportTargetTpl = it }
                             )
                             2 -> BroadcastControlScreen(
                                 uiState = uiState,

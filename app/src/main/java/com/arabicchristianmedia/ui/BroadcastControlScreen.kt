@@ -272,12 +272,16 @@ fun BroadcastControlScreen(
     }
     val broadcastStatusBlock: @Composable () -> Unit = {
         // Card 1: NDI & Stream Server Status + Master Controls
+        // Sender state (not the HTTP flag) gates the whole card: after a
+        // Stop the HTTP server flag can stay set while the senders are
+        // off, and the card must not stay green in that state.
+        val anyActive = uiState.isNativeNdiActive || uiState.isNativeShowActive
         Surface(
             shape = RoundedCornerShape(24.dp),
             color = bento.card,
             border = androidx.compose.foundation.BorderStroke(
                 1.dp,
-                if (uiState.isServerRunning) bento.green else bento.border
+                if (anyActive) bento.green else bento.border
             ),
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -312,8 +316,9 @@ fun BroadcastControlScreen(
                     // either sender is active (it stops both), START only
                     // when neither is. The HTTP server flag must NOT gate
                     // it — in partial states it hid STOP and left only the
-                    // per-feed toggles able to stop.
-                    val anyActive = uiState.isNativeNdiActive || uiState.isNativeShowActive
+                    // per-feed toggles able to stop. (anyActive is hoisted
+                    // to the top of this block so the card border and the
+                    // badge below share the same gate.)
                     if (anyActive) {
                         Surface(
                             shape = RoundedCornerShape(16.dp),
@@ -360,10 +365,10 @@ fun BroadcastControlScreen(
                 // is handled by the NDI runtime itself — no in-app beacon)
                 Surface(
                     shape = RoundedCornerShape(12.dp),
-                    color = if (uiState.isServerRunning) bento.green.copy(alpha = 0.12f) else bento.surfaceVariant,
+                    color = if (anyActive) bento.green.copy(alpha = 0.12f) else bento.surfaceVariant,
                     border = BorderStroke(
                         1.dp,
-                        if (uiState.isServerRunning) bento.green else bento.border
+                        if (anyActive) bento.green else bento.border
                     ),
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -374,27 +379,27 @@ fun BroadcastControlScreen(
                         Icon(
                             imageVector = Icons.Default.Sensors,
                             contentDescription = null,
-                            tint = if (uiState.isServerRunning) bento.green else bento.textSecondary,
+                            tint = if (anyActive) bento.green else bento.textSecondary,
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             SplitLabel(
-                                parts = if (uiState.isServerRunning)
+                                parts = if (anyActive)
                                     listOf("خادم البث المباشر نشط ", "(Live Broadcast Active)")
                                 else
                                     listOf("خادم البث في وضع الاستعداد ", "(Ready to Start)"),
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = if (uiState.isServerRunning) bento.green else bento.textSecondary
+                                color = if (anyActive) bento.green else bento.textSecondary
                             )
                             Text(
-                                text = if (uiState.isServerRunning)
-                                    "٣. المصدر: Bible-NDI | دقة 1920x1080 | شفافية ألفا نقية 100% لـ OBS / vMix ودفق MJPEG مباشر"
+                                text = if (anyActive)
+                                    "٣. المصدر: Bible-NDI | Lower ${loSpec.width}×${loSpec.height}@${loSpec.fps} • Full ${fuSpec.width}×${fuSpec.height}@${fuSpec.fps} | شفافية ألفا نقية 100% لـ OBS / vMix ودفق MJPEG مباشر"
                                 else
-                                    "٣. المصدر: Bible-NDI | المنفذ: ${uiState.serverPort} | اضغط 'تشغيل بث NDI' لبدء البث",
+                                    "٣. المصدر: Bible-NDI | المنفذ: ${uiState.serverPort} | اضغط 'تشغيل المصادر' لبدء البث",
                                 fontSize = 10.sp,
-                                color = if (uiState.isServerRunning) bento.green else bento.textSecondary
+                                color = if (anyActive) bento.green else bento.textSecondary
                             )
                         }
                     }

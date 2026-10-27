@@ -8,10 +8,13 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.*
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.item
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -47,9 +50,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.LayoutCoordinates
-import androidx.compose.ui.layout.boundsInRoot
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import kotlin.math.roundToInt
 import com.arabicchristianmedia.data.ArabicTextFormatter
@@ -256,15 +256,16 @@ fun TemplateEditorScreen(
         val highlightedId = if (editorTab == 0) highlightedLowerStyleId else highlightedShowStyleId
         val tabIsDirty = if (editorTab == 0) lowerWorkingDirty else showWorkingDirty
 
-    // Wide two-pane layout: right-panel anchor jumps. Each AnchorTarget
-    // records its offset inside the scrolling right column (root Y minus
-    // the column's root Y plus the scroll value at layout time — stable
-    // across scrolls either way the callback fires). A jump scrolls to
-    // the target, or to its parent section when the target isn't laid
-    // out (e.g. its section is collapsed), and flashes a border.
-    val rightScrollState = rememberScrollState()
-    val anchorOffsets = remember { mutableStateMapOf<String, Float>() }
-    var rightColumnRootY by remember { mutableStateOf(0f) }
+    // Wide two-pane layout: right-panel anchor jumps. The right panel is
+    // a LazyColumn with one stable-key item per section, so a jump is
+    // scrollToItem by key — no pixel offsets, no layout callbacks, no
+    // frame waits. Section items are always in the list, so a jump can
+    // never silently no-op; a sub-link scrolls to its parent section and
+    // flashes the exact sub-row. (The old offset scheme desynced whenever
+    // a layout shift landed between the callback and the scroll — e.g.
+    // after a collapse/expand toggle — which is why jumps worked, then
+    // stopped, then worked again after swiping forced a re-layout.)
+    val rightLazyListState = rememberLazyListState()
     var highlightedAnchor by remember { mutableStateOf<String?>(null) }
     val anchorScope = rememberCoroutineScope()
     val anchorParent = mapOf(
@@ -276,6 +277,9 @@ fun TemplateEditorScreen(
         "bg-transition" to "bg", "bg-stream" to "bg",
         "shadow-text" to "shadow", "shadow-glow" to "shadow"
     )
+    // Right-column item keys, in order. A jump resolves its id to the
+    // parent section key (sub-links) or itself (sections), then scrolls.
+    val rightColumnKeys = listOf("frame", "alpha", "arabic", "language", "english", "bg", "shadow")
     // Items 1 + 12: expanded state for the collapsible sections, hoisted
     // here so it survives editor-tab switches (the old remember(syncKey)
     // re-seeded on every template change) and so anchor jumps can expand
@@ -283,27 +287,18 @@ fun TemplateEditorScreen(
     // section's initiallyExpanded; manual toggles stick after that.
     val sectionExpanded = remember { mutableStateMapOf<String, Boolean>() }
     val collapsibleSectionIds = setOf("frame", "arabic", "language", "english", "bg", "shadow")
-    // Collapses prune their sub-anchors' offsets — a collapsed section's
-    // content isn't composed, so any saved offset for it is stale.
     fun setSectionExpanded(sectionId: String, value: Boolean) {
         sectionExpanded[sectionId] = value
-        if (!value) {
-            anchorParent.forEach { (subId, parentId) -> if (parentId == sectionId) anchorOffsets.remove(subId) }
-        }
     }
     fun jumpToAnchor(id: String) {
-        // Item 1: jumping to a section (or its sub-group) first expands
-        // it — sub-anchors only compose when expanded, so a collapsed
-        // section's saved offsets are stale. Scroll after layout settles.
+        // Jumping to a section (or its sub-group) first expands it, then
+        // scrolls to the section item by key. Section items are always
+        // present, so no waiting for layout and no silent no-op.
         val sectionId = anchorParent[id] ?: id
         if (sectionId in collapsibleSectionIds) setSectionExpanded(sectionId, true)
         highlightedAnchor = id
-        anchorScope.launch {
-            withFrameNanos {}
-            withFrameNanos {}
-            val target = anchorOffsets[id] ?: anchorOffsets[anchorParent[id]] ?: return@launch
-            rightScrollState.animateScrollTo(target.toInt())
-        }
+        val index = rightColumnKeys.indexOf(sectionId)
+        if (index >= 0) anchorScope.launch { rightLazyListState.scrollToItem(index) }
     }
     LaunchedEffect(highlightedAnchor) {
         if (highlightedAnchor != null) {
@@ -311,15 +306,11 @@ fun TemplateEditorScreen(
             highlightedAnchor = null
         }
     }
-    // Modifier that records a composable's offset inside the right column
-    // for anchor jumps (see jumpToAnchor), and flashes a border on the
-    // jumped-to target. Harmless when the right column isn't on screen
-    // (the compact layout never jumps).
+    // Modifier that flashes a border on the jumped-to target. It records
+    // nothing — jumps resolve by LazyColumn item key, not by pixel
+    // offset. Harmless when the right column isn't on screen (the compact
+    // layout never jumps).
     fun anchorModifier(id: String): Modifier = Modifier
-        .onGloballyPositioned { coords: LayoutCoordinates ->
-            val offset = coords.boundsInRoot().top - rightColumnRootY + rightScrollState.value
-            if (anchorOffsets[id] != offset) anchorOffsets[id] = offset
-        }
         .then(if (highlightedAnchor == id) Modifier.border(2.dp, bento.primary, RoundedCornerShape(12.dp)) else Modifier)
 
     // Round 2 (#10): the Editor is arranged the way the user works.
@@ -700,13 +691,7 @@ fun TemplateEditorScreen(
         Spacer(Modifier.height(8.dp))
 
     }
-    val sheetBlock: @Composable () -> Unit = {
-        // 5. Detailed Independent Configuration Controls
-        Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = bento.card), modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-                
-                // Style Preset Selector
-                // Primary Typography (Arabic Verse & Citation)
+    val arabicSectionBlock: @Composable () -> Unit = {
 CollapsibleSection(
                     modifier = anchorModifier("arabic"),
                     title = "تنسيق الخط العربي (Arabic Typography)",
@@ -745,7 +730,9 @@ CollapsibleSection(
                     // v1.8: Three-way language mode (replaces the bilingual toggle).
                 
                 }
-HorizontalDivider(color = bento.borderSubtle)
+    }
+
+    val languageSectionBlock: @Composable () -> Unit = {
 CollapsibleSection(
                     modifier = anchorModifier("language"),
                     title = "لغة العرض (Language)",
@@ -786,6 +773,10 @@ CollapsibleSection(
                     if (editingTemplate.languageMode != com.arabicchristianmedia.model.LanguageMode.ARABIC_ONLY) {
                     
                 }
+                }
+    }
+
+    val englishSectionBlock: @Composable () -> Unit = {
 CollapsibleSection(
                     modifier = anchorModifier("english"),
                     title = "تنسيق الخط الإنجليزي (English Typography)",
@@ -823,11 +814,9 @@ CollapsibleSection(
                         SliderWithLabel("المسافة الفاصلة بين اللغتين", editingTemplate.bilingualSpacing.toFloat(), 0f..150f) { onUpdate(editingTemplate.copy(bilingualSpacing = it.toInt())) }
                         FeatureToggleRow("إظهار المسافة بين اللغتين (Show spacing)", editingTemplate.showBilingualSpacing) { onUpdate(editingTemplate.copy(showBilingualSpacing = it)) }
                     }
+    }
 
-                    // Background layers: motion backgrounds (Layer 1, bottom) + card/transparency/accents (Layer 2, above video)
-                
-                }
-HorizontalDivider(color = bento.borderSubtle)
+    val bgSectionBlock: @Composable () -> Unit = {
 CollapsibleSection(
                     modifier = anchorModifier("bg"),
                     title = "الخلفية والمؤثرات البصرية (Background & Effects)",
@@ -1075,6 +1064,9 @@ CollapsibleSection(
                     Spacer(Modifier.height(8.dp))
                 
                 }
+    }
+
+    val shadowSectionBlock: @Composable () -> Unit = {
 CollapsibleSection(
                     modifier = anchorModifier("shadow"),
                     title = "الظل والتوهج (Shadow & Glow)",
@@ -1148,10 +1140,25 @@ CollapsibleSection(
                     }
 
                 }
+    }
+
+    val sheetBlock: @Composable () -> Unit = {
+        // 5. Detailed Independent Configuration Controls
+        Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = bento.card), modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                // Style Preset Selector
+                // Primary Typography (Arabic Verse & Citation)
+                arabicSectionBlock()
+                HorizontalDivider(color = bento.borderSubtle)
+                languageSectionBlock()
+                englishSectionBlock()
+                HorizontalDivider(color = bento.borderSubtle)
+                // Background layers: motion backgrounds (Layer 1, bottom) + card/transparency/accents (Layer 2, above video)
+                bgSectionBlock()
+                shadowSectionBlock()
             }
             Spacer(Modifier.height(100.dp))
         }
-
     }
     // Wide two-pane layout: the anchor index under the preview. Tapping
     // a row jumps the right panel to that section (or sub-group) and
@@ -1246,18 +1253,28 @@ CollapsibleSection(
                         anchorsBlock()
                     }
                     Box(Modifier.width(1.dp).fillMaxHeight().background(bento.borderSubtle))
-                    Column(
-                        Modifier.weight(0.56f).fillMaxHeight().padding(14.dp)
-                            .verticalScroll(rightScrollState)
-                            .onGloballyPositioned { coords: LayoutCoordinates -> rightColumnRootY = coords.boundsInRoot().top }
+                    // Right panel: one LazyColumn item per section, keyed
+                    // by anchor id — jumps are scrollToItem by key (see
+                    // jumpToAnchor). Each sheet section gets its own card
+                    // (same 20dp shape, card color, 16dp padding as the
+                    // old shared sheet card); the compact layout still
+                    // uses the shared sheetBlock() unchanged.
+                    LazyColumn(
+                        Modifier.weight(0.56f).fillMaxHeight().padding(14.dp),
+                        state = rightLazyListState,
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        frameSectionBlock()
-                        Spacer(Modifier.height(8.dp))
-                        Box(modifier = anchorModifier("alpha")) {
-                            FeatureToggleRow("خلفية شفافة تماماً 100% Alpha", editingTemplate.isPureTransparentBackground) { onUpdate(editingTemplate.copy(isPureTransparentBackground = it)) }
+                        item("frame") { frameSectionBlock() }
+                        item("alpha") {
+                            Box(modifier = anchorModifier("alpha")) {
+                                FeatureToggleRow("خلفية شفافة تماماً 100% Alpha", editingTemplate.isPureTransparentBackground) { onUpdate(editingTemplate.copy(isPureTransparentBackground = it)) }
+                            }
                         }
-                        Spacer(Modifier.height(8.dp))
-                        sheetBlock()
+                        item("arabic") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = bento.card), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { arabicSectionBlock() } } }
+                        item("language") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = bento.card), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { languageSectionBlock() } } }
+                        item("english") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = bento.card), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { englishSectionBlock() } } }
+                        item("bg") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = bento.card), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { bgSectionBlock() } } }
+                        item("shadow") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = bento.card), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { shadowSectionBlock() } } }
                     }
                 }
             }

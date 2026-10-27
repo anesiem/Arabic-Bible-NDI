@@ -34,6 +34,9 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.item
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MenuAnchorType
 import androidx.compose.ui.unit.TextUnit
@@ -78,7 +81,6 @@ import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -87,9 +89,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.LayoutCoordinates
-import androidx.compose.ui.layout.boundsInRoot
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.tooling.preview.Preview
@@ -154,27 +153,25 @@ fun BroadcastControlScreen(
     var showThemeDialog by remember { mutableStateOf(false) }
 
     // Setup anchors (tablet wide layout only, same mechanism as the Editor):
-    // each section header registers its offset inside its scroll column;
-    // the chip strip above the columns jumps to it and flashes its border.
-    // Setup headers are always composed (even collapsed), so unlike the
-    // Editor no expand step is needed before scrolling.
-    val leftSetupScrollState = rememberScrollState()
-    val rightSetupScrollState = rememberScrollState()
-    val setupAnchorOffsets = remember { mutableStateMapOf<String, Float>() }
-    var leftSetupColumnRootY by remember { mutableStateOf(0f) }
-    var rightSetupColumnRootY by remember { mutableStateOf(0f) }
+    // each column is a LazyColumn with one stable-key item per section;
+    // the chip strip above the columns jumps by scrollToItem key and
+    // flashes the section's border. No pixel offsets, no layout
+    // callbacks, no frame waits — and no silent no-op, since section
+    // items are always in their list.
+    val leftSetupListState = rememberLazyListState()
+    val rightSetupListState = rememberLazyListState()
     var highlightedSetupAnchor by remember { mutableStateOf<String?>(null) }
     val setupAnchorScope = rememberCoroutineScope()
-    val setupAnchorColumn = mapOf(
-        "broadcast" to "left", "lower" to "left", "full" to "left",
-        "urls" to "right", "custom" to "right"
-    )
+    // Column items in order, by anchor id.
+    val leftSetupKeys = listOf("broadcast", "lower", "full")
+    val rightSetupKeys = listOf("urls", "custom")
     fun jumpToSetupAnchor(id: String) {
         highlightedSetupAnchor = id
-        setupAnchorScope.launch {
-            val target = setupAnchorOffsets[id] ?: return@launch
-            if (setupAnchorColumn[id] == "right") rightSetupScrollState.animateScrollTo(target.toInt())
-            else leftSetupScrollState.animateScrollTo(target.toInt())
+        val rightIndex = rightSetupKeys.indexOf(id)
+        if (rightIndex >= 0) setupAnchorScope.launch { rightSetupListState.scrollToItem(rightIndex) }
+        else {
+            val leftIndex = leftSetupKeys.indexOf(id)
+            if (leftIndex >= 0) setupAnchorScope.launch { leftSetupListState.scrollToItem(leftIndex) }
         }
     }
     LaunchedEffect(highlightedSetupAnchor) {
@@ -184,13 +181,6 @@ fun BroadcastControlScreen(
         }
     }
     fun setupAnchorModifier(id: String): Modifier = Modifier
-        .onGloballyPositioned { coords: LayoutCoordinates ->
-            val isRight = setupAnchorColumn[id] == "right"
-            val rootY = if (isRight) rightSetupColumnRootY else leftSetupColumnRootY
-            val scrollValue = if (isRight) rightSetupScrollState.value else leftSetupScrollState.value
-            val offset = coords.boundsInRoot().top - rootY + scrollValue
-            if (setupAnchorOffsets[id] != offset) setupAnchorOffsets[id] = offset
-        }
         .then(if (highlightedSetupAnchor == id) Modifier.border(2.dp, bento.primary, RoundedCornerShape(12.dp)) else Modifier)
 
     // Setup redesign (same treatment as the Editor): the page is a CONSOLE
@@ -1610,33 +1600,44 @@ fun BroadcastControlScreen(
                     }
                 }
                 Row(Modifier.weight(1f).fillMaxWidth()) {
-                    Column(
-                        Modifier.weight(0.5f).fillMaxHeight().padding(start = 14.dp, end = 6.dp, top = 12.dp, bottom = 14.dp)
-                            .onGloballyPositioned { leftSetupColumnRootY = it.boundsInRoot().top }
-                            .verticalScroll(leftSetupScrollState),
+                    // Setup columns: one LazyColumn item per section, keyed
+                    // by anchor id — jumps are scrollToItem by key (see
+                    // jumpToSetupAnchor). Spacing is unchanged: 12dp
+                    // between items and between the blocks inside the
+                    // broadcast/urls items.
+                    LazyColumn(
+                        Modifier.weight(0.5f).fillMaxHeight().padding(start = 14.dp, end = 6.dp, top = 12.dp, bottom = 14.dp),
+                        state = leftSetupListState,
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Box(setupAnchorModifier("broadcast")) { SetupSectionHeader("البث (Broadcast)") }
-                        broadcastStatusBlock()
-                        overlayBlock()
-                        diagnosticsBlock()
-                        Box(setupAnchorModifier("lower")) { lowerBlock() }
-                        Box(setupAnchorModifier("full")) { fullBlock() }
+                        item("broadcast") {
+                            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Box(setupAnchorModifier("broadcast")) { SetupSectionHeader("البث (Broadcast)") }
+                                broadcastStatusBlock()
+                                overlayBlock()
+                                diagnosticsBlock()
+                            }
+                        }
+                        item("lower") { Box(setupAnchorModifier("lower")) { lowerBlock() } }
+                        item("full") { Box(setupAnchorModifier("full")) { fullBlock() } }
                     }
-                    Column(
-                        Modifier.weight(0.5f).fillMaxHeight().padding(start = 6.dp, end = 14.dp, top = 12.dp, bottom = 14.dp)
-                            .onGloballyPositioned { rightSetupColumnRootY = it.boundsInRoot().top }
-                            .verticalScroll(rightSetupScrollState),
+                    LazyColumn(
+                        Modifier.weight(0.5f).fillMaxHeight().padding(start = 6.dp, end = 14.dp, top = 12.dp, bottom = 14.dp),
+                        state = rightSetupListState,
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Box(setupAnchorModifier("urls")) { SetupSectionHeader("الروابط (URLs)") }
-                        urlsCardBlock()
-                        mjpegBlock()
-                        allUrlsBlock()
-                        networkBlock()
-                        obsBlock()
-                        vmixBlock()
-                        Box(setupAnchorModifier("custom")) { customBlock() }
+                        item("urls") {
+                            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Box(setupAnchorModifier("urls")) { SetupSectionHeader("الروابط (URLs)") }
+                                urlsCardBlock()
+                                mjpegBlock()
+                                allUrlsBlock()
+                                networkBlock()
+                                obsBlock()
+                                vmixBlock()
+                            }
+                        }
+                        item("custom") { Box(setupAnchorModifier("custom")) { customBlock() } }
                     }
                 }
         // App version footer: confirms which build is installed on this tablet.

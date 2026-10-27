@@ -390,9 +390,9 @@ fun BroadcastControlScreen(
                             )
                             Text(
                                 text = if (uiState.isServerRunning)
-                                    "المصدر: Bible-NDI | دقة 1920x1080 | شفافية ألفا نقية 100% لـ OBS / vMix ودفق MJPEG مباشر"
+                                    "٣. المصدر: Bible-NDI | دقة 1920x1080 | شفافية ألفا نقية 100% لـ OBS / vMix ودفق MJPEG مباشر"
                                 else
-                                    "المصدر: Bible-NDI | المنفذ: ${uiState.serverPort} | اضغط 'تشغيل بث NDI' لبدء البث",
+                                    "٣. المصدر: Bible-NDI | المنفذ: ${uiState.serverPort} | اضغط 'تشغيل بث NDI' لبدء البث",
                                 fontSize = 10.sp,
                                 color = if (uiState.isServerRunning) bento.green else bento.textSecondary
                             )

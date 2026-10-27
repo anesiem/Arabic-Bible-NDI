@@ -163,6 +163,9 @@ class MainActivity : ComponentActivity() {
                 // can open the import dialog.
                 var editorShowImportDialog by remember { mutableStateOf(false) }
                 var editorImportTargetTpl by remember { mutableStateOf<LowerThirdTemplate?>(null) }
+                // Batch item 6: Modified-menu visibility, hoisted from the
+                // Editor so the top-bar badge opens the same menu.
+                var editorShowModifiedMenu by remember { mutableStateOf(false) }
 
                 LaunchedEffect(uiState.statusMessage) {
                     uiState.statusMessage?.let { msg ->
@@ -252,7 +255,9 @@ class MainActivity : ComponentActivity() {
                                             )
                                         }
                                         if (if (editorTab == 0) uiState.lowerWorkingDirty else uiState.showWorkingDirty) {
-                                            Surface(shape = RoundedCornerShape(10.dp), color = bento.primaryContainer) {
+                                            // Batch item 6: tapping Modified opens
+                                            // the save menu (Update / Save as new).
+                                            Surface(shape = RoundedCornerShape(10.dp), color = bento.primaryContainer, onClick = { editorShowModifiedMenu = true }) {
                                                 Text("معدّل (Modified)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.onPrimaryContainer, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
                                             }
                                         }
@@ -452,7 +457,9 @@ class MainActivity : ComponentActivity() {
                                 showImportDialog = editorShowImportDialog,
                                 importTargetTpl = editorImportTargetTpl,
                                 onShowImportDialogChange = { editorShowImportDialog = it },
-                                onImportTargetTplChange = { editorImportTargetTpl = it }
+                                onImportTargetTplChange = { editorImportTargetTpl = it },
+                                showModifiedMenu = editorShowModifiedMenu,
+                                onShowModifiedMenuChange = { editorShowModifiedMenu = it }
                             )
                             2 -> BroadcastControlScreen(
                                 uiState = uiState,

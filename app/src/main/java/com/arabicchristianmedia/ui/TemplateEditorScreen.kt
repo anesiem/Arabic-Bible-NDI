@@ -155,6 +155,10 @@ fun TemplateEditorScreen(
     importTargetTpl: LowerThirdTemplate?,
     onShowImportDialogChange: (Boolean) -> Unit,
     onImportTargetTplChange: (LowerThirdTemplate?) -> Unit,
+    // Batch item 6: Modified-menu visibility, hoisted so the MainActivity
+    // top-bar badge opens the same menu as the compact badge.
+    showModifiedMenu: Boolean,
+    onShowModifiedMenuChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var showSaveDialog by remember { mutableStateOf(false) }
@@ -641,7 +645,8 @@ fun TemplateEditorScreen(
     // button is gone). Modified sits immediately before it.
     val modifiedBadgeBlock: @Composable () -> Unit = {
         if (tabIsDirty) {
-            Surface(shape = RoundedCornerShape(10.dp), color = bento.primaryContainer) {
+            // Batch item 6: tapping Modified opens the save menu.
+            Surface(shape = RoundedCornerShape(10.dp), color = bento.primaryContainer, onClick = { onShowModifiedMenuChange(true) }) {
                 Text("معدّل (Modified)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.onPrimaryContainer, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
             }
         }
@@ -690,36 +695,8 @@ fun TemplateEditorScreen(
         // the frame controls; the flow now reads pick -> frame -> alpha ->
         // save, with saving last.
         FeatureToggleRow("خلفية شفافة تماماً 100% Alpha", editingTemplate.isPureTransparentBackground) { onUpdate(editingTemplate.copy(isPureTransparentBackground = it)) }
-        Spacer(Modifier.height(8.dp))
-        Button(
-            onClick = { newTemplateName = "${editingTemplate.name} النسخة"; showSaveDialog = true },
-            colors = ButtonDefaults.buttonColors(containerColor = bento.primary),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Icon(Icons.Default.Add, null, modifier = Modifier.size(16.dp))
-            Spacer(Modifier.width(6.dp))
-            Text("حفظ كنمط جديد (Save as new style)", fontSize = 13.sp)
-        }
-        // v1.9.1: update the highlighted style IN PLACE — shown only when a
-        // style is highlighted and the working values differ from it.
-        // Factory styles cannot be overwritten (the app re-supplies them
-        // each launch), so for those this saves the edit as the user's own
-        // copy under the same name — explained in the factory dialog below.
-        if (highlightedId != null && tabIsDirty) {
-            Spacer(Modifier.height(8.dp))
-            OutlinedButton(
-                onClick = {
-                    if (highlightedStyleIsFactory) showFactoryUpdateDialog = true
-                    else onUpdateStyleInPlace(editorTab == 1)
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Icon(Icons.Default.Save, null, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.width(6.dp))
-                Text("تحديث النمط الحالي (Update current style)", fontSize = 13.sp)
-            }
-        }
-
+        // Batch item 6: the separate Save/Update buttons are gone — saving
+        // lives in the Modified menu (tap the Modified chip).
         Spacer(Modifier.height(8.dp))
 
     }
@@ -1249,36 +1226,9 @@ CollapsibleSection(
                 Column(Modifier.padding(start = 14.dp, end = 14.dp, top = 14.dp)) { tabSwitcherBlock() }
                 Spacer(Modifier.height(12.dp))
                 Column(Modifier.padding(horizontal = 14.dp)) {
-                    // Batch item 5: the start-side row (Modified + feed +
-                    // style-help) is gone — those live in the app-bar line
-                    // now (MainActivity top bar). Save/Update stay at the
-                    // end until item 6 folds them into the Modified menu.
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Button(
-                                onClick = { newTemplateName = "${editingTemplate.name} النسخة"; showSaveDialog = true },
-                                colors = ButtonDefaults.buttonColors(containerColor = bento.primary),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                            ) {
-                                Icon(Icons.Default.Add, null, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text("حفظ كنمط جديد (Save as new style)", fontSize = 11.sp)
-                            }
-                            if (highlightedId != null && tabIsDirty) {
-                                OutlinedButton(
-                                    onClick = {
-                                        if (highlightedStyleIsFactory) showFactoryUpdateDialog = true
-                                        else onUpdateStyleInPlace(editorTab == 1)
-                                    },
-                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                                ) {
-                                    Icon(Icons.Default.Save, null, modifier = Modifier.size(16.dp))
-                                    Spacer(Modifier.width(4.dp))
-                                    Text("تحديث النمط الحالي (Update current style)", fontSize = 11.sp)
-                                }
-                            }
-                        }
-                    }
+                    // Batch item 6: the Save/Update buttons are gone — saving
+                    // lives in the Modified menu (tap the Modified chip in
+                    // the app-bar line).
                     styleCardsRow()
                 }
                 if (showHowItWorks) {
@@ -1329,6 +1279,46 @@ CollapsibleSection(
                 text = { OutlinedTextField(value = newTemplateName, onValueChange = { newTemplateName = it }, label = { Text("اسم القالب") }, singleLine = true) },
                 confirmButton = { Button(onClick = { if (newTemplateName.isNotBlank()) { onSaveAsNew(newTemplateName, editingTemplate, editorTab == 1); showSaveDialog = false } }) { Text("حفظ") } },
                 dismissButton = { TextButton(onClick = { showSaveDialog = false }) { Text("إلغاء") } }
+            )
+        }
+
+        // Batch item 6: saving lives IN the Modified chip — tapping it
+        // opens this small menu. Update keeps the factory rule (a factory
+        // style saves as the user's own copy, via its dialog); Update
+        // only shows when a style is highlighted.
+        if (showModifiedMenu) {
+            val modifiedMenuName = templates.firstOrNull { it.id == highlightedId }?.name ?: editingTemplate.name
+            AlertDialog(
+                onDismissRequest = { onShowModifiedMenuChange(false) },
+                title = { Text("معدّل (Modified)") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (highlightedId != null) {
+                            Button(
+                                onClick = {
+                                    onShowModifiedMenuChange(false)
+                                    if (highlightedStyleIsFactory) showFactoryUpdateDialog = true
+                                    else onUpdateStyleInPlace(editorTab == 1)
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("تحديث «$modifiedMenuName» (Update)", fontSize = 13.sp)
+                            }
+                        }
+                        Button(
+                            onClick = {
+                                onShowModifiedMenuChange(false)
+                                newTemplateName = "${editingTemplate.name} النسخة"
+                                showSaveDialog = true
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("حفظ كنمط جديد (Save as new style)", fontSize = 13.sp)
+                        }
+                    }
+                },
+                confirmButton = {},
+                dismissButton = { TextButton(onClick = { onShowModifiedMenuChange(false) }) { Text("إلغاء") } }
             )
         }
 

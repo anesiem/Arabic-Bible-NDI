@@ -11,7 +11,6 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.foundation.animateScrollTo
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -860,8 +859,8 @@ fun BroadcastControlScreen(
                     modifier = Modifier.weight(1f)
                 )
                 InfoPopupButton(
-                    title = "الثلث السفلي (Lower Third)",
-                    description = "اختر الدقة ومعدل الإطارات. التغيير يُعاد تشغيل المصدر فوراً."
+                    infoTitle = "الثلث السفلي (Lower Third)",
+                    infoText = "اختر الدقة ومعدل الإطارات. التغيير يُعاد تشغيل المصدر فوراً."
                 )
             }
             Spacer(modifier = Modifier.height(8.dp))
@@ -900,8 +899,8 @@ fun BroadcastControlScreen(
                     modifier = Modifier.weight(1f)
                 )
                 InfoPopupButton(
-                    title = "العرض الكامل (Full Show)",
-                    description = "اختر الدقة ومعدل الإطارات. التغيير يُعاد تشغيل المصدر فوراً."
+                    infoTitle = "العرض الكامل (Full Show)",
+                    infoText = "اختر الدقة ومعدل الإطارات. التغيير يُعاد تشغيل المصدر فوراً."
                 )
             }
             Spacer(modifier = Modifier.height(8.dp))

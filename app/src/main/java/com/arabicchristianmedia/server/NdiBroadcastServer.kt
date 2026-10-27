@@ -5113,6 +5113,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   #controlBar #goBtn { width: auto; flex: none; padding: 12px 14px; min-height: 48px; font-size: 16px; }
   #controlBar .onair { width: auto; flex: none; padding: 12px 18px; min-height: 48px; font-size: 16px; }
   #controlBar .livepill { max-width: none; flex: 1 1 140px; margin-top: 0; }
+  /* Item 28: small neutral Clear button beside the ON AIR toggle. */
+  #controlBar #clearBtn { width: auto; flex: none; padding: 12px 14px; min-height: 48px; font-size: 14px; font-weight: 700; background: transparent; border: 1px solid var(--chrome-border, #334155); color: inherit; border-radius: 16px; cursor: pointer; }
+  #controlBar #clearBtn:active { transform: scale(0.98); opacity: 0.9; }
   .vlist { margin-top: 8px; max-height: 52vh; overflow-y: auto; min-height: 120px; transition: opacity 0.15s; }
   /* v1.9.2 (#5): while a chapter loads, the current verses stay in place
      (dimmed) — the list no longer collapses to a Loading line and flashes. */
@@ -5174,6 +5177,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     <button class="btn" id="goBtn" onclick="triggerRef()">▶</button>
     <span class="livepill" id="livePill"><span class="dot"></span><span class="ref" id="liveRef" dir="auto">—</span></span>
     <button class="onair off" id="onAirBtn" onclick="toggleOnAir()">OFF AIR</button>
+    <button id="clearBtn" onclick="clearVerse()">Clear</button>
   </div>
   <div class="card" id="recentCard">
     <label>الآيات الأخيرة — Recent verses</label>
@@ -5420,6 +5424,16 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     })
       .then(function(r) { return r.json(); })
       .then(function(j) { if (j.ok) pollNow(); })
+      .catch(function() { setStatus('✗ Network error', 'err'); });
+  }
+
+  // Item 28: the /api/clear route existed but no page UI called it.
+  // No confirm: clear only takes outputs off-air; the verse stays
+  // in recents.
+  function clearVerse() {
+    fetch('/api/clear')
+      .then(function(r) { return r.json(); })
+      .then(function(j) { if (j.ok) { setStatus('✓ Cleared (off air)', 'ok'); pollNow(); } })
       .catch(function() { setStatus('✗ Network error', 'err'); });
   }
 

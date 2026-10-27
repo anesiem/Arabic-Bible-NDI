@@ -243,6 +243,7 @@ fun SermonListScreen(
                 modifier = Modifier.align(Alignment.BottomCenter)
             )
         }
+        }
 
         // ── Save dialog ─────────────────────────────────────────────────
         if (showSaveDialog) {

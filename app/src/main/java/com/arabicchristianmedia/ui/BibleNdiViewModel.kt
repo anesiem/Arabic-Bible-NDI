@@ -1071,6 +1071,12 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
 
         broadcastServer.updateVerse(verse, live = true)
         triggerAllFrames()
+
+        // Item 21: Library taps push to vMix like sermon/remote
+        // triggers do (pushToVMix self-gates on vmix_enabled + the
+        // configured fields). The displayed (tashkeel-aware) verse is
+        // what goes on screen, so it is what vMix gets.
+        pushToVMix(displayVerse)
     }
 
     fun toggleLive() {

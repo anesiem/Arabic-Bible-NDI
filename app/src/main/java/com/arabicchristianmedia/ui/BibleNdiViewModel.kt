@@ -1738,6 +1738,17 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
     fun updateTemplateFromJson(templateId: String, json: String, isFullScreen: Boolean): Boolean {
         val imported = templateRepo.templateFromJsonString(json) ?: return false
         val current = _uiState.value.templates.firstOrNull { it.id == templateId } ?: return false
+        // Factory styles are re-supplied from code on every launch, so
+        // an import over one would be silently discarded at next launch.
+        // Like Update, save the imported values as the user's own copy
+        // under the same name instead.
+        if (TemplateRepository.isFactoryStyleId(templateId)) {
+            saveAsNewTemplate(current.name, imported.copy(isFullScreen = isFullScreen), isFullScreen)
+            _uiState.value = _uiState.value.copy(
+                statusMessage = "تم حفظ الاستيراد كنسختك الخاصة من «${current.name}»"
+            )
+            return true
+        }
         val updated = imported.copy(id = current.id, isFullScreen = isFullScreen)
         val newList = _uiState.value.templates.map { if (it.id == templateId) updated else it }
         templateRepo.saveTemplates(newList)
@@ -1778,6 +1789,12 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
      * if the highlighted style was deleted) — nothing is reverted silently.
      */
     fun deleteTemplate(templateId: String, isFullScreen: Boolean) {
+        // Factory styles are re-supplied from code on every launch:
+        // deleting one only works in-session and it silently returns
+        // next launch. Guarded on both sides like built-in themes — the
+        // menu hides Delete for factory styles, and this is the backstop
+        // for any other caller.
+        if (TemplateRepository.isFactoryStyleId(templateId)) return
         val newList = _uiState.value.templates.filterNot { it.id == templateId }
         templateRepo.saveTemplates(newList)
         if (isFullScreen) {

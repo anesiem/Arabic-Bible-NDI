@@ -1422,10 +1422,16 @@ CollapsibleSection(
                             onClick = { importTargetTpl = tpl; showImportDialog = true; styleMenuTpl = null },
                             modifier = Modifier.fillMaxWidth()
                         ) { Text("تحديث باستيراد JSON (Update from import)", fontSize = 13.sp) }
-                        TextButton(
-                            onClick = { templateToDelete = tpl; styleMenuTpl = null },
-                            modifier = Modifier.fillMaxWidth()
-                        ) { Text("حذف (Delete)", fontSize = 13.sp, color = bento.liveRed) }
+                        // Factory styles cannot be deleted (they are
+                        // re-supplied from code on every launch, so a
+                        // delete would silently undo itself) — the menu
+                        // hides Delete for them, like built-in themes.
+                        if (!TemplateRepository.isFactoryStyleId(tpl.id)) {
+                            TextButton(
+                                onClick = { templateToDelete = tpl; styleMenuTpl = null },
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("حذف (Delete)", fontSize = 13.sp, color = bento.liveRed) }
+                        }
                     }
                 },
                 confirmButton = {},

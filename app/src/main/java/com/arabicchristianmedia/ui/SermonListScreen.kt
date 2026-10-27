@@ -113,6 +113,7 @@ fun SermonListScreen(
     var renameTarget by remember { mutableStateOf<SavedSermon?>(null) }
     var renameInput by remember { mutableStateOf("") }
     var deleteTarget by remember { mutableStateOf<SavedSermon?>(null) }
+    var showClearConfirm by remember { mutableStateOf(false) }
 
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
         Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
@@ -158,7 +159,7 @@ fun SermonListScreen(
                     )
                 }
                 if (playlist.isNotEmpty()) {
-                    IconButton(onClick = onClear) {
+                    IconButton(onClick = { showClearConfirm = true }) {
                         Icon(
                             imageVector = Icons.Filled.Delete,
                             contentDescription = "مسح كل القائمة (Clear all)",
@@ -246,6 +247,23 @@ fun SermonListScreen(
                 },
                 dismissButton = {
                     TextButton(onClick = { showSaveDialog = false }) { Text("إلغاء") }
+                }
+            )
+        }
+
+        // ── Clear-all confirm: names the verse count ───────────────────
+        if (showClearConfirm) {
+            AlertDialog(
+                onDismissRequest = { showClearConfirm = false },
+                title = { Text("مسح كل القائمة؟") },
+                text = { Text("سيتم مسح ${playlist.size} آية من القائمة الحالية نهائياً، وفصلها عن العظة المحفوظة إن كانت مرتبطة بها.") },
+                confirmButton = {
+                    Button(onClick = { onClear(); showClearConfirm = false }) {
+                        Text("مسح الكل")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showClearConfirm = false }) { Text("إلغاء") }
                 }
             )
         }

@@ -344,7 +344,13 @@ fun BibleReaderScreen(
                 // putting it on air (the verse itself is tapped for that,
                 // as usual). No permanent screen space is taken.
                 if (showRecentsSheet) {
-                    ModalBottomSheet(onDismissRequest = { showRecentsSheet = false }) {
+                    // Batch item 2: the 75% height below was capped at ~50% by
+                    // the sheet's default partially-expanded state; skipping it
+                    // opens the sheet fully expanded so 75% shows at once.
+                    ModalBottomSheet(
+                        onDismissRequest = { showRecentsSheet = false },
+                        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+                    ) {
                         // Item 9: fixed 75% height (was content-sized, ~50%).
                         // Items 6+7: chapter bands (same pair as the Library)
                         // own the row background; rows are Arabic-only.

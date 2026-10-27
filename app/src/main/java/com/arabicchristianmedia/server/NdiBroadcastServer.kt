@@ -31,6 +31,7 @@ import com.arabicchristianmedia.data.SermonStore
 import com.arabicchristianmedia.data.TemplateRepository
 import com.arabicchristianmedia.model.ColorThemes
 import com.arabicchristianmedia.model.colorThemeFromJson
+import com.arabicchristianmedia.model.onPrimaryFor
 import com.arabicchristianmedia.model.AnimatedBackgroundType
 import com.arabicchristianmedia.model.BundledFonts
 import com.arabicchristianmedia.model.BibleVerse
@@ -901,6 +902,26 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             put("bandLightB", bandHex(theme.light.bandB))
             put("recentsDark", bandHex(theme.dark.recents))
             put("recentsLight", bandHex(theme.light.recents))
+            // Item 7: page chrome follows the same theme (background,
+            // cards, inputs, chips, text, focus ring) — previously fixed
+            // slate while bands/recents were themed. Same dark/light
+            // selection as the bands (the page's color scheme).
+            put("chromeDarkBg", bandHex(theme.dark.bg))
+            put("chromeDarkCard", bandHex(theme.dark.card))
+            put("chromeDarkText", bandHex(theme.dark.textPrimary))
+            put("chromeDarkTextSec", bandHex(theme.dark.textSecondary))
+            put("chromeDarkBorder", bandHex(theme.dark.border))
+            put("chromeDarkInputBg", bandHex(theme.dark.surfaceContainer))
+            put("chromeDarkPrimary", bandHex(theme.dark.primary))
+            put("chromeDarkOnPrimary", bandHex(onPrimaryFor(theme.dark.primary)))
+            put("chromeLightBg", bandHex(theme.light.bg))
+            put("chromeLightCard", bandHex(theme.light.card))
+            put("chromeLightText", bandHex(theme.light.textPrimary))
+            put("chromeLightTextSec", bandHex(theme.light.textSecondary))
+            put("chromeLightBorder", bandHex(theme.light.border))
+            put("chromeLightInputBg", bandHex(theme.light.surfaceContainer))
+            put("chromeLightPrimary", bandHex(theme.light.primary))
+            put("chromeLightOnPrimary", bandHex(onPrimaryFor(theme.light.primary)))
             // Item 6+7: recents for the remote page — Arabic citation +
             // Arabic text only (no English line, same as the Library
             // sheet); the English citation stays as the trigger ref, with
@@ -4891,22 +4912,22 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     display: flex; flex-direction: column;
   }
   @media (prefers-color-scheme: light) {
-    body { background: #f1f5f9; color: #0f172a; }
-    .card { background: #ffffff; border-color: #e2e8f0; }
-    input, select { background: #f8fafc; border-color: #cbd5e1; color: #0f172a; }
-    .hint { color: #64748b; }
-    .chips button { border-color: #cbd5e1; color: #334155; }
-    .chips button.active { background: #0f172a; color: #fff; border-color: transparent; }
-    .vrow { border-color: #e2e8f0; }
+    body { background: var(--chrome-bg, #f1f5f9); color: var(--chrome-text, #0f172a); }
+    .card { background: var(--chrome-card, #ffffff); border-color: var(--chrome-border, #e2e8f0); }
+    input, select { background: var(--chrome-input-bg, #f8fafc); border-color: var(--chrome-border, #cbd5e1); color: var(--chrome-text, #0f172a); }
+    .hint { color: var(--chrome-textsec, #64748b); }
+    .chips button { border-color: var(--chrome-border, #cbd5e1); color: var(--chrome-textsec, #334155); }
+    .chips button.active { background: var(--chrome-primary, #0f172a); color: var(--chrome-onprimary, #fff); border-color: transparent; }
+    .vrow { border-color: var(--chrome-border, #e2e8f0); }
   }
   @media (prefers-color-scheme: dark) {
-    body { background: #0f172a; color: #f1f5f9; }
-    .card { background: #1e293b; border-color: #334155; }
-    input, select { background: #0f172a; border-color: #475569; color: #f1f5f9; }
-    .hint { color: #94a3b8; }
-    .chips button { border-color: #475569; color: #cbd5e1; }
-    .chips button.active { background: #f1f5f9; color: #0f172a; border-color: transparent; }
-    .vrow { border-color: #334155; }
+    body { background: var(--chrome-bg, #0f172a); color: var(--chrome-text, #f1f5f9); }
+    .card { background: var(--chrome-card, #1e293b); border-color: var(--chrome-border, #334155); }
+    input, select { background: var(--chrome-input-bg, #0f172a); border-color: var(--chrome-border, #475569); color: var(--chrome-text, #f1f5f9); }
+    .hint { color: var(--chrome-textsec, #94a3b8); }
+    .chips button { border-color: var(--chrome-border, #475569); color: var(--chrome-textsec, #cbd5e1); }
+    .chips button.active { background: var(--chrome-primary, #f1f5f9); color: var(--chrome-onprimary, #0f172a); border-color: transparent; }
+    .vrow { border-color: var(--chrome-border, #334155); }
     /* v1.9.2 (#6): the .livepill dark overrides used to live HERE, before
        the base pill rules — equal specificity meant the later base rules
        won and the dark colors were dead (near-black text on the gray pill
@@ -4945,7 +4966,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     width: 100%; font-size: 18px; padding: 13px 14px;
     border: 1px solid; border-radius: 12px; outline: none;
   }
-  input:focus, select:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.25); }
+  input:focus, select:focus { border-color: var(--chrome-primary, #3b82f6); box-shadow: 0 0 0 3px rgba(var(--chrome-primary-rgb, 59,130,246), 0.25); }
   .btn {
     width: 100%; padding: 16px; font-size: 19px; font-weight: 700;
     border: none; border-radius: 16px; cursor: pointer;
@@ -5327,6 +5348,16 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       .catch(function() { setStatus('✗ Network error', 'err'); });
   }
 
+  function hexToRgb(hex) {
+    var h = (hex || '#3b82f6').replace('#', '');
+    if (h.length === 3) { h = h.charAt(0) + h.charAt(0) + h.charAt(1) + h.charAt(1) + h.charAt(2) + h.charAt(2); }
+    var r = parseInt(h.substring(0, 2), 16);
+    var g = parseInt(h.substring(2, 4), 16);
+    var b = parseInt(h.substring(4, 6), 16);
+    if (isNaN(r)) { r = 59; } if (isNaN(g)) { g = 130; } if (isNaN(b)) { b = 246; }
+    return r + ',' + g + ',' + b;
+  }
+
   function pollNow() {
     fetch('/api/verse?light=1').then(function(r) { return r.json(); }).then(function(j) {
       live.onAir = !!j.isLive;
@@ -5339,14 +5370,23 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         cit ? (live.onAir ? cit : 'Off air — ' + cit) : 'Off air';
       pill.className = 'livepill' + (live.onAir && cit ? ' on' : '');
       pill.title = cit || '';
-      // Theme bands + recents: mirror the app's selected theme into the
-      // list variables (dark/light by the page's color scheme;
-      // re-applied every poll). Live-row tint stays green (see CSS).
+      // Theme bands + recents + chrome: mirror the app's selected theme
+      // into the list/chrome variables (dark/light by the page's color
+      // scheme; re-applied every poll). Live-row tint stays green (see CSS).
       if (j.bandDarkA) {
         var darkMode = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
         document.documentElement.style.setProperty('--band-a', darkMode ? j.bandDarkA : j.bandLightA);
         document.documentElement.style.setProperty('--band-b', darkMode ? j.bandDarkB : j.bandLightB);
         document.documentElement.style.setProperty('--recents', darkMode ? (j.recentsDark || '#0D9488') : (j.recentsLight || '#0D9488'));
+        document.documentElement.style.setProperty('--chrome-bg', darkMode ? j.chromeDarkBg : j.chromeLightBg);
+        document.documentElement.style.setProperty('--chrome-card', darkMode ? j.chromeDarkCard : j.chromeLightCard);
+        document.documentElement.style.setProperty('--chrome-text', darkMode ? j.chromeDarkText : j.chromeLightText);
+        document.documentElement.style.setProperty('--chrome-textsec', darkMode ? j.chromeDarkTextSec : j.chromeLightTextSec);
+        document.documentElement.style.setProperty('--chrome-border', darkMode ? j.chromeDarkBorder : j.chromeLightBorder);
+        document.documentElement.style.setProperty('--chrome-input-bg', darkMode ? j.chromeDarkInputBg : j.chromeLightInputBg);
+        document.documentElement.style.setProperty('--chrome-primary', darkMode ? j.chromeDarkPrimary : j.chromeLightPrimary);
+        document.documentElement.style.setProperty('--chrome-onprimary', darkMode ? j.chromeDarkOnPrimary : j.chromeLightOnPrimary);
+        document.documentElement.style.setProperty('--chrome-primary-rgb', hexToRgb(darkMode ? j.chromeDarkPrimary : j.chromeLightPrimary));
       }
       renderOnAir();
       markLiveRow();

@@ -466,6 +466,15 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun startNdiFeeds() {
+        // Item 18: the protocol switch gates all NDI starts. While it is
+        // OFF, Start must not resurrect senders (nor start the service
+        // as a side effect) — it only explains why nothing started.
+        if (!_uiState.value.isNdiProtocolEnabled) {
+            _uiState.value = _uiState.value.copy(
+                statusMessage = "بث NDI متوقف — فعّل بروتوكول NDI من الإعدادات لبدء المصادر"
+            )
+            return
+        }
         // Preserve the user's per-feed selection instead of forcing both
         // ON: Start re-syncs whatever is enabled. Only when NOTHING is
         // enabled does Start enable both, so the button always starts
@@ -854,10 +863,15 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         val s = _uiState.value
         persistNdiEnabled(NdiNativeSender.FEED_LOWER, s.ndiLowerEnabled)
         persistNdiEnabled(NdiNativeSender.FEED_FULL, s.ndiFullShowEnabled)
-        syncNativeSources()
-        triggerAllFrames()
-        // v1.9: keep the foreground notification's feed list truthful.
-        NdiService.refreshNotification(getApplication())
+        // Item 18: while the protocol is OFF, the toggle only records
+        // the selection — syncing would restart senders, including the
+        // untouched feed, since sync starts every enabled feed.
+        if (s.isNdiProtocolEnabled) {
+            syncNativeSources()
+            triggerAllFrames()
+            // v1.9: keep the foreground notification's feed list truthful.
+            NdiService.refreshNotification(getApplication())
+        }
     }
 
     private fun triggerAllFrames() {

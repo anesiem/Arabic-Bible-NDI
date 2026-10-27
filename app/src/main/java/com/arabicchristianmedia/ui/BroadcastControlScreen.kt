@@ -359,6 +359,38 @@ fun BroadcastControlScreen(
                     }
                 }
 
+                // Item 18: NDI protocol switch. The handler existed but
+                // no control rendered it, so the gate could never be
+                // flipped from the UI. OFF stops both senders and gates
+                // Start + the per-feed toggles until re-enabled.
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        SplitLabel(
+                            parts = listOf("بث بروتوكول ", "NDI", " (Full NDI)"),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = bento.textPrimary
+                        )
+                        InfoPopupButton(
+                            "بث بروتوكول NDI (Full NDI)",
+                            "عند الإيقاف تتوقف مصادر NDI ويُوفَّر استهلاك شبكة الواي فاي؛ مفاتيح المصدرين وزر التشغيل لن تعيد تشغيلها حتى تعيد تفعيل البروتوكول."
+                        )
+                    }
+                    Switch(
+                        checked = uiState.isNdiProtocolEnabled,
+                        onCheckedChange = { onSetNdiProtocolEnabled(it) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White,
+                            checkedTrackColor = bento.primary
+                        ),
+                        modifier = Modifier.testTag("ndi_protocol_switch")
+                    )
+                }
+
                 Spacer(modifier = Modifier.height(12.dp))
 
                 // NDI Protocol Badge (native NDI 6 senders; the OS-level NDI discovery

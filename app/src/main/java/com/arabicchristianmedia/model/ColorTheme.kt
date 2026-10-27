@@ -110,8 +110,8 @@ object ColorThemes {
 
     /** Teens, dark-first: vivid chrome, but color lives only in chrome/bands/
      * markers — body text stays near-white on dark (15.8:1). Note: Pulse dark
-     * primary is vivid violet, so button text on it is marginal (white 4.2:1,
-     * dark 3.1:1); onPrimaryFor picks white, the better of the two. */
+     * primary is darkened violet, so white button text on it clears 4.5:1
+     * (5.70:1); onPrimaryFor picks white. */
     val PULSE = ColorTheme(
         id = "pulse",
         name = "Pulse",
@@ -119,7 +119,7 @@ object ColorThemes {
             bg = 0xFF0F0A1E, card = 0xFF1E1533, surfaceContainer = 0xFF271B40,
             surfaceVariant = 0xFF3D2A5E, border = 0xFF4A3A6B, borderSubtle = 0xFF2E2347,
             textPrimary = 0xFFF5F3FF, textSecondary = 0xFFC4B5FD,
-            primary = 0xFF8B5CF6, primaryContainer = 0xFF4C2E8B,
+            primary = 0xFF7C3AED, primaryContainer = 0xFF4C2E8B,
             bandA = 0xFF2D1B4E, bandB = 0xFF123B3F, recents = 0xFF22D3EE
         ),
         light = ColorThemeTokens(
@@ -147,7 +147,7 @@ object ColorThemes {
             bg = 0xFFF0FDF9, card = 0xFFFFFFFF, surfaceContainer = 0xFFEAF9F1,
             surfaceVariant = 0xFFCFF5E0, border = 0xFFB9D8C6, borderSubtle = 0xFFE2F2E8,
             textPrimary = 0xFF0F172A, textSecondary = 0xFF475569,
-            primary = 0xFF059669, primaryContainer = 0xFFC9EBD9,
+            primary = 0xFF047857, primaryContainer = 0xFFC9EBD9,
             bandA = 0xFFD1FAE5, bandB = 0xFFFEF3C7, recents = 0xFFB45309
         )
     )

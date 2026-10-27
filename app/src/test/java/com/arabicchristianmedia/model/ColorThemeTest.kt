@@ -91,7 +91,8 @@ class ColorThemeTest {
 
     @Test
     fun buttonTextPicksTheMoreReadableColor() {
-        assertEquals("vivid violet primary reads white", 0xFFFFFFFF, onPrimaryFor(0xFF8B5CF6))
+        assertEquals("Pulse dark primary reads white", 0xFFFFFFFF, onPrimaryFor(0xFF7C3AED))
+        assertEquals("Fresh light primary reads white", 0xFFFFFFFF, onPrimaryFor(0xFF047857))
         assertEquals("bright yellow primary reads dark purple", 0xFF381E72, onPrimaryFor(0xFFEAB308))
         assertEquals("Classic light primary reads white", 0xFFFFFFFF, onPrimaryFor(0xFF6750A4))
     }

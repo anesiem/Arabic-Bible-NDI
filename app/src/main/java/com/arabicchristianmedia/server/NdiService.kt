@@ -97,7 +97,21 @@ class NdiService : Service() {
         /** Rebuilds the ongoing notification (e.g. after feed toggles). No-op when idle. */
         fun refreshNotification(context: Context) {
             if (server == null) return
+            // No-op while the broadcast is not active: sending REFRESH to
+            // an idle service would make it stopSelf(), and onDestroy
+            // would kill the still-running HTTP server — the opposite of
+            // a feed-only stop or toggle.
+            if (!isBroadcastActive(context)) return
             context.startService(Intent(context, NdiService::class.java).setAction(ACTION_REFRESH))
+        }
+
+        /**
+         * Clears the auto-resume flag without touching the service,
+         * senders or server — used by a feed-only Stop so a later OS
+         * kill does not resurrect the broadcast.
+         */
+        fun clearBroadcastActive(context: Context) {
+            setBroadcastActive(context, false)
         }
 
         fun isBroadcastActive(context: Context): Boolean =

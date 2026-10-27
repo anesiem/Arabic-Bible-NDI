@@ -465,33 +465,57 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun startNdiFeeds() {
-        _uiState.value = _uiState.value.copy(
-            ndiLowerEnabled = true,
-            ndiFullShowEnabled = true
-        )
-        persistNdiEnabled(NdiNativeSender.FEED_LOWER, true)
-        persistNdiEnabled(NdiNativeSender.FEED_FULL, true)
+        // Preserve the user's per-feed selection instead of forcing both
+        // ON: Start re-syncs whatever is enabled. Only when NOTHING is
+        // enabled does Start enable both, so the button always starts
+        // something.
+        if (!_uiState.value.ndiLowerEnabled && !_uiState.value.ndiFullShowEnabled) {
+            _uiState.value = _uiState.value.copy(
+                ndiLowerEnabled = true,
+                ndiFullShowEnabled = true
+            )
+            persistNdiEnabled(NdiNativeSender.FEED_LOWER, true)
+            persistNdiEnabled(NdiNativeSender.FEED_FULL, true)
+        }
+        // The service must be properly (re)started FIRST: after a
+        // notification-Stop, broadcast_active is false, and a bare
+        // refreshNotification would make the service stopSelf() and kill
+        // the just-started senders (and the HTTP server) in onDestroy.
+        // ACTION_START re-affirms the broadcast and brings HTTP back up
+        // if it is down (idempotent when already up).
+        NdiService.start(getApplication())
         syncNativeSources()
         triggerAllFrames()
         // v1.9: keep the foreground notification's feed list truthful.
         NdiService.refreshNotification(getApplication())
-        _uiState.value = _uiState.value.copy(statusMessage = "NDI Sources (Lower Third + Full Show) Started")
+        val s = _uiState.value
+        _uiState.value = s.copy(
+            statusMessage = when {
+                s.ndiLowerEnabled && s.ndiFullShowEnabled -> "NDI Sources (Lower Third + Full Show) Started"
+                s.ndiLowerEnabled -> "NDI Source (Lower Third) Started"
+                else -> "NDI Source (Full Show) Started"
+            }
+        )
     }
 
     fun stopNdiFeeds() {
-        _uiState.value = _uiState.value.copy(
-            ndiLowerEnabled = false,
-            ndiFullShowEnabled = false
-        )
-        persistNdiEnabled(NdiNativeSender.FEED_LOWER, false)
-        persistNdiEnabled(NdiNativeSender.FEED_FULL, false)
+        // Preserve the per-feed selection: Stop stops the senders, it
+        // does not rewrite the enabled flags — a later Start restores
+        // exactly the previous selection. What Stop DOES clear is the
+        // auto-resume flag, so an OS kill after a user Stop no longer
+        // brings the broadcast back: Stop is a real stop, not a pause
+        // that the next process death undoes.
         nativeSender.stopAll()
+        NdiService.clearBroadcastActive(getApplication())
         _uiState.value = _uiState.value.copy(
             isNativeNdiActive = false,
             isNativeShowActive = false,
             statusMessage = "All NDI Sources Stopped"
         )
-        // v1.9: keep the foreground notification's feed list truthful.
+        // refreshNotification is a safe no-op while the flag is false
+        // (see NdiService), so the notification is left as-is rather
+        // than letting REFRESH stopSelf() the service and kill the
+        // still-running HTTP server in onDestroy.
         NdiService.refreshNotification(getApplication())
     }
 

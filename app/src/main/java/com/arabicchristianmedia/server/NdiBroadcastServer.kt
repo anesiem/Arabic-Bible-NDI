@@ -406,9 +406,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
     /**
      * v2.0: NDI verse-change transitions. [updateVerse] snapshots the verse
-     * being replaced; while a transition is active, drawFrameInto crossfades
-     * the old frame into the new one over the style's transitionDurationMs
+     * being replaced; while a transition is active, drawFrameInto animates
+     * TEXT ONLY over the statically drawn new box (Batch item 4 — the old
+     * full-frame crossfade moved the whole card). The old text fades out
+     * while the new text fades/slides/scales in over transitionDurationMs
      * (FADE and both SLIDE_* use a crossfade on NDI; CUT = instant).
+     * Go-live and clear keep the FULL-box transition (item 11).
      * The motion pump stays on during the window so static styles still
      * animate (see [isTransitionActiveFor]).
      */
@@ -1724,35 +1727,46 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         }
       }
 
+      // Batch item 4: verse-change transitions animate TEXT ONLY (citation
+      // row, verse text, English section) — the card box stays fixed.
+      // Go-live/clear still animate the whole container via .visible.
+      const textEls = [citationRow, verseText, englishSection];
+      function setTextAnim(transition, opacity, transform) {
+        for (const el of textEls) {
+          el.style.transition = transition;
+          el.style.opacity = opacity;
+          el.style.transform = transform;
+        }
+      }
+      function textTransformFor(t) {
+        if (t === 'SLIDE_UP') return 'translateY(15px)';
+        if (t === 'SLIDE_DOWN') return 'translateY(-15px)';
+        if (t === 'SLIDE_RIGHT') return 'translateX(20px)';
+        if (t === 'SLIDE_LEFT') return 'translateX(-20px)';
+        if (t === 'SCALE_ZOOM') return 'scale(0.95)';
+        if (t === 'BOUNCE') return 'scale(0.92)';
+        return 'none';
+      }
+
       if (wasVisible && verseChanged && transType !== 'CUT' && transDur > 0) {
         const halfDur = Math.floor(transDur / 2);
         const mySwap = ++swapSeq;
-        cardBox.style.transition = 'opacity ' + halfDur + 'ms ease-in-out, transform ' + halfDur + 'ms ease-in-out';
-        cardBox.style.opacity = '0';
-        if (transType === 'SLIDE_UP') cardBox.style.transform = 'translateY(15px)';
-        else if (transType === 'SLIDE_DOWN') cardBox.style.transform = 'translateY(-15px)';
-        else if (transType === 'SLIDE_RIGHT') cardBox.style.transform = 'translateX(20px)';
-        else if (transType === 'SLIDE_LEFT') cardBox.style.transform = 'translateX(-20px)';
-        else if (transType === 'SCALE_ZOOM') cardBox.style.transform = 'scale(0.95)';
-        else if (transType === 'BOUNCE') cardBox.style.transform = 'scale(0.92)';
+        setTextAnim('opacity ' + halfDur + 'ms ease-in-out, transform ' + halfDur + 'ms ease-in-out', '0', textTransformFor(transType));
 
         setTimeout(function() {
           if (mySwap !== swapSeq) return; // superseded by a newer apply
           applyVerseTextContent();
-          cardBox.style.opacity = '1';
-          cardBox.style.transform = 'none';
+          setTextAnim('opacity ' + halfDur + 'ms ease-in-out, transform ' + halfDur + 'ms ease-in-out', '1', 'none');
           // The fit in finishApply measured the OLD text (the swap is
           // timer-deferred); re-fit now that the new text is in place.
           doFit();
-          setTimeout(function() { if (mySwap === swapSeq) cardBox.style.transition = ''; }, halfDur);
+          setTimeout(function() { if (mySwap === swapSeq) setTextAnim('', '', ''); }, halfDur);
         }, halfDur);
       } else {
-        // Cancel any pending swap and clear its mid-animation card state,
-        // so the card can never be left faded/shifted by a stale timer.
+        // Cancel any pending swap and clear its mid-animation text state,
+        // so the text can never be left faded/shifted by a stale timer.
         swapSeq++;
-        cardBox.style.transition = '';
-        cardBox.style.opacity = '';
-        cardBox.style.transform = '';
+        setTextAnim('', '', '');
         applyVerseTextContent();
       }
 
@@ -2989,7 +3003,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
      * dedicated reused bitmaps (see [renderMotionFrame]) so the static cache is
      * never redrawn in place — static readers can never observe a half-drawn frame.
      */
-    private fun drawFrameInto(bitmap: Bitmap, width: Int, height: Int, isForStream: Boolean, tpl: LowerThirdTemplate, isFull: Boolean, isMotionTick: Boolean = false, verseOverride: BibleVerse? = null, isTransitionSnapshot: Boolean = false) {
+    private fun drawFrameInto(bitmap: Bitmap, width: Int, height: Int, isForStream: Boolean, tpl: LowerThirdTemplate, isFull: Boolean, isMotionTick: Boolean = false, verseOverride: BibleVerse? = null, isTransitionSnapshot: Boolean = false, textOnly: Boolean = false) {
         // v1.9: frame-timing instrumentation (replaces the GPU investigation).
         val drawStartNs = System.nanoTime()
         val canvas = Canvas(bitmap)
@@ -3003,7 +3017,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
         // Video Stream Background: Since JPEG encoders have no alpha channel,
         // provide keyable broadcast background (Chroma Green #00FF00, Luma Black, or Studio)
-        if (isForStream) {
+        if (isForStream && !textOnly) {
             val bgCol = when (tpl.streamBackgroundMode) {
                 StreamBackgroundMode.CHROMA_GREEN -> Color.parseColor("#00FF00")
                 StreamBackgroundMode.PURE_BLACK -> Color.parseColor("#000000")
@@ -3057,34 +3071,23 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             return
         }
 
-        // v2.0: verse-change crossfade. The OLD verse's finished frame is
-        // laid down fading out; everything below (the new frame) is drawn
-        // into a layer at fade-in alpha, so the pair composite to exactly
-        // the finished frames at progress 0 and 1. Snapshot renders (the
-        // recursive call that produces the old frame) skip this block.
-        var transitionScratch: Bitmap? = null
+        // Batch item 4: verse-change transitions animate TEXT ONLY. The box
+        // (glow/video/card) below draws statically at the new verse's
+        // geometry; the old text fade-out + new text layer are applied at
+        // the text section. Go-live keeps the FULL-box transition (item 11
+        // behavior, unchanged). Snapshot renders skip this block.
         var transitionLayer = -1
-        // Verse-change crossfade, or (item 11) a go-live fade/slide-in from
-        // transparent when there is no verse-change snapshot (same verse, or
-        // first go-live). The layer + transform are shared; only the
-        // outgoing snapshot layer is verse-change-only.
+        var verseTextP: Float? = null
+        var verseTextPrev: BibleVerse? = null
         val verseChangeActive = !isTransitionSnapshot && isTransitionActiveFor(isFull)
         val goLiveActive = !isTransitionSnapshot && !verseChangeActive && isGoLiveTransitionActiveFor(isFull)
-        if (verseChangeActive || goLiveActive) {
-            val p = if (verseChangeActive) transitionProgressFor(isFull) else goLiveProgressFor(isFull)
-            if (verseChangeActive) {
-                val prevVerse = transitionPrevVerse
-                if (prevVerse != null) {
-                    try {
-                        val scratch = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-                        drawFrameInto(scratch, width, height, isForStream, tpl, isFull, verseOverride = prevVerse, isTransitionSnapshot = true)
-                        val outPaint = Paint().apply { alpha = ((1f - p) * 255f).toInt().coerceIn(0, 255) }
-                        canvas.drawBitmap(scratch, 0f, 0f, outPaint)
-                        transitionScratch = scratch
-                    } catch (_: OutOfMemoryError) { /* fall through: plain fade-in */
-                    } catch (_: Exception) { /* fall through: plain fade-in */ }
-                }
-            }
+        if (verseChangeActive) {
+            verseTextP = transitionProgressFor(isFull)
+            verseTextPrev = transitionPrevVerse
+        } else if (goLiveActive) {
+            // Go-live fade/slide-in from transparent when there is no
+            // verse-change snapshot (same verse, or first go-live).
+            val p = goLiveProgressFor(isFull)
             val layerPaint = Paint().apply { alpha = (p * 255f).toInt().coerceIn(0, 255) }
             transitionLayer = canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), layerPaint)
             // Apply directional motion or scaling during transition
@@ -3193,7 +3196,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // OUTSIDE the card rect: only the shadow survives, the card's own
         // fill (drawn after) covers the interior exactly. Drawn first,
         // behind video/card, under the visible-card rule (not !pure).
-        if (!tpl.isPureTransparentBackground && tpl.cardGlowEnabled && cardHasVisibleEdge) {
+        if (!textOnly && !tpl.isPureTransparentBackground && tpl.cardGlowEnabled && cardHasVisibleEdge) {
             val (shadowDyCss, shadowBlurCss, shadowAlphaF) = when (tpl.style) {
                 TemplateStyle.CLASSIC_BANNER -> Triple(12f, 36f, 0.6f)
                 TemplateStyle.ROYAL_LITURGICAL -> Triple(10f, 40f, 0.7f)
@@ -3222,7 +3225,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // last frame (the first static render kick-starts decoding).
         val customVideoFile = resolveCustomVideoFile(tpl, isFull)
         val videoRenderer = if (customVideoFile != null) getVideoRenderer(isFull) else null
-        if (videoRenderer != null && customVideoFile != null) {
+        if (!textOnly && videoRenderer != null && customVideoFile != null) {
             videoRenderer.setSource(customVideoFile)
             videoRenderer.setAlpha(tpl.animatedBackgroundOpacity)
             videoRenderer.setMuted(tpl.customVideoMuted)
@@ -3249,12 +3252,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             } else {
                 videoRenderer.drawOnto(canvas, videoRect)
             }
-        } else {
+        } else if (!textOnly) {
             // Not a video template: park this feed's decoder (no-op if none).
+            // Text-only snapshots touch nothing (see transition snapshots).
             synchronized(videoRenderers) { videoRenderers[isFull]?.pause() }
         }
 
-        if (!tpl.isPureTransparentBackground) { // v1.9: toggle is the single authority (was: style check overrode it)
+        if (!textOnly && !tpl.isPureTransparentBackground) { // v1.9: toggle is the single authority (was: style check overrode it)
             val bgAlpha = (tpl.bgOpacity * 255).toInt().coerceIn(0, 255)
             val baseBgCol = try { Color.parseColor(tpl.bgColorHex) } catch (e: Exception) { Color.DKGRAY }
 
@@ -3412,7 +3416,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // v2.0: Accent border for ALL background types (video, animated, plain).
         // Was drawn only inside the animated-background branch, so plain and
         // video styles never showed a border on NDI.
-        if (!tpl.isPureTransparentBackground && tpl.showAccentBorder) {
+        if (!textOnly && !tpl.isPureTransparentBackground && tpl.showAccentBorder) {
             val accCol = try { Color.parseColor(tpl.accentColorHex) } catch (e: Exception) { Color.YELLOW }
             paint.color = accCol
             paint.strokeWidth = 6f * scale
@@ -3452,6 +3456,42 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         }
 
         val citationY = startY + (refPaint.textSize * 0.9f)
+
+        // Batch item 4: verse-change text animation — the box above is
+        // already drawn statically. Old text fades out over it; new text
+        // draws in a layer at fade-in alpha with the transition's motion.
+        var textTransitionLayer = -1
+        if (verseTextP != null) {
+            val p = verseTextP
+            val prevVerse = verseTextPrev
+            if (prevVerse != null) {
+                try {
+                    val scratch = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                    drawFrameInto(scratch, width, height, isForStream, tpl, isFull, verseOverride = prevVerse, isTransitionSnapshot = true, textOnly = true)
+                    val outPaint = Paint().apply { alpha = ((1f - p) * 255f).toInt().coerceIn(0, 255) }
+                    canvas.drawBitmap(scratch, 0f, 0f, outPaint)
+                    scratch.recycle()
+                } catch (_: OutOfMemoryError) { /* fall through: new text only */ }
+                catch (_: Exception) { /* fall through: new text only */ }
+            }
+            val layerPaint = Paint().apply { alpha = (p * 255f).toInt().coerceIn(0, 255) }
+            textTransitionLayer = canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), layerPaint)
+            when (tpl.transition) {
+                TransitionType.SLIDE_UP -> canvas.translate(0f, (1f - p) * 50f * scale)
+                TransitionType.SLIDE_DOWN -> canvas.translate(0f, -(1f - p) * 50f * scale)
+                TransitionType.SLIDE_RIGHT -> canvas.translate((1f - p) * 60f * scale, 0f)
+                TransitionType.SLIDE_LEFT -> canvas.translate(-(1f - p) * 60f * scale, 0f)
+                TransitionType.SCALE_ZOOM -> {
+                    val s = 0.92f + 0.08f * p
+                    canvas.scale(s, s, width / 2f, height / 2f)
+                }
+                TransitionType.BOUNCE -> {
+                    val bp = if (p < 0.7f) (p / 0.7f) * 1.05f else 1.05f - (p - 0.7f) / 0.3f * 0.05f
+                    canvas.scale(bp, bp, width / 2f, height / 2f)
+                }
+                else -> {}
+            }
+        }
 
         // User emblem (emoji/symbol) drawn adjacent to the citation on the
         // reading-start side, in the accent color like the HTTP overlay.
@@ -3561,7 +3601,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             }
         }
 
-        if (!isLive && isForStream) {
+        // Batch item 4: close the verse-text transition layer before the
+        // standby badge (the badge is never part of a transition).
+        if (textTransitionLayer >= 0) {
+            canvas.restoreToCount(textTransitionLayer)
+        }
+
+        if (!isLive && isForStream && !textOnly) {
             val standbyBgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = Color.argb(220, 15, 23, 42)
             }
@@ -3585,10 +3631,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             canvas.drawText("وضع الاستعداد • STANDBY (اضغط على الهواء للبث)", width / 2f, 35f * scale + (badgeH * 0.65f), standbyTextPaint)
         }
 
-        // v2.0: close the verse-transition layer (see prologue) before timing.
+        // v2.0: close the go-live transition layer (see prologue) before timing.
         if (transitionLayer >= 0) {
             canvas.restoreToCount(transitionLayer)
-            transitionScratch?.recycle()
         }
 
         recordDrawTiming(isFull, System.nanoTime() - drawStartNs)

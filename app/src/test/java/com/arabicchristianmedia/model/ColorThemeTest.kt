@@ -141,4 +141,31 @@ class ColorThemeTest {
             }
         }
     }
+
+    @Test
+    fun warningTextClearsBarOnEveryCard() {
+        val themes = listOf(
+            ColorThemes.CLASSIC, ColorThemes.CLEAR, ColorThemes.PULSE,
+            ColorThemes.FRESH, ColorThemes.GENTLE
+        )
+        for (theme in themes) {
+            for (isDark in listOf(true, false)) {
+                val t = theme.tokens(isDark)
+                assertTrue(
+                    "warning on card must clear 4.5:1 for ${theme.id} dark=$isDark",
+                    contrastRatio(t.warning, t.card) >= 4.5
+                )
+            }
+        }
+    }
+
+    @Test
+    fun missingWarningKeyFallsBackToModeAmber() {
+        val json = ColorThemes.CLASSIC.toJson()
+        json.getJSONObject("dark").remove("warning")
+        json.getJSONObject("light").remove("warning")
+        val parsed = colorThemeFromJson(json)
+        assertEquals("dark falls back to light amber", 0xFFFBBF24, parsed?.dark?.warning)
+        assertEquals("light falls back to dark amber", 0xFFB45309, parsed?.light?.warning)
+    }
 }

@@ -1331,8 +1331,8 @@ fun BroadcastControlScreen(
                 // Connection Warning & Troubleshooting Explanation Banner
                 Surface(
                     shape = RoundedCornerShape(14.dp),
-                    color = Color(0xFFD97706).copy(alpha = 0.12f),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFD97706)),
+                    color = bento.warning.copy(alpha = 0.12f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, bento.warning),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
@@ -1340,7 +1340,7 @@ fun BroadcastControlScreen(
                             Icon(
                                 imageVector = Icons.Default.Warning,
                                 contentDescription = null,
-                                tint = Color(0xFFD97706),
+                                tint = bento.warning,
                                 modifier = Modifier.size(16.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
@@ -1348,7 +1348,7 @@ fun BroadcastControlScreen(
                                 text = "تنبيه هام للمتصفح وحل مشكلة عدم الاتصال (ERR_ADDRESS_UNREACHABLE):",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFFD97706)
+                                color = bento.warning
                             )
                         }
 
@@ -1358,21 +1358,21 @@ fun BroadcastControlScreen(
                             text = "١. في شريط عنوان المتصفح: اكتب http:// صراحة وليس https:// لأن الخادم يعمل محلياً داخل الشبكة بدون شهادة SSL خارجية. برامج vMix و OBS تتصل مباشرة وبسرعة فائقة بدون أي تنبيهات.",
                             fontSize = 10.sp,
                             lineHeight = 15.sp,
-                            color = Color(0xFFD97706)
+                            color = bento.warning
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = "٢. تأكد من اختيار عنوان Wi-Fi (يبدأ عادة بـ 192.168 أو 10.0) من القائمة أعلاه، وتجنب اختيار عنوان بيانات الشريحة (Cellular).",
                             fontSize = 10.sp,
                             lineHeight = 15.sp,
-                            color = Color(0xFFD97706)
+                            color = bento.warning
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = "٣. إذا كانت شبكة الواي فاي تفصل الأجهزة عن بعضها (AP Isolation)، شغّل (نقطة اتصال الهواتف المحمولة / Mobile Hotspot) في الهاتف واشبك كمبيوتر البث بها مباشرة، وسيعمل فوراً بدون مشاكل.",
                             fontSize = 10.sp,
                             lineHeight = 15.sp,
-                            color = Color(0xFFD97706)
+                            color = bento.warning
                         )
                     }
                 }

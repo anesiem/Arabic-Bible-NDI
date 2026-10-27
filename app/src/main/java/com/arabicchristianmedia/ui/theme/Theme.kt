@@ -32,7 +32,8 @@ data class BentoColors(
     val onSecondary: Color,
     val liveRed: Color,
     val liveRedBright: Color,
-    val green: Color
+    val green: Color,
+    val warning: Color
 )
 
 val LocalBentoColors = staticCompositionLocalOf {
@@ -53,7 +54,8 @@ val LocalBentoColors = staticCompositionLocalOf {
         onSecondary = BentoOnSecondaryLight,
         liveRed = BentoLiveRed,
         liveRedBright = BentoLiveRedBright,
-        green = BentoGreen
+        green = BentoGreen,
+        warning = Color(0xFFB45309)
     )
 }
 
@@ -105,7 +107,8 @@ private fun bentoColorsFromTheme(tokens: ColorThemeTokens, isDark: Boolean): Ben
         onSecondary = if (isDark) BentoOnSecondaryDark else BentoOnSecondaryLight,
         liveRed = BentoLiveRed,
         liveRedBright = BentoLiveRedBright,
-        green = BentoGreen
+        green = BentoGreen,
+        warning = Color(tokens.warning)
     )
 }
 

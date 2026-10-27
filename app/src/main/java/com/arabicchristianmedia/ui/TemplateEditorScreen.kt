@@ -623,7 +623,7 @@ fun TemplateEditorScreen(
                         Text(
                             "⚠ " + warnParts.joinToString(" · ") + " — ستظهر الآيات صغيرة (verses will render tiny)",
                             fontSize = 11.sp,
-                            color = Color(0xFFB45309),
+                            color = bento.warning,
                             modifier = Modifier.padding(top = 6.dp)
                         )
                     }
@@ -1634,7 +1634,7 @@ CollapsibleSection(
                             if (arName != null) {
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Text(arName, fontFamily = itemFamily, fontSize = 15.sp)
-                                    Text(name, fontSize = 11.sp, color = Color(0xFF888888))
+                                    Text(name, fontSize = 11.sp, color = bento.textSecondary)
                                 }
                             } else {
                                 Text(name, fontFamily = itemFamily, fontSize = 14.sp)

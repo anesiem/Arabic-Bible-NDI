@@ -31,7 +31,8 @@ data class ColorThemeTokens(
     val primaryContainer: Long,
     val bandA: Long,
     val bandB: Long,
-    val recents: Long
+    val recents: Long,
+    val warning: Long
 )
 
 data class ColorTheme(
@@ -76,14 +77,14 @@ object ColorThemes {
             surfaceVariant = 0xFF4A4458, border = 0xFF49454F, borderSubtle = 0xFF36343B,
             textPrimary = 0xFFE6E1E5, textSecondary = 0xFFCAC4D0,
             primary = 0xFFD0BCFF, primaryContainer = 0xFF4F378B,
-            bandA = 0xFF3B3052, bandB = 0xFF2B3A42, recents = 0xFF0D9488
+            bandA = 0xFF3B3052, bandB = 0xFF2B3A42, recents = 0xFF0D9488, warning = 0xFFFBBF24
         ),
         light = ColorThemeTokens(
             bg = 0xFFFEF7FF, card = 0xFFFFFFFF, surfaceContainer = 0xFFF3EDF7,
             surfaceVariant = 0xFFEADDFF, border = 0xFFCAC4D0, borderSubtle = 0xFFE7E0EC,
             textPrimary = 0xFF1D1B20, textSecondary = 0xFF49454F,
             primary = 0xFF6750A4, primaryContainer = 0xFFEADDFF,
-            bandA = 0xFFEAE3F6, bandB = 0xFFDFE9F3, recents = 0xFF0D9488
+            bandA = 0xFFEAE3F6, bandB = 0xFFDFE9F3, recents = 0xFF0D9488, warning = 0xFFB45309
         )
     )
 
@@ -97,14 +98,14 @@ object ColorThemes {
             surfaceVariant = 0xFF4A3F2A, border = 0xFF57503F, borderSubtle = 0xFF3A332A,
             textPrimary = 0xFFFFFFFF, textSecondary = 0xFFD6D0C4,
             primary = 0xFFEAB308, primaryContainer = 0xFF5A4A1A,
-            bandA = 0xFF3A3226, bandB = 0xFF2E3A2E, recents = 0xFFF59E0B
+            bandA = 0xFF3A3226, bandB = 0xFF2E3A2E, recents = 0xFFF59E0B, warning = 0xFFFBBF24
         ),
         light = ColorThemeTokens(
             bg = 0xFFFDF8F0, card = 0xFFFFFFFF, surfaceContainer = 0xFFF5EFE2,
             surfaceVariant = 0xFFE8DCC8, border = 0xFFC9BFA8, borderSubtle = 0xFFEDE6D6,
             textPrimary = 0xFF000000, textSecondary = 0xFF333333,
             primary = 0xFF1E40AF, primaryContainer = 0xFFDCE6F5,
-            bandA = 0xFFF5E6C8, bandB = 0xFFDDE8D0, recents = 0xFFB45309
+            bandA = 0xFFF5E6C8, bandB = 0xFFDDE8D0, recents = 0xFFB45309, warning = 0xFFB45309
         )
     )
 
@@ -120,14 +121,14 @@ object ColorThemes {
             surfaceVariant = 0xFF3D2A5E, border = 0xFF4A3A6B, borderSubtle = 0xFF2E2347,
             textPrimary = 0xFFF5F3FF, textSecondary = 0xFFC4B5FD,
             primary = 0xFF7C3AED, primaryContainer = 0xFF4C2E8B,
-            bandA = 0xFF2D1B4E, bandB = 0xFF123B3F, recents = 0xFF22D3EE
+            bandA = 0xFF2D1B4E, bandB = 0xFF123B3F, recents = 0xFF22D3EE, warning = 0xFFFBBF24
         ),
         light = ColorThemeTokens(
             bg = 0xFFF5F3FF, card = 0xFFFFFFFF, surfaceContainer = 0xFFF0EDFB,
             surfaceVariant = 0xFFDDD6FE, border = 0xFFC9C2E0, borderSubtle = 0xFFE9E5F7,
             textPrimary = 0xFF1E1B4B, textSecondary = 0xFF4C4A6B,
             primary = 0xFF7C3AED, primaryContainer = 0xFFE6DFF5,
-            bandA = 0xFFEDE9FE, bandB = 0xFFCFFAFE, recents = 0xFF0891B2
+            bandA = 0xFFEDE9FE, bandB = 0xFFCFFAFE, recents = 0xFF0891B2, warning = 0xFFB45309
         )
     )
 
@@ -141,14 +142,14 @@ object ColorThemes {
             surfaceVariant = 0xFF2A4A3E, border = 0xFF3D5A4E, borderSubtle = 0xFF24382F,
             textPrimary = 0xFFECFDF5, textSecondary = 0xFFA7F3D0,
             primary = 0xFF34D399, primaryContainer = 0xFF14532D,
-            bandA = 0xFF14352C, bandB = 0xFF3B2A12, recents = 0xFFFBBF24
+            bandA = 0xFF14352C, bandB = 0xFF3B2A12, recents = 0xFFFBBF24, warning = 0xFFFBBF24
         ),
         light = ColorThemeTokens(
             bg = 0xFFF0FDF9, card = 0xFFFFFFFF, surfaceContainer = 0xFFEAF9F1,
             surfaceVariant = 0xFFCFF5E0, border = 0xFFB9D8C6, borderSubtle = 0xFFE2F2E8,
             textPrimary = 0xFF0F172A, textSecondary = 0xFF475569,
             primary = 0xFF047857, primaryContainer = 0xFFC9EBD9,
-            bandA = 0xFFD1FAE5, bandB = 0xFFFEF3C7, recents = 0xFFB45309
+            bandA = 0xFFD1FAE5, bandB = 0xFFFEF3C7, recents = 0xFFB45309, warning = 0xFFB45309
         )
     )
 
@@ -162,14 +163,14 @@ object ColorThemes {
             surfaceVariant = 0xFF4A3F31, border = 0xFF57503F, borderSubtle = 0xFF3A332B,
             textPrimary = 0xFFF5F5F4, textSecondary = 0xFFD6D3D1,
             primary = 0xFFC89B6A, primaryContainer = 0xFF5C4626,
-            bandA = 0xFF3B332B, bandB = 0xFF2E352E, recents = 0xFFE8A33D
+            bandA = 0xFF3B332B, bandB = 0xFF2E352E, recents = 0xFFE8A33D, warning = 0xFFFBBF24
         ),
         light = ColorThemeTokens(
             bg = 0xFFFDF6E3, card = 0xFFFFFBEB, surfaceContainer = 0xFFF7ECD2,
             surfaceVariant = 0xFFEFE0BC, border = 0xFFD8CBA8, borderSubtle = 0xFFEFE7D0,
             textPrimary = 0xFF292524, textSecondary = 0xFF57534E,
             primary = 0xFF92400E, primaryContainer = 0xFFF0DCB8,
-            bandA = 0xFFF5E6C8, bandB = 0xFFE7E5D4, recents = 0xFFB45309
+            bandA = 0xFFF5E6C8, bandB = 0xFFE7E5D4, recents = 0xFFB45309, warning = 0xFFB45309
         )
     )
 
@@ -197,7 +198,7 @@ fun ColorTheme.toJson(): JSONObject {
             put("border", hex(t.border)); put("borderSub", hex(t.borderSubtle))
             put("text", hex(t.textPrimary)); put("textSec", hex(t.textSecondary))
             put("primary", hex(t.primary)); put("primaryCont", hex(t.primaryContainer))
-            put("bandA", hex(t.bandA)); put("bandB", hex(t.bandB)); put("recents", hex(t.recents))
+            put("bandA", hex(t.bandA)); put("bandB", hex(t.bandB)); put("recents", hex(t.recents)); put("warning", hex(t.warning))
         }
     }
     return JSONObject().apply {
@@ -208,9 +209,9 @@ fun ColorTheme.toJson(): JSONObject {
 
 fun colorThemeFromJson(obj: JSONObject): ColorTheme? {
     return try {
-        fun parseTokens(o: JSONObject): ColorThemeTokens {
-            fun argb(key: String): Long {
-                val raw = o.optString(key, "#000000").removePrefix("#")
+        fun parseTokens(o: JSONObject, isDark: Boolean): ColorThemeTokens {
+            fun argb(key: String, default: String = "#000000"): Long {
+                val raw = o.optString(key, default).removePrefix("#")
                 return 0xFF000000 or raw.toLong(16)
             }
             return ColorThemeTokens(
@@ -219,14 +220,17 @@ fun colorThemeFromJson(obj: JSONObject): ColorTheme? {
                 border = argb("border"), borderSubtle = argb("borderSub"),
                 textPrimary = argb("text"), textSecondary = argb("textSec"),
                 primary = argb("primary"), primaryContainer = argb("primaryCont"),
-                bandA = argb("bandA"), bandB = argb("bandB"), recents = argb("recents")
+                bandA = argb("bandA"), bandB = argb("bandB"), recents = argb("recents"),
+                // Pre-warning custom themes (saved before this field existed)
+                // fall back to the per-mode amber, not black.
+                warning = argb("warning", if (isDark) "#FBBF24" else "#B45309")
             )
         }
         ColorTheme(
             id = obj.getString("id"),
             name = obj.optString("name", "Custom"),
-            dark = parseTokens(obj.getJSONObject("dark")),
-            light = parseTokens(obj.getJSONObject("light"))
+            dark = parseTokens(obj.getJSONObject("dark"), true),
+            light = parseTokens(obj.getJSONObject("light"), false)
         )
     } catch (e: Exception) {
         null

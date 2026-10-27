@@ -241,7 +241,7 @@ fun BibleReaderScreen(
                                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                                     verticalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
-                                    items(uiState.displayedVerses) { verse ->
+                                    items(uiState.displayedVerses, key = { it.id }) { verse ->
                                         val isSelected = uiState.activeVerse?.id == verse.id
                                         Box(
                                             modifier = Modifier.size(32.dp).clip(RoundedCornerShape(8.dp))
@@ -389,7 +389,7 @@ fun BibleReaderScreen(
                                     verticalArrangement = Arrangement.spacedBy(VerseRowSpec.RowSpacing),
                                     contentPadding = PaddingValues(bottom = 16.dp)
                                 ) {
-                                    itemsIndexed(uiState.recentVerses) { index, verse ->
+                                    itemsIndexed(uiState.recentVerses, key = { _, verse -> verse.id }) { index, verse ->
                                         Column(
                                             modifier = Modifier.fillMaxWidth()
                                                 .clip(RoundedCornerShape(VerseRowSpec.CardCorner))
@@ -511,7 +511,7 @@ fun BibleReaderScreen(
                     contentPadding = PaddingValues(12.dp),
                     verticalArrangement = Arrangement.spacedBy(VerseRowSpec.RowSpacing)
                 ) {
-                    itemsIndexed(versesToShow) { index, verse ->
+                    itemsIndexed(versesToShow, key = { _, verse -> verse.id }) { index, verse ->
                         val isCued = uiState.activeVerse?.id == verse.id
                         BentoVerseCard(
                             verse = verse,

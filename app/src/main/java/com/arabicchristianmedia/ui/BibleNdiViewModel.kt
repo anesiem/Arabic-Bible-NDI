@@ -39,10 +39,13 @@ import com.arabicchristianmedia.server.NdiSourceSpec
 import com.arabicchristianmedia.server.NetworkHelper
 import com.arabicchristianmedia.server.NetworkInterfaceInfo
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 data class BibleNdiUiState(
     val selectedTestament: Testament = Testament.NEW_TESTAMENT,
@@ -1010,7 +1013,18 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         selectChapter(_uiState.value.selectedChapter)
     }
 
+    private var searchJob: Job? = null
+
+    /**
+     * Item 22: searching ran a full-table LIKE scan on the main thread
+     * on every keystroke. Now the typed text echoes immediately, the
+     * scan is debounced (~250ms), runs on IO, and the previous query
+     * is cancelled — only the latest query's results ever reach the UI
+     * (a cancelled scan never posts, since withContext rethrows on
+     * resume when the job was cancelled mid-scan).
+     */
     fun onSearchQueryChanged(query: String) {
+        searchJob?.cancel()
         if (query.isBlank()) {
             _uiState.value = _uiState.value.copy(
                 searchQuery = "",
@@ -1019,15 +1033,26 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             )
             return
         }
-        val results = BibleRepository.searchVerses(query)
-        _uiState.value = _uiState.value.copy(
-            searchQuery = query,
-            searchResults = results,
-            isSearching = true
-        )
+        // Echo the typed text immediately (the field must not lag the
+        // keyboard); only the expensive scan is debounced.
+        _uiState.value = _uiState.value.copy(searchQuery = query)
+        searchJob = viewModelScope.launch {
+            delay(250)
+            val results = withContext(Dispatchers.IO) {
+                BibleRepository.searchVerses(query)
+            }
+            _uiState.value = _uiState.value.copy(
+                searchQuery = query,
+                searchResults = results,
+                isSearching = true
+            )
+        }
     }
 
     fun clearSearch() {
+        // Cancel any debounced scan still waiting, or it would post
+        // stale results (and flip isSearching back on) after the clear.
+        searchJob?.cancel()
         _uiState.value = _uiState.value.copy(
             searchQuery = "",
             searchResults = emptyList(),

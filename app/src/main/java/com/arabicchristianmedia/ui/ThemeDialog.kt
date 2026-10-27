@@ -216,7 +216,11 @@ fun ThemeDialog(
                 TextButton(
                     onClick = {
                         onDeleteTheme(theme.id)
-                        if (working.id == theme.id) working = selectedTheme
+                        // The deleted theme is the fallback's own target:
+                        // selectedTheme is still the stale prop here (the
+                        // just-deleted theme) until recompose re-seeds
+                        // working, so reset to Classic explicitly.
+                        if (working.id == theme.id) working = ColorThemes.CLASSIC
                         themeToDelete = null
                     }
                 ) { Text("حذف (Delete)") }

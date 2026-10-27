@@ -1716,7 +1716,7 @@ CollapsibleSection(
                 .clickable { onToggle(!active) },
             contentAlignment = Alignment.Center
         ) {
-            Text(label, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = if (active) Color.White else bento.textPrimary)
+            Text(label, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = if (active) bento.onPrimary else bento.textPrimary)
         }
     }
 
@@ -1828,7 +1828,7 @@ fun SliderWithLabel(label: String, value: Float, range: ClosedFloatingPointRange
 fun EditorTabItem(label: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val bento = LocalBentoColors.current
     Box(modifier = modifier.clip(RoundedCornerShape(10.dp)).background(if (selected) bento.primary else Color.Transparent).clickable { onClick() }.padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
-        Text(label, color = if (selected) Color.White else bento.textSecondary, fontSize = 11.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
+        Text(label, color = if (selected) bento.onPrimary else bento.textSecondary, fontSize = 11.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
     }
 }
 

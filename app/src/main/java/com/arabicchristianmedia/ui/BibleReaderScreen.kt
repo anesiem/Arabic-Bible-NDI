@@ -226,7 +226,7 @@ fun BibleReaderScreen(
                                             },
                                         contentAlignment = Alignment.Center
                                     ) {
-                                        Text(ArabicTextFormatter.toEasternArabicDigits(ch), color = if (isSelected) Color.White else bento.textPrimary, fontSize = 11.sp)
+                                        Text(ArabicTextFormatter.toEasternArabicDigits(ch), color = if (isSelected) bento.onPrimary else bento.textPrimary, fontSize = 11.sp)
                                     }
                                 }
                             }
@@ -252,7 +252,7 @@ fun BibleReaderScreen(
                                                 },
                                             contentAlignment = Alignment.Center
                                         ) {
-                                            Text(ArabicTextFormatter.toEasternArabicDigits(verse.verse), color = if (isSelected) Color.White else bento.textPrimary, fontSize = 10.sp)
+                                            Text(ArabicTextFormatter.toEasternArabicDigits(verse.verse), color = if (isSelected) bento.onPrimary else bento.textPrimary, fontSize = 10.sp)
                                         }
                                     }
                                 }

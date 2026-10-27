@@ -606,14 +606,14 @@ fun BroadcastControlScreen(
                                             Icon(
                                                 imageVector = if (isCopied) Icons.Default.Check else Icons.Default.ContentCopy,
                                                 contentDescription = "Copy URL",
-                                                tint = Color.White,
+                                                tint = if (isCopied) Color.White else bento.onPrimary,
                                                 modifier = Modifier.size(12.dp)
                                             )
                                             Spacer(modifier = Modifier.width(4.dp))
                                             Text(
                                                 text = if (isCopied) "تم النسخ" else "نسخ",
                                                 fontSize = 10.sp,
-                                                color = Color.White,
+                                                color = if (isCopied) Color.White else bento.onPrimary,
                                                 fontWeight = FontWeight.Bold
                                             )
                                         }
@@ -704,14 +704,14 @@ fun BroadcastControlScreen(
                                             Icon(
                                                 imageVector = if (isCopied) Icons.Default.Check else Icons.Default.ContentCopy,
                                                 contentDescription = "Copy URL",
-                                                tint = Color.White,
+                                                tint = if (isCopied) Color.White else bento.onPrimary,
                                                 modifier = Modifier.size(12.dp)
                                             )
                                             Spacer(modifier = Modifier.width(4.dp))
                                             Text(
                                                 text = if (isCopied) "تم النسخ" else "نسخ",
                                                 fontSize = 10.sp,
-                                                color = Color.White,
+                                                color = if (isCopied) Color.White else bento.onPrimary,
                                                 fontWeight = FontWeight.Bold
                                             )
                                         }
@@ -1315,7 +1315,7 @@ fun BroadcastControlScreen(
                                                 text = "محدد",
                                                 fontSize = 9.sp,
                                                 fontWeight = FontWeight.Bold,
-                                                color = Color.White,
+                                                color = bento.onPrimary,
                                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                             )
                                         }

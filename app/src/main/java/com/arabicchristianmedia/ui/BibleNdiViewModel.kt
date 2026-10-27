@@ -770,6 +770,16 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         persistThemePrefs()
     }
 
+    /** Delete: removes a custom theme (built-ins cannot be deleted); if the
+     * deleted theme was selected, selection falls back to Classic. */
+    fun deleteCustomTheme(themeId: String) {
+        if (ColorThemes.isBuiltIn(themeId)) return
+        val customs = _uiState.value.customThemes.filter { it.id != themeId }
+        val selected = if (_uiState.value.selectedThemeId == themeId) "classic" else _uiState.value.selectedThemeId
+        _uiState.value = _uiState.value.copy(selectedThemeId = selected, customThemes = customs)
+        persistThemePrefs()
+    }
+
     private fun persistNdiEnabled(feedKey: String, enabled: Boolean) {
         getNdiPrefs()?.edit()?.putBoolean("${feedKey}_enabled", enabled)?.apply()
     }

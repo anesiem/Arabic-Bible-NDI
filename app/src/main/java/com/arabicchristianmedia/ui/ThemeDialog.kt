@@ -1,7 +1,9 @@
 package com.arabicchristianmedia.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -52,6 +54,10 @@ import com.arabicchristianmedia.ui.theme.LocalBentoColors
  * Note: the working copy is dialog-local — the app re-themes on select /
  * save, not live while customizing. The dialog's own swatches are the
  * preview (recents rows render on the working theme's bands).
+ *
+ * Long-pressing a custom theme row deletes it (after confirmation);
+ * built-ins cannot be deleted. Deleting the selected theme falls back
+ * to Classic.
  */
 @Composable
 fun ThemeDialog(
@@ -60,6 +66,7 @@ fun ThemeDialog(
     onSelectTheme: (String) -> Unit,
     onSaveNewTheme: (ColorTheme) -> Unit,
     onUpdateTheme: (ColorTheme) -> Unit,
+    onDeleteTheme: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
     val bento = LocalBentoColors.current
@@ -70,6 +77,7 @@ fun ThemeDialog(
     val selectedIsBuiltIn = ColorThemes.isBuiltIn(selectedTheme.id)
     var showNameField by remember { mutableStateOf(false) }
     var newName by remember { mutableStateOf("My theme") }
+    var themeToDelete by remember { mutableStateOf<ColorTheme?>(null) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -84,7 +92,8 @@ fun ThemeDialog(
                     ThemeRow(
                         theme = theme,
                         selected = theme.id == selectedTheme.id,
-                        onClick = { onSelectTheme(theme.id) }
+                        onClick = { onSelectTheme(theme.id) },
+                        onLongClick = if (ColorThemes.isBuiltIn(theme.id)) null else ({ themeToDelete = theme })
                     )
                 }
                 Spacer(Modifier.height(8.dp))
@@ -185,13 +194,46 @@ fun ThemeDialog(
             TextButton(onClick = onDismiss) { Text("إغلاق (Close)") }
         }
     )
+    themeToDelete?.let { theme ->
+        AlertDialog(
+            onDismissRequest = { themeToDelete = null },
+            title = { Text("حذف المظهر (Delete theme)", fontSize = 15.sp, fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        "سيتم حذف المظهر \"${theme.name}\" نهائياً. (Theme \"${theme.name}\" will be permanently deleted.)",
+                        fontSize = 13.sp
+                    )
+                    if (theme.id == selectedTheme.id) {
+                        Text(
+                            "المظهر الحالي سيعود إلى Classic. (The current theme will fall back to Classic.)",
+                            fontSize = 13.sp
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onDeleteTheme(theme.id)
+                        if (working.id == theme.id) working = selectedTheme
+                        themeToDelete = null
+                    }
+                ) { Text("حذف (Delete)") }
+            },
+            dismissButton = {
+                TextButton(onClick = { themeToDelete = null }) { Text("إلغاء (Cancel)") }
+            }
+        )
+    }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun ThemeRow(theme: ColorTheme, selected: Boolean, onClick: () -> Unit) {
+private fun ThemeRow(theme: ColorTheme, selected: Boolean, onClick: () -> Unit, onLongClick: (() -> Unit)?) {
     val bento = LocalBentoColors.current
     Row(
-        modifier = Modifier.fillMaxWidth().clickable { onClick() }.padding(vertical = 6.dp),
+        modifier = Modifier.fillMaxWidth().combinedClickable(onClick = { onClick() }, onLongClick = onLongClick).padding(vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {

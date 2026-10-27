@@ -139,6 +139,7 @@ fun BroadcastControlScreen(
     onSelectTheme: (String) -> Unit = {},
     onSaveNewTheme: (ColorTheme) -> Unit = {},
     onUpdateTheme: (ColorTheme) -> Unit = {},
+    onDeleteTheme: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -1627,6 +1628,7 @@ fun BroadcastControlScreen(
             onSelectTheme = onSelectTheme,
             onSaveNewTheme = onSaveNewTheme,
             onUpdateTheme = onUpdateTheme,
+            onDeleteTheme = onDeleteTheme,
             onDismiss = { showThemeDialog = false }
         )
     }

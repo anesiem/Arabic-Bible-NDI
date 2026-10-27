@@ -462,7 +462,8 @@ class MainActivity : ComponentActivity() {
                                 customThemes = uiState.customThemes,
                                 onSelectTheme = { viewModel.selectTheme(it) },
                                 onSaveNewTheme = { viewModel.saveNewCustomTheme(it) },
-                                onUpdateTheme = { viewModel.updateCustomTheme(it) }
+                                onUpdateTheme = { viewModel.updateCustomTheme(it) },
+                                onDeleteTheme = { viewModel.deleteCustomTheme(it) }
                             )
                             3 -> SermonListScreen(
                                 uiState = uiState,

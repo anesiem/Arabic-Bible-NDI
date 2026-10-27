@@ -692,7 +692,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
             // Detect if client attempted TLS/SSL handshake on plain HTTP port (e.g. browser auto-typed https://)
             if (firstByte == 0x16) {
-                val errorHtml = "HTTP/1.1 400 Bad Request\r\nContent-Type: text/html; charset=utf-8\r\nConnection: close\r\n\r\n<h3>يرجى استخدام HTTP وليس HTTPS</h3><p>الخادم يعمل عبر بروتوكول HTTP العادي على الشبكة المحلية: <b>http://${getLocalIpAddress()}:$port/ndi</b></p>"
+                val errorHtml = "HTTP/1.1 400 Bad Request\r\nContent-Type: text/html; charset=utf-8\r\nConnection: close\r\n\r\n<h3>يرجى استخدام HTTP وليس HTTPS</h3><p>الخادم يعمل عبر بروتوكول HTTP العادي على الشبكة المحلية: <b>http://${getLocalIpAddress()}:$port/lower</b></p>"
                 socket.getOutputStream().write(errorHtml.toByteArray(Charsets.UTF_8))
                 socket.getOutputStream().flush()
                 return
@@ -3924,9 +3924,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     <div class="instructions">
       <b>إرشادات التشغيل في برامج البث (OBS Studio / vMix):</b>
       <br>1. <b>للحصول على خلفية شفافة كاملة (Alpha Transparency):</b> يُنصح بإضافة <b>Browser Source</b> ووضع الرابط التالي:
-      <span class="code-box">http://$ip:$port/ndi</span>
+      <span class="code-box">http://$ip:$port/lower</span>
       <br>2. <b>للبث كفيديو (Media Source / Video Stream):</b> أضف مصدر فيديو وضع الرابط:
-      <span class="code-box">http://$ip:$port/ndi/stream.mjpg?raw=1</span>
+      <span class="code-box">http://$ip:$port/stream?raw=1</span>
     </div>
 
     <div class="btn-row">
@@ -5409,11 +5409,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
     fun getServerUrl(): String {
         if (!hasLanAddress()) return ""
-        return "http://${getDisplayHost()}:$port/ndi"
+        return "http://${getDisplayHost()}:$port/lower"
     }
 
     fun getStreamUrl(): String {
         if (!hasLanAddress()) return ""
-        return "http://${getDisplayHost()}:$port/ndi/stream"
+        return "http://${getDisplayHost()}:$port/stream"
     }
 }

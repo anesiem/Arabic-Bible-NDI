@@ -667,7 +667,7 @@ fun BroadcastControlScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = showUrl,
+                                    text = if (showUrl.isNotBlank()) showUrl else "http://192.168.x.x:${uiState.serverPort}/full",
                                     fontSize = 11.sp,
                                     fontFamily = FontFamily.Monospace,
                                     fontWeight = FontWeight.Bold,
@@ -683,11 +683,15 @@ fun BroadcastControlScreen(
                                         modifier = Modifier
                                             .clip(RoundedCornerShape(8.dp))
                                             .clickable {
-                                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                                val clip = ClipData.newPlainText("Bible NDI Show URL", showUrl)
-                                                clipboard.setPrimaryClip(clip)
-                                                copiedUrlType = "SHOW"
-                                                Toast.makeText(context, "تم نسخ رابط العرض الكامل!", Toast.LENGTH_SHORT).show()
+                                                if (showUrl.isBlank()) {
+                                                    Toast.makeText(context, "لا يوجد اتصال شبكة محلية (Wi-Fi) — الرابط غير متاح", Toast.LENGTH_SHORT).show()
+                                                } else {
+                                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                                    val clip = ClipData.newPlainText("Bible NDI Show URL", showUrl)
+                                                    clipboard.setPrimaryClip(clip)
+                                                    copiedUrlType = "SHOW"
+                                                    Toast.makeText(context, "تم نسخ رابط العرض الكامل!", Toast.LENGTH_SHORT).show()
+                                                }
                                             }
                                             .padding(horizontal = 8.dp, vertical = 5.dp)
                                     ) {
@@ -714,11 +718,15 @@ fun BroadcastControlScreen(
                                         modifier = Modifier
                                             .clip(RoundedCornerShape(8.dp))
                                             .clickable {
-                                                try {
-                                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(showUrl))
-                                                    context.startActivity(intent)
-                                                } catch (e: Exception) {
-                                                    Toast.makeText(context, "تعذر فتح المتصفح", Toast.LENGTH_SHORT).show()
+                                                if (showUrl.isBlank()) {
+                                                    Toast.makeText(context, "لا يوجد اتصال شبكة محلية (Wi-Fi) — الرابط غير متاح", Toast.LENGTH_SHORT).show()
+                                                } else {
+                                                    try {
+                                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(showUrl))
+                                                        context.startActivity(intent)
+                                                    } catch (e: Exception) {
+                                                        Toast.makeText(context, "تعذر فتح المتصفح", Toast.LENGTH_SHORT).show()
+                                                    }
                                                 }
                                             }
                                             .padding(horizontal = 7.dp, vertical = 5.dp)

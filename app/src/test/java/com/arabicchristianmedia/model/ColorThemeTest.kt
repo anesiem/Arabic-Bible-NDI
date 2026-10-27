@@ -4,6 +4,9 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
 /**
  * App color themes: resolution per mode, Classic fallback, v1 pair
@@ -13,6 +16,8 @@ import org.junit.Test
  * Classic light recents-on-bandA is 2.998 — the pre-existing shipping
  * value, kept verbatim per the Classic contract (asserted >= 2.99).
  */
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [36])
 class ColorThemeTest {
 
     @Test

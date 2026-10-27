@@ -466,7 +466,7 @@ fun BroadcastControlScreen(
                         .padding(horizontal = 14.dp, vertical = 8.dp)
                         .testTag("fullscreen_overlay_button")
                 ) {
-                    Text("عرض كامل", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.onPrimary)
+                    Text("عرض سفلي بملء الشاشة", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.onPrimary)
                 }
             }
         }

@@ -98,6 +98,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
      */
     var onTriggerVerse: ((bookId: String, chapter: Int, verse: Int, target: String) -> Boolean)? = null
     var onClearVerse: (() -> Unit)? = null
+    /**
+     * Item 19: whether any NDI sender is currently rendering, supplied
+     * by the app (the senders live in NdiService, not here). The light
+     * payload exposes it so the remote page stops claiming "On screen"
+     * for a trigger that only found the verse while no sender is active.
+     */
+    var ndiActiveProvider: (() -> Boolean)? = null
     var onSetOnAir: ((Boolean) -> Unit)? = null
     var onListVideos: (() -> List<VideoInfo>)? = null
 
@@ -875,6 +882,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         val root = JSONObject().apply {
             put("stateVersion", frameVersion)
             put("isLive", isLive && verse != null)
+            // Item 19: sender-active flag for the remote page's honesty
+            // (see ndiActiveProvider above). False when the provider is
+            // unset or throws — never let a diagnostics flag break the poll.
+            put("ndiActive", try { ndiActiveProvider?.invoke() } catch (e: Exception) { false } ?: false)
             put("arabicCitation", if (verse != null) verse.getFormattedArabicCitation(tpl.useEasternArabicNumerals) else "")
             put("englishCitation", verse?.getFormattedEnglishCitation() ?: "")
             put("bookId", verse?.bookId ?: "")
@@ -4233,7 +4244,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         sendJson(out, 200, "{\"ok\":true,\"onAir\":$on}")
     }
 
-    /** GET /api/clear — clear the active verse (take outputs off-air). */
+    /** GET /api/clear — take outputs off-air. Only the live flag is
+     * cleared: the verse itself stays in recents and is not deleted. */
     private fun serveApiClear(out: OutputStream) {
         try { onClearVerse?.invoke() } catch (e: Exception) { }
         sendJson(out, 200, """{"ok":true,"cleared":true}""")
@@ -4944,6 +4956,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
      gets an explicit high-contrast color (was: inherited page color washed
      out on the pill's gray tint) + more breathing room around the text. */
   .livepill.on { background: rgba(220,38,38,0.18); border-color: rgba(220,38,38,0.65); color: #7f1d1d; }
+  /* Item 19: disconnected pill — the tablet stopped answering polls. */
+  .livepill.disconnected { background: rgba(245,158,11,0.18); border-color: rgba(245,158,11,0.65); color: #92400e; }
   /* Round 2 (#8): the status dot is pinned to the pill's right edge and
      the citation centers in the space left over - a long citation can
      never slide under the dot. */
@@ -4956,6 +4970,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   @media (prefers-color-scheme: dark) {
     .livepill { color: #f1f5f9; }
     .livepill.on { background: rgba(220,38,38,0.22); border-color: rgba(220,38,38,0.7); color: #fecaca; }
+    .livepill.disconnected { background: rgba(245,158,11,0.22); border-color: rgba(245,158,11,0.7); color: #fde68a; }
   }
   @media (max-width: 480px) { .livepill { max-width: 100%; } }
   header .sub { font-size: 13px; font-weight: 400; opacity: 0.7; margin-top: 2px; }
@@ -5055,7 +5070,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   <div class="card" id="controlBar">
     <select id="bookSel" aria-label="Book"><option value="">Loading books…</option></select>
     <select id="chSel" aria-label="Chapter"></select>
-    <select id="langSel" aria-label="Version"><option value="ar">العربية</option><option value="en">English</option></select>
+    <select id="langSel" aria-label="Language"><option value="ar">العربية</option><option value="en">English</option></select>
     <input id="ref" type="text" inputmode="text" autocomplete="off"
            placeholder="John 3:16  •  يوحنا 3:16  •  Jn 3:16"
            enterkeyhint="go" aria-label="Quick reference">
@@ -5104,6 +5119,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     loadBooks(true);
   });
   bookSel.addEventListener('change', function() {
+    // Item 19: the manual retry after repeated book-load failures.
+    if (bookSel.value === '__retry') { bookLoadTries = 0; loadBooks(); return; }
     var i = parseInt(bookSel.value, 10);
     if (isNaN(i) || !books[i]) return;
     curBookIdx = i;
@@ -5136,9 +5153,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     if (curBookIdx >= 0 && books[curBookIdx]) bookSel.value = String(curBookIdx);
   }
 
+  var bookLoadTries = 0;
   function loadBooks(keepPlace) {
     fetch('/api/books?lang=' + browseLang).then(function(r) { return r.json(); }).then(function(j) {
-      if (!j.ok) { setStatus('Could not load books', 'err'); return; }
+      if (!j.ok) { bookLoadFailed(keepPlace); return; }
+      bookLoadTries = 0;
       books = j.books;
       numLabels = j.nums || null;
       fillBooks();
@@ -5162,7 +5181,21 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
           loadChapter(ch);
         }
       }
-    }).catch(function() { setStatus('Network error loading books', 'err'); });
+    }).catch(function() { bookLoadFailed(keepPlace); });
+  }
+
+  // Item 19: a failed first load used to strand the page on "Loading
+  // books…" forever with no way back. Retry a few times, then offer a
+  // manual retry through the book selector itself.
+  function bookLoadFailed(keepPlace) {
+    bookLoadTries++;
+    if (bookLoadTries <= 5) {
+      setStatus('Loading books failed — retrying…', 'err');
+      setTimeout(function() { loadBooks(keepPlace); }, 3000);
+    } else {
+      setStatus('Could not load books — choose Retry below', 'err');
+      bookSel.innerHTML = '<option value="__retry">↻ Retry loading books</option>';
+    }
   }
 
   function fillChapters(book) {
@@ -5262,7 +5295,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     fetch('/api/trigger?book=' + (curBookIdx + 1) + '&chapter=' + curChapter + '&verse=' + verseNum)
       .then(function(r) { return r.json(); })
       .then(function(j) {
-        if (j.ok) { setStatus('✓ On screen', 'ok'); pollNow(); }
+        if (j.ok) { setStatus('✓ Verse set', 'ok'); pollNow(); }
         else setStatus('✗ ' + (j.error || 'failed'), 'err');
       })
       .catch(function() { setStatus('✗ Network error', 'err'); });
@@ -5282,8 +5315,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   }
 
   function toggleOnAir() {
-    var want = !live.onAir;
-    fetch('/api/onair?on=' + (want ? '1' : '0'))
+    // Item 19: the button acted on up-to-3s-stale poll state. Re-poll
+    // fresh state first, then flip what the server just reported.
+    fetch('/api/verse?light=1').then(function(r) { return r.json(); }).then(function(j) {
+      var want = !j.isLive;
+      return fetch('/api/onair?on=' + (want ? '1' : '0'));
+    })
       .then(function(r) { return r.json(); })
       .then(function(j) { if (j.ok) pollNow(); })
       .catch(function() { setStatus('✗ Network error', 'err'); });
@@ -5358,6 +5395,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     return r + ',' + g + ',' + b;
   }
 
+  var pollFailed = false;
   function pollNow() {
     fetch('/api/verse?light=1').then(function(r) { return r.json(); }).then(function(j) {
       live.onAir = !!j.isLive;
@@ -5366,10 +5404,14 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       live.verse = j.verseNum || 0;
       var cit = j.arabicCitation || j.englishCitation || '';
       var pill = document.getElementById('livePill');
+      // Item 19: a live verse with no NDI sender rendering it is not
+      // "on screen" for OBS/vMix — say so on the pill (HTTP overlays
+      // still show it).
+      var ndiOff = live.onAir && cit && j.ndiActive === false;
       document.getElementById('liveRef').textContent =
-        cit ? (live.onAir ? cit : 'Off air — ' + cit) : 'Off air';
+        cit ? (live.onAir ? (ndiOff ? cit + ' (NDI off)' : cit) : 'Off air — ' + cit) : 'Off air';
       pill.className = 'livepill' + (live.onAir && cit ? ' on' : '');
-      pill.title = cit || '';
+      pill.title = ndiOff ? cit + ' — NDI senders off; HTTP overlays still show this verse' : (cit || '');
       // Theme bands + recents + chrome: mirror the app's selected theme
       // into the list/chrome variables (dark/light by the page's color
       // scheme; re-applied every poll). Live-row tint stays green (see CSS).
@@ -5392,7 +5434,18 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       markLiveRow();
       markRecentRows();
       renderRecents(j.recents || []);
-    }).catch(function() {});
+      // A poll that succeeds after failures restores the normal state
+      // (the pill/button were already rewritten above) and clears the
+      // disconnect notice.
+      if (pollFailed) { pollFailed = false; setStatus('', ''); }
+    }).catch(function() {
+      // Item 19: poll failures were swallowed, so the pill and button
+      // froze on the last-known state while the tablet was gone.
+      pollFailed = true;
+      document.getElementById('liveRef').textContent = 'Disconnected — reconnecting…';
+      document.getElementById('livePill').className = 'livepill disconnected';
+      setStatus('⚠ Disconnected from tablet — retrying…', 'err');
+    });
   }
 
   loadBooks();

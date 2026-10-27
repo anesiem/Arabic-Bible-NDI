@@ -241,6 +241,11 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         broadcastServer.onClearVerse = {
             clearBroadcast()
         }
+        // Item 19: the remote page's light poll reports whether any NDI
+        // sender is rendering, read live from state on every poll.
+        broadcastServer.ndiActiveProvider = {
+            _uiState.value.isNativeNdiActive || _uiState.value.isNativeShowActive
+        }
         broadcastServer.onSetOnAir = { on ->
             setOnAir(on)
         }

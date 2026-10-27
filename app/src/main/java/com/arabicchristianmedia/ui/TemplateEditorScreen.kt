@@ -12,7 +12,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.item
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -1647,7 +1646,7 @@ CollapsibleSection(
                             if (arName != null) {
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Text(arName, fontFamily = itemFamily, fontSize = 15.sp)
-                                    Text(name, fontSize = 11.sp, color = bento.textSecondary)
+                                    Text(name, fontSize = 11.sp, color = LocalBentoColors.current.textSecondary)
                                 }
                             } else {
                                 Text(name, fontFamily = itemFamily, fontSize = 14.sp)

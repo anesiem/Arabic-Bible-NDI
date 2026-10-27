@@ -238,11 +238,11 @@ fun SermonListScreen(
                     }
                 }
             }
-            SnackbarHost(
-                hostState = snackbarHostState,
-                modifier = Modifier.align(Alignment.BottomCenter)
-            )
         }
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier.align(Alignment.BottomCenter)
+        )
         }
 
         // ── Save dialog ─────────────────────────────────────────────────

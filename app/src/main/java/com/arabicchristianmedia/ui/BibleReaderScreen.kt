@@ -88,6 +88,9 @@ fun BibleReaderScreen(
     val searchFocusRequester = remember { FocusRequester() }
     var displayMenuExpanded by remember { mutableStateOf(false) }
     var scripturePickerExpanded by remember { mutableStateOf(false) }
+    // Batch item 3: pending picker chapter jump (target chapter); the
+    // effect below scrolls to verse 1 once that chapter's list arrives.
+    var pickerJumpChapter by remember { mutableStateOf<Int?>(null) }
 
     val bento = LocalBentoColors.current
     val listColors = LocalListColors.current
@@ -110,6 +113,20 @@ fun BibleReaderScreen(
         val index = uiState.displayedVerses.indexOfFirst { it.id == focusId }
         if (index != -1) {
             lazyListState.animateScrollToItem(index)
+        }
+    }
+
+    // Batch item 3: a picker chapter tap opens that chapter from verse 1.
+    // The active-verse effect above would otherwise jump to the live
+    // verse or keep the old offset. Pending until the tapped chapter's
+    // list arrives (selectedChapter match), then cleared — so later list
+    // changes (search, verse taps) never re-trigger it. Declared after
+    // the active-verse effect so this scroll wins for the tap.
+    LaunchedEffect(pickerJumpChapter, uiState.displayedVerses) {
+        val target = pickerJumpChapter
+        if (target != null && uiState.selectedChapter == target && uiState.displayedVerses.isNotEmpty()) {
+            lazyListState.scrollToItem(0)
+            pickerJumpChapter = null
         }
     }
 
@@ -179,6 +196,15 @@ fun BibleReaderScreen(
                             .background(bento.card)
                             .padding(12.dp)
                     ) {
+                        // Batch item 3: reader-size +/- inside the picker
+                        // (+/- only, not the full display dialog).
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Text("حجم الخط", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
+                            Button(onClick = onDecreaseFontSize) { Text("-") }
+                            Text(uiState.readerFontSize.toString(), fontWeight = FontWeight.Bold)
+                            Button(onClick = onIncreaseFontSize) { Text("+") }
+                        }
+
                         // OT/NT Selector
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             FilterChip(
@@ -202,62 +228,37 @@ fun BibleReaderScreen(
                                 FilterChip(
                                     selected = book.id == uiState.selectedBook.id,
                                     onClick = { onSelectBook(book, 1) },
-                                    label = { Text(book.arabicName, fontSize = 11.sp) }
+                                    label = { Text(book.arabicName, fontSize = 13.sp) }
                                 )
                             }
                         }
 
                         // Chapters Grid
                         Text("الفصل:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary, modifier = Modifier.padding(top = 8.dp))
-                        Box(modifier = Modifier.heightIn(min = 100.dp, max = 160.dp)) {
+                        Box(modifier = Modifier.heightIn(min = 120.dp, max = 220.dp)) {
                             LazyVerticalGrid(
-                                columns = GridCells.Adaptive(minSize = 40.dp),
+                                columns = GridCells.Adaptive(minSize = 52.dp),
                                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                                 verticalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
                                 items((1..uiState.selectedBook.totalChapters).toList()) { ch ->
                                     val isSelected = ch == uiState.selectedChapter
                                     Box(
-                                        modifier = Modifier.size(36.dp).clip(CircleShape)
+                                        modifier = Modifier.size(48.dp).clip(CircleShape)
                                             .background(if (isSelected) bento.primary else bento.surfaceVariant)
                                             .clickable { 
+                                                pickerJumpChapter = ch
                                                 onSelectChapter(ch)
                                                 scripturePickerExpanded = false
                                             },
                                         contentAlignment = Alignment.Center
                                     ) {
-                                        Text(ArabicTextFormatter.toEasternArabicDigits(ch), color = if (isSelected) bento.onPrimary else bento.textPrimary, fontSize = 11.sp)
+                                        Text(ArabicTextFormatter.toEasternArabicDigits(ch), color = if (isSelected) bento.onPrimary else bento.textPrimary, fontSize = 14.sp)
                                     }
                                 }
                             }
                         }
 
-                        // Verse Grid (Optional quick access)
-                        if (uiState.displayedVerses.isNotEmpty()) {
-                            Text("الآية:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary, modifier = Modifier.padding(top = 8.dp))
-                            Box(modifier = Modifier.heightIn(min = 80.dp, max = 140.dp)) {
-                                LazyVerticalGrid(
-                                    columns = GridCells.Adaptive(minSize = 36.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    items(uiState.displayedVerses, key = { it.id }) { verse ->
-                                        val isSelected = uiState.activeVerse?.id == verse.id
-                                        Box(
-                                            modifier = Modifier.size(32.dp).clip(RoundedCornerShape(8.dp))
-                                                .background(if (isSelected) bento.primary else bento.surfaceVariant)
-                                                .clickable { 
-                                                    onVerseClicked(verse)
-                                                    scripturePickerExpanded = false 
-                                                },
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Text(ArabicTextFormatter.toEasternArabicDigits(verse.verse), color = if (isSelected) bento.onPrimary else bento.textPrimary, fontSize = 10.sp)
-                                        }
-                                    }
-                                }
-                            }
-                        }
                     }
                 }
 

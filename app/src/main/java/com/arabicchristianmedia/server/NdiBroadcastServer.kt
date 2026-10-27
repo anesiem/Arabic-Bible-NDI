@@ -60,6 +60,7 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.sin
 import kotlin.math.cos
@@ -539,6 +540,24 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     // /api/verse?light=1 every 3 s, so no SSE broadcast is needed here.
     private var recentVersesState: List<BibleVerse> = emptyList()
 
+    // Item 26: remote-tab presence — the remote page sends a random
+    // per-tab id on every light poll; entries older than ~10s are
+    // pruned on every touch, so the count is live tabs, not history.
+    // (A reload is a new tab; its old id ages out within ~10s.)
+    private val remoteTabs = ConcurrentHashMap<String, Long>()
+    private fun recordRemoteTab(tabId: String) {
+        val now = System.currentTimeMillis()
+        remoteTabs[tabId] = now
+        remoteTabs.entries.removeIf { now - it.value > 10_000 }
+    }
+    private fun remoteTabCount(): Int {
+        val now = System.currentTimeMillis()
+        remoteTabs.entries.removeIf { now - it.value > 10_000 }
+        return remoteTabs.size
+    }
+    // Item 26: active MJPEG viewers (live /stream loops).
+    private val mjpegViewerCount = AtomicInteger(0)
+
     fun setRecentVerses(verses: List<BibleVerse>) {
         recentVersesState = verses
     }
@@ -771,7 +790,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                     }
                 }
                 cleanPath == "/api/verse" -> {
-                    serveJsonState(out, fullPath.contains("show=1"), fullPath.contains("light=1"))
+                    serveJsonState(out, fullPath.contains("show=1"), fullPath.contains("light=1"), parseQueryParams(fullPath)["tab"])
                 }
                 cleanPath == "/api/trigger" -> {
                     serveApiTrigger(out, fullPath)
@@ -961,7 +980,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         return root.toString()
     }
 
-    private fun serveJsonState(out: OutputStream, isShow: Boolean = false, light: Boolean = false) {
+    private fun serveJsonState(out: OutputStream, isShow: Boolean = false, light: Boolean = false, tab: String? = null) {
+        if (tab != null) recordRemoteTab(tab)
         val apiT0 = System.nanoTime()
         val json = if (light) buildLightJsonState() else buildJsonState(isShow)
         statVerseApi.record((System.nanoTime() - apiT0) / 1_000_000.0)
@@ -3990,6 +4010,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
     private fun serveLiveStream(socket: Socket, out: OutputStream, fullPath: String) {
         try {
+            // Item 26: count this viewer until the loop ends.
+            mjpegViewerCount.incrementAndGet()
             socket.soTimeout = 0 // Infinite timeout for live streaming
             socket.tcpNoDelay = true
 
@@ -4015,6 +4037,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         } catch (e: Exception) {
             // Stream client disconnected
         } finally {
+            mjpegViewerCount.decrementAndGet()
             try { socket.close() } catch (e: Exception) {}
         }
     }
@@ -4681,6 +4704,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         sb.append("\"db\":{\"dataVersion\":${com.arabicchristianmedia.data.BibleDatabaseHelper.DATA_VERSION},\"arabic\":${dbStored(com.arabicchristianmedia.data.BibleDatabaseHelper.ARABIC_DB)},\"englishAsv\":${dbStored(com.arabicchristianmedia.data.BibleDatabaseHelper.ENGLISH_DB)},\"englishKjv\":${dbStored(com.arabicchristianmedia.data.BibleDatabaseHelper.ENGLISH_KJV_DB)}},")
         sb.append("\"ndiFeeds\":{\"lower\":{\"active\":$lowerActive,\"spec\":${ndiSpec(NdiNativeSender.FEED_LOWER)},\"motion\":${ndiMotion(NdiNativeSender.FEED_LOWER)}},\"full\":{\"active\":$fullActive,\"spec\":${ndiSpec(NdiNativeSender.FEED_FULL)},\"motion\":${ndiMotion(NdiNativeSender.FEED_FULL)}}},")
         sb.append("\"counts\":{\"recents\":${recentVersesState.size},\"sermonWorking\":$sermonWorking,\"savedSermons\":$savedSermons},")
+        sb.append("\"clients\":{\"remoteClients\":${remoteTabCount()},\"mjpegViewers\":${mjpegViewerCount.get()}},")
         sb.append("\"memory\":{\"usedMb\":$usedMb,\"maxMb\":$maxMb}")
         sb.append("}")
         sendJson(out, 200, sb.toString())
@@ -5371,7 +5395,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   function toggleOnAir() {
     // Item 19: the button acted on up-to-3s-stale poll state. Re-poll
     // fresh state first, then flip what the server just reported.
-    fetch('/api/verse?light=1').then(function(r) { return r.json(); }).then(function(j) {
+    fetch('/api/verse?light=1&tab=' + encodeURIComponent(tabId)).then(function(r) { return r.json(); }).then(function(j) {
       var want = !j.isLive;
       return fetch('/api/onair?on=' + (want ? '1' : '0'));
     })
@@ -5450,8 +5474,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   }
 
   var pollFailed = false;
+  // Item 26: one random id per page load, so the server can count
+  // live remote tabs (a reload is a new tab; stale ids prune in ~10s).
+  var tabId = 'tab_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
   function pollNow() {
-    fetch('/api/verse?light=1').then(function(r) { return r.json(); }).then(function(j) {
+    fetch('/api/verse?light=1&tab=' + encodeURIComponent(tabId)).then(function(r) { return r.json(); }).then(function(j) {
       live.onAir = !!j.isLive;
       live.bookId = j.bookId || '';
       live.chapter = j.chapterNum || 0;

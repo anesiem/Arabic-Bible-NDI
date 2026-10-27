@@ -1539,7 +1539,7 @@ fun BroadcastControlScreen(
     }
 
     BoxWithConstraints(modifier = modifier.fillMaxSize().background(bento.bg)) {
-        if (maxWidth >= 900.dp) {
+        if (isWideLayout(maxWidth, maxHeight)) {
             Column(Modifier.fillMaxSize()) {
                 Column(Modifier.padding(start = 14.dp, end = 14.dp, top = 14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) { bibleBlock() }
                 // Setup anchors (wide only): fixed chip strip above the

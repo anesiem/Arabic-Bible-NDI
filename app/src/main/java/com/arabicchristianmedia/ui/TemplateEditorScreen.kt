@@ -1236,7 +1236,7 @@ CollapsibleSection(
         }
     }
     BoxWithConstraints(modifier = modifier.fillMaxSize().background(bento.bg)) {
-        if (maxWidth >= 900.dp) {
+        if (isWideLayout(maxWidth, maxHeight)) {
             // Wide two-pane layout: tabs + style bar full-width, then
             // left = title + preview + anchors, right = all controls.
             // Each panel scrolls on its own; scrolling the right panel

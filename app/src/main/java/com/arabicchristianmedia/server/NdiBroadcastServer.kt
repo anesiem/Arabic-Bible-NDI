@@ -562,6 +562,23 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         recentVersesState = verses
     }
 
+    // Item 27: last trigger + reader focus for /debug. The verse's
+    // Arabic citation is stored (not the id) so the report reads
+    // directly. Volatile like the SSE drop fields: set on the UI
+    // thread, read on the /debug IO thread.
+    @Volatile private var lastTriggerAtMs: Long = 0L
+    @Volatile private var lastTriggerSource: String = ""
+    @Volatile private var lastTriggerCitation: String = ""
+    @Volatile private var readerFocusCitation: String = ""
+    fun setLastTrigger(source: String, citation: String) {
+        lastTriggerAtMs = System.currentTimeMillis()
+        lastTriggerSource = source
+        lastTriggerCitation = citation
+    }
+    fun setReaderFocus(citation: String) {
+        readerFocusCitation = citation
+    }
+
     private var lastTemplateUpdateMs = 0L
     private var trailingBroadcastJob: Job? = null
 
@@ -4705,6 +4722,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         sb.append("\"ndiFeeds\":{\"lower\":{\"active\":$lowerActive,\"spec\":${ndiSpec(NdiNativeSender.FEED_LOWER)},\"motion\":${ndiMotion(NdiNativeSender.FEED_LOWER)}},\"full\":{\"active\":$fullActive,\"spec\":${ndiSpec(NdiNativeSender.FEED_FULL)},\"motion\":${ndiMotion(NdiNativeSender.FEED_FULL)}}},")
         sb.append("\"counts\":{\"recents\":${recentVersesState.size},\"sermonWorking\":$sermonWorking,\"savedSermons\":$savedSermons},")
         sb.append("\"clients\":{\"remoteClients\":${remoteTabCount()},\"mjpegViewers\":${mjpegViewerCount.get()}},")
+        sb.append("\"lastTrigger\":{\"atMs\":$lastTriggerAtMs,\"source\":\"${jsonEscape(lastTriggerSource)}\",\"citation\":\"${jsonEscape(lastTriggerCitation)}\"},")
+        sb.append("\"readerFocus\":\"${jsonEscape(readerFocusCitation)}\",")
         sb.append("\"memory\":{\"usedMb\":$usedMb,\"maxMb\":$maxMb}")
         sb.append("}")
         sendJson(out, 200, sb.toString())

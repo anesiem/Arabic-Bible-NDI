@@ -1111,6 +1111,9 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         // configured fields). The displayed (tashkeel-aware) verse is
         // what goes on screen, so it is what vMix gets.
         pushToVMix(displayVerse)
+
+        // Item 27: Library tap is a trigger source of its own.
+        broadcastServer.setLastTrigger("library", displayVerse.getFormattedArabicCitation())
     }
 
     fun toggleLive() {
@@ -1150,9 +1153,12 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
      * v1.8: trigger a verse from the HTTP remote API (/api/trigger).
      * Looks up the verse by book/chapter/verse and takes it live.
      * Target is "lower", "show", or "both" (both = current behavior).
+     * [source] is declared by the caller for the /debug last-trigger
+     * record ("remote" by default; sermon passes its own) — never
+     * hardcoded here, so sermon triggers are not mislabeled remote.
      * Returns true if the verse was found and triggered.
      */
-    fun triggerVerseByReference(bookId: String, chapter: Int, verseNum: Int, target: String): Boolean {
+    fun triggerVerseByReference(bookId: String, chapter: Int, verseNum: Int, target: String, source: String = "remote"): Boolean {
         return try {
             val verses = BibleRepository.getVerses(bookId, chapter)
             val verse = verses.firstOrNull { it.verse == verseNum } ?: return false
@@ -1183,6 +1189,9 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
 
             // vMix SetText push (if enabled).
             pushToVMix(verse)
+
+            // Item 27: record the trigger (source declared by caller).
+            broadcastServer.setLastTrigger(source, verse.getFormattedArabicCitation())
 
             true
         } catch (e: Exception) {
@@ -1251,7 +1260,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
      */
     fun showSermonVerse(entry: SermonEntry) {
         val verse = entry.verse
-        triggerVerseByReference(verse.bookId, verse.chapter, verse.verse, "both")
+        triggerVerseByReference(verse.bookId, verse.chapter, verse.verse, "both", source = "sermon")
         syncReaderToVerse(verse)
         _uiState.value = _uiState.value.copy(
             statusMessage = "على الهواء: ${verse.getFormattedArabicCitation()}"
@@ -1265,6 +1274,8 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
      * tab via [BibleNdiUiState.readerJumpNonce].
      */
     fun openSermonVerseInReader(entry: SermonEntry) {
+        // Item 27: reader focus (not a trigger — nothing goes on air).
+        broadcastServer.setReaderFocus(entry.verse.getFormattedArabicCitation())
         syncReaderToVerse(entry.verse, focus = true)
         _uiState.value = _uiState.value.copy(
             readerJumpNonce = _uiState.value.readerJumpNonce + 1
@@ -1278,6 +1289,8 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
      * [BibleNdiUiState.readerJumpNonce]).
      */
     fun openRecentVerseInReader(verse: BibleVerse) {
+        // Item 27: reader focus (not a trigger — nothing goes on air).
+        broadcastServer.setReaderFocus(verse.getFormattedArabicCitation())
         syncReaderToVerse(verse, focus = true)
         _uiState.value = _uiState.value.copy(
             readerJumpNonce = _uiState.value.readerJumpNonce + 1

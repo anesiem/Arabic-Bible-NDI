@@ -249,6 +249,15 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         broadcastServer.ndiActiveProvider = {
             _uiState.value.isNativeNdiActive || _uiState.value.isNativeShowActive
         }
+        // Item 25: /debug feed states (live sender sessions, not UI
+        // flags) + sermon counts.
+        broadcastServer.ndiFeedStatesProvider = {
+            nativeSender.isSourceActive(NdiNativeSender.FEED_LOWER) to
+                nativeSender.isSourceActive(NdiNativeSender.FEED_FULL)
+        }
+        broadcastServer.sermonCountsProvider = {
+            _uiState.value.sermonPlaylist.size to _uiState.value.savedSermons.size
+        }
         broadcastServer.onSetOnAir = { on ->
             setOnAir(on)
         }

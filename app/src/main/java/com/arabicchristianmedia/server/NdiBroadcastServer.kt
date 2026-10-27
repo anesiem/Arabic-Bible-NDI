@@ -105,6 +105,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
      * for a trigger that only found the verse while no sender is active.
      */
     var ndiActiveProvider: (() -> Boolean)? = null
+    /**
+     * Item 25: per-feed sender sessions for /debug, supplied by the
+     * app (same provider pattern). True sender state, not the UI flags.
+     */
+    var ndiFeedStatesProvider: (() -> Pair<Boolean, Boolean>)? = null
+    /** Item 25: sermon list sizes for /debug (working list, saved sermons). */
+    var sermonCountsProvider: (() -> Pair<Int, Int>)? = null
     var onSetOnAir: ((Boolean) -> Unit)? = null
     var onListVideos: (() -> List<VideoInfo>)? = null
 
@@ -4599,6 +4606,43 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             return o.toString()
         }
         val up = if (serverStartTimeMs == 0L) 0 else System.currentTimeMillis() - serverStartTimeMs
+        // Item 25: theme diagnostics — the same app_theme_prefs the
+        // remote page reads for its bands/chrome. The migrated theme
+        // has the deterministic id "custom_migrated" (see
+        // migratedThemeFromPairs); null when migration never ran or
+        // the migrated theme was deleted since.
+        val themePrefs = try { context.getSharedPreferences("app_theme_prefs", Context.MODE_PRIVATE) } catch (e: Exception) { null }
+        val themeCustoms = try {
+            val raw = themePrefs?.getString("custom_themes_json", null)
+            if (raw == null) emptyList() else {
+                val arr = JSONArray(raw)
+                (0 until arr.length()).mapNotNull { i -> colorThemeFromJson(arr.getJSONObject(i)) }
+            }
+        } catch (e: Exception) { emptyList() }
+        val themeSelectedId = themePrefs?.getString("selected_theme_id", "classic") ?: "classic"
+        val themeSelectedName = try { ColorThemes.byId(themeSelectedId, themeCustoms).name } catch (e: Exception) { "?" }
+        val themeMigrated = themePrefs?.getBoolean("theme_migrated_v1", false) ?: false
+        val themeMigratedId = if (themeMigrated && themeCustoms.any { it.id == "custom_migrated" }) "custom_migrated" else null
+        // Item 25: bundled-DB versions — the code DATA_VERSION plus the
+        // per-file stored versions (bible_db_prefs, no helper change).
+        val dbPrefs = try { context.getSharedPreferences("bible_db_prefs", Context.MODE_PRIVATE) } catch (e: Exception) { null }
+        fun dbStored(name: String): Int = try { dbPrefs?.getInt("db_version_$name", -1) ?: -1 } catch (e: Exception) { -1 }
+        // Item 25: NDI feed states — specs from the same prefs the
+        // service syncs from, active from the live sender sessions.
+        val ndiPrefs = try { context.getSharedPreferences("bible_ndi_source_specs", Context.MODE_PRIVATE) } catch (e: Exception) { null }
+        fun ndiSpec(feedKey: String): String {
+            val d = NdiNativeSender.defaultSpec(feedKey)
+            val w = ndiPrefs?.getInt("${feedKey}_w", d.width) ?: d.width
+            val h = ndiPrefs?.getInt("${feedKey}_h", d.height) ?: d.height
+            val fps = ndiPrefs?.getInt("${feedKey}_fps", d.fps) ?: d.fps
+            return "\"${w}x${h} @ ${fps}\""
+        }
+        fun ndiMotion(feedKey: String): Boolean {
+            val d = NdiNativeSender.defaultSpec(feedKey)
+            return ndiPrefs?.getBoolean("${feedKey}_motion", d.motionEnabled) ?: d.motionEnabled
+        }
+        val (lowerActive, fullActive) = try { ndiFeedStatesProvider?.invoke() } catch (e: Exception) { null } ?: (false to false)
+        val (sermonWorking, savedSermons) = try { sermonCountsProvider?.invoke() } catch (e: Exception) { null } ?: (0 to 0)
         val sb = StringBuilder()
         sb.append("{\"ok\":true,")
         sb.append("\"app\":{\"versionName\":\"${jsonEscape(versionName)}\",\"versionCode\":$versionCode},")
@@ -4612,7 +4656,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         sb.append("\"lower\":${clientStatLower ?: "null"},\"lowerAgeMs\":${if (clientStatLowerAtMs == 0L) -1 else System.currentTimeMillis() - clientStatLowerAtMs},")
         sb.append("\"full\":${clientStatFull ?: "null"},\"fullAgeMs\":${if (clientStatFullAtMs == 0L) -1 else System.currentTimeMillis() - clientStatFullAtMs}")
         sb.append("},")
-        sb.append("\"sseTotals\":{\"connects\":$sseConnectTotal,\"drops\":$sseDropTotal,\"reasons\":{")
+        sb.append("\"sseTotals\":{\"connects\":$sseConnectTotal,\"drops\":$sseDropTotal,\"lastDropAtMs\":$sseLastDropAtMs,\"lastDropReason\":\"${jsonEscape(sseLastDropReason)}\",\"reasons\":{")
         var firstReason = true
         for ((reason, count) in sseDropReasonCounts()) {
             if (!firstReason) sb.append(",")
@@ -4627,6 +4671,16 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             sb.append("\"${jsonEscape(journal[i])}\"")
         }
         sb.append("],")
+        sb.append("\"theme\":{\"selectedId\":\"${jsonEscape(themeSelectedId)}\",\"selectedName\":\"${jsonEscape(themeSelectedName)}\",\"customCount\":${themeCustoms.size},\"customIds\":[")
+        for (i in themeCustoms.indices) {
+            if (i > 0) sb.append(",")
+            sb.append("\"${jsonEscape(themeCustoms[i].id)}\"")
+        }
+        sb.append("]},")
+        sb.append("\"themeMigration\":{\"migrated\":$themeMigrated,\"migratedThemeId\":${if (themeMigratedId != null) "\"$themeMigratedId\"" else "null"}},")
+        sb.append("\"db\":{\"dataVersion\":${com.arabicchristianmedia.data.BibleDatabaseHelper.DATA_VERSION},\"arabic\":${dbStored(com.arabicchristianmedia.data.BibleDatabaseHelper.ARABIC_DB)},\"englishAsv\":${dbStored(com.arabicchristianmedia.data.BibleDatabaseHelper.ENGLISH_DB)},\"englishKjv\":${dbStored(com.arabicchristianmedia.data.BibleDatabaseHelper.ENGLISH_KJV_DB)}},")
+        sb.append("\"ndiFeeds\":{\"lower\":{\"active\":$lowerActive,\"spec\":${ndiSpec(NdiNativeSender.FEED_LOWER)},\"motion\":${ndiMotion(NdiNativeSender.FEED_LOWER)}},\"full\":{\"active\":$fullActive,\"spec\":${ndiSpec(NdiNativeSender.FEED_FULL)},\"motion\":${ndiMotion(NdiNativeSender.FEED_FULL)}}},")
+        sb.append("\"counts\":{\"recents\":${recentVersesState.size},\"sermonWorking\":$sermonWorking,\"savedSermons\":$savedSermons},")
         sb.append("\"memory\":{\"usedMb\":$usedMb,\"maxMb\":$maxMb}")
         sb.append("}")
         sendJson(out, 200, sb.toString())

@@ -182,6 +182,7 @@ fun ThemeDialog(
                                     )
                                 )
                                 showNameField = false
+                                newName = "My theme"
                             }
                         ) {
                             Text("حفظ (Save)", fontSize = 13.sp)

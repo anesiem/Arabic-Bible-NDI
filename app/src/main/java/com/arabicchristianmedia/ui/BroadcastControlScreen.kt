@@ -896,16 +896,23 @@ fun BroadcastControlScreen(
             title = "الثلث السفلي (Lower Third)",
             summary = "Lower " + loSpec.width + "×" + loSpec.height + "@" + loSpec.fps
         ) {
+            // Item 20: the restart is immediate only when this feed
+            // and the NDI protocol are both on; otherwise the new spec
+            // is only persisted and applies at the next start.
+            val restartNote = if (uiState.ndiLowerEnabled && uiState.isNdiProtocolEnabled)
+                "التغيير يُعاد تشغيل المصدر فوراً."
+            else
+                "التغيير يُطبَّق عند بدء المصدر القادم."
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = "اختر الدقة ومعدل الإطارات. التغيير يُعاد تشغيل المصدر فوراً.",
+                    text = "اختر الدقة ومعدل الإطارات. " + restartNote,
                     fontSize = 11.sp,
                     color = bento.textSecondary,
                     modifier = Modifier.weight(1f)
                 )
                 InfoPopupButton(
                     infoTitle = "الثلث السفلي (Lower Third)",
-                    infoText = "اختر الدقة ومعدل الإطارات. التغيير يُعاد تشغيل المصدر فوراً."
+                    infoText = "اختر الدقة ومعدل الإطارات. " + restartNote
                 )
             }
             Spacer(modifier = Modifier.height(8.dp))
@@ -936,16 +943,23 @@ fun BroadcastControlScreen(
             title = "العرض الكامل (Full Show)",
             summary = "Full " + fuSpec.width + "×" + fuSpec.height + "@" + fuSpec.fps
         ) {
+            // Item 20: the restart is immediate only when this feed
+            // and the NDI protocol are both on; otherwise the new spec
+            // is only persisted and applies at the next start.
+            val restartNote = if (uiState.ndiFullShowEnabled && uiState.isNdiProtocolEnabled)
+                "التغيير يُعاد تشغيل المصدر فوراً."
+            else
+                "التغيير يُطبَّق عند بدء المصدر القادم."
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = "اختر الدقة ومعدل الإطارات. التغيير يُعاد تشغيل المصدر فوراً.",
+                    text = "اختر الدقة ومعدل الإطارات. " + restartNote,
                     fontSize = 11.sp,
                     color = bento.textSecondary,
                     modifier = Modifier.weight(1f)
                 )
                 InfoPopupButton(
                     infoTitle = "العرض الكامل (Full Show)",
-                    infoText = "اختر الدقة ومعدل الإطارات. التغيير يُعاد تشغيل المصدر فوراً."
+                    infoText = "اختر الدقة ومعدل الإطارات. " + restartNote
                 )
             }
             Spacer(modifier = Modifier.height(8.dp))
@@ -1126,7 +1140,7 @@ fun BroadcastControlScreen(
                     }
                     Spacer(modifier = Modifier.width(8.dp))
                     SplitLabel(
-                        parts = listOf("طريقة الربط مع ", "OBS Studio", " (3 خطوات سريعة):"),
+                        parts = listOf("طريقة الربط مع ", "OBS Studio", " (5 خطوات سريعة):"),
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
                         color = bento.textPrimary
@@ -1955,6 +1969,13 @@ private fun AllUrlsCard(
         fontWeight = FontWeight.SemiBold,
         color = textPrimary
     )
+    // Item 20: ٣ is the NDI sources (shown in the status card), not a
+    // URL — that is why no NDI entry appears in this URL list.
+    Text(
+        text = "٣ = مصادر NDI (تظهر في OBS/vMix مباشرة، وليست روابط ويب).",
+        fontSize = 10.sp,
+        color = textSecondary
+    )
     Surface(
         shape = RoundedCornerShape(10.dp),
         color = cardColor,
@@ -2019,6 +2040,7 @@ private fun VMixSettingsCard(
     var fieldEnglishCitation by remember { mutableStateOf(prefs.getString("vmix_field_english_citation", "") ?: "") }
     var testResult by remember { mutableStateOf<String?>(null) }
     var isTesting by remember { mutableStateOf(false) }
+    var showTestConfirm by remember { mutableStateOf(false) }
 
     fun save() {
         prefs.edit()
@@ -2031,6 +2053,30 @@ private fun VMixSettingsCard(
             .putString("vmix_field_english_verse", fieldEnglishVerse.trim())
             .putString("vmix_field_english_citation", fieldEnglishCitation.trim())
             .apply()
+    }
+
+    // Item 20: the test writes a real string into the target vMix
+    // field, overwriting live content — it now runs only after the
+    // confirm dialog below names the field.
+    fun runTest() {
+        isTesting = true
+        testResult = null
+        Thread {
+            try {
+                val controller = com.arabicchristianmedia.server.VMixController(
+                    host = host.trim(),
+                    port = port.toIntOrNull() ?: 8088,
+                    input = input.trim()
+                )
+                val testField = fieldArabicVerse.trim().ifEmpty { fieldEnglishVerse.trim() }
+                val (ok, msg) = controller.testConnection(testField, "Test 123 — Bible NDI")
+                testResult = if (ok) "✓ $msg" else "✗ $msg"
+            } catch (e: Exception) {
+                testResult = "✗ Error: ${e.message}"
+            } finally {
+                isTesting = false
+            }
+        }.start()
     }
 
     Surface(
@@ -2082,30 +2128,37 @@ private fun VMixSettingsCard(
                 VMixTextField("English citation field", fieldEnglishCitation, { fieldEnglishCitation = it; save() }, textPrimary, textSecondary)
 
                 androidx.compose.material3.Button(
-                    onClick = {
-                        isTesting = true
-                        testResult = null
-                        Thread {
-                            try {
-                                val controller = com.arabicchristianmedia.server.VMixController(
-                                    host = host.trim(),
-                                    port = port.toIntOrNull() ?: 8088,
-                                    input = input.trim()
-                                )
-                                val testField = fieldArabicVerse.trim().ifEmpty { fieldEnglishVerse.trim() }
-                                val (ok, msg) = controller.testConnection(testField, "Test 123 — Bible NDI")
-                                testResult = if (ok) "✓ $msg" else "✗ $msg"
-                            } catch (e: Exception) {
-                                testResult = "✗ Error: ${e.message}"
-                            } finally {
-                                isTesting = false
-                            }
-                        }.start()
-                    },
+                    onClick = { showTestConfirm = true },
                     enabled = !isTesting && host.isNotBlank() && input.isNotBlank(),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(if (isTesting) "Testing…" else "Test Connection")
+                }
+
+                if (showTestConfirm) {
+                    val testField = fieldArabicVerse.trim().ifEmpty { fieldEnglishVerse.trim() }
+                    androidx.compose.material3.AlertDialog(
+                        onDismissRequest = { showTestConfirm = false },
+                        title = { Text("اختبار الاتصال بـ vMix", fontSize = 15.sp, fontWeight = FontWeight.Bold) },
+                        text = {
+                            Text(
+                                if (testField.isNotBlank())
+                                    "سيكتب الاختبار «Test 123 — Bible NDI» في حقل vMix «$testField»، وسيحل محل النص الحي المعروض فيه حالياً. متابعة؟"
+                                else
+                                    "لم يتم تعيين حقل آية بعد؛ قد يفشل الاختبار. متابعة؟"
+                            )
+                        },
+                        confirmButton = {
+                            androidx.compose.material3.Button(
+                                onClick = { showTestConfirm = false; runTest() }
+                            ) { Text("اختبار") }
+                        },
+                        dismissButton = {
+                            androidx.compose.material3.TextButton(
+                                onClick = { showTestConfirm = false }
+                            ) { Text("إلغاء") }
+                        }
+                    )
                 }
 
                 testResult?.let {

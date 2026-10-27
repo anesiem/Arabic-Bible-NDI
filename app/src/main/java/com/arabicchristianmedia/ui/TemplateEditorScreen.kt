@@ -649,7 +649,7 @@ fun TemplateEditorScreen(
             onClick = { importTargetTpl = null; showImportDialog = true }
         ) {
             Text(
-                if (editorTab == 0) "السفلي · Lower" else "الكامل · Full",
+                if (editorTab == 0) "استيراد · Lower" else "استيراد · Full",
                 fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.onPrimaryContainer,
                 maxLines = 1,
                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
@@ -1500,7 +1500,7 @@ CollapsibleSection(
             AlertDialog(
                 onDismissRequest = { templateToDelete = null },
                 title = { Text("حذف القالب") },
-                text = { Text("هل تريد حذف القالب \"${tpl.name}\"؟ لا يمكن التراجع عن الحذف.") },
+                text = { Text("هل تريد حذف القالب \"${tpl.name}\"؟ لا يمكن التراجع عن الحذف. المظهر الحالي يبقى كما هو، كتعديلات غير محفوظة.") },
                 confirmButton = {
                     Button(
                         onClick = { onDeleteTemplate(tpl.id, tpl.isFullScreen); templateToDelete = null },

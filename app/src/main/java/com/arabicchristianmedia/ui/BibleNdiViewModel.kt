@@ -1184,13 +1184,26 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         )
     }
 
-    /** v1.9.1: swipe-to-delete one sermon row. Removing the live row does NOT take the verse off air. */
+    /** v1.9.1: swipe-to-delete one sermon row. The UI blocks swiping the
+     * live row; removing a live entry through here still does NOT take
+     * the verse off air. */
     fun removeSermonEntry(entry: SermonEntry) {
         _uiState.value = _uiState.value.copy(
             sermonPlaylist = _uiState.value.sermonPlaylist.filterNot {
                 it.verse.id == entry.verse.id && it.groupId == entry.groupId
             }
         )
+        persistSermonWorking()
+    }
+
+    /** Item 11: undo a swipe-remove — reinsert the exact removed entry
+     * (same verse, group and shade, not re-derived) at its old position.
+     * The index is clamped, so undo after a clear-all or a list swap
+     * still lands somewhere sensible instead of crashing. */
+    fun restoreSermonEntry(entry: SermonEntry, index: Int) {
+        val current = _uiState.value.sermonPlaylist.toMutableList()
+        current.add(index.coerceIn(0, current.size), entry)
+        _uiState.value = _uiState.value.copy(sermonPlaylist = current)
         persistSermonWorking()
     }
 

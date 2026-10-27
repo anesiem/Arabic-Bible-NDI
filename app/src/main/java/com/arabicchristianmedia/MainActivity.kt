@@ -470,6 +470,7 @@ class MainActivity : ComponentActivity() {
                                 onShowVerse = { viewModel.showSermonVerse(it) },
                                 onOpenInReader = { viewModel.openSermonVerseInReader(it) },
                                 onRemove = { viewModel.removeSermonEntry(it) },
+                                onRestoreVerse = { entry, index -> viewModel.restoreSermonEntry(entry, index) },
                                 onClear = { viewModel.clearSermonPlaylist() },
                                 onSave = { viewModel.saveCurrentSermon(it) },
                                 onOpenSaved = { id, merge -> viewModel.openSavedSermon(id, merge) },

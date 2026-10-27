@@ -37,6 +37,10 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
@@ -48,7 +52,9 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -90,6 +96,7 @@ fun SermonListScreen(
     onShowVerse: (SermonEntry) -> Unit,
     onOpenInReader: (SermonEntry) -> Unit,
     onRemove: (SermonEntry) -> Unit,
+    onRestoreVerse: (SermonEntry, Int) -> Unit,
     onClear: () -> Unit,
     onSave: (String) -> Unit,
     onOpenSaved: (String, Boolean) -> Unit,
@@ -114,9 +121,12 @@ fun SermonListScreen(
     var renameInput by remember { mutableStateOf("") }
     var deleteTarget by remember { mutableStateOf<SavedSermon?>(null) }
     var showClearConfirm by remember { mutableStateOf(false) }
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
 
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-        Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
             // Slim header: name + counts on the left, icon-only actions.
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -208,13 +218,30 @@ fun SermonListScreen(
                             isRecent = entry.verse.id in recentVerseIds,
                             onTap = { onShowVerse(entry) },
                             onOpenInReader = { onOpenInReader(entry) },
-                            onRemove = { onRemove(entry) },
+                            onRemove = {
+                                val removed = entry to index
+                                onRemove(entry)
+                                scope.launch {
+                                    val result = snackbarHostState.showSnackbar(
+                                        message = "تم حذف الآية من القائمة",
+                                        actionLabel = "تراجع",
+                                        duration = SnackbarDuration.Long
+                                    )
+                                    if (result == SnackbarResult.ActionPerformed) {
+                                        onRestoreVerse(removed.first, removed.second)
+                                    }
+                                }
+                            },
                             shadeColorA = listColors.bandA,
                             shadeColorB = listColors.bandB
                         )
                     }
                 }
             }
+            SnackbarHost(
+                hostState = snackbarHostState,
+                modifier = Modifier.align(Alignment.BottomCenter)
+            )
         }
 
         // ── Save dialog ─────────────────────────────────────────────────
@@ -454,7 +481,9 @@ private fun SermonRow(
     SwipeToDismissBox(
         state = dismissState,
         enableDismissFromStartToEnd = false,
-        enableDismissFromEndToStart = true,
+        // The live row cannot be swiped away at all: removing it would
+        // delete it from the list while it keeps broadcasting.
+        enableDismissFromEndToStart = !isLive,
         backgroundContent = {
             Box(
                 modifier = Modifier.fillMaxSize()

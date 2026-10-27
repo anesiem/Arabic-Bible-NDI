@@ -380,6 +380,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         )
         loadPersistedNdiSpecs()
         loadThemePrefs()
+        loadUiPrefs()
         // v1.9.1: restore the persisted sermon working list + saved sermons.
         restoreSermonState()
         restoreRecentState()
@@ -729,6 +730,39 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             .putString("selected_theme_id", _uiState.value.selectedThemeId)
             .putString("custom_themes_json", customsJson.toString())
             .apply()
+    }
+
+    private fun getUiPrefs(): SharedPreferences? = try {
+        getApplication<Application>()?.getSharedPreferences("ui_prefs", Context.MODE_PRIVATE)
+    } catch (e: Exception) { null }
+
+    /**
+     * Item 16: reader font size, theme mode, and keep-awake are user
+     * settings — they must survive a restart like every other setting.
+     * Stored in their own ui_prefs file (defaults match the UiState
+     * defaults: 18 / SYSTEM / true).
+     */
+    private fun loadUiPrefs() {
+        val prefs = getUiPrefs()
+        val fontSize = (prefs?.getInt("reader_font_size", 18) ?: 18).coerceIn(12, 36)
+        val mode = try {
+            AppThemeMode.valueOf(prefs?.getString("app_theme_mode", null) ?: "SYSTEM")
+        } catch (e: Exception) { AppThemeMode.SYSTEM }
+        val keepOn = prefs?.getBoolean("keep_screen_on", true) ?: true
+        _uiState.value = _uiState.value.copy(
+            readerFontSize = fontSize,
+            appThemeMode = mode,
+            isKeepScreenOn = keepOn
+        )
+    }
+
+    private fun persistUiPrefs() {
+        val state = _uiState.value
+        getUiPrefs()?.edit()
+            ?.putInt("reader_font_size", state.readerFontSize)
+            ?.putString("app_theme_mode", state.appThemeMode.name)
+            ?.putBoolean("keep_screen_on", state.isKeepScreenOn)
+            ?.apply()
     }
 
     private fun loadThemePrefs() {
@@ -1862,6 +1896,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         val current = _uiState.value.readerFontSize
         if (current < 36) {
             _uiState.value = _uiState.value.copy(readerFontSize = current + 2)
+            persistUiPrefs()
         }
     }
 
@@ -1869,11 +1904,13 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         val current = _uiState.value.readerFontSize
         if (current > 12) {
             _uiState.value = _uiState.value.copy(readerFontSize = current - 2)
+            persistUiPrefs()
         }
     }
 
     fun setAppThemeMode(mode: AppThemeMode) {
         _uiState.value = _uiState.value.copy(appThemeMode = mode)
+        persistUiPrefs()
     }
 
     fun toggleKeepScreenOn() {
@@ -1882,6 +1919,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             isKeepScreenOn = newKeep,
             statusMessage = if (newKeep) "تم تفعيل إبقاء الشاشة مضاءة (Keep Screen Awake)" else "تم إيقاف إبقاء الشاشة مضاءة"
         )
+        persistUiPrefs()
     }
 
     fun dismissStatusMessage() {

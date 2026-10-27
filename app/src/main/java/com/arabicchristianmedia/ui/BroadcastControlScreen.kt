@@ -1023,7 +1023,7 @@ fun BroadcastControlScreen(
                                 fontWeight = FontWeight.Bold,
                                 color = bento.textPrimary
                             )
-                            InfoPopupButton("إبقاء الشاشة مفعلة (Keep Screen Awake)", "يمنع خمول الشاشة أو توقف معالج الجهاز أثناء البث المباشر")
+                            InfoPopupButton("إبقاء الشاشة مفعلة (Keep Screen Awake)", "يُبقي شاشة التطبيق مضاءة أثناء البث فقط عندما يكون التطبيق مفتوحاً في المقدمة؛ ولا يتحكم في بقاء البث عند تصغير التطبيق (ذلك من خدمة البث وأقفال الشبكة)")
                         }
                     }
 

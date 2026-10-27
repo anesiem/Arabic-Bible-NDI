@@ -432,22 +432,6 @@ fun BibleReaderScreen(
                 val recentVerseIds = remember(uiState.recentVerses) {
                     uiState.recentVerses.map { it.id }.toSet()
                 }
-                // Item 2: chapter bands — the same user-picked shade pair as
-                // the sermon list. A whole (book, chapter) shares one shade;
-                // the shade flips at each chapter boundary vs the previous
-                // row (so single-chapter views are uniformly band A, while
-                // search results spanning chapters alternate).
-                // Theme bands (same pair as the Sermon list, from the theme).
-                val chapterBandA = remember(versesToShow) {
-                    var bandA = true
-                    var prevKey: Pair<String, Int>? = null
-                    versesToShow.map { verse ->
-                        val key = verse.bookId to verse.chapter
-                        if (prevKey != null && key != prevKey) bandA = !bandA
-                        prevKey = key
-                        bandA
-                    }
-                }
                 if (uiState.isLoadingBible && versesToShow.isEmpty()) {
                     // First-launch database copy: show progress instead of a blank list.
                     Box(
@@ -511,7 +495,7 @@ fun BibleReaderScreen(
                     contentPadding = PaddingValues(12.dp),
                     verticalArrangement = Arrangement.spacedBy(VerseRowSpec.RowSpacing)
                 ) {
-                    itemsIndexed(versesToShow, key = { _, verse -> verse.id }) { index, verse ->
+                    itemsIndexed(versesToShow, key = { _, verse -> verse.id }) { _, verse ->
                         val isCued = uiState.activeVerse?.id == verse.id
                         BentoVerseCard(
                             verse = verse,
@@ -520,7 +504,6 @@ fun BibleReaderScreen(
                             isFocused = uiState.readerFocusVerseId == verse.id,
                             inSermonList = verse.id in sermonVerseIds,
                             isRecent = verse.id in recentVerseIds,
-                            bandColor = if (chapterBandA[index]) listColors.bandA else listColors.bandB,
                             version = uiState.bibleVersion,
                             fontSizeSp = uiState.readerFontSize,
                             showCitation = uiState.isSearching,
@@ -574,8 +557,7 @@ fun BentoVerseCard(
     onClick: () -> Unit,
     isFocused: Boolean = false,
     inSermonList: Boolean = false,
-    isRecent: Boolean = false,
-    bandColor: Color? = null
+    isRecent: Boolean = false
 ) {
     val bento = LocalBentoColors.current
     val listColors = LocalListColors.current
@@ -584,14 +566,17 @@ fun BentoVerseCard(
     } else {
         bento.primary.copy(alpha = 0.25f)
     }
-    // Item 6 composition (R3): chapter bands own the row background;
-    // sermon/recents are a MARKER channel (border), recents wins when a
-    // verse is in both. Priority: live > focused > cued > recents marker
-    // > sermon marker > chapter band > plain card.
+    // Batch item 1 (user rule): all Library verses use the ONE default
+    // card color; only recent and sermon verses get a different color
+    // (tinted backgrounds, recents wins when a verse is in both).
+    // Priority: live > focused > cued > recents tint > sermon tint
+    // > plain card. Borders keep their existing marker colors.
     val targetColor = when {
         isLiveOnAir || isCued -> highlightColor
         isFocused -> bento.primaryContainer
-        else -> bandColor ?: bento.card
+        isRecent -> listColors.recents.copy(alpha = 0.35f)
+        inSermonList -> bento.secondary.copy(alpha = 0.35f)
+        else -> bento.card
     }
     val bgColor by animateColorAsState(targetColor, label = "cardBg")
     // v1.8: Use primary (theme-aware) instead of red for the verse highlight border.

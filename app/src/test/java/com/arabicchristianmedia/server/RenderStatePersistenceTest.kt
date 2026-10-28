@@ -156,7 +156,11 @@ class RenderStatePersistenceTest {
     @Test
     fun `CUT disables go-live and clear transitions`() {
         val server = NdiBroadcastServer(context, 8091)
-        server.updateTemplate(TemplateRepository.DEFAULT_TEMPLATES[0].copy(transition = TransitionType.CUT, transitionDurationMs = 2000))
+        // Split transitions (combined batch): go-live and clear are
+        // box transitions, not verse transitions, so CUT must be set
+        // on both to be instant for both. Setting verse CUT alone
+        // correctly leaves a box transition running.
+        server.updateTemplate(TemplateRepository.DEFAULT_TEMPLATES[0].copy(transition = TransitionType.CUT, transitionDurationMs = 2000, boxTransition = TransitionType.CUT, boxTransitionDurationMs = 2000))
         server.updateVerse(verse, live = true)
         server.setLiveState(false)
         assertFalse("CUT clear must be instant", server.isClearTransitionActiveFor(false))

@@ -3,6 +3,7 @@ package com.arabicchristianmedia.data
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.arabicchristianmedia.model.LowerThirdTemplate
+import com.arabicchristianmedia.model.isPureDerived
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -155,7 +156,7 @@ class TemplateRepositoryTest {
     @Test
     fun `factory styles carry explicit safe shadow and glow values`() {
         val defaults = TemplateRepository.DEFAULT_TEMPLATES
-        assertEquals(38, defaults.size)
+        assertEquals(39, defaults.size)
         defaults.forEach { tpl ->
             assertTrue(tpl.textShadowEnabled)
             assertTrue(tpl.textShadowColorHex.isNotBlank())
@@ -175,6 +176,14 @@ class TemplateRepositoryTest {
             assertTrue("$id should be pure transparent", tpl.isPureTransparentBackground)
             assertEquals("$id should be 100% transparent", 0.0f, tpl.bgOpacity, 0.001f)
         }
+        // Combined batch: Pure Transparent factory theme is pure by
+        // derived opacity (bgOpacity 0), not by the legacy flag, so it
+        // must not glow and must be 100% transparent, even though its
+        // legacy flag field is false by design.
+        val pure = defaults.first { it.id == "tpl_pure_transparent" }
+        assertFalse("tpl_pure_transparent should not glow", pure.cardGlowEnabled)
+        assertTrue("tpl_pure_transparent should be pure transparent", pure.isPureDerived)
+        assertEquals("tpl_pure_transparent should be 100% transparent", 0.0f, pure.bgOpacity, 0.001f)
         val cardIds = listOf(
             "tpl_lt_golden_glory", "tpl_lt_sanctuary_gold", "tpl_lt_broadcast_glass",
             "tpl_lt_classic_banner", "tpl_lt_cathedral_gold", "tpl_lt_bilingual_harmony",

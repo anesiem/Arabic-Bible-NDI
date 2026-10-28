@@ -416,9 +416,9 @@ fun BroadcastControlScreen(
                             )
                             Text(
                                 text = if (anyActive)
-                                    "٣. المصدر: Bible-NDI | Lower ${loSpec.width}×${loSpec.height}@${loSpec.fps} • Full ${fuSpec.width}×${fuSpec.height}@${fuSpec.fps} | شفافية ألفا نقية 100% لـ OBS / vMix ودفق MJPEG مباشر"
+                                    "المصدر: Bible-NDI | Lower ${loSpec.width}×${loSpec.height}@${loSpec.fps} • Full ${fuSpec.width}×${fuSpec.height}@${fuSpec.fps} | شفافية ألفا نقية 100% لـ OBS / vMix ودفق MJPEG مباشر"
                                 else
-                                    "٣. المصدر: Bible-NDI | المنفذ: ${uiState.serverPort} | اضغط 'تشغيل المصادر' لبدء البث",
+                                    "المصدر: Bible-NDI | المنفذ: ${uiState.serverPort} | اضغط 'تشغيل المصادر' لبدء البث",
                                 fontSize = 10.sp,
                                 color = if (anyActive) bento.green else bento.textSecondary
                             )
@@ -793,9 +793,9 @@ fun BroadcastControlScreen(
     }
 
     val mjpegBlock: @Composable () -> Unit = {
-        // Broadcast URL 4: Direct MJPEG Video Stream URL
+        // Broadcast URL 3: Direct MJPEG Video Stream URL (old numbering)
         SplitLabel(
-            parts = listOf("٤. رابط بث الفيديو المباشر ", "(Direct Video Stream / MJPEG في vMix و OBS):"),
+            parts = listOf("٣. رابط بث الفيديو المباشر ", "(Direct Video Stream / MJPEG في vMix و OBS):"),
             fontSize = 11.sp,
             fontWeight = FontWeight.SemiBold,
             color = bento.textPrimary
@@ -1105,7 +1105,7 @@ fun BroadcastControlScreen(
                                         }
                                         Spacer(modifier = Modifier.height(4.dp))
                                         Text(
-                                            text = "• للآيات أسفل الشاشة (Lower Third): استخدم الرابط رقم ١.\n• للعرض الكامل (Projector/Full): استخدم الرابط رقم ٢.\n• للأداء الأقصى وجودة NDI 6: ابحث عن المصادر رقم ٣ مباشرة.\n• لبرامج المونتاج القديمة: استخدم رابط MJPEG رقم ٤.",
+                                            text = "• للآيات أسفل الشاشة (Lower Third): استخدم الرابط رقم ١.\n• للعرض الكامل (Projector/Full): استخدم الرابط رقم ٢.\n• للأداء الأقصى وجودة NDI 6: ابحث عن مصادر NDI مباشرة.\n• لبرامج المونتاج القديمة: استخدم رابط MJPEG رقم ٣.",
                                             fontSize = 9.sp,
                                             color = bento.green,
                                             lineHeight = 14.sp
@@ -1527,14 +1527,18 @@ fun BroadcastControlScreen(
                     fontWeight = FontWeight.Bold,
                     color = bento.textPrimary
                 )
+                // 2026-10-28 diagnostics split: viewer activity is
+                // informational (grey), never an error. A viewer
+                // leaving is recorded as "viewer left", not an error,
+                // and Clear clears this line too (see ViewModel).
                 Text(
                     text = "متصل الآن: ${uiState.sseConnectedNow} • جلسات الاتصال: ${uiState.sseConnectTotal} • الانقطاعات: ${uiState.sseDropTotal}" +
                         if (uiState.sseLastDropReason.isNotEmpty() && uiState.sseLastDropAgoSec >= 0)
-                            " • آخر انقطاع: ${uiState.sseLastDropReason} (قبل ${uiState.sseLastDropAgoSec} ث)"
+                            " • آخر مشاهد غادر: ${uiState.sseLastDropReason} (قبل ${uiState.sseLastDropAgoSec} ث)"
                         else "",
                     fontSize = 10.sp,
                     fontFamily = FontFamily.Monospace,
-                    color = if (uiState.sseLastDropAgoSec in 0..60) bento.liveRed else bento.textSecondary
+                    color = bento.textSecondary
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
@@ -1566,7 +1570,7 @@ fun BroadcastControlScreen(
                         Text("تحديث", fontSize = 10.sp)
                     }
                     androidx.compose.material3.TextButton(onClick = { onClearNdiDiagnostics() }) {
-                        Text("مسح السجل", fontSize = 10.sp)
+                        Text("مسح الكل (أخطاء + نشاط)", fontSize = 10.sp)
                     }
                 }
             }
@@ -1947,32 +1951,36 @@ private fun AllUrlsCard(
     borderColor: Color,
     onCopy: (String, String) -> Unit
 ) {
+    // 2026-10-28 old URL numbering (restored): 1 Lower, 2 Full,
+    // 3 MJPEG, 4 PNG Lower, 5 PNG Full, 6 SSE, 7 Status, 8 API,
+    // then trigger, remote, vMix XML, JSON in order. No gap, no
+    // collapsed "All links" number — every row carries its own.
     val urls = listOf(
-        "Lower Third (Browser Source)" to "/lower",
-        "العرض الكامل (Full Show)" to "/full",
-        "بث MJPEG" to "/stream",
-        "لقطة PNG (Lower)" to "/lower/snapshot.png",
-        "لقطة PNG (Full)" to "/full/snapshot.png",
-        "أحداث SSE (الآيات)" to "/events",
-        "الحالة" to "/api/status",
-        "واجهة الآيات (API)" to "/api/verse",
-        "تشغيل آية عن بُعد" to "/api/trigger?ref=John+3:16",
-        "صفحة التحكم عن بُعد" to "/remote",
-        "خلاصة vMix (XML) — Lower" to "/lower/bibleshow.xml",
-        "خلاصة vMix (XML) — Full" to "/full/bibleshow.xml",
-        "خلاصة (JSON) — Lower" to "/lower/bibleshow.json",
-        "خلاصة (JSON) — Full" to "/full/bibleshow.json"
+        Triple("١", "Lower Third (Browser Source)", "/lower"),
+        Triple("٢", "العرض الكامل (Full Show)", "/full"),
+        Triple("٣", "بث MJPEG", "/stream"),
+        Triple("٤", "لقطة PNG (Lower)", "/lower/snapshot.png"),
+        Triple("٥", "لقطة PNG (Full)", "/full/snapshot.png"),
+        Triple("٦", "أحداث SSE (الآيات)", "/events"),
+        Triple("٧", "الحالة", "/api/status"),
+        Triple("٨", "واجهة الآيات (API)", "/api/verse"),
+        Triple("٩", "تشغيل آية عن بُعد", "/api/trigger?ref=John+3:16"),
+        Triple("١٠", "صفحة التحكم عن بُعد", "/remote"),
+        Triple("١١", "خلاصة vMix (XML) — Lower", "/lower/bibleshow.xml"),
+        Triple("١٢", "خلاصة vMix (XML) — Full", "/full/bibleshow.xml"),
+        Triple("١٣", "خلاصة (JSON) — Lower", "/lower/bibleshow.json"),
+        Triple("١٤", "خلاصة (JSON) — Full", "/full/bibleshow.json")
     )
     Text(
-        text = "٥. جميع الروابط المتاحة:",
+        text = "جميع الروابط المتاحة:",
         fontSize = 11.sp,
         fontWeight = FontWeight.SemiBold,
         color = textPrimary
     )
-    // Item 20: ٣ is the NDI sources (shown in the status card), not a
-    // URL — that is why no NDI entry appears in this URL list.
+    // NDI sources are not URLs — they appear in OBS/vMix directly,
+    // so no NDI entry appears in this URL list.
     Text(
-        text = "٣ = مصادر NDI (تظهر في OBS/vMix مباشرة، وليست روابط ويب).",
+        text = "مصادر NDI تظهر في OBS/vMix مباشرة، وليست روابط ويب.",
         fontSize = 10.sp,
         color = textSecondary
     )
@@ -1990,7 +1998,7 @@ private fun AllUrlsCard(
                     color = textSecondary
                 )
             } else {
-                urls.forEach { (label, path) ->
+                urls.forEach { (num, label, path) ->
                     // v1.8: Strip /lower from base to avoid duplication (e.g., /lower/full).
                     val full = baseUrl.removeSuffix("/lower") + path
                     Row(
@@ -1999,7 +2007,7 @@ private fun AllUrlsCard(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(label, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = textPrimary)
+                            Text("$num. $label", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = textPrimary)
                             Text(full, fontSize = 9.sp, fontFamily = FontFamily.Monospace, color = textSecondary)
                         }
                         androidx.compose.material3.IconButton(onClick = { onCopy(label, full) }) {

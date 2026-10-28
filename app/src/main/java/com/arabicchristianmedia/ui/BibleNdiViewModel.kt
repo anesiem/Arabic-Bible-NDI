@@ -420,6 +420,14 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             // force off-air — and sync the UI from it so the screen matches the
             // NDI output.
             val resumedVerse = broadcastServer.currentVerse
+            // 2026-10-28 cold-start divergence fix: a running server that
+            // claims live with NO verse is not live — it is the blank
+            // output the recheck saw (UI OFF AIR, server claiming live).
+            // Clear the server flag too, not just the UI copy, so
+            // /api/debug, NDI and HTTP all agree on OFF AIR.
+            if (resumedVerse == null && broadcastServer.isLive) {
+                broadcastServer.setLiveState(false)
+            }
             val resumedBook = resumedVerse?.let { BibleRepository.getBookById(it.bookId) }
             val resumedVerses = resumedVerse?.let {
                 try { BibleRepository.getVerses(it.bookId, it.chapter) } catch (e: Exception) { verses }
@@ -670,12 +678,19 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
     fun refreshNdiDiagnostics() {
         val srv = broadcastServer
         val lastDropAt = srv.sseLastDropAtMs
+        // 2026-10-28 diagnostics split: a viewer leaving is not an
+        // error, so the old "write-error" reason (and the new
+        // "viewer-left" token) both read as "viewer left" here.
+        val dropReason = when (srv.sseLastDropReason) {
+            "write-error", "viewer-left" -> "viewer left"
+            else -> srv.sseLastDropReason
+        }
         _uiState.value = _uiState.value.copy(
             ndiErrorEvents = nativeSender.getErrorEvents(),
             sseConnectedNow = srv.sseConnectedNow,
             sseConnectTotal = srv.sseConnectTotal,
             sseDropTotal = srv.sseDropTotal,
-            sseLastDropReason = srv.sseLastDropReason,
+            sseLastDropReason = dropReason,
             sseLastDropAgoSec = if (lastDropAt == 0L) -1
                 else (System.currentTimeMillis() - lastDropAt) / 1000
         )
@@ -683,7 +698,17 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
 
     fun clearNdiDiagnostics() {
         nativeSender.clearErrorEvents()
-        _uiState.value = _uiState.value.copy(ndiErrorEvents = emptyList())
+        // 2026-10-28: Clear clears BOTH the NDI error log AND the
+        // HTTP viewer totals (previously only the error log cleared,
+        // so the last-drop line looked like it never reset).
+        broadcastServer.resetSseTotals()
+        _uiState.value = _uiState.value.copy(
+            ndiErrorEvents = emptyList(),
+            sseConnectTotal = 0,
+            sseDropTotal = 0,
+            sseLastDropReason = "",
+            sseLastDropAgoSec = -1
+        )
     }
 
     // ---- NDI spec persistence (resolution / fps / motion / enabled per feed) ----
@@ -1546,6 +1571,26 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         _uiState.value = _uiState.value.copy(recentVerses = emptyList())
         recentStore.clear()
         broadcastServer.setRecentVerses(emptyList())
+    }
+
+    /**
+     * 2026-10-28: recents swipe-to-delete, matching the sermon list
+     * exactly (live row guarded in the UI; Undo restores at the same
+     * index). Persists like every other recents change.
+     */
+    fun removeRecentVerse(verse: BibleVerse) {
+        val updated = _uiState.value.recentVerses.filterNot { it.id == verse.id }
+        _uiState.value = _uiState.value.copy(recentVerses = updated)
+        persistRecentState()
+        broadcastServer.setRecentVerses(updated)
+    }
+
+    fun restoreRecentVerse(verse: BibleVerse, index: Int) {
+        val current = _uiState.value.recentVerses.filterNot { it.id == verse.id }.toMutableList()
+        current.add(index.coerceIn(0, current.size), verse)
+        _uiState.value = _uiState.value.copy(recentVerses = current)
+        persistRecentState()
+        broadcastServer.setRecentVerses(current)
     }
 
     /** v1.9.1: restore the persisted working list + saved sermons at launch. */

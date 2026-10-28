@@ -65,6 +65,11 @@ val LocalBentoColors = staticCompositionLocalOf {
  * (Library, Sermon, recents sheet, remote page tokens) reads these — never
  * a scattered hex, and never the old per-screen pair lookup. Sermon-live
  * and verse-live-highlight stay at Classic values in v1 (theme model).
+ * 2026-10-28: focusedBorder (yellow border for the focused verse),
+ * recentLine (thin side line for a recent verse — the theme recents
+ * variable, so a theme change recolours it on every surface) and
+ * sermonTint (muted band colour for sermon verses) are theme variables
+ * too: Library, Sermon, recents and the remote tokens all read them.
  */
 data class ListColors(
     val bandA: Color,
@@ -73,7 +78,10 @@ data class ListColors(
     val sermonLiveNavy: Color,
     val sermonLiveYellow: Color,
     val sermonLivePaleYellow: Color,
-    val verseLiveHighlight: Color
+    val verseLiveHighlight: Color,
+    val focusedBorder: Color,
+    val recentLine: Color,
+    val sermonTint: Color
 )
 
 val LocalListColors = staticCompositionLocalOf {
@@ -84,7 +92,10 @@ val LocalListColors = staticCompositionLocalOf {
         sermonLiveNavy = SermonLiveNavy,
         sermonLiveYellow = SermonLiveYellow,
         sermonLivePaleYellow = SermonLivePaleYellow,
-        verseLiveHighlight = VerseLiveHighlightLight
+        verseLiveHighlight = VerseLiveHighlightLight,
+        focusedBorder = SermonLiveYellow,
+        recentLine = Color(0xFF0D9488),
+        sermonTint = Color(ColorThemes.CLASSIC.light.bandB)
     )
 }
 
@@ -157,7 +168,10 @@ fun MyApplicationTheme(
         sermonLiveNavy = SermonLiveNavy,
         sermonLiveYellow = SermonLiveYellow,
         sermonLivePaleYellow = SermonLivePaleYellow,
-        verseLiveHighlight = if (isDark) VerseLiveHighlightDark else VerseLiveHighlightLight
+        verseLiveHighlight = if (isDark) VerseLiveHighlightDark else VerseLiveHighlightLight,
+        focusedBorder = SermonLiveYellow,
+        recentLine = Color(tokens.recents),
+        sermonTint = Color(tokens.bandB)
     )
 
     CompositionLocalProvider(

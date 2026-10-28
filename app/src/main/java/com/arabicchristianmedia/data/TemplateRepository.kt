@@ -2668,7 +2668,7 @@ class TemplateRepository(context: Context) {
             val obj = JSONObject(json)
             if (obj.optString("name", "").trim().isEmpty()) return null
             // Sanity: a real style carries several known keys.
-            val knownKeys = listOf("fontFamily", "bgColorHex", "textColorHex", "verseFontSize", "style", "showCrossEmblem", "emblem", "autoFitMinVerseSp", "autoFitMaxVerseSp", "boxHeightPercent", "isFullScreen", "id", "useSystemFontForBrackets", "gradientColorHex2", "gradientAngleDeg", "gradientAnimation", "autoFitMinCitationSp", "autoFitRatioLock")
+            val knownKeys = listOf("fontFamily", "bgColorHex", "textColorHex", "verseFontSize", "style", "showCrossEmblem", "emblem", "autoFitMinVerseSp", "autoFitMaxVerseSp", "boxHeightPercent", "isFullScreen", "id", "useSystemFontForBrackets", "gradientColorHex2", "gradientAngleDeg", "gradientAnimation", "autoFitMinCitationSp", "autoFitRatioLock", "clearMode")
             if (knownKeys.none { obj.has(it) }) return null
             fromJson(obj)
         } catch (e: Exception) {
@@ -2720,6 +2720,7 @@ class TemplateRepository(context: Context) {
             put("boxSwayEnabled", t.boxSwayEnabled)
             put("boxGlowPulseEnabled", t.boxGlowPulseEnabled)
             put("boxMotionSpeed", t.boxMotionSpeed.toDouble())
+            put("clearMode", t.clearMode.name)
             put("showAccentBorder", t.showAccentBorder)
             put("textShadowEnabled", t.textShadowEnabled)
             put("textShadowColorHex", t.textShadowColorHex)
@@ -2774,6 +2775,7 @@ class TemplateRepository(context: Context) {
         val parsedTransition = try { TransitionType.valueOf(obj.optString("transition")) }
             catch (e: Exception) { TransitionType.FADE }
         val parsedTransitionDurationMs = obj.optInt("transitionDurationMs", 350)
+        val parsedIsFullScreen = obj.optBoolean("isFullScreen", false)
         return LowerThirdTemplate(
             id = obj.optString("id", "tpl_${System.currentTimeMillis()}"),
             name = obj.optString("name", "Custom Template"),
@@ -2826,6 +2828,13 @@ class TemplateRepository(context: Context) {
             boxSwayEnabled = obj.optBoolean("boxSwayEnabled", false),
             boxGlowPulseEnabled = obj.optBoolean("boxGlowPulseEnabled", false),
             boxMotionSpeed = obj.optDouble("boxMotionSpeed", 1.0).toFloat(),
+            // Clear Mode migration: an explicit key wins; an old save
+            // without the key defaults by feed — Full -> verse-only,
+            // Lower -> all — so old Lower templates stay Clear All as
+            // today and old Full templates become Clear Verse Only.
+            clearMode = if (obj.has("clearMode")) {
+                try { com.arabicchristianmedia.model.ClearMode.valueOf(obj.optString("clearMode")) } catch (e: Exception) { if (parsedIsFullScreen) com.arabicchristianmedia.model.ClearMode.CLEAR_VERSE_ONLY else com.arabicchristianmedia.model.ClearMode.CLEAR_ALL }
+            } else if (parsedIsFullScreen) com.arabicchristianmedia.model.ClearMode.CLEAR_VERSE_ONLY else com.arabicchristianmedia.model.ClearMode.CLEAR_ALL,
             showAccentBorder = obj.optBoolean("showAccentBorder", true),
             // One-time migration: old styles without the new keys gain text shadow
             // (on, black). Transparent styles migrate glow to OFF (no card to glow).

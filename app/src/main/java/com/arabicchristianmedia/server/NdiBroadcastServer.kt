@@ -1229,6 +1229,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             put("boxSwayEnabled", tpl.boxSwayEnabled)
             put("boxGlowPulseEnabled", tpl.boxGlowPulseEnabled)
             put("boxMotionSpeed", tpl.boxMotionSpeed.toDouble())
+            put("clearMode", tpl.clearMode.name)
             put("showAccentBorder", tpl.showAccentBorder)
             put("textShadowEnabled", tpl.textShadowEnabled)
             put("textShadowColorHex", tpl.textShadowColorHex)
@@ -1833,22 +1834,49 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       const visDur = (boxType === 'CUT' || boxType === 'NONE') ? 0 : boxDur;
       container.style.transitionDuration = visDur + 'ms';
       if (!data.isLive || !data.arabicText) {
-        // Combined batch, Play Once: OFF AIR ends the live session.
-        playOnceVerseKey = null;
-        playOnceGoLivePlayed = false;
-        playOnceGoLiveVideoId = null;
-        try { customVideoBg.pause(); } catch (e) {}
-        if (window.__boxMotionTimer) { clearInterval(window.__boxMotionTimer); window.__boxMotionTimer = null; }
-        cardBox.style.transform = '';
-        customVideoBg.style.display = 'none';
-        animBgLayer.style.opacity = '0';
-        container.classList.remove('visible');
-        // v1.9.1: cancel any pending font-gated reveal and force the next
-        // live state through the full apply path.
-        revealToken++;
-        swapSeq++;
-        lastStyleKey = null;
-        return;
+        // Clear Mode (2026-10-28 hotfix): CLEAR_VERSE_ONLY keeps every
+        // layer and blanks only the text. It applies only when a verse
+        // was actually live (bookId, or a verse was shown before) — a
+        // fresh launch with no verse ever selected still hides the
+        // container, as today, instead of showing an empty card.
+        const clearVerseOnly = data.clearMode === 'CLEAR_VERSE_ONLY' && (data.bookId || lastVerseText);
+        if (clearVerseOnly) {
+          // Play Once re-arm is kept (next go-live replays a Per Go
+          // Live video), but the video is NOT paused, the layer is
+          // NOT hidden, the box-motion timer is NOT cleared, and the
+          // container is NOT hidden — fall through to the normal
+          // apply below with blanked text, so card/video/glow keep
+          // rendering and motion keeps playing. The verse-change
+          // text animation below fades the old text out, then the
+          // blank text fades in (invisible): the verse animates out
+          // first, the background remains.
+          playOnceVerseKey = null;
+          playOnceGoLivePlayed = false;
+          playOnceGoLiveVideoId = null;
+          data.arabicText = '';
+          data.arabicCitation = '';
+          data.englishText = '';
+          data.englishCitation = '';
+          data.emblem = '';
+        } else {
+          // Clear All: today's behaviour — hide everything.
+          // Combined batch, Play Once: OFF AIR ends the live session.
+          playOnceVerseKey = null;
+          playOnceGoLivePlayed = false;
+          playOnceGoLiveVideoId = null;
+          try { customVideoBg.pause(); } catch (e) {}
+          if (window.__boxMotionTimer) { clearInterval(window.__boxMotionTimer); window.__boxMotionTimer = null; }
+          cardBox.style.transform = '';
+          customVideoBg.style.display = 'none';
+          animBgLayer.style.opacity = '0';
+          container.classList.remove('visible');
+          // v1.9.1: cancel any pending font-gated reveal and force the next
+          // live state through the full apply path.
+          revealToken++;
+          swapSeq++;
+          lastStyleKey = null;
+          return;
+        }
       }
 
       const wasVisible = container.classList.contains('visible');
@@ -3545,6 +3573,15 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // v1.8: no verse selected on launch — blank frame (cleared above; no text).
         // v2.0: verseOverride renders a specific verse (transition snapshots).
         val activeVerse = verseOverride ?: currentVerse ?: return
+        // Clear Mode (2026-10-28 hotfix): off-air with CLEAR_VERSE_ONLY
+        // renders every layer WITHOUT text (verse, citation, emblem all
+        // blanked in the text section below). Transition snapshots and
+        // text-only renders are never suppressed — they borrow the live
+        // frame and must show the verse they animate. MJPEG (isForStream)
+        // uses the same flag: its stream background + layers stay, text
+        // goes, and the STANDBY badge (drawn later, not verse text) stays.
+        val suppressText = !isLive && !isTransitionSnapshot && !textOnly &&
+                tpl.clearMode == com.arabicchristianmedia.model.ClearMode.CLEAR_VERSE_ONLY
 
         // Video Stream Background: Since JPEG encoders have no alpha channel,
         // provide keyable broadcast background (Chroma Green #00FF00, Luma Black, or Studio)
@@ -3558,9 +3595,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             canvas.drawColor(bgCol)
         }
 
-        // When off-air, return a 100% transparent alpha frame for BOTH feeds
-        // (v1.9.1 F1: the old Full Show exemption kept the Full feed showing
-        // the verse after OFF AIR — removed; OFF AIR blanks every output).
+        // When off-air with CLEAR_ALL, return a 100% transparent alpha
+        // frame for BOTH feeds (v1.9.1 F1: the old Full Show exemption kept
+        // the Full feed showing the verse after OFF AIR — removed; OFF AIR
+        // blanks every output in Clear All mode). With CLEAR_VERSE_ONLY
+        // (2026-10-28 hotfix) the gate below falls through instead: layers
+        // render, text is suppressed, so no pop at the window end.
         // Item 11: a clear transition still animates first — the verse that
         // was on air fades/slides out with the selected transition, then the
         // frame goes transparent when the window expires. Transition
@@ -3601,15 +3641,35 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 }
             }
             // Combined batch, Play Once: OFF AIR ends the live
-            // session — Per Go Live re-arms, Per Verse key clears,
-            // and the video layer is stopped (off, not frozen).
+            // session — Per Go Live re-arms, Per Verse key clears.
+            // That re-arm is kept in BOTH clear modes, so the next
+            // go-live replays a Per Go Live video exactly as before.
             playOnceVerseKey[isFull] = null
             playOnceGoLivePlayed[isFull] = false
             playOnceGoLiveVideoId[isFull] = null
-            if (!isTransitionSnapshot) {
-                try { synchronized(videoRenderers) { videoRenderers[isFull]?.stopPlayOnce() } } catch (e: Exception) { }
+            if (tpl.clearMode == com.arabicchristianmedia.model.ClearMode.CLEAR_VERSE_ONLY) {
+                // Clear Verse Only: do NOT stop the video and do NOT
+                // return transparent — fall through to the normal render
+                // below, which draws card/video/glow/border with
+                // suppressText blanking the text. Motion ticks keep
+                // arriving (sender motion providers do not check
+                // isLive), so video/gradient motion keeps playing.
+                // During the clear-transition window the fading
+                // clearVerse above is drawn first and the background
+                // render below lands underneath/over it, so the
+                // background is already present when the verse finishes
+                // fading — no transparent pop at the window end. With
+                // an opaque card the fade is masked by the card (the
+                // verse simply goes away); with a transparent card the
+                // verse visibly fades out over the video background.
+            } else {
+                // Clear All: today's behaviour — video layer stopped
+                // (off, not frozen) and the frame goes transparent.
+                if (!isTransitionSnapshot) {
+                    try { synchronized(videoRenderers) { videoRenderers[isFull]?.stopPlayOnce() } } catch (e: Exception) { }
+                }
+                return
             }
-            return
         }
 
         // Batch item 4: verse-change transitions animate TEXT ONLY. The box
@@ -4152,7 +4212,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // already drawn statically. Old text fades out over it; new text
         // draws in a layer at fade-in alpha with the transition's motion.
         var textTransitionLayer = -1
-        if (verseTextP != null) {
+        if (verseTextP != null && !suppressText) {
             val p = verseTextP
             val prevVerse = verseTextPrev
             if (prevVerse != null) {
@@ -4184,6 +4244,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             }
         }
 
+        // Clear Verse Only: the whole text block below (emblem +
+        // citation + verse + English section) is skipped, so no verse
+        // text, citation or emblem can leak into a cleared frame. The
+        // layers above (video, card, glow, border) already drew.
+        if (!suppressText) {
         // User emblem (emoji/symbol) drawn adjacent to the citation on the
         // reading-start side, in the accent color like the HTTP overlay.
         // Empty emblem = nothing drawn.
@@ -4292,6 +4357,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             }
         }
 
+        } // end if (!suppressText) — Clear Verse Only text block
         // Batch item 4: close the verse-text transition layer before the
         // standby badge (the badge is never part of a transition).
         if (textTransitionLayer >= 0) {
@@ -5790,6 +5856,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             o.put("boxSwayEnabled", t.boxSwayEnabled)
             o.put("boxGlowPulseEnabled", t.boxGlowPulseEnabled)
             o.put("boxMotionSpeed", t.boxMotionSpeed.toDouble())
+            o.put("clearMode", t.clearMode.name)
             o.put("showAccentBorder", t.showAccentBorder)
             o.put("textShadowEnabled", t.textShadowEnabled)
             o.put("textShadowColorHex", t.textShadowColorHex)

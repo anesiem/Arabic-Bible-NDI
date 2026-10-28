@@ -300,7 +300,7 @@ fun TemplateEditorScreen(
     val anchorScope = rememberCoroutineScope()
     val anchorParent = mapOf(
         "frame-align" to "frame", "frame-position" to "frame",
-        "frame-padding" to "frame", "frame-autofit" to "frame",
+        "frame-padding" to "frame", "frame-autofit" to "frame", "frame-clear" to "frame",
         "arabic-citation" to "arabic", "arabic-verse" to "arabic",
         "english-citation" to "english", "english-verse" to "english",
         "bg-motion" to "motion", "bg-emblem" to "emblem",
@@ -585,7 +585,7 @@ fun TemplateEditorScreen(
             initiallyExpanded = boxEdit,
             expanded = sectionExpanded.getOrPut("frame") { boxEdit },
             onExpandedChange = { setSectionExpanded("frame", it) },
-            summary = "Box " + editingTemplate.boxHeightPercent + "% \u00b7 bottom " + editingTemplate.positionBottomPercent + "% \u00b7 margin " + editingTemplate.horizontalMarginPercent + "%"
+            summary = "Box " + editingTemplate.boxHeightPercent + "% \u00b7 bottom " + editingTemplate.positionBottomPercent + "% \u00b7 margin " + editingTemplate.horizontalMarginPercent + "% \u00b7 clear " + (if (editingTemplate.clearMode == com.arabicchristianmedia.model.ClearMode.CLEAR_VERSE_ONLY) "verse only" else "all")
         ) {
                     // Alignment
                     Text("محاذاة النص (Alignment)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
@@ -696,6 +696,21 @@ fun TemplateEditorScreen(
                             modifier = Modifier.padding(top = 6.dp)
                         )
                     }
+                    // Clear Mode (2026-10-28 hotfix): what Clear / OFF AIR
+                    // does to THIS tab's template only (Lower and Full are
+                    // edited separately). Verse Only blanks text, citation
+                    // and emblem but keeps card/video/glow/border; All
+                    // removes every layer, as today. Defaults: Full ->
+                    // verse only, Lower -> all (see model + fromJson).
+                    Text("عند المسح (Clear mode)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
+                    Spacer(Modifier.height(4.dp))
+                    Row(modifier = anchorModifier("frame-clear"), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        FilterChip(selected = editingTemplate.clearMode == com.arabicchristianmedia.model.ClearMode.CLEAR_VERSE_ONLY, onClick = { onUpdate(editingTemplate.copy(clearMode = com.arabicchristianmedia.model.ClearMode.CLEAR_VERSE_ONLY)) }, label = { Text("مسح الآية فقط (Clear verse only)", fontSize = 10.sp) })
+                        FilterChip(selected = editingTemplate.clearMode == com.arabicchristianmedia.model.ClearMode.CLEAR_ALL, onClick = { onUpdate(editingTemplate.copy(clearMode = com.arabicchristianmedia.model.ClearMode.CLEAR_ALL)) }, label = { Text("مسح الكل (Clear all layers)", fontSize = 10.sp) })
+                    }
+                    Text(if (editingTemplate.clearMode == com.arabicchristianmedia.model.ClearMode.CLEAR_VERSE_ONLY) "عند الإيقاف تبقى الخلفية (بطاقة/فيديو/توهج) بدون نص" else "عند الإيقاف تختفي الآية وكل الطبقات", fontSize = 11.sp, color = bento.textSecondary)
+                    Spacer(Modifier.height(8.dp))
+
                     Spacer(Modifier.height(8.dp))
 
         }
@@ -1371,7 +1386,8 @@ CollapsibleSection(
             "frame-align" to "محاذاة النص (Alignment)",
             "frame-position" to "الموضع والهوامش (Position & Margins)",
             "frame-padding" to "حشوة البطاقة (Card Padding)",
-            "frame-autofit" to "ملاءمة تلقائية (Auto-fit)"
+            "frame-autofit" to "ملاءمة تلقائية (Auto-fit)",
+            "frame-clear" to "عند المسح (Clear mode)"
         )),
         "language" to ("لغة العرض (Language)" to emptyList()),
         "transition" to ("انتقال الآية (Verse Transition)" to emptyList()),

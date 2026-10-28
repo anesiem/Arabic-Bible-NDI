@@ -36,6 +36,43 @@ enum class BroadcastTextAlignment(val displayName: String) {
  * BOTH shows Arabic followed by English (with [LowerThirdTemplate.bilingualSpacing]
  * between them when [LowerThirdTemplate.showBilingualSpacing] is on).
  */
+/**
+ * Clear Mode (2026-10-28 hotfix, Ashraf: needed for tonight's service).
+ * What OFF AIR / Clear does to a feed:
+ * - CLEAR_ALL: today's behaviour — verse AND every layer below it go
+ *   away (NDI: 100% transparent frame; HTTP: container hidden).
+ * - CLEAR_VERSE_ONLY: verse text, citation and emblem are blanked,
+ *   but card colour/gradient, motion video, glow, accent border,
+ *   padding, position and size stay exactly as when live. Motion
+ *   keeps playing (it is not frozen or paused).
+ * Per template, per feed: Lower and Full are edited separately, so
+ * each tab carries its own value. Defaults by feed: Full Show
+ * defaults to CLEAR_VERSE_ONLY, Lower Third to CLEAR_ALL. Old
+ * templates without the key migrate to those defaults in fromJson.
+ */
+enum class ClearMode(val displayName: String) {
+    CLEAR_ALL("Clear all layers"),
+    CLEAR_VERSE_ONLY("Clear verse only")
+}
+
+/** Pure off-air frame decision, unit-testable without Android.
+ * LIVE: render normally. CLEAR_ALL_TRANSPARENT: blank every output
+ * (NDI transparent / HTTP hidden). CLEAR_VERSE_BACKGROUND: render
+ * layers without any text. The clear-transition window is handled
+ * by callers BEFORE this decision (the verse still animates out
+ * first); this decides only the steady off-air state. hasVerse is
+ * false on a fresh launch with no verse ever selected — that stays
+ * transparent/hidden even in verse-only mode (nothing was live). */
+object ClearModeDecision {
+    enum class OffAirFrame { LIVE, CLEAR_ALL_TRANSPARENT, CLEAR_VERSE_BACKGROUND }
+    fun decide(isLive: Boolean, clearMode: ClearMode, hasVerse: Boolean): OffAirFrame {
+        if (isLive) return OffAirFrame.LIVE
+        if (!hasVerse) return OffAirFrame.CLEAR_ALL_TRANSPARENT
+        return if (clearMode == ClearMode.CLEAR_VERSE_ONLY) OffAirFrame.CLEAR_VERSE_BACKGROUND
+               else OffAirFrame.CLEAR_ALL_TRANSPARENT
+    }
+}
+
 enum class LanguageMode(val displayName: String) {
     ARABIC_ONLY("Arabic only"),
     ENGLISH_ONLY("English only"),
@@ -285,6 +322,11 @@ data class LowerThirdTemplate(
     val boxSwayEnabled: Boolean = false,
     val boxGlowPulseEnabled: Boolean = false,
     val boxMotionSpeed: Float = 1.0f,
+    // Clear Mode (2026-10-28 hotfix): per-feed, per-template. The
+    // default depends on an earlier constructor parameter (isFullScreen):
+    // Full Show -> verse-only, Lower Third -> all. copy() preserves the
+    // explicit value; fromJson migrates old saves the same way.
+    val clearMode: ClearMode = if (isFullScreen) ClearMode.CLEAR_VERSE_ONLY else ClearMode.CLEAR_ALL,
     val showAccentBorder: Boolean = false,
     /** Independent text shadow on verse/citation text. */
     val textShadowEnabled: Boolean = true,

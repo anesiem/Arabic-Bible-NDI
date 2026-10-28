@@ -32,6 +32,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -169,6 +170,8 @@ fun TemplateEditorScreen(
     // 2026-10-28 design menu: rename the highlighted saved style
     // (factory styles fork to a user copy, like Update does).
     onRenameTemplate: (String, String, Boolean) -> Unit = { _, _, _ -> },
+    // Deep-test fix: empty-state "Restore factory styles" button.
+    onRestoreFactoryTemplates: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var showSaveDialog by remember { mutableStateOf(false) }
@@ -181,10 +184,13 @@ fun TemplateEditorScreen(
     // v1.9.1: visual text-box editing on the preview (drag the box edges).
     var boxEdit by remember { mutableStateOf(false) }
     val context = LocalContext.current
-    // v1.9: How-it-works tips visibility, persisted. Shown expanded on first run,
-    // collapsible thereafter, with a "don't show again" option.
+    // v1.9: How-it-works tips visibility, persisted, with a "don't show
+    // again" option. Deep-test fix: the expanded state itself is now
+    // persisted ("how_it_works_expanded", default collapsed), so compact
+    // mode is not filled by the tips on every open. Expand via the button
+    // in the tips header, or reopen via the ⓘ icon when hidden entirely.
     val tipsPrefs = remember { context.getSharedPreferences("editor_ui_prefs", android.content.Context.MODE_PRIVATE) }
-    var howItWorksExpanded by rememberSaveable { mutableStateOf(tipsPrefs.getBoolean("show_how_it_works", true)) }
+    var howItWorksExpanded by rememberSaveable { mutableStateOf(tipsPrefs.getBoolean("how_it_works_expanded", false)) }
 
     // Dynamic Recent Colors with delete (x) button
     var recentColors by remember {
@@ -364,7 +370,10 @@ fun TemplateEditorScreen(
                             }) {
                                 Text("عدم الإظهار مجدداً", fontSize = 10.sp, color = bento.onPrimaryContainer)
                             }
-                            IconButton(onClick = { howItWorksExpanded = !howItWorksExpanded }) {
+                            IconButton(onClick = {
+                                howItWorksExpanded = !howItWorksExpanded
+                                tipsPrefs.edit().putBoolean("how_it_works_expanded", howItWorksExpanded).apply()
+                            }) {
                                 Icon(if (howItWorksExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore, "طي/فتح", tint = bento.onPrimaryContainer)
                             }
                         }
@@ -372,7 +381,7 @@ fun TemplateEditorScreen(
                     if (howItWorksExpanded) {
                         val tips = listOf(
                             "اختر نمطاً من القائمة لتطبيقه فوراً على المعاينة والبث.",
-                            "أي تعديل يظهر مباشرة ويُحفظ تلقائياً — لا يوجد زر حفظ.",
+                            "أي تعديل يظهر مباشرة؛ الحفظ والتصدير والاستيراد من قائمة التصميم (اسم النمط أعلى الشاشة).",
                             "التعديل بدون حفظ يمسح التمييز عن النمط ويظهر شارة «معدّل».",
                             "«حفظ كقالب جديد» ينشئ نمطاً جديداً في قائمة هذا التبويب فقط.",
                             "«إعادة التعيين» يرجع لآخر نمط محدد، أو للوضع الافتراضي.",
@@ -402,6 +411,7 @@ fun TemplateEditorScreen(
                     if (!showHowItWorks) {
                         IconButton(onClick = {
                             tipsPrefs.edit().putBoolean("show_how_it_works", true).apply()
+                            tipsPrefs.edit().putBoolean("how_it_works_expanded", true).apply()
                             onShowHowItWorksChange(true)
                             howItWorksExpanded = true
                         }) { Icon(Icons.Default.Info, "كيفية الاستخدام", tint = bento.primary) }
@@ -435,15 +445,19 @@ fun TemplateEditorScreen(
             val filteredTemplates = if (editorTab == 1) templates.filter { it.isFullScreen } else templates.filter { !it.isFullScreen }
             if (filteredTemplates.isEmpty()) {
                 item {
-                    Text(
-                        if (editorTab == 1)
-                            "لا توجد أنماط للعرض الكامل بعد — عدّل ثم «حفظ كقالب جديد» لإنشاء أول نمط."
-                        else
-                            "لا توجد أنماط للطبقة السفلى بعد — عدّل ثم «حفظ كقالب جديد» لإنشاء أول نمط.",
-                        fontSize = 11.sp,
-                        color = bento.textSecondary,
-                        modifier = Modifier.padding(vertical = 16.dp, horizontal = 4.dp)
-                    )
+                    Column(modifier = Modifier.padding(vertical = 16.dp, horizontal = 4.dp)) {
+                        Text(
+                            if (editorTab == 1)
+                                "لا توجد أنماط للعرض الكامل بعد — عدّل ثم «حفظ كقالب جديد» لإنشاء أول نمط."
+                            else
+                                "لا توجد أنماط للطبقة السفلى بعد — عدّل ثم «حفظ كقالب جديد» لإنشاء أول نمط.",
+                            fontSize = 11.sp,
+                            color = bento.textSecondary
+                        )
+                        TextButton(onClick = onRestoreFactoryTemplates) {
+                            Text("استعادة الأنماط الافتراضية (Restore factory styles)", fontSize = 11.sp)
+                        }
+                    }
                 }
             }
             items(filteredTemplates, key = { it.id }) { tpl ->
@@ -1285,7 +1299,10 @@ CollapsibleSection(
         }
     }
     BoxWithConstraints(modifier = modifier.fillMaxSize().background(bento.bg)) {
-        if (isWideLayout(maxWidth, maxHeight)) {
+        // Screen-size gate (see LayoutBreakpoints): content size is
+        // ~567dp tall on tablet landscape and would hide the anchors.
+        val screenConfig = LocalConfiguration.current
+        if (isWideLayout(screenConfig.screenWidthDp.dp, screenConfig.screenHeightDp.dp)) {
             // Wide two-pane layout: tabs + style bar full-width, then
             // left = title + preview + anchors, right = all controls.
             // Each panel scrolls on its own; scrolling the right panel
@@ -1346,6 +1363,15 @@ CollapsibleSection(
             ) {
                 headerBlock()
                 stageBlock()
+                // Compact Jump-to index: the same anchorsBlock as wide.
+                // Compact has no LazyColumn, so a tap expands the section
+                // and flashes its border (jumpToAnchor) but does not scroll
+                // to it — scroll-to jumps stay wide-only. This still fixes
+                // the reported findability problem (collapsed Background
+                // hiding gradient/motion/stream) without a LazyColumn
+                // refactor, which is follow-up, not a minor fix.
+                anchorsBlock()
+                Spacer(Modifier.height(12.dp))
                 sheetBlock()
             }
         }
@@ -2192,6 +2218,9 @@ fun ColorGradeSpectrumModal(
     onSelectColor: (String) -> Unit
 ) {
     var hexInput by remember { mutableStateOf(currentHex) }
+    // Deep-test fix: an invalid hex used to silently become #FFFFFF on
+    // confirm. Now it shows an error and keeps the previous colour.
+    var hexError by remember { mutableStateOf(false) }
     var hueValue by remember { mutableFloatStateOf(0f) }
     // 2026-10-28 full spectrum: saturation + brightness/value join
     // hue, so white (sat 0 / value 1) and black (value 0) are
@@ -2339,11 +2368,15 @@ fun ColorGradeSpectrumModal(
 
                 OutlinedTextField(
                     value = hexInput,
-                    onValueChange = { input -> hexInput = input },
+                    onValueChange = { input -> hexInput = input; hexError = false },
                     label = { Text("رمز اللون (Hex Code e.g. #FBBF24)") },
                     singleLine = true,
                     shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    isError = hexError,
+                    supportingText = if (hexError) {
+                        { Text("رمز لون غير صالح — بقي اللون السابق (Invalid hex — previous colour kept)", color = bento.liveRed) }
+                    } else null
                 )
 
                 Text("الشفافية (Opacity)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
@@ -2367,9 +2400,12 @@ fun ColorGradeSpectrumModal(
                     val formatted = if (hexInput.startsWith("#")) hexInput else "#$hexInput"
                     try {
                         android.graphics.Color.parseColor(formatted)
+                        hexError = false
                         onSelectColor(formatted)
                     } catch (e: Exception) {
-                        onSelectColor("#FFFFFF")
+                        // Keep the previous colour and stay in the dialog;
+                        // silently switching to white hid a typo.
+                        hexError = true
                     }
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = bento.primary)
@@ -2392,7 +2428,10 @@ fun ColorGradeSpectrumModal(
 @Composable
 fun FeatureToggleRow(label: String, checked: Boolean, modifier: Modifier = Modifier, onCheckedChange: (Boolean) -> Unit) {
     val bento = LocalBentoColors.current
-    Row(modifier = modifier.then(Modifier.fillMaxWidth()), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+    // Deep-test fix: the whole row toggles, not only the Switch thumb.
+    // A tap on the Switch itself still fires only the Switch (the inner
+    // clickable wins), so there is no double toggle.
+    Row(modifier = modifier.then(Modifier.fillMaxWidth().clickable { onCheckedChange(!checked) }), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
         Text(label, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = bento.textPrimary, modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
         Switch(checked = checked, onCheckedChange = onCheckedChange, colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = bento.primary))
     }

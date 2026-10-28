@@ -17,8 +17,14 @@ package com.arabicchristianmedia.model
 object ReferenceScanner {
 
     /** "9:7-9" / "9:7" / "9:7, 9" — chapter:verse with an optional
-     * same-chapter range end or an explicit verse list. */
-    private val VERSE_REF = Regex("""(\d+)\s*:\s*(\d+)(?:\s*-\s*(\d+)|(\s*(?:[,،]\s*\d+)+))?""")
+     * same-chapter range end or an explicit verse list.
+     * Minor fix (2026-10-28, comma-separated shares): a verse-list digit
+     * must NOT be followed immediately by a letter — ",2Ki" is the next
+     * book (2 Kings), not verse 2 of the current chapter. Without this,
+     * "Jos5:11,2Ki23:21" parsed as Joshua 5:[11,2] and lost 2 Kings 23:21.
+     * The space-separated case (", 2 John") is handled below, in scan(),
+     * by checking whether a book name follows the digit. */
+    private val VERSE_REF = Regex("""(\d+)\s*:\s*(\d+)(?:\s*-\s*(\d+)|(\s*(?:[,،]\s*\d+(?![A-Za-z\u0600-\u06FF]))+))?""")
 
     /** Bare chapter number right at the start of the window (" 23 ...").
      * Only spaces/punctuation may precede the digits — NEVER letters: a
@@ -91,7 +97,36 @@ object ReferenceScanner {
                 // Validate through the parser using the book's real name.
                 sawCvForm = true
                 parsed = ReferenceParser.parse(occ.variant.book.arabicName + " " + m.value, books)
-                if (parsed != null) refEnd = occ.end + m.range.last + 1
+                if (parsed != null) {
+                    refEnd = occ.end + m.range.last + 1
+                    // Minor fix, space-separated digit books: "John 3:16, 2 John 1:9"
+                    // must NOT parse ", 2" as a verse list. If a verse-list
+                    // segment's digit is followed (after spaces) by a book
+                    // name, truncate the match before that comma so the
+                    // digit book is found as its own occurrence next.
+                    if (parsed.verseList != null && parsed.verseList.size > 1) {
+                        val segments = Regex("""[,،]\s*\d+""").findAll(m.value).toList()
+                        for (seg in segments) {
+                            val windowPos = m.range.first + seg.range.last + 1
+                            if (windowPos >= window.length) break
+                            val after = window.substring(windowPos).trimStart()
+                            val isBookNext = variants.any { v ->
+                                after.startsWith(v.name, ignoreCase = true)
+                            }
+                            if (isBookNext) {
+                                val truncated = m.value.substring(0, seg.range.first).trim()
+                                val reparsed = ReferenceParser.parse(
+                                    occ.variant.book.arabicName + " " + truncated, books
+                                )
+                                if (reparsed != null) {
+                                    parsed = reparsed
+                                    refEnd = occ.end + m.range.first + seg.range.first
+                                }
+                                break
+                            }
+                        }
+                    }
+                }
             }
             if (parsed == null && !sawCvForm) {
                 // Whole-chapter form: a bare number right after the name.

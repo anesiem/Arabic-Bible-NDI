@@ -2017,6 +2017,22 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
     }
 
     /**
+     * Deep-test fix (small): reload the style list from the repository,
+     * which always merges the factory set (DEFAULT_TEMPLATES) with kept
+     * user styles. Used by the Editor empty state's "Restore factory
+     * styles" button — factory styles cannot be deleted in the UI, so an
+     * empty list on a real device is a transient/loaded-state fault, and
+     * reloading is the correct repair, not a data migration.
+     */
+    fun restoreFactoryTemplates() {
+        try {
+            _uiState.value = _uiState.value.copy(templates = templateRepo.getAllTemplates())
+        } catch (e: Exception) {
+            // Keep the current list; the empty state stays, with its hint.
+        }
+    }
+
+    /**
      * Reset for the selected tab only. Resets to the "simple" template per
      * Ashraf's spec: 100% transparent, no motion, no custom video, no text
      * shadow, no accent border, no card glow. Clears the style highlight

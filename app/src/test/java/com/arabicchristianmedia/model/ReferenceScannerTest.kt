@@ -187,3 +187,65 @@ class ReferenceScannerFixTest {
         assertFalse(refs[0].wholeChapter)
     }
 }
+
+/**
+ * Minor fix (2026-10-28): comma-separated shares from other apps must not
+ * lose digit books. "Jos5:11,2Ki23:21" used to parse as Joshua 5:[11,2]
+ * and drop 2 Kings 23:21, because ",2" looked like a verse list.
+ */
+class ReferenceScannerCommaTest {
+
+    private val books = listOf(
+        BibleBook("jos", "سفر يشوع", "Joshua", "يش", "Jos", Testament.OLD_TESTAMENT, 24),
+        BibleBook("2ki", "سفر الملوك الثاني", "2 Kings", "٢مل", "2Ki", Testament.OLD_TESTAMENT, 25),
+        BibleBook("2ch", "سفر أخبار الأيام الثاني", "2 Chronicles", "٢أخ", "2Ch", Testament.OLD_TESTAMENT, 36),
+        BibleBook("1co", "رسالة كورنثوس الأولى", "1 Corinthians", "١كو", "1Co", Testament.NEW_TESTAMENT, 16),
+        BibleBook("jhn", "إنجيل يوحنا", "John", "يو", "Jhn", Testament.NEW_TESTAMENT, 21)
+    )
+
+    @Test
+    fun commaNoSpaceDigitBookIsNotVerseList() {
+        val refs = ReferenceScanner.scan("Jos5:11,2Ki23:21,2Ki23:22", books)
+        assertEquals(3, refs.size)
+        assertEquals("jos", refs[0].book.id)
+        assertEquals(11, refs[0].verse)
+        assertNull(refs[0].verseList)
+        assertEquals("2ki", refs[1].book.id)
+        assertEquals(21, refs[1].verse)
+        assertEquals("2ki", refs[2].book.id)
+        assertEquals(22, refs[2].verse)
+    }
+
+    @Test
+    fun commaSpaceDigitBookIsNotVerseList() {
+        val refs = ReferenceScanner.scan("John 3:16, 2 Kings 23:21", books)
+        assertEquals(2, refs.size)
+        assertEquals("jhn", refs[0].book.id)
+        assertEquals(16, refs[0].verse)
+        assertNull(refs[0].verseList)
+        assertEquals("2ki", refs[1].book.id)
+        assertEquals(21, refs[1].verse)
+    }
+
+    @Test
+    fun commaPassoverFragmentKeepsAllVerses() {
+        val refs = ReferenceScanner.scan(
+            "Jos5:10,Jos5:11,2Ki23:21,2Ki23:22,2Ki23:23,2Ch30:1,2Ch30:2,2Ch30:5", books
+        )
+        assertEquals(8, refs.size)
+        assertEquals(
+            listOf(
+                "jos" to 10, "jos" to 11, "2ki" to 21, "2ki" to 22,
+                "2ki" to 23, "2ch" to 1, "2ch" to 2, "2ch" to 5
+            ),
+            refs.map { it.book.id to it.verse }
+        )
+    }
+
+    @Test
+    fun legitVerseListStillWorks() {
+        val refs = ReferenceScanner.scan("John 3:16, 18 is the text", books)
+        assertEquals(1, refs.size)
+        assertEquals(listOf(16, 18), refs[0].verseList)
+    }
+}

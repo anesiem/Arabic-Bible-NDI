@@ -484,7 +484,8 @@ class MainActivity : ComponentActivity() {
                                 onShowModifiedMenuChange = { editorShowModifiedMenu = it },
                                 topBarDesignButtonVisible = topBarWide,
                                 onExportWorkingTemplate = { isFull -> viewModel.exportWorkingTemplateJson(isFull) },
-                                onRenameTemplate = { id, name, isFull -> viewModel.renameTemplate(id, name, isFull) }
+                                onRenameTemplate = { id, name, isFull -> viewModel.renameTemplate(id, name, isFull) },
+                                onRestoreFactoryTemplates = { viewModel.restoreFactoryTemplates() }
                             )
                             2 -> BroadcastControlScreen(
                                 uiState = uiState,

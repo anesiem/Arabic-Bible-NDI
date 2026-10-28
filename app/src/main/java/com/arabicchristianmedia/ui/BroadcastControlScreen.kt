@@ -88,6 +88,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.tooling.preview.Preview
@@ -1578,7 +1579,10 @@ fun BroadcastControlScreen(
     }
 
     BoxWithConstraints(modifier = modifier.fillMaxSize().background(bento.bg)) {
-        if (isWideLayout(maxWidth, maxHeight)) {
+        // Screen-size gate (see LayoutBreakpoints): content size is
+        // ~567dp tall on tablet landscape and would hide the chip strip.
+        val screenConfig = LocalConfiguration.current
+        if (isWideLayout(screenConfig.screenWidthDp.dp, screenConfig.screenHeightDp.dp)) {
             Column(Modifier.fillMaxSize()) {
                 Column(Modifier.padding(start = 14.dp, end = 14.dp, top = 14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) { bibleBlock() }
                 // Setup anchors (wide only): fixed chip strip above the

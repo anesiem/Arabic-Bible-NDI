@@ -188,6 +188,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     @Volatile
     var currentVerse: BibleVerse? = null
 
+    // Deep-test fix: a template video file that is missing used to fail
+    // silently (renderer not started, draw loop retries, no message).
+    // The missing id per feed is surfaced in /api/debug as missingVideo,
+    // so Diagnostics can show it instead of a silent fallback.
+    @Volatile private var missingVideoLower: String? = null
+    @Volatile private var missingVideoFull: String? = null
+
     @Volatile
     var currentTemplate: LowerThirdTemplate = LowerThirdTemplate(id = "default", name = "Default")
 
@@ -893,7 +900,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                     serveBibleShowJson(out, currentShowTemplate)
                 }
                 else -> {
-                    serveNdiHtmlOverlay(out)
+                    // Deep-test fix: an unknown path used to return the
+                    // /lower overlay with 200, which hid typos and broke
+                    // API clients that check status. Known routes above
+                    // are untouched; only the fallback changes.
+                    sendJson(out, 404, """{"ok":false,"error":"Unknown path: ${jsonEscape(cleanPath)}"}""")
                 }
             }
         } catch (e: Exception) {
@@ -2662,6 +2673,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     private fun resolveCustomVideoFile(tpl: LowerThirdTemplate, isFull: Boolean): java.io.File? {
         if (tpl.animatedBackground != AnimatedBackgroundType.CUSTOM_VIDEO || tpl.customVideoId.isEmpty()) {
             synchronized(resolvedVideoCache) { resolvedVideoCache.remove(isFull) }
+            if (isFull) missingVideoFull = null else missingVideoLower = null
             return null
         }
         synchronized(resolvedVideoCache) {
@@ -2669,6 +2681,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             if (cached != null && cached.first == tpl.customVideoId) return cached.second
         }
         val file = videoStore.fileFor(tpl.customVideoId)
+        // Missing file: record it for /api/debug instead of retrying silently.
+        // Callers still fall back to the normal background, no crash.
+        if (file == null) {
+            if (isFull) missingVideoFull = tpl.customVideoId else missingVideoLower = tpl.customVideoId
+        } else {
+            if (isFull) missingVideoFull = null else missingVideoLower = null
+        }
         synchronized(resolvedVideoCache) { resolvedVideoCache[isFull] = tpl.customVideoId to file }
         return file
     }
@@ -4652,7 +4671,26 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
      * Text/data only; vMix controls all formatting. TimeCode is .NET ticks.
      */
     private fun serveBibleShowXml(out: OutputStream, tpl: LowerThirdTemplate) {
-        val d = computeBibleShowData(tpl)
+        // Deep-test fix: the XML feed must not leak the retained verse when
+        // OFF AIR, and Reference/BookAbbreviation must not stay empty.
+        // There is no OnAir field in the BibleShow schema, so OFF AIR is
+        // signalled by blanking every verse-content field (vMix titles
+        // bound to them go blank, instead of showing a stale verse).
+        // JSON is untouched: it already carries onAir + retained verse.
+        val onAirXml = isLive && currentVerse != null
+        val d = if (onAirXml) computeBibleShowData(tpl) else computeBibleShowData(tpl).copy(
+            scripture = "", verseTextOnly = "", arabicVerse = "", arabicCitation = "",
+            englishVerse = "", englishCitation = "", bookName = "",
+            chapterNumber = "", verseNumber = "", chapterVerse = ""
+        )
+        // Reference = the citation matching the book-name language (Arabic
+        // preferred when both slots are shown, as in computeBibleShowData);
+        // BookAbbreviation = the English abbreviation from the book list.
+        val referenceXml = if (d.arabicCitation.isNotEmpty()) d.arabicCitation else d.englishCitation
+        val bookAbbreviationXml = try {
+            BibleRepository.allBooks.firstOrNull { it.id == currentVerse?.bookId }?.englishAbbreviation ?: ""
+        } catch (e: Exception) { "" }
+        val bookAbbreviationOut = if (onAirXml) bookAbbreviationXml else ""
 
         fun xmlEscape(s: String): String {
             return s.replace("&", "&amp;")
@@ -4666,7 +4704,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             append("""<?xml version="1.0" encoding="utf-8"?>""")
             append("\n<BibleShowData>\n")
             append("  <TimeCode>${d.dotNetTicks}</TimeCode>\n")
-            append("  <Reference />\n")
+            append("  <Reference>${xmlEscape(referenceXml)}</Reference>\n")
             append("  <Scripture>${xmlEscape(d.scripture)}</Scripture>\n")
             append("  <ImagePath />\n")
             append("  <BibleVersion>${xmlEscape(d.bibleVersion)}</BibleVersion>\n")
@@ -4674,7 +4712,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             append("  <BibleLanguage>${d.bibleLanguage}</BibleLanguage>\n")
             append("  <BookName>${xmlEscape(d.bookName)}</BookName>\n")
             append("  <BookTitle>${xmlEscape(d.bookName)}</BookTitle>\n")
-            append("  <BookAbbreviation></BookAbbreviation>\n")
+            append("  <BookAbbreviation>${xmlEscape(bookAbbreviationOut)}</BookAbbreviation>\n")
             append("  <ChapterNumber>${xmlEscape(d.chapterNumber)}</ChapterNumber>\n")
             append("  <VerseNumber>${xmlEscape(d.verseNumber)}</VerseNumber>\n")
             append("  <ChapterVerse>${xmlEscape(d.chapterVerse)}</ChapterVerse>\n")
@@ -4935,6 +4973,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         sb.append("\"clients\":{\"remoteClients\":${remoteTabCount()},\"mjpegViewers\":${mjpegViewerCount.get()}},")
         sb.append("\"lastTrigger\":{\"atMs\":$lastTriggerAtMs,\"source\":\"${jsonEscape(lastTriggerSource)}\",\"citation\":\"${jsonEscape(lastTriggerCitation)}\"},")
         sb.append("\"readerFocus\":\"${jsonEscape(readerFocusCitation)}\",")
+        sb.append("\"missingVideo\":{\"lower\":${if (missingVideoLower != null) "\"${jsonEscape(missingVideoLower!!)}\"" else "null"},\"full\":${if (missingVideoFull != null) "\"${jsonEscape(missingVideoFull!!)}\"" else "null"}},")
         sb.append("\"memory\":{\"usedMb\":$usedMb,\"maxMb\":$maxMb}")
         sb.append("}")
         sendJson(out, 200, sb.toString())
@@ -5034,6 +5073,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         ['SSE clients (overlays)', j.server.sseClients],
         ['Broadcast thread', j.server.broadcastDispatcher || 'Dispatchers.IO (Safe)'],
         ['Current verse', (j.current.citation || '—') + ' [book ' + j.current.bookNum + ' ' + j.current.chapter + ':' + j.current.verse + ']'],
+        ['Missing video', ((j.missingVideo && j.missingVideo.lower) ? 'Lower: ' + j.missingVideo.lower + ' ' : '') + ((j.missingVideo && j.missingVideo.full) ? 'Full: ' + j.missingVideo.full : '') || '—'],
         ['App memory', j.memory.usedMb + ' MB used / ' + j.memory.maxMb + ' MB max']
       ]);
       function tplPairs(t) {

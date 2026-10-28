@@ -18,6 +18,7 @@ import com.arabicchristianmedia.model.colorThemeFromJson
 import com.arabicchristianmedia.model.migratedThemeFromPairs
 import com.arabicchristianmedia.model.toJson
 import org.json.JSONArray
+import org.json.JSONObject
 import com.arabicchristianmedia.model.BibleBook
 import com.arabicchristianmedia.model.BibleVerse
 import com.arabicchristianmedia.model.BibleVersion
@@ -26,9 +27,15 @@ import com.arabicchristianmedia.model.CustomFont
 import com.arabicchristianmedia.model.CustomFonts
 import com.arabicchristianmedia.model.LanguageMode
 import com.arabicchristianmedia.model.LowerThirdTemplate
+import com.arabicchristianmedia.model.BackupImportResult
+import com.arabicchristianmedia.model.ReferenceScanner
 import com.arabicchristianmedia.model.SavedSermon
+import com.arabicchristianmedia.model.SermonCreateResult
 import com.arabicchristianmedia.model.SermonEntry
 import com.arabicchristianmedia.model.SermonGrouping
+import com.arabicchristianmedia.model.SermonNavigator
+import com.arabicchristianmedia.model.SermonRef
+import com.arabicchristianmedia.model.SermonStepOutcome
 import com.arabicchristianmedia.model.Testament
 import com.arabicchristianmedia.server.FontStore
 import com.arabicchristianmedia.server.NdiBroadcastServer
@@ -264,6 +271,16 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         broadcastServer.onListVideos = {
             listBackgroundVideos()
         }
+        // Sermon APIs (next/prev first): the server calls back into the
+        // ViewModel so API, remote page, and presenter keys share one
+        // sermon state — the server never keeps its own sermon copy.
+        broadcastServer.sermonCurrentProvider = { sermonCurrentState() }
+        broadcastServer.onSermonStep = { step -> stepSermon(step) }
+        broadcastServer.onSermonCreate = { name, text, activate -> createSermonFromText(name, text, activate) }
+        broadcastServer.onSermonActivate = { id, merge -> activateSermonApi(id, merge) }
+        broadcastServer.onSermonRename = { id, name -> renameSermonApi(id, name) }
+        broadcastServer.onSermonDelete = { id -> deleteSermonApi(id) }
+        broadcastServer.onImportBackup = { json, dryRun -> importBackupApi(json, dryRun) }
     }
 
     fun refreshNetworkInterfaces() {
@@ -1290,6 +1307,236 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         _uiState.value = _uiState.value.copy(
             statusMessage = "على الهواء: ${verse.getFormattedArabicCitation()}"
         )
+    }
+
+    // ── Sermon APIs (next/prev first, presenter + pedal) ──────────────
+    // The HTTP server calls these through providers (see wiring in init);
+    // the tablet presenter keys call stepSermon() directly. Both paths
+    // share SermonNavigator, so API and clicker can never disagree on
+    // position. Control endpoints are LAN-only like trigger/clear;
+    // PIN/token wiring is a follow-up tied to the B2 API-PIN design —
+    // no PIN system is invented here (see server comments).
+
+    /** Current working list + live-verse index (-1 when not in the list). */
+    fun sermonCurrentState(): Triple<List<SermonEntry>, Int, Boolean> {
+        val state = _uiState.value
+        return Triple(
+            state.sermonPlaylist,
+            SermonNavigator.currentIndex(state.sermonPlaylist, state.activeVerse),
+            state.isLiveOnAir
+        )
+    }
+
+    /**
+     * Step [step] (+1 next, -1 prev) in the working sermon list and go
+     * live with the target verse (same path as tapping a sermon row).
+     * At either end, or on an empty list, nothing goes live and the
+     * outcome carries [SermonStepOutcome.error] instead.
+     */
+    fun stepSermon(step: Int): SermonStepOutcome {
+        val state = _uiState.value
+        val outcome = SermonNavigator.step(state.sermonPlaylist, state.activeVerse, step)
+        if (outcome.entry != null) showSermonVerse(outcome.entry)
+        return outcome
+    }
+
+    /**
+     * Create a sermon from shared-note [text] (same scanner + expansion
+     * as ACTION_SEND). When [name] is non-blank the result is saved as a
+     * named sermon (same-name updates in place, like saveCurrentSermon);
+     * when [activate] is true it also replaces the working list.
+     * Segments that look like a reference but expand to no verse are
+     * returned in [SermonCreateResult.invalidRefs] — never silently
+     * dropped (the comma-scanner Passover lesson).
+     */
+    fun createSermonFromText(name: String?, text: String, activate: Boolean): SermonCreateResult {
+        val refs = ReferenceScanner.scan(text, BibleRepository.allBooks)
+        val groups = mutableListOf<List<BibleVerse>>()
+        val invalid = mutableListOf<String>()
+        for (ref in refs) {
+            val chapterVerses = BibleRepository.getVerses(ref.book.id, ref.chapter)
+            val selected = when {
+                ref.wholeChapter -> chapterVerses
+                ref.verseList != null -> ref.verseList.mapNotNull { v -> chapterVerses.firstOrNull { it.verse == v } }
+                ref.endVerse != null -> chapterVerses.filter { it.verse in ref.verse..ref.endVerse }
+                else -> chapterVerses.filter { it.verse == ref.verse }
+            }
+            if (selected.isEmpty()) {
+                invalid.add("${ref.book.englishName} ${ref.chapter}:${ref.verse}")
+            } else {
+                groups.add(selected)
+            }
+        }
+        // Segments split by comma/newline/semicolon that name a book and
+        // carry a chapter:verse token but produced no parsed reference
+        // (e.g. a chapter/verse out of range) are invalid, not ignored.
+        val parsedKeys = groups.flatten().map { "${it.bookId}:${it.chapter}:${it.verse}" }.toSet()
+        for (segment in text.split(',', '\n', ';', '،')) {
+            val seg = segment.trim()
+            if (seg.isEmpty()) continue
+            val hasBook = BibleRepository.allBooks.any { b ->
+                seg.contains(b.englishName, ignoreCase = true) ||
+                    seg.contains(b.englishAbbreviation, ignoreCase = true) ||
+                    seg.contains(b.arabicName) || seg.contains(b.arabicAbbreviation)
+            }
+            val hasCv = Regex("""\d+\s*:\s*\d+""").containsMatchIn(seg)
+            if (hasBook && hasCv) {
+                val segRefs = ReferenceScanner.scan(seg, BibleRepository.allBooks)
+                val segExpanded = segRefs.flatMap { r ->
+                    BibleRepository.getVerses(r.book.id, r.chapter)
+                        .filter { v -> r.verseList?.contains(v.verse) == true || v.verse == r.verse }
+                        .map { "${it.bookId}:${it.chapter}:${it.verse}" }
+                }
+                if (segExpanded.isEmpty() || segExpanded.none { it in parsedKeys }) {
+                    if (invalid.none { seg.startsWith(it) }) invalid.add(seg)
+                }
+            }
+        }
+        var nextGroupId = 1L
+        val shades = SermonGrouping.shadesForNewBatch(null, groups.size)
+        val entries = groups.flatMapIndexed { index, verses ->
+            val gid = nextGroupId++
+            verses.map { SermonEntry(it, gid, shades[index]) }
+        }
+        val trimmedName = name?.trim().orEmpty()
+        var savedId: String? = null
+        if (trimmedName.isNotEmpty() && entries.isNotEmpty()) {
+            val now = System.currentTimeMillis()
+            val saved = sermonStore.loadSaved().toMutableList()
+            val existingIndex = saved.indexOfFirst { it.name.equals(trimmedName, ignoreCase = true) }
+            if (existingIndex >= 0) {
+                savedId = saved[existingIndex].id
+                saved[existingIndex] = saved[existingIndex].copy(entries = entries.map { it.toRef() }, updatedAt = now)
+            } else {
+                savedId = "sermon_$now"
+                saved.add(0, SavedSermon(savedId, trimmedName, now, entries.map { it.toRef() }))
+            }
+            sermonStore.saveSaved(saved)
+            _uiState.value = _uiState.value.copy(savedSermons = saved)
+        }
+        if (activate && entries.isNotEmpty()) {
+            _uiState.value = _uiState.value.copy(
+                sermonPlaylist = entries,
+                currentSermonId = savedId ?: _uiState.value.currentSermonId,
+                currentSermonName = if (trimmedName.isNotEmpty()) trimmedName else _uiState.value.currentSermonName
+            )
+            if (savedId != null) sermonStore.setCurrent(savedId, trimmedName)
+            persistSermonWorking()
+        }
+        return SermonCreateResult(savedId, trimmedName.ifEmpty { null }, entries, entries.size, invalid.distinct())
+    }
+
+    /** Load a saved sermon into the working list (replace by default, merge when [merge]). */
+    fun activateSermonApi(id: String, merge: Boolean): Boolean {
+        val found = _uiState.value.savedSermons.any { it.id == id } ||
+            sermonStore.loadSaved().any { it.id == id }
+        if (!found) return false
+        openSavedSermon(id, merge)
+        return true
+    }
+
+    /** Rename a saved sermon; false when the id is unknown or the name is blank. */
+    fun renameSermonApi(id: String, name: String): Boolean {
+        if (name.trim().isEmpty()) return false
+        if (_uiState.value.savedSermons.none { it.id == id } &&
+            sermonStore.loadSaved().none { it.id == id }) return false
+        renameSavedSermon(id, name)
+        return true
+    }
+
+    /** Delete a saved sermon (never touches the working list); false when unknown. */
+    fun deleteSermonApi(id: String): Boolean {
+        if (_uiState.value.savedSermons.none { it.id == id } &&
+            sermonStore.loadSaved().none { it.id == id }) return false
+        deleteSavedSermon(id)
+        return true
+    }
+
+    /**
+     * Backup import. When [dryRun] is true nothing is written — the
+     * result only counts what would change and lists invalid entries.
+     * Apply writes sermons, templates, theme, and recents through the
+     * stores, then reloads UI state from them so the tablet screen
+     * cannot go stale. Invalid sections are skipped, not fatal.
+     */
+    fun importBackupApi(json: String, dryRun: Boolean): BackupImportResult {
+        val invalid = mutableListOf<String>()
+        var sermonCount = 0
+        var templateCount = 0
+        var recentCount = 0
+        var themeId: String? = null
+        var sermonsJson: JSONArray? = null
+        var templatesJson: JSONArray? = null
+        var recentsJson: JSONArray? = null
+        var themeJson: JSONObject? = null
+        try {
+            val root = JSONObject(json)
+            sermonsJson = root.optJSONArray("savedSermons")
+            templatesJson = root.optJSONArray("templates")
+            recentsJson = root.optJSONArray("recents")
+            themeJson = root.optJSONObject("theme")
+            sermonCount = sermonsJson?.length() ?: 0
+            templateCount = templatesJson?.length() ?: 0
+            recentCount = recentsJson?.length() ?: 0
+            themeId = themeJson?.optString("selectedThemeId")?.takeIf { it.isNotBlank() }
+        } catch (e: Exception) {
+            return BackupImportResult(false, 0, 0, 0, null, listOf("Invalid backup JSON: ${e.message}"))
+        }
+        if (dryRun) {
+            return BackupImportResult(false, sermonCount, templateCount, recentCount, themeId, invalid)
+        }
+        try {
+            if (sermonsJson != null) {
+                val saved = mutableListOf<SavedSermon>()
+                for (i in 0 until sermonsJson.length()) {
+                    val obj = sermonsJson.getJSONObject(i)
+                    val entriesArr = obj.optJSONArray("entries") ?: JSONArray()
+                    val entries = (0 until entriesArr.length()).mapNotNull { j ->
+                        val e = entriesArr.getJSONObject(j)
+                        SermonRef(e.optString("b"), e.optInt("c"), e.optInt("v"), e.optLong("g"), e.optInt("s"))
+                    }
+                    saved.add(SavedSermon(obj.optString("id"), obj.optString("name"), obj.optLong("updatedAt"), entries))
+                }
+                sermonStore.saveSaved(saved)
+                _uiState.value = _uiState.value.copy(savedSermons = saved)
+            }
+        } catch (e: Exception) { invalid.add("sermons: ${e.message}") }
+        try {
+            if (templatesJson != null) {
+                val templates = mutableListOf<LowerThirdTemplate>()
+                for (i in 0 until templatesJson.length()) {
+                    templateRepo.templateFromJsonString(templatesJson.getJSONObject(i).toString())?.let { templates.add(it) }
+                }
+                if (templates.isNotEmpty()) {
+                    templateRepo.saveTemplates(templates)
+                    _uiState.value = _uiState.value.copy(templates = templateRepo.getAllTemplates())
+                }
+            }
+        } catch (e: Exception) { invalid.add("templates: ${e.message}") }
+        try {
+            if (recentsJson != null) {
+                val refs = (0 until recentsJson.length()).mapNotNull { i ->
+                    val o = recentsJson.getJSONObject(i)
+                    val b = o.optString("b")
+                    if (b.isBlank()) null else com.arabicchristianmedia.data.RecentRef(b, o.optInt("c"), o.optInt("v"))
+                }
+                com.arabicchristianmedia.data.RecentStore(getApplication()).save(refs)
+                val expanded = refs.mapNotNull { r ->
+                    BibleRepository.getVerses(r.bookId, r.chapter).firstOrNull { it.verse == r.verse }
+                }
+                _uiState.value = _uiState.value.copy(recentVerses = expanded)
+            }
+        } catch (e: Exception) { invalid.add("recents: ${e.message}") }
+        try {
+            if (themeJson != null && themeId != null) {
+                getThemePrefs()?.edit()
+                    ?.putString("selected_theme_id", themeId)
+                    ?.putString("custom_themes_json", themeJson.optJSONArray("customThemes")?.toString() ?: "[]")
+                    ?.apply()
+                loadThemePrefs()
+            }
+        } catch (e: Exception) { invalid.add("theme: ${e.message}") }
+        return BackupImportResult(true, sermonCount, templateCount, recentCount, themeId, invalid)
     }
 
     /**

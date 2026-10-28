@@ -84,6 +84,81 @@ object SermonShadePairs {
         if (isDark) dark(darkId) else light(lightId)
 }
 
+/**
+ * Sermon step result (sermon APIs, next/prev).
+ *
+ * Design choice, documented here because it is a behaviour contract:
+ * stepping PAST either end does NOT wrap silently — it returns
+ * [error] ("End of sermon list" / "Already at the first verse") and
+ * leaves the live verse unchanged. A presenter that wraps by accident
+ * restarts the service; a presenter that stops at the end is obvious.
+ * An empty list is a separate error. When the live verse is not in the
+ * list at all (e.g. the operator triggered a Library verse), next starts
+ * at the first sermon verse and prev at the last — entering the list,
+ * not failing.
+ */
+data class SermonStepOutcome(
+    val entry: SermonEntry?,
+    val index: Int,
+    val total: Int,
+    val error: String?
+)
+
+object SermonNavigator {
+
+    /** First index whose verse matches [activeVerse], or -1 when not in the list. */
+    fun currentIndex(entries: List<SermonEntry>, activeVerse: BibleVerse?): Int {
+        if (activeVerse == null) return -1
+        return entries.indexOfFirst { it.verse.id == activeVerse.id }
+    }
+
+    /**
+     * Pure step logic, unit-tested: [currentIndex] is -1 when the live
+     * verse is not in the list. Returns the target index, or null when
+     * stepping would leave the list (empty list, or already at an end).
+     */
+    fun stepIndex(currentIndex: Int, total: Int, step: Int): Int? {
+        if (total <= 0) return null
+        if (currentIndex < 0) return if (step > 0) 0 else total - 1
+        val target = currentIndex + step
+        return if (target in 0 until total) target else null
+    }
+
+    fun step(entries: List<SermonEntry>, activeVerse: BibleVerse?, step: Int): SermonStepOutcome {
+        if (entries.isEmpty()) {
+            return SermonStepOutcome(null, -1, 0, "Sermon list is empty")
+        }
+        val current = currentIndex(entries, activeVerse)
+        val target = stepIndex(current, entries.size, step)
+        if (target == null) {
+            val error = if (step > 0) "End of sermon list"
+                else "Already at the first verse of the sermon list"
+            return SermonStepOutcome(null, current, entries.size, error)
+        }
+        return SermonStepOutcome(entries[target], target, entries.size, null)
+    }
+}
+
+/** Result of creating a sermon from shared text / a refs list via API. */
+data class SermonCreateResult(
+    val id: String?,
+    val name: String?,
+    val entries: List<SermonEntry>,
+    val parsedCount: Int,
+    /** Segments that looked like a reference but did not expand to a verse. */
+    val invalidRefs: List<String>
+)
+
+/** Result of a backup import, dry-run or applied. */
+data class BackupImportResult(
+    val applied: Boolean,
+    val sermons: Int,
+    val templates: Int,
+    val recents: Int,
+    val themeId: String?,
+    val invalid: List<String>
+)
+
 object SermonGrouping {
 
     /**

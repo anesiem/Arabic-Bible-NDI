@@ -2,6 +2,7 @@ package com.arabicchristianmedia
 
 import android.content.Intent
 import android.os.Bundle
+import android.view.KeyEvent
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -113,6 +114,30 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         handleShareIntent(intent)
+    }
+
+    /**
+     * Presenter clicker fallback (sermon APIs): PageDown/PageUp step the
+     * working sermon list and go live, same as POST
+     * /api/sermons/current/next|prev. This is the Activity fallback
+     * only — if a Compose screen already consumed the key (e.g. the
+     * Sermon screen's own handler below), this is not called again.
+     * Volume, Back, and other keys are untouched: unhandled keys fall
+     * through to super. At either end, or on an empty list, stepSermon
+     * returns no entry and the key falls through (e.g. to scroll),
+     * instead of changing the live verse.
+     */
+    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        val step = when (keyCode) {
+            KeyEvent.KEYCODE_PAGE_DOWN -> +1
+            KeyEvent.KEYCODE_PAGE_UP -> -1
+            else -> null
+        }
+        if (step != null && event?.repeatCount == 0) {
+            val outcome = try { viewModel.stepSermon(step) } catch (e: Exception) { null }
+            if (outcome?.entry != null) return true
+        }
+        return super.onKeyDown(keyCode, event)
     }
 
     @OptIn(ExperimentalMaterial3Api::class)
@@ -529,7 +554,9 @@ class MainActivity : ComponentActivity() {
                                 onSave = { viewModel.saveCurrentSermon(it) },
                                 onOpenSaved = { id, merge -> viewModel.openSavedSermon(id, merge) },
                                 onRenameSaved = { id, name -> viewModel.renameSavedSermon(id, name) },
-                                onDeleteSaved = { viewModel.deleteSavedSermon(it) }
+                                onDeleteSaved = { viewModel.deleteSavedSermon(it) },
+                                onNextSermon = { viewModel.stepSermon(+1).entry != null },
+                                onPrevSermon = { viewModel.stepSermon(-1).entry != null }
                             )
                         }
                     }

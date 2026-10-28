@@ -34,8 +34,12 @@ import com.arabicchristianmedia.model.colorThemeFromJson
 import com.arabicchristianmedia.model.onPrimaryFor
 import com.arabicchristianmedia.model.AnimatedBackgroundType
 import com.arabicchristianmedia.model.BundledFonts
+import com.arabicchristianmedia.model.BackupImportResult
 import com.arabicchristianmedia.model.BibleVerse
 import com.arabicchristianmedia.model.BroadcastTextAlignment
+import com.arabicchristianmedia.model.SermonCreateResult
+import com.arabicchristianmedia.model.SermonEntry
+import com.arabicchristianmedia.model.SermonStepOutcome
 import com.arabicchristianmedia.model.GradientAnimationType
 import com.arabicchristianmedia.model.LanguageMode
 import com.arabicchristianmedia.model.LowerThirdTemplate
@@ -114,6 +118,23 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     var ndiFeedStatesProvider: (() -> Pair<Boolean, Boolean>)? = null
     /** Item 25: sermon list sizes for /debug (working list, saved sermons). */
     var sermonCountsProvider: (() -> Pair<Int, Int>)? = null
+    /**
+     * Sermon APIs (next/prev first). All state lives in the ViewModel;
+     * the server only calls back, so API, remote page, and presenter
+     * keys share one sermon list and one live position.
+     * CONTROL endpoints (step, create, activate, rename, delete, import)
+     * are LAN-only like trigger/clear today. PIN/token gating is a
+     * follow-up tied to the B2 API-PIN design — no PIN system is
+     * invented here, and none of these endpoints is ever exposed
+     * publicly; the core app stays offline/LAN-only.
+     */
+    var sermonCurrentProvider: (() -> Triple<List<SermonEntry>, Int, Boolean>)? = null
+    var onSermonStep: ((step: Int) -> SermonStepOutcome)? = null
+    var onSermonCreate: ((name: String?, text: String, activate: Boolean) -> SermonCreateResult)? = null
+    var onSermonActivate: ((id: String, merge: Boolean) -> Boolean)? = null
+    var onSermonRename: ((id: String, name: String) -> Boolean)? = null
+    var onSermonDelete: ((id: String) -> Boolean)? = null
+    var onImportBackup: ((json: String, dryRun: Boolean) -> BackupImportResult)? = null
     var onSetOnAir: ((Boolean) -> Unit)? = null
     var onListVideos: (() -> List<VideoInfo>)? = null
 
@@ -798,6 +819,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             // Parse request headers
             var isBrowserNavigation = false
             var rangeHeader: String? = null
+            var contentLength = 0
             var headerLine: String?
             while (reader.readLine().also { headerLine = it } != null) {
                 if (headerLine.isNullOrEmpty()) break
@@ -808,6 +830,36 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 if (lower.startsWith("range:")) {
                     rangeHeader = headerLine!!.substringAfter(":").trim()
                 }
+                if (lower.startsWith("content-length:")) {
+                    contentLength = headerLine!!.substringAfter(":").trim().toIntOrNull() ?: 0
+                }
+            }
+
+            // Sermon APIs: POST bodies are small text/JSON (capped at
+            // 1 MB). Reading through the same BufferedReader preserves
+            // bytes it already buffered past the header blank line.
+            // GET requests and empty POSTs keep requestBody empty, so
+            // existing routes are untouched.
+            var requestBody = ""
+            if (method == "POST" && contentLength > 0 && contentLength <= 1_000_000) {
+                try {
+                    // Content-Length is BYTES but reader reads CHARS: for
+                    // non-ASCII (Arabic) bodies the char count is smaller,
+                    // so a byte-count loop would block waiting for data
+                    // that never comes. Read only while buffered data is
+                    // ready — small LAN POST bodies arrive in one packet
+                    // and are already in the reader's buffer after the
+                    // headers. A truncated body fails JSON parsing below
+                    // (a clean 400), never a 15 s socket-timeout stall.
+                    val buf = CharArray(contentLength)
+                    var read = 0
+                    while (read < contentLength && reader.ready()) {
+                        val n = reader.read(buf, read, minOf(contentLength - read, 1024))
+                        if (n < 0) break
+                        read += n
+                    }
+                    requestBody = String(buf, 0, read)
+                } catch (e: Exception) { requestBody = "" }
             }
 
             val out = socket.getOutputStream()
@@ -853,6 +905,41 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 }
                 cleanPath == "/api/videos" -> {
                     serveApiVideos(out)
+                }
+                // ── Sermon APIs (next/prev first, presenter + pedal) ──
+                // Control endpoints are LAN-only like trigger/clear;
+                // PIN/token gating is a B2 follow-up, not invented here.
+                cleanPath == "/api/sermons/current/next" -> {
+                    serveSermonStep(out, +1)
+                }
+                cleanPath == "/api/sermons/current/prev" -> {
+                    serveSermonStep(out, -1)
+                }
+                cleanPath == "/api/sermons/current" -> {
+                    serveSermonCurrent(out)
+                }
+                cleanPath == "/api/sermons" -> {
+                    if (method == "POST") serveSermonCreate(out, fullPath, requestBody)
+                    else serveSermonList(out)
+                }
+                cleanPath.startsWith("/api/sermons/") -> {
+                    serveSermonById(out, cleanPath, fullPath, method, requestBody)
+                }
+                cleanPath == "/api/export/all" -> {
+                    serveExportAll(out)
+                }
+                cleanPath == "/api/import/backup" -> {
+                    if (method == "POST") serveImportBackup(out, fullPath, requestBody)
+                    else sendJson(out, 400, """{"ok":false,"error":"Use POST with a backup JSON body"}""")
+                }
+                cleanPath == "/api/verse/copy" -> {
+                    serveApiVerseCopy(out, fullPath)
+                }
+                cleanPath == "/api/verse/card.png" -> {
+                    serveVerseCardPng(out, fullPath)
+                }
+                cleanPath.startsWith("/remote/sermon/") -> {
+                    serveRemoteSermonPage(out, cleanPath.removePrefix("/remote/sermon/"))
                 }
                 cleanPath == "/lower/snapshot.png" -> {
                     // v1.9.1: canonical per-feed snapshot URLs (the old bare
@@ -4534,6 +4621,409 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         sendJson(out, 200, sb.toString())
     }
 
+    // ── Sermon APIs ──────────────────────────────────────────────────
+    // Next/prev FIRST (presenter + pedal): POST /api/sermons/current/next
+    // and /prev step the working sermon list and go live, same path as
+    // tapping a sermon row. Stopping at either end is deliberate (see
+    // SermonNavigator) — no silent wrap. All JSON uses the trigger
+    // shape {"ok":...,"error":...}; control endpoints are LAN-only,
+    // PIN/token gating is a B2 follow-up (see provider comments above).
+
+    private fun sermonEntryJson(e: SermonEntry): String {
+        val v = e.verse
+        return """{"bookId":"${jsonEscape(v.bookId)}","chapter":${v.chapter},"verse":${v.verse},"arabicCitation":"${jsonEscape(v.getFormattedArabicCitation())}","englishCitation":"${jsonEscape(v.getFormattedEnglishCitation())}","arabicText":"${jsonEscape(v.arabicText)}","englishText":"${jsonEscape(v.englishText ?: "")}","groupId":${e.groupId},"shade":${e.shade}}"""
+    }
+
+    private fun sermonStepJson(outcome: SermonStepOutcome, isLive: Boolean): String {
+        val e = outcome.entry
+        val entryJson = if (e != null) sermonEntryJson(e) else "null"
+        return """{"ok":${e != null},"index":${outcome.index},"total":${outcome.total},"isLive":$isLive,"entry":$entryJson${if (outcome.error != null) ""","error":"${jsonEscape(outcome.error)}"""" else ""}}"""
+    }
+
+    private fun serveSermonStep(out: OutputStream, step: Int) {
+        val outcome = try { onSermonStep?.invoke(step) } catch (e: Exception) { null }
+        if (outcome == null) {
+            sendJson(out, 503, """{"ok":false,"error":"Sermon service unavailable"}""")
+            return
+        }
+        if (outcome.entry == null) {
+            sendJson(out, 400, sermonStepJson(outcome, false))
+            return
+        }
+        val live = try { sermonCurrentProvider?.invoke()?.third } catch (e: Exception) { null } ?: true
+        sendJson(out, 200, sermonStepJson(outcome, live))
+    }
+
+    private fun serveSermonCurrent(out: OutputStream) {
+        val state = try { sermonCurrentProvider?.invoke() } catch (e: Exception) { null }
+        if (state == null) {
+            sendJson(out, 503, """{"ok":false,"error":"Sermon service unavailable"}""")
+            return
+        }
+        val (entries, index, isLive) = state
+        val sb = StringBuilder()
+        sb.append("""{"ok":true,"index":$index,"total":${entries.size},"isLive":$isLive,"entries":[""")
+        entries.forEachIndexed { i, e -> if (i > 0) sb.append(","); sb.append(sermonEntryJson(e)) }
+        sb.append("]}")
+        sendJson(out, 200, sb.toString())
+    }
+
+    private fun savedSermonJson(id: String, name: String, updatedAt: Long, entries: List<com.arabicchristianmedia.model.SermonRef>): String {
+        val sb = StringBuilder()
+        sb.append("""{"id":"${jsonEscape(id)}","name":"${jsonEscape(name)}","updatedAt":$updatedAt,"count":${entries.size},"entries":[""")
+        entries.forEachIndexed { i, r ->
+            if (i > 0) sb.append(",")
+            val verse = try { BibleRepository.getVerses(r.bookId, r.chapter).firstOrNull { it.verse == r.verse } } catch (e: Exception) { null }
+            if (verse != null) {
+                sb.append(sermonEntryJson(SermonEntry(verse, r.groupId, r.shade)))
+            } else {
+                sb.append("""{"bookId":"${jsonEscape(r.bookId)}","chapter":${r.chapter},"verse":${r.verse},"groupId":${r.groupId},"shade":${r.shade}}""")
+            }
+        }
+        sb.append("]}")
+        return sb.toString()
+    }
+
+    private fun serveSermonList(out: OutputStream) {
+        val saved = try { SermonStore(context).loadSaved() } catch (e: Exception) { emptyList() }
+        val sb = StringBuilder()
+        sb.append("""{"ok":true,"sermons":[""")
+        saved.forEachIndexed { i, s ->
+            if (i > 0) sb.append(",")
+            sb.append("""{"id":"${jsonEscape(s.id)}","name":"${jsonEscape(s.name)}","updatedAt":${s.updatedAt},"count":${s.entries.size}}""")
+        }
+        sb.append("]}")
+        sendJson(out, 200, sb.toString())
+    }
+
+    private fun bodyParam(fullPath: String, body: String, key: String): String? {
+        val fromQuery = parseQueryParams(fullPath)[key]
+        if (fromQuery != null) return fromQuery
+        if (body.isBlank()) return null
+        return try {
+            val obj = JSONObject(body)
+            if (obj.has(key) && !obj.isNull(key)) obj.optString(key) else null
+        } catch (e: Exception) { null }
+    }
+
+    private fun serveSermonCreate(out: OutputStream, fullPath: String, body: String) {
+        val name = bodyParam(fullPath, body, "name")
+        val activate = (bodyParam(fullPath, body, "activate") ?: parseQueryParams(fullPath)["activate"])?.let {
+            it == "1" || it.equals("true", ignoreCase = true)
+        } ?: false
+        var text = bodyParam(fullPath, body, "text") ?: bodyParam(fullPath, body, "refs")
+        if (text == null && body.isNotBlank()) {
+            // Plain-text body (a note pasted as-is) is the text itself,
+            // unless it parses as JSON (handled above, keys absent).
+            text = if (body.trimStart().startsWith("{")) null else body
+        }
+        if (text.isNullOrBlank()) {
+            sendJson(out, 400, """{"ok":false,"error":"Provide sermon text (?text= or a JSON body with text/refs, plus name to save it)"}""")
+            return
+        }
+        val result = try { onSermonCreate?.invoke(name, text, activate) } catch (e: Exception) { null }
+        if (result == null) {
+            sendJson(out, 503, """{"ok":false,"error":"Sermon service unavailable"}""")
+            return
+        }
+        val sb = StringBuilder()
+        sb.append("""{"ok":true,"id":${if (result.id != null) "\"${jsonEscape(result.id)}\"" else "null"},"name":${if (result.name != null) "\"${jsonEscape(result.name)}\"" else "null"},"activated":$activate,"parsedCount":${result.parsedCount},"entries":[""")
+        result.entries.forEachIndexed { i, e -> if (i > 0) sb.append(","); sb.append(sermonEntryJson(e)) }
+        sb.append("],\"invalidRefs\":[")
+        result.invalidRefs.forEachIndexed { i, r -> if (i > 0) sb.append(","); sb.append("\"${jsonEscape(r)}\"") }
+        sb.append("]}")
+        sendJson(out, 200, sb.toString())
+    }
+
+    private fun serveSermonById(out: OutputStream, cleanPath: String, fullPath: String, method: String, body: String) {
+        val rest = cleanPath.removePrefix("/api/sermons/")
+        // Export formats: /api/sermons/{id}.json|.txt|.md|.csv and /card.png
+        val exportMatch = Regex("""^(.+)\.(json|txt|md|csv)$""").matchEntire(rest)
+        if (exportMatch != null) {
+            serveSermonExport(out, exportMatch.groupValues[1], exportMatch.groupValues[2])
+            return
+        }
+        val parts = rest.split("/")
+        val id = parts[0]
+        val action = parts.getOrNull(1) ?: ""
+        when (action) {
+            "" -> {
+                val saved = try { SermonStore(context).loadSaved().firstOrNull { it.id == id } } catch (e: Exception) { null }
+                if (saved == null) {
+                    sendJson(out, 404, """{"ok":false,"error":"Sermon not found: ${jsonEscape(id)}"}""")
+                    return
+                }
+                sendJson(out, 200, """{"ok":true,"sermon":${savedSermonJson(saved.id, saved.name, saved.updatedAt, saved.entries)}}""")
+            }
+            "card.png" -> {
+                val index = parseQueryParams(fullPath)["index"]?.toIntOrNull() ?: 0
+                val saved = try { SermonStore(context).loadSaved().firstOrNull { it.id == id } } catch (e: Exception) { null }
+                val ref = saved?.entries?.getOrNull(index)
+                val verse = ref?.let { try { BibleRepository.getVerses(it.bookId, it.chapter).firstOrNull { v -> v.verse == it.verse } } catch (e: Exception) { null } }
+                if (verse == null) {
+                    sendJson(out, 404, """{"ok":false,"error":"Sermon verse not found: ${jsonEscape(id)} index $index"}""")
+                    return
+                }
+                serveVerseCardPngForVerse(out, verse, parseQueryParams(fullPath)["template"] == "full")
+            }
+            "activate" -> {
+                if (method != "POST" && method != "GET") {
+                    sendJson(out, 400, """{"ok":false,"error":"Use POST /api/sermons/$id/activate"}""")
+                    return
+                }
+                val merge = parseQueryParams(fullPath)["merge"] == "1" || parseQueryParams(fullPath)["merge"] == "true"
+                val ok = try { onSermonActivate?.invoke(id, merge) } catch (e: Exception) { false } ?: false
+                if (!ok) sendJson(out, 404, """{"ok":false,"error":"Sermon not found: ${jsonEscape(id)}"}""")
+                else sendJson(out, 200, """{"ok":true,"id":"${jsonEscape(id)}","merge":$merge}""")
+            }
+            "rename" -> {
+                if (method != "POST") {
+                    sendJson(out, 400, """{"ok":false,"error":"Use POST /api/sermons/$id/rename with ?name= or a JSON body"}""")
+                    return
+                }
+                val name = bodyParam(fullPath, body, "name")
+                if (name.isNullOrBlank()) {
+                    sendJson(out, 400, """{"ok":false,"error":"Provide ?name="}""")
+                    return
+                }
+                val ok = try { onSermonRename?.invoke(id, name) } catch (e: Exception) { false } ?: false
+                if (!ok) sendJson(out, 404, """{"ok":false,"error":"Sermon not found or blank name: ${jsonEscape(id)}"}""")
+                else sendJson(out, 200, """{"ok":true,"id":"${jsonEscape(id)}","name":"${jsonEscape(name)}"}""")
+            }
+            "delete" -> {
+                if (method != "POST") {
+                    sendJson(out, 400, """{"ok":false,"error":"Use POST /api/sermons/$id/delete"}""")
+                    return
+                }
+                val ok = try { onSermonDelete?.invoke(id) } catch (e: Exception) { false } ?: false
+                if (!ok) sendJson(out, 404, """{"ok":false,"error":"Sermon not found: ${jsonEscape(id)}"}""")
+                else sendJson(out, 200, """{"ok":true,"deleted":"${jsonEscape(id)}"}""")
+            }
+            else -> sendJson(out, 404, """{"ok":false,"error":"Unknown sermon action: ${jsonEscape(action)}"}""")
+        }
+    }
+
+    private fun serveSermonExport(out: OutputStream, id: String, format: String) {
+        val saved = try { SermonStore(context).loadSaved().firstOrNull { it.id == id } } catch (e: Exception) { null }
+        if (saved == null) {
+            sendJson(out, 404, """{"ok":false,"error":"Sermon not found: ${jsonEscape(id)}"}""")
+            return
+        }
+        if (format == "json") {
+            sendJson(out, 200, """{"ok":true,"sermon":${savedSermonJson(saved.id, saved.name, saved.updatedAt, saved.entries)}}""")
+            return
+        }
+        // Text formats: expanded verse text, one verse per block/row.
+        val expanded = saved.entries.mapNotNull { r ->
+            try { BibleRepository.getVerses(r.bookId, r.chapter).firstOrNull { it.verse == r.verse } } catch (e: Exception) { null }
+        }
+        val text = when (format) {
+            "txt" -> buildString {
+                appendLine(saved.name)
+                expanded.forEach { v ->
+                    appendLine("${v.getFormattedEnglishCitation()} — ${v.getFormattedArabicCitation()}")
+                    appendLine(v.arabicText)
+                    if (v.englishText.isNotBlank()) appendLine(v.englishText)
+                    appendLine()
+                }
+            }
+            "md" -> buildString {
+                appendLine("# ${saved.name}")
+                appendLine()
+                expanded.forEach { v ->
+                    appendLine("## ${v.getFormattedEnglishCitation()} — ${v.getFormattedArabicCitation()}")
+                    appendLine()
+                    appendLine("> ${v.arabicText}")
+                    if (v.englishText.isNotBlank()) appendLine("> ${v.englishText}")
+                    appendLine()
+                }
+            }
+            "csv" -> buildString {
+                appendLine("book,chapter,verse,arabicCitation,englishCitation,arabicText,englishText")
+                expanded.forEach { v ->
+                    fun esc(s: String) = "\"" + s.replace("\"", "\"\"") + "\""
+                    appendLine("${esc(v.bookId)},${v.chapter},${v.verse},${esc(v.getFormattedArabicCitation())},${esc(v.getFormattedEnglishCitation())},${esc(v.arabicText)},${esc(v.englishText ?: "")}")
+                }
+            }
+            else -> ""
+        }
+        val bytes = text.toByteArray(Charsets.UTF_8)
+        val writer = PrintWriter(out)
+        val mime = if (format == "csv") "text/csv" else "text/plain"
+        writer.print("HTTP/1.1 200 OK\r\n")
+        writer.print("Content-Type: $mime; charset=utf-8\r\n")
+        writer.print("Content-Length: ${bytes.size}\r\n")
+        writer.print("Access-Control-Allow-Origin: *\r\n")
+        writer.print("Connection: close\r\n\r\n")
+        writer.flush()
+        out.write(bytes)
+        out.flush()
+    }
+
+    private fun serveExportAll(out: OutputStream) {
+        val store = try { SermonStore(context) } catch (e: Exception) { null }
+        val saved = try { store?.loadSaved() ?: emptyList() } catch (e: Exception) { emptyList() }
+        val working = try { store?.loadWorking() ?: emptyList() } catch (e: Exception) { emptyList() }
+        val templates = try { TemplateRepository(context).getAllTemplates() } catch (e: Exception) { emptyList() }
+        val themePrefs = try { context.getSharedPreferences("app_theme_prefs", Context.MODE_PRIVATE) } catch (e: Exception) { null }
+        val recents = try { com.arabicchristianmedia.data.RecentStore(context).load() } catch (e: Exception) { emptyList() }
+        val sb = StringBuilder()
+        sb.append("""{"ok":true,"version":1,"exportedAtMs":${System.currentTimeMillis()},"savedSermons":[""")
+        saved.forEachIndexed { i, s -> if (i > 0) sb.append(","); sb.append(savedSermonJson(s.id, s.name, s.updatedAt, s.entries)) }
+        sb.append("],\"working\":[")
+        working.forEachIndexed { i, r -> if (i > 0) sb.append(","); sb.append("""{"b":"${jsonEscape(r.bookId)}","c":${r.chapter},"v":${r.verse},"g":${r.groupId},"s":${r.shade}}""") }
+        val templateRepo = try { TemplateRepository(context) } catch (e: Exception) { null }
+        sb.append("],\"templates\":[")
+        templates.forEachIndexed { i, t ->
+            if (i > 0) sb.append(",")
+            try { sb.append(JSONObject(templateRepo?.templateToJsonString(t) ?: "{}").toString()) } catch (e: Exception) { sb.append("{}") }
+        }
+        sb.append("],\"theme\":{")
+        sb.append("\"selectedThemeId\":\"${jsonEscape(themePrefs?.getString("selected_theme_id", "classic") ?: "classic")}\",")
+        sb.append("\"customThemes\":${themePrefs?.getString("custom_themes_json", "[]") ?: "[]"}")
+        sb.append("},\"recents\":[")
+        recents.forEachIndexed { i, r -> if (i > 0) sb.append(","); sb.append("""{"b":"${jsonEscape(r.bookId)}","c":${r.chapter},"v":${r.verse}}""") }
+        sb.append("]}")
+        sendJson(out, 200, sb.toString())
+    }
+
+    private fun serveImportBackup(out: OutputStream, fullPath: String, body: String) {
+        val dryRun = parseQueryParams(fullPath)["dryRun"] == "1" || parseQueryParams(fullPath)["dryRun"] == "true"
+        if (body.isBlank()) {
+            sendJson(out, 400, """{"ok":false,"error":"POST a backup JSON body (from GET /api/export/all)"}""")
+            return
+        }
+        val result = try { onImportBackup?.invoke(body, dryRun) } catch (e: Exception) { null }
+        if (result == null) {
+            sendJson(out, 503, """{"ok":false,"error":"Backup service unavailable"}""")
+            return
+        }
+        val sb = StringBuilder()
+        sb.append("""{"ok":true,"applied":${result.applied},"sermons":${result.sermons},"templates":${result.templates},"recents":${result.recents},"themeId":${if (result.themeId != null) "\"${jsonEscape(result.themeId)}\"" else "null"},"invalid":[""")
+        result.invalid.forEachIndexed { i, s -> if (i > 0) sb.append(","); sb.append("\"${jsonEscape(s)}\"") }
+        sb.append("]}")
+        sendJson(out, 200, sb.toString())
+    }
+
+    private fun resolveVerseParam(params: Map<String, String>): BibleVerse? {
+        val ref = params["ref"]
+        if (ref != null) {
+            val books = try { BibleRepository.allBooks } catch (e: Exception) { emptyList() }
+            val parsed = com.arabicchristianmedia.model.ReferenceParser.parse(ref, books) ?: return null
+            return try { BibleRepository.getVerses(parsed.book.id, parsed.chapter).firstOrNull { it.verse == parsed.verse } } catch (e: Exception) { null }
+        }
+        val bookNum = params["book"]?.toIntOrNull()
+        val chapter = params["chapter"]?.toIntOrNull()
+        val verseNum = params["verse"]?.toIntOrNull()
+        if (bookNum != null && chapter != null && verseNum != null) {
+            val book = try { BibleRepository.allBooks.getOrNull(bookNum - 1) } catch (e: Exception) { null } ?: return null
+            return try { BibleRepository.getVerses(book.id, chapter).firstOrNull { it.verse == verseNum } } catch (e: Exception) { null }
+        }
+        val bookId = params["bookId"]
+        if (bookId != null && chapter != null && verseNum != null) {
+            return try { BibleRepository.getVerses(bookId, chapter).firstOrNull { it.verse == verseNum } } catch (e: Exception) { null }
+        }
+        return null
+    }
+
+    /**
+     * GET /api/verse/copy — copy-ready verse, separate from /api/verse
+     * (which returns live state for overlays) so no existing caller
+     * changes shape. With no ?ref= it copies the current live verse.
+     */
+    private fun serveApiVerseCopy(out: OutputStream, fullPath: String) {
+        val params = parseQueryParams(fullPath)
+        val verse = resolveVerseParam(params) ?: currentVerse
+        if (verse == null) {
+            sendJson(out, 404, """{"ok":false,"error":"No verse: provide ?ref=John+3:16 or go live first"}""")
+            return
+        }
+        val arCit = verse.getFormattedArabicCitation()
+        val enCit = verse.getFormattedEnglishCitation()
+        val plain = "${verse.arabicText}\n$arCit\n${verse.englishText}\n$enCit"
+        val markdown = "> ${verse.arabicText}\n> — $arCit\n> ${verse.englishText}\n> — $enCit"
+        val html = "<blockquote><p dir=\"rtl\">${verse.arabicText}</p><p>$arCit</p><p>${verse.englishText}</p><p>$enCit</p></blockquote>"
+        sendJson(out, 200, """{"ok":true,"bookId":"${jsonEscape(verse.bookId)}","chapter":${verse.chapter},"verse":${verse.verse},"arabicCitation":"${jsonEscape(arCit)}","englishCitation":"${jsonEscape(enCit)}","arabicText":"${jsonEscape(verse.arabicText)}","englishText":"${jsonEscape(verse.englishText ?: "")}","plain":"${jsonEscape(plain)}","markdown":"${jsonEscape(markdown)}","html":"${jsonEscape(html)}"}""")
+    }
+
+    private fun serveVerseCardPngForVerse(out: OutputStream, verse: BibleVerse, isFull: Boolean) {
+        val tpl = if (isFull) currentShowTemplate else currentTemplate
+        val bitmap = try {
+            val bmp = Bitmap.createBitmap(1920, 1080, Bitmap.Config.ARGB_8888)
+            // Verse card, not live feed: verseOverride + transition-snapshot
+            // bypasses the off-air transparent gate, and currentVerse /
+            // live state are never touched.
+            drawFrameInto(bmp, 1920, 1080, false, tpl, isFull, verseOverride = verse, isTransitionSnapshot = true)
+            bmp
+        } catch (e: Exception) {
+            sendJson(out, 500, """{"ok":false,"error":"Could not render verse card"}""")
+            return
+        }
+        val stream = ByteArrayOutputStream()
+        bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
+        bitmap.recycle()
+        val pngBytes = stream.toByteArray()
+        val writer = PrintWriter(out)
+        writer.print("HTTP/1.1 200 OK\r\n")
+        writer.print("Content-Type: image/png\r\n")
+        writer.print("Content-Length: ${pngBytes.size}\r\n")
+        writer.print("Cache-Control: no-cache, no-store\r\n")
+        writer.print("Access-Control-Allow-Origin: *\r\n")
+        writer.print("Connection: close\r\n\r\n")
+        writer.flush()
+        out.write(pngBytes)
+        out.flush()
+    }
+
+    private fun serveVerseCardPng(out: OutputStream, fullPath: String) {
+        val params = parseQueryParams(fullPath)
+        val verse = resolveVerseParam(params) ?: currentVerse
+        if (verse == null) {
+            sendJson(out, 404, """{"ok":false,"error":"No verse: provide ?ref=John+3:16 or go live first"}""")
+            return
+        }
+        serveVerseCardPngForVerse(out, verse, params["template"] == "full")
+    }
+
+    /**
+     * GET /remote/sermon/{id} — read-only LAN sermon page. Copy and
+     * download only; deliberately NO trigger, clear, edit, activate,
+     * or delete controls on this page. Control stays on /remote and
+     * the tablet, behind the LAN + future PIN design.
+     */
+    private fun serveRemoteSermonPage(out: OutputStream, id: String) {
+        val saved = try { SermonStore(context).loadSaved().firstOrNull { it.id == id } } catch (e: Exception) { null }
+        if (saved == null) {
+            sendJson(out, 404, """{"ok":false,"error":"Sermon not found: ${jsonEscape(id)}"}""")
+            return
+        }
+        fun htmlEscape(s: String) = s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        val rows = StringBuilder()
+        saved.entries.forEach { r ->
+            val verse = try { BibleRepository.getVerses(r.bookId, r.chapter).firstOrNull { it.verse == r.verse } } catch (e: Exception) { null }
+            if (verse != null) {
+                rows.append("<div class=\"vrow\"><div><b>${htmlEscape(verse.getFormattedEnglishCitation())} — ${htmlEscape(verse.getFormattedArabicCitation())}</b><div dir=\"rtl\">${htmlEscape(verse.arabicText)}</div><div>${htmlEscape(verse.englishText ?: "")}</div></div></div>")
+            }
+        }
+        val html = """<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${htmlEscape(saved.name)} — Sermon (read-only)</title>
+<style>body{font-family:system-ui,sans-serif;background:#0d1117;color:#e6edf3;margin:0;padding:16px}main{max-width:900px;margin:auto}.vrow{border-bottom:1px solid #30363d;padding:12px 0}button{padding:10px 14px;border-radius:12px;border:1px solid #334155;background:transparent;color:inherit;cursor:pointer;margin:4px}</style></head>
+<body><main><h1>${htmlEscape(saved.name)}</h1><p>${saved.entries.size} verses — read-only. Copy or download; this page cannot trigger, clear, or edit.</p>
+<button onclick="copyAll()">Copy all</button> <a href="/api/sermons/${saved.id}.json"><button>Download JSON</button></a> <a href="/api/sermons/${saved.id}.txt"><button>Download text</button></a>
+<div id="rows">$rows</div>
+<script>function copyAll(){var t=document.getElementById('rows').innerText;navigator.clipboard.writeText(t).then(function(){alert('Copied');});}</script>
+</main></body></html>"""
+        val bytes = html.toByteArray(Charsets.UTF_8)
+        val writer = PrintWriter(out)
+        writer.print("HTTP/1.1 200 OK\r\n")
+        writer.print("Content-Type: text/html; charset=utf-8\r\n")
+        writer.print("Content-Length: ${bytes.size}\r\n")
+        writer.print("Access-Control-Allow-Origin: *\r\n")
+        writer.print("Connection: close\r\n\r\n")
+        writer.flush()
+        out.write(bytes)
+        out.flush()
+    }
+
     /** v1.9.1: the values behind the BibleShow feeds, computed once and
      * shared by the XML writer (vMix) and the JSON writer below. */
     private data class BibleShowData(
@@ -5367,6 +5857,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   #controlBar .livepill { max-width: none; flex: 1 1 140px; margin-top: 0; }
   /* Item 28: small neutral Clear button beside the ON AIR toggle. */
   #controlBar #clearBtn { width: auto; flex: none; padding: 12px 14px; min-height: 48px; font-size: 14px; font-weight: 700; background: transparent; border: 1px solid var(--chrome-border, #334155); color: inherit; border-radius: 16px; cursor: pointer; }
+  /* Sermon APIs: Prev/Next use the same neutral control styling as
+     Clear, so the remote control bar does not grow a new visual
+     language; they call POST /api/sermons/current/prev|next. */
+  #controlBar #prevBtn, #controlBar #nextBtn { width: auto; flex: none; padding: 12px 14px; min-height: 48px; font-size: 14px; font-weight: 700; background: transparent; border: 1px solid var(--chrome-border, #334155); color: inherit; border-radius: 16px; cursor: pointer; }
   #controlBar #clearBtn:active { transform: scale(0.98); opacity: 0.9; }
   .vlist { margin-top: 8px; max-height: 52vh; overflow-y: auto; min-height: 120px; transition: opacity 0.15s; }
   /* v1.9.2 (#5): while a chapter loads, the current verses stay in place
@@ -5456,6 +5950,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     <span class="livepill" id="livePill"><span class="dot"></span><span class="ref" id="liveRef" dir="auto">—</span></span>
     <button class="onair off" id="onAirBtn" onclick="toggleOnAir()">OFF AIR</button>
     <button id="clearBtn" onclick="clearVerse()">Clear</button>
+    <button id="prevBtn" onclick="sermonStep('prev')">◀ Prev</button>
+    <button id="nextBtn" onclick="sermonStep('next')">Next ▶</button>
   </div>
   <button id="recentsToggle" onclick="toggleRecents()">🕐 Recents <span id="recentsCount"></span></button>
   <div class="card" id="recentCard">
@@ -5714,6 +6210,20 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     fetch('/api/clear')
       .then(function(r) { return r.json(); })
       .then(function(j) { if (j.ok) { setStatus('✓ Cleared (off air)', 'ok'); pollNow(); } })
+      .catch(function() { setStatus('✗ Network error', 'err'); });
+  }
+
+  // Sermon APIs: Prev/Next step the working sermon list and go live,
+  // same as tapping a sermon row on the tablet. At either end the
+  // server returns ok:false with "End of sermon list" (or first verse)
+  // and the live verse is left unchanged.
+  function sermonStep(dir) {
+    fetch('/api/sermons/current/' + dir, { method: 'POST' })
+      .then(function(r) { return r.json(); })
+      .then(function(j) {
+        if (j.ok && j.entry) { setStatus('✓ ' + (j.entry.englishCitation || ''), 'ok'); pollNow(); }
+        else setStatus('✗ ' + (j.error || 'failed'), 'err');
+      })
       .catch(function() { setStatus('✗ Network error', 'err'); });
   }
 

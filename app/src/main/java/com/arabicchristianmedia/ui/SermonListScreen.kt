@@ -58,6 +58,14 @@ import kotlinx.coroutines.launch
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusable
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
@@ -101,7 +109,14 @@ fun SermonListScreen(
     onSave: (String) -> Unit,
     onOpenSaved: (String, Boolean) -> Unit,
     onRenameSaved: (String, String) -> Unit,
-    onDeleteSaved: (String) -> Unit
+    onDeleteSaved: (String) -> Unit,
+    // Presenter clicker (sermon APIs): next/prev steps, same logic as
+    // POST /api/sermons/current/next|prev. Returns true only when a
+    // verse actually went live, so a failed step (empty list, at an
+    // end) falls through to normal scrolling instead of swallowing
+    // the key. Defaults are no-ops so previews do not need them.
+    onNextSermon: () -> Boolean = { false },
+    onPrevSermon: () -> Boolean = { false }
 ) {
     val bento = LocalBentoColors.current
     val listColors = LocalListColors.current
@@ -124,8 +139,30 @@ fun SermonListScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
+    // Presenter keys are handled here (this screen is foreground only
+    // when the Sermon tab is selected, so keys cannot step a sermon
+    // while the operator is editing a template or a dialog elsewhere).
+    // PageDown/PageUp are also handled by MainActivity as a fallback;
+    // a consumed key here is not delivered again there, so no double
+    // step. Text fields consume their own keys first (typing a sermon
+    // name does not step), and DPAD focus navigation is unchanged
+    // when no sermon step applies (handler returns false).
+    val sermonFocusRequester = remember { FocusRequester() }
+    androidx.compose.runtime.LaunchedEffect(Unit) { sermonFocusRequester.requestFocus() }
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier.fillMaxSize()
+                .focusRequester(sermonFocusRequester)
+                .focusable()
+                .onKeyEvent { event ->
+                    if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
+                    when (event.key) {
+                        Key.PageDown, Key.DirectionRight, Key.Spacebar, Key.Enter -> onNextSermon()
+                        Key.PageUp, Key.DirectionLeft -> onPrevSermon()
+                        else -> false
+                    }
+                }
+        ) {
             Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
             // Slim header: name + counts on the left, icon-only actions.
             Row(

@@ -36,6 +36,7 @@ import com.arabicchristianmedia.model.AnimatedBackgroundType
 import com.arabicchristianmedia.model.BundledFonts
 import com.arabicchristianmedia.model.BibleVerse
 import com.arabicchristianmedia.model.BroadcastTextAlignment
+import com.arabicchristianmedia.model.GradientAnimationType
 import com.arabicchristianmedia.model.LanguageMode
 import com.arabicchristianmedia.model.LowerThirdTemplate
 import com.arabicchristianmedia.model.StreamBackgroundMode
@@ -180,7 +181,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         private set
 
     @Volatile
-    var isLive = true
+    var isLive = false // 2026-10-28: a fresh server starts OFF AIR; auto-resume restores live only when a verse exists (cold-start divergence fix)
 
     // v1.8: no verse selected on launch — the user picks one. Renderers
     // handle null by producing a blank frame (card chrome only).
@@ -299,6 +300,21 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     fun sseJournalSnapshot(): List<String> = synchronized(sseJournal) { ArrayList(sseJournal) }
     fun sseDropReasonCounts(): Map<String, Int> = HashMap(sseDropReasons)
 
+    /**
+     * 2026-10-28 diagnostics split: viewer totals are a fresh
+     * server session's counters, not a permanent error log. Clear
+     * and every server restart reset them; real NDI errors are
+     * cleared separately by the native sender (see ViewModel).
+     */
+    fun resetSseTotals() {
+        sseConnectTotal = 0
+        sseDropTotal = 0
+        sseLastDropAtMs = 0L
+        sseLastDropReason = ""
+        sseDropReasons.clear()
+        synchronized(sseJournal) { sseJournal.clear() }
+    }
+
     fun start(onStarted: (String) -> Unit = {}, onError: (String) -> Unit = {}) {
         if (isRunning) return
 
@@ -309,6 +325,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             }
             isRunning = true
             serverStartTimeMs = System.currentTimeMillis()
+            resetSseTotals() // 2026-10-28: viewer totals reset on server restart
             val ip = getLocalIpAddress()
             val url = "http://$ip:$port/lower"
             onStarted(url)
@@ -339,7 +356,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                                 writer.print("event: ping\ndata: 1\n\n")
                                 writer.flush()
                             }
-                            if (writer.checkError()) { dead.add(writer to isShow); deadWhy[writer] = "write-error" }
+                            if (writer.checkError()) { dead.add(writer to isShow); deadWhy[writer] = "viewer-left" }
                         } catch (e: Exception) {
                             dead.add(writer to isShow); deadWhy[writer] = "exception:${e.javaClass.simpleName}"
                         }
@@ -348,7 +365,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                         val deadWriters = dead.map { it.first }.toSet()
                         sseClients.removeAll { deadWriters.contains(it.first) }
                         dead.forEach { (writer, isShow) ->
-                            noteSseDrop(writer, isShow, "ping", deadWhy[writer] ?: "write-error")
+                            noteSseDrop(writer, isShow, "ping", deadWhy[writer] ?: "viewer-left")
                             try { writer.close() } catch (e: Exception) {}
                         }
                     }
@@ -709,7 +726,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                         writer.flush()
                     }
                     if (writer.checkError()) {
-                        deadClients.add(pair); deadWhy[writer] = "write-error"
+                        deadClients.add(pair); deadWhy[writer] = "viewer-left"
                     } else {
                         sseConnInfo[writer]?.let { it[1]++ }
                     }
@@ -720,7 +737,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             if (deadClients.isNotEmpty()) {
                 sseClients.removeAll(deadClients.toSet())
                 deadClients.forEach { (writer, isShow) ->
-                    noteSseDrop(writer, isShow, "broadcast", deadWhy[writer] ?: "write-error")
+                    noteSseDrop(writer, isShow, "broadcast", deadWhy[writer] ?: "viewer-left")
                     try { writer.close() } catch (e: Exception) {}
                 }
             }
@@ -941,9 +958,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             // selected theme, read fresh from the same prefs the app
             // uses. Fresh installs (no theme prefs) fall back to Classic,
             // which is exactly the previous d1/l1 bands + teal recents.
-            // (Live-row highlight intentionally NOT themed here: the
-            // remote live tint stays green, and Classic dark's highlight
-            // equals the remote dark card, so it would go invisible.)
+            // Live rows use the SAME sermon-live navy + yellow as the
+            // app (ui/theme/Color.kt SermonLiveNavy/Yellow), via tokens
+            // below — changing them in one place changes app + remote.
             val themePrefs = try { context.getSharedPreferences("app_theme_prefs", Context.MODE_PRIVATE) } catch (e: Exception) { null }
             val customThemes = try {
                 val raw = themePrefs?.getString("custom_themes_json", null)
@@ -959,6 +976,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             put("bandLightB", bandHex(theme.light.bandB))
             put("recentsDark", bandHex(theme.dark.recents))
             put("recentsLight", bandHex(theme.light.recents))
+            put("liveNavy", "#1B3A5C")
+            put("liveYellow", "#F5D76E")
+            put("livePaleYellow", "#FDE9A8")
             // Item 7: page chrome follows the same theme (background,
             // cards, inputs, chips, text, focus ring) — previously fixed
             // slate while bands/recents were themed. Same dark/light
@@ -1105,6 +1125,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             put("autoFitText", tpl.autoFitText)
             put("autoFitMaxVerseSp", tpl.autoFitMaxVerseSp)
             put("boxHeightPercent", tpl.boxHeightPercent)
+            put("gradientEnabled", tpl.gradientEnabled)
+            put("gradientColorHex2", tpl.gradientColorHex2)
+            put("gradientAngleDeg", tpl.gradientAngleDeg)
+            put("gradientAnimation", tpl.gradientAnimation.id)
+            put("gradientSpeed", tpl.gradientSpeed)
+            put("autoFitMinCitationSp", tpl.autoFitMinCitationSp)
+            put("autoFitRatioLock", tpl.autoFitRatioLock)
         }
         val built = root.toString()
         statStateBuild.record((System.nanoTime() - buildT0) / 1_000_000.0)
@@ -1955,29 +1982,48 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         const maxContentH = isFull
           ? (stage.clientHeight * (effBoxPct / 100) - padTopPx - padBotPx)
           : (stage.clientHeight * (effBoxPct / 100) - padTopPx - padBotPx - 16 * ss);
-        function applyRatio(r) {
+        function applyRatio(r, citeR) {
           verseText.style.fontSize = (baseVerse * r) + 'px';
-          citationText.style.fontSize = (baseCite * r) + 'px';
+          citationText.style.fontSize = (baseCite * (citeR !== undefined ? citeR : r)) + 'px';
           englishText.style.fontSize = (baseEnV * r) + 'px';
           englishCitation.style.fontSize = (baseEnC * r) + 'px';
         }
         const cH = contentHeight();
         let ratio = capRatio;
+        let citeRatio = capRatio;
         if (cH > maxContentH && maxContentH > 0) {
           // One exact step (NDI's computeFitRatio), then one corrective
           // pass because line wrapping makes height non-linear. The cap
           // binds first; the box wins when both apply.
           ratio = Math.min(capRatio, Math.max(hardMinRatio, maxContentH / cH));
-          applyRatio(ratio);
+          applyRatio(ratio, ratio);
           const cH2 = contentHeight();
           if (cH2 > maxContentH && ratio > hardMinRatio) {
             ratio = Math.max(hardMinRatio, ratio * (maxContentH / cH2));
-            applyRatio(ratio);
+            applyRatio(ratio, ratio);
           }
         } else if (ratio < 1) {
           // Fits at full size — the cap alone applies (short verse).
-          applyRatio(ratio);
+          applyRatio(ratio, ratio);
         }
+        // 2026-10-28: citation floor / ratio lock (mirrors NDI
+        // autoFitBoosts). Lock ON (default): citation and verse share
+        // the ratio, and a citation below the floor lifts BOTH.
+        // Lock OFF: citation stays at its set size (clamped to the
+        // floor) while only the verse shrinks to fit the box.
+        (function() {
+          var floorSp = (data.autoFitMinCitationSp !== undefined) ? data.autoFitMinCitationSp : 10;
+          var refSp = (data.referenceFontSize || 18);
+          if (data.autoFitRatioLock === false) {
+            citeRatio = Math.max(1, floorSp / refSp);
+            applyRatio(ratio, citeRatio);
+            return;
+          }
+          var fittedCiteSp = refSp * ratio;
+          if (fittedCiteSp >= floorSp || fittedCiteSp <= 0) { return; }
+          ratio = ratio * (floorSp / fittedCiteSp);
+          applyRatio(ratio, ratio);
+        })();
       };
 
       // v1.9.1: finish an apply — fit with real metrics, then reveal (only
@@ -2124,6 +2170,15 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         return dx + 'px ' + dy + 'px ' + (blur * ss).toFixed(1) + 'px ' + col;
       }
 
+      // Design-gradient card (2026-10-28 batch): stop any previous
+      // rotate timer, then the gradient branch below (re)starts it.
+      // Section 7 re-adds its own animated-background classes after
+      // this section, so clearing here cannot strand a style.
+      if (window.__gradRotateTimer) { clearInterval(window.__gradRotateTimer); window.__gradRotateTimer = null; }
+      cardBox.classList.remove('bg-flow');
+      cardBox.classList.remove('bg-breath');
+      cardBox.style.animationDuration = '';
+
       // 100% transparent toggle behaves like the transparent style (mirrors the NDI canvas).
       if (data.isPureTransparentBackground) { // v1.9: toggle is the single authority (was: style check overrode it)
         cardBox.style.backgroundColor = 'transparent';
@@ -2131,6 +2186,40 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         cardBox.style.webkitBackdropFilter = 'none';
         cardBox.style.border = 'none';
         cardBox.style.boxShadow = 'none';
+      } else if (data.gradientEnabled) {
+        // Two-color gradient at the user's angle, at bgOpacity, on
+        // both renderers (NDI uses the same colors/angle/opacity).
+        // Wins over the style's own gradient (ROYAL's red-to-dark)
+        // because the user chose this gradient explicitly.
+        var g2 = hexToRgb(data.gradientColorHex2 || '#0A1128') || { r: 10, g: 17, b: 40 };
+        var gAngle = (data.gradientAngleDeg !== undefined) ? data.gradientAngleDeg : 90;
+        var gAnim = data.gradientAnimation || 'none';
+        var gSpeed = (data.gradientSpeed !== undefined) ? parseFloat(data.gradientSpeed) : 1;
+        var gA = 'rgba(' + r + ',' + g + ',' + b + ',' + opacity + ')';
+        var gB = 'rgba(' + g2.r + ',' + g2.g + ',' + g2.b + ',' + opacity + ')';
+        cardBox.style.background = 'linear-gradient(' + gAngle + 'deg, ' + gA + ' 0%, ' + gB + ' 100%)';
+        cardBox.style.border = data.showAccentBorder ? (6 * getStageScale()) + 'px solid ' + accent : 'none';
+        cardBox.style.boxShadow = cardGlowShadow('0 16px 40px', 0.55);
+        if (gAnim === 'slide' && gSpeed > 0) {
+          cardBox.style.backgroundSize = '200% 200%';
+          cardBox.classList.add('bg-flow');
+          cardBox.style.animationDuration = (15 / gSpeed) + 's';
+        } else if (gAnim === 'pulse' && gSpeed > 0) {
+          cardBox.classList.add('bg-breath');
+          cardBox.style.animationDuration = (5 / gSpeed) + 's';
+        } else if (gAnim === 'rotate' && gSpeed > 0) {
+          // CSS cannot animate a gradient angle on its own, so a
+          // 50ms timer turns it (NDI turns it natively at the same
+          // 30 deg/s at speed 1). Cleared at the top of this section
+          // on the next apply, so it never fights a new style.
+          (function() {
+            var base = gAngle, start = Date.now();
+            window.__gradRotateTimer = setInterval(function() {
+              var a = (base + (Date.now() - start) / 1000 * 30 * gSpeed) % 360;
+              cardBox.style.background = 'linear-gradient(' + a + 'deg, ' + gA + ' 0%, ' + gB + ' 100%)';
+            }, 50);
+          })();
+        }
       } else if (data.style === 'CLASSIC_BANNER') {
         cardBox.style.backgroundColor = 'rgba(' + r + ',' + g + ',' + b + ',' + opacity + ')';
         // v2.0: border width scaled (NDI stroke: 6 x frame scale); the
@@ -2679,6 +2768,35 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         return if (rawVerse > 0.01f && rawVerse < 24f) 24f / rawVerse else 1f
     }
 
+    /**
+     * 2026-10-28 batch: verse / citation auto-fit boosts. Returns
+     * (verseBoost, citationBoost), each replacing fitFloorBoost for
+     * its element. When the fitted citation would fall below
+     * [LowerThirdTemplate.autoFitMinCitationSp]: ratio lock ON lifts
+     * BOTH elements by one shared factor (ratio preserved); lock OFF
+     * lifts ONLY the citation to the floor while the verse keeps
+     * shrinking to fit the box. Default floor 10sp = old behaviour.
+     */
+    private fun autoFitBoosts(tpl: LowerThirdTemplate, scale: Float, fitRatio: Float): Pair<Float, Float> {
+        val base = fitFloorBoost(tpl, scale, fitRatio)
+        if (!tpl.autoFitText || fitRatio <= 0f) return base to base
+        val floor = tpl.autoFitMinCitationSp.toFloat()
+        return if (tpl.autoFitRatioLock) {
+            val fittedCiteSp = tpl.referenceFontSize * fitRatio * base
+            if (fittedCiteSp >= floor || fittedCiteSp <= 0f) base to base
+            else {
+                val lift = floor / fittedCiteSp
+                (base * lift) to (base * lift)
+            }
+        } else {
+            // Unlocked: citation stays at its set size (clamped up to
+            // the floor) while only the verse shrinks. The citation
+            // boost does NOT include the verse floor boost.
+            val citeSize = maxOf(tpl.referenceFontSize.toFloat(), floor)
+            base to (citeSize / (tpl.referenceFontSize * fitRatio))
+        }
+    }
+
     // Audit fix (perf): fitted-layout cache. StaticLayouts are immutable
     // after build; entries are keyed by everything the fit depends on and
     // discriminated by feed (isFull / isForStream) so the Lower, Full and
@@ -2800,7 +2918,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         fitRatio: Float,
     ): FittedTextLayouts? {
         // v1.9.1 F3: shared ratio-preserving floor boost (see fitFloorBoost).
-        val floorBoost = fitFloorBoost(tpl, scale, fitRatio)
+        // 2026-10-28: citation floor / ratio lock (see autoFitBoosts).
+        // floorBoost = verse boost; citationBoost = citation boost
+        // (same as verse when locked, citation-only lift when unlocked).
+        val (floorBoost, citationBoost) = autoFitBoosts(tpl, scale, fitRatio)
         // Setup TextPaint for multi-line wrapped text
         val verseTextPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
             color = try { Color.parseColor(tpl.textColorHex) } catch (e: Exception) { Color.WHITE }
@@ -2864,7 +2985,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // startY + textSize*0.9, primary text starts 16*scale below that. The
         // old fixed 44*scale*fitRatio underestimated it, shifting everything
         // below (Arabic, English) down and eating the bottom padding.
-        val citationHeight = (tpl.referenceFontSize * 2f * scale * fitRatio * floorBoost) * 0.9f + 16f * scale
+        val citationHeight = (tpl.referenceFontSize * 2f * scale * fitRatio * citationBoost) * 0.9f + 16f * scale
 
         // Calculate bilingual secondary text if needed
         var secondaryLayout: StaticLayout? = null
@@ -3262,7 +3383,45 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             val bgAlpha = (tpl.bgOpacity * 255).toInt().coerceIn(0, 255)
             val baseBgCol = try { Color.parseColor(tpl.bgColorHex) } catch (e: Exception) { Color.DKGRAY }
 
-            if (videoRenderer != null) {
+            if (tpl.gradientEnabled) {
+                // Design-gradient card (2026-10-28 batch): two colors at
+                // the user's angle, at bgOpacity, on BOTH renderers.
+                // It draws OVER a custom video (video is the bottom
+                // layer; the gradient card is above it, text on top),
+                // and it wins over a procedural animatedBackground
+                // shader — the user chose this gradient explicitly.
+                // CSS angle: 0 = bottom-to-top, 90 = left-to-right,
+                // 270 = right-to-left. No video decode is involved.
+                val gradTimeSec = (System.currentTimeMillis() % 60000L) / 1000f
+                val gradPhase = ((kotlin.math.sin(gradTimeSec.toDouble() * 1.5 * tpl.gradientSpeed).toFloat() + 1f) / 2f)
+                val gradAlpha = if (tpl.gradientAnimation == GradientAnimationType.PULSE)
+                    (bgAlpha * (0.7f + 0.3f * gradPhase)).toInt().coerceIn(0, 255) else bgAlpha
+                val gradAngleDeg = if (tpl.gradientAnimation == GradientAnimationType.ROTATE)
+                    ((tpl.gradientAngleDeg + gradTimeSec * 30f * tpl.gradientSpeed) % 360f) else tpl.gradientAngleDeg.toFloat()
+                val gradRad = Math.toRadians(gradAngleDeg.toDouble())
+                val dirX = kotlin.math.sin(gradRad).toFloat()
+                val dirY = (-kotlin.math.cos(gradRad)).toFloat()
+                val cx = (boxLeft + boxRight) / 2f
+                val cy = (boxTop + boxBottom) / 2f
+                val extent = (kotlin.math.abs(dirX) * boxWidth + kotlin.math.abs(dirY) * boxHeight) / 2f
+                val slideOffset = if (tpl.gradientAnimation == GradientAnimationType.SLIDE)
+                    (gradPhase * 2f - 1f) * extent * 0.3f else 0f
+                val gradCol2 = try { Color.parseColor(tpl.gradientColorHex2) } catch (e: Exception) { baseBgCol }
+                val gradShader = LinearGradient(
+                    cx - dirX * extent + dirX * slideOffset,
+                    cy - dirY * extent + dirY * slideOffset,
+                    cx + dirX * extent + dirX * slideOffset,
+                    cy + dirY * extent + dirY * slideOffset,
+                    intArrayOf(
+                        Color.argb(gradAlpha, Color.red(baseBgCol), Color.green(baseBgCol), Color.blue(baseBgCol)),
+                        Color.argb(gradAlpha, Color.red(gradCol2), Color.green(gradCol2), Color.blue(gradCol2))
+                    ),
+                    null, Shader.TileMode.CLAMP
+                )
+                paint.shader = gradShader
+                canvas.drawRoundRect(rect, radius, radius, paint)
+                paint.shader = null
+            } else if (videoRenderer != null) {
                 // v1.7: the custom video IS the card background (already drawn
                 // above) — skip the normal fill so it stays visible.
             } else if (tpl.animatedBackground != AnimatedBackgroundType.NONE) {
@@ -3430,7 +3589,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             // v1.8: In ENGLISH_ONLY, use the English citation color for clear design.
             val refColorHex = if (tpl.languageMode == LanguageMode.ENGLISH_ONLY) tpl.secondaryReferenceColorHex else tpl.referenceColorHex
             color = try { Color.parseColor(refColorHex) } catch (e: Exception) { Color.YELLOW }
-            textSize = tpl.referenceFontSize * 2f * scale * fitRatio * fitFloorBoost(tpl, scale, fitRatio)
+            textSize = tpl.referenceFontSize * 2f * scale * fitRatio * autoFitBoosts(tpl, scale, fitRatio).second
             
             var refStyle = Typeface.NORMAL
             if (tpl.referenceIsBold && tpl.referenceIsItalic) refStyle = Typeface.BOLD_ITALIC
@@ -4688,6 +4847,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             o.put("autoFitText", t.autoFitText)
             o.put("autoFitMaxVerseSp", t.autoFitMaxVerseSp)
             o.put("boxHeightPercent", t.boxHeightPercent)
+            o.put("gradientEnabled", t.gradientEnabled)
+            o.put("gradientColorHex2", t.gradientColorHex2)
+            o.put("gradientAngleDeg", t.gradientAngleDeg)
+            o.put("gradientAnimation", t.gradientAnimation.id)
+            o.put("gradientSpeed", t.gradientSpeed)
+            o.put("autoFitMinCitationSp", t.autoFitMinCitationSp)
+            o.put("autoFitRatioLock", t.autoFitRatioLock)
             return o.toString()
         }
         val up = if (serverStartTimeMs == 0L) 0 else System.currentTimeMillis() - serverStartTimeMs
@@ -4732,7 +4898,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         sb.append("{\"ok\":true,")
         sb.append("\"app\":{\"versionName\":\"${jsonEscape(versionName)}\",\"versionCode\":$versionCode},")
         sb.append("\"device\":{\"manufacturer\":\"${jsonEscape(android.os.Build.MANUFACTURER)}\",\"model\":\"${jsonEscape(android.os.Build.MODEL)}\",\"deviceName\":\"${jsonEscape(deviceName)}\",\"android\":\"${android.os.Build.VERSION.RELEASE}\",\"sdk\":${android.os.Build.VERSION.SDK_INT}},")
-        sb.append("\"server\":{\"running\":$isRunning,\"port\":$port,\"ip\":\"${getLocalIpAddress()}\",\"uptimeMs\":$up,\"frameVersion\":$frameVersion,\"isLive\":$isLive,\"sseClients\":${sseClients.size},\"broadcastDispatcher\":\"Dispatchers.IO (Safe)\"},")
+        sb.append("\"server\":{\"running\":$isRunning,\"port\":$port,\"ip\":\"${getLocalIpAddress()}\",\"uptimeMs\":$up,\"frameVersion\":$frameVersion,\"isLive\":${isLive && currentVerse != null},\"sseClients\":${sseClients.size},\"broadcastDispatcher\":\"Dispatchers.IO (Safe)\"},")
         sb.append("\"current\":{\"bookId\":\"${verse?.bookId ?: ""}\",\"bookNum\":$bookNum,\"chapter\":${verse?.chapter ?: 0},\"verse\":${verse?.verse ?: 0},\"citation\":\"${jsonEscape(verse?.getFormattedEnglishCitation() ?: "")}\"},")
         sb.append("\"lower\":${tplJson(currentTemplate)},")
         sb.append("\"full\":${tplJson(currentShowTemplate)},")
@@ -4879,7 +5045,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
           ['100% transparent', t.pureTransparent],
           ['Transition', t.transition + ' · ' + t.transitionDurationMs + ' ms' + transHint],
           ['Verse / citation size', t.verseFontSize + ' / ' + t.referenceFontSize],
-          ['Auto-fit', t.autoFitText + ' · max verse ' + t.autoFitMaxVerseSp + ' · box H ' + t.boxHeightPercent + '%'],
+          ['Auto-fit', t.autoFitText + ' · max verse ' + t.autoFitMaxVerseSp + ' · box H ' + t.boxHeightPercent + '%' + ' · cite floor ' + (t.autoFitMinCitationSp || 10) + ' · ratio lock ' + (t.autoFitRatioLock !== false)],
+          ['Gradient card', (t.gradientEnabled ? 'on · ' + t.gradientColorHex2 + ' @ ' + t.gradientAngleDeg + '° · ' + (t.gradientAnimation || 'none') + ' x' + (t.gradientSpeed || 1) : 'off')],
           ['Language / font', t.languageMode + ' / ' + t.fontFamily]
         ];
       }
@@ -5156,7 +5323,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   #controlBar #langSel { flex: 1 1 80px; }
   #controlBar #ref { flex: 2 1 140px; }
   #controlBar #goBtn { width: auto; flex: none; padding: 12px 14px; min-height: 48px; font-size: 16px; }
-  #controlBar .onair { width: auto; flex: none; padding: 12px 18px; min-height: 48px; font-size: 16px; }
+  #controlBar .onair { width: auto; flex: none; padding: 10px 14px; min-height: 44px; font-size: 14px; }
   #controlBar .livepill { max-width: none; flex: 1 1 140px; margin-top: 0; }
   /* Item 28: small neutral Clear button beside the ON AIR toggle. */
   #controlBar #clearBtn { width: auto; flex: none; padding: 12px 14px; min-height: 48px; font-size: 14px; font-weight: 700; background: transparent; border: 1px solid var(--chrome-border, #334155); color: inherit; border-radius: 16px; cursor: pointer; }
@@ -5193,8 +5360,34 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     .vrow.band-a { background: var(--band-a, #3B3052); }
     .vrow.band-b { background: var(--band-b, #2B3A42); }
   }
-  .vrow.live { background: var(--live-bg, rgba(22,163,74,0.18)); border-radius: 10px; }
+  .vrow.live { background: var(--live-bg, #1B3A5C); border: 2px solid var(--live-yellow, #F5D76E); border-radius: 10px; color: var(--live-text, #FFFFFF); }
   .vrow.recent { border-inline-start: 3px solid var(--recents, #0D9488); padding-inline-start: 9px; }
+  /* 2026-10-28 remote redesign: tablet RTL control order (Clear
+     rightmost, then smaller ON AIR, live pill, Arabic, book, chapter
+     numbers, verse input + Go leftmost, left-to-right) and phone
+     Recents as an icon opening a sheet, Browse first. */
+  @media (min-width: 900px) {
+    #controlBar { direction: rtl; }
+    #controlBar #clearBtn { order: 1; }
+    #controlBar .onair { order: 2; }
+    #controlBar .livepill { order: 3; }
+    #controlBar #langSel { order: 4; }
+    #controlBar #bookSel { order: 5; }
+    #controlBar #chSel { order: 6; }
+    #controlBar #goBtn { order: 7; direction: ltr; }
+    #controlBar #ref { order: 8; direction: ltr; }
+  }
+  #recentsToggle { display: none; width: 100%; padding: 12px; font-size: 15px; font-weight: 700; border: 1px solid var(--chrome-border, #334155); border-radius: 12px; background: transparent; color: inherit; cursor: pointer; }
+  @media (max-width: 899px) {
+    main { display: flex; flex-direction: column; }
+    #controlBar { order: 1; }
+    #browseCard { order: 2; }
+    #recentsToggle { display: block; order: 3; }
+    #recentCard { order: 4; display: none; }
+    .status { order: 5; }
+    body.recents-open #recentCard { display: block; position: fixed; left: 8px; right: 8px; bottom: 8px; max-height: 75vh; z-index: 50; overflow-y: auto; }
+    body.recents-open #recentCard .vlist { max-height: 60vh; }
+  }
   .vn { font-weight: 800; min-width: 30px; text-align: center; opacity: 0.65; padding-top: 2px; }
   .va { font-size: 17px; line-height: 1.8; }
   .ve { font-size: 13px; opacity: 0.75; margin-top: 2px; line-height: 1.5; }
@@ -5224,12 +5417,14 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     <button class="onair off" id="onAirBtn" onclick="toggleOnAir()">OFF AIR</button>
     <button id="clearBtn" onclick="clearVerse()">Clear</button>
   </div>
+  <button id="recentsToggle" onclick="toggleRecents()">🕐 Recents <span id="recentsCount"></span></button>
   <div class="card" id="recentCard">
     <label>الآيات الأخيرة — Recent verses</label>
     <div id="recentList" class="vlist"></div>
   </div>
   <div class="card" id="browseCard">
     <label for="bookSel">Browse the Bible — اختر سفراً</label>
+    <div id="currentVerseLine" class="hint">الآية الحالية: —</div>
     <div class="vlist" id="vList"></div>
   </div>
   <div class="status" id="status"></div>
@@ -5486,11 +5681,16 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     var btn = document.getElementById('onAirBtn');
     if (live.onAir) {
       btn.className = 'onair on';
-      btn.textContent = '🔴 ON AIR — tap to hide';
+      btn.textContent = '🔴 ON AIR';
     } else {
       btn.className = 'onair off';
-      btn.textContent = '⚫ OFF AIR — tap to show';
+      btn.textContent = '⚫ OFF AIR';
     }
+  }
+
+  // 2026-10-28: phone Recents is an icon opening a sheet, Browse first.
+  function toggleRecents() {
+    document.body.classList.toggle('recents-open');
   }
 
   // Item 6+7+10: recents mirrored from the master (persisted now, not
@@ -5505,6 +5705,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     lastRecentsJson = rj;
     lastRecents = recents;
     var list = document.getElementById('recentList');
+    var countEl = document.getElementById('recentsCount');
+    if (countEl) { countEl.textContent = recents.length ? '(' + recents.length + ')' : ''; }
     if (!recents.length) { list.innerHTML = '<div class="hint">لم تفتح أي آية بعد.</div>'; markRecentRows(); return; }
     var html = '';
     var bandA = true, prevKey = null;
@@ -5524,6 +5726,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     for (var k = 0; k < rows.length; k++) {
       rows[k].addEventListener('click', function() {
         var r = recents[parseInt(this.getAttribute('data-i'), 10)];
+        document.body.classList.remove('recents-open');
         triggerRecent(r.ref);
       });
     }
@@ -5569,16 +5772,22 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       var ndiOff = live.onAir && cit && j.ndiActive === false;
       document.getElementById('liveRef').textContent =
         cit ? (live.onAir ? (ndiOff ? cit + ' (NDI off)' : cit) : 'Off air — ' + cit) : 'Off air';
+      var curLine = document.getElementById('currentVerseLine');
+      if (curLine) { curLine.textContent = cit ? ('الآية الحالية: ' + cit) : 'الآية الحالية: —'; }
       pill.className = 'livepill' + (live.onAir && cit ? ' on' : '');
       pill.title = ndiOff ? cit + ' — NDI senders off; HTTP overlays still show this verse' : (cit || '');
       // Theme bands + recents + chrome: mirror the app's selected theme
       // into the list/chrome variables (dark/light by the page's color
-      // scheme; re-applied every poll). Live-row tint stays green (see CSS).
+      // scheme; re-applied every poll). Live rows now follow the app
+      // sermon-live navy + yellow via tokens below, not green.
       if (j.bandDarkA) {
         var darkMode = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
         document.documentElement.style.setProperty('--band-a', darkMode ? j.bandDarkA : j.bandLightA);
         document.documentElement.style.setProperty('--band-b', darkMode ? j.bandDarkB : j.bandLightB);
         document.documentElement.style.setProperty('--recents', darkMode ? (j.recentsDark || '#0D9488') : (j.recentsLight || '#0D9488'));
+        document.documentElement.style.setProperty('--live-bg', j.liveNavy || '#1B3A5C');
+        document.documentElement.style.setProperty('--live-yellow', j.liveYellow || '#F5D76E');
+        document.documentElement.style.setProperty('--live-text', '#FFFFFF');
         document.documentElement.style.setProperty('--chrome-bg', darkMode ? j.chromeDarkBg : j.chromeLightBg);
         document.documentElement.style.setProperty('--chrome-card', darkMode ? j.chromeDarkCard : j.chromeLightCard);
         document.documentElement.style.setProperty('--chrome-text', darkMode ? j.chromeDarkText : j.chromeLightText);

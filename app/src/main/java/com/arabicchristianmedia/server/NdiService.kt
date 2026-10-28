@@ -174,6 +174,15 @@ class NdiService : Service() {
                 val tpl = if (isFullScreen) srv.currentShowTemplate else srv.currentTemplate
                 tpl.animatedBackground != AnimatedBackgroundType.NONE
             }
+            // Combined batch, motion split: a gradient animation is
+            // motion content on its own — ticks run for it even with
+            // no video background and even when the Setup Motion
+            // (video-only) toggle is off.
+            snd.setGradientMotionContentProvider { isFullScreen ->
+                val srv = server ?: return@setGradientMotionContentProvider false
+                val tpl = if (isFullScreen) srv.currentShowTemplate else srv.currentTemplate
+                tpl.gradientEnabled && tpl.gradientAnimation != com.arabicchristianmedia.model.GradientAnimationType.NONE
+            }
             // v2.0: verse-change transitions always pump (like the HTTP
             // overlay), independent of the feed's Motion toggle.
             snd.setTransitionProvider { isFullScreen ->

@@ -476,14 +476,25 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         if (!isLive) return false
         val tpl = if (isFull) currentShowTemplate else currentTemplate
         val dur = tpl.transitionDurationMs
-        if (tpl.transition == TransitionType.CUT || dur <= 0) return false
+        if (tpl.transition == TransitionType.CUT || tpl.transition == TransitionType.NONE || dur <= 0) return false
         val elapsed = SystemClock.elapsedRealtime() - transitionStartMs
         if (elapsed >= dur) {
-            // Finished: clear state and refresh the static cache, so the
-            // sender's heartbeat/static sends serve the NEW verse instead
-            // of the pre-change frame still sitting in the cache.
-            transitionPrevVerse = null
-            invalidateBitmapCache()
+            // Split transitions: the box transition may outlive the
+            // verse transition (own duration). Do NOT clear the shared
+            // start state while the box transition is still running —
+            // isBoxTransitionActiveFor reads it; the next call after
+            // the box window ends clears it below.
+            val boxDur = tpl.boxTransitionDurationMs
+            val boxStillActive = tpl.boxTransition != TransitionType.CUT &&
+                tpl.boxTransition != TransitionType.NONE && boxDur > 0 &&
+                elapsed < boxDur
+            if (!boxStillActive) {
+                // Finished: clear state and refresh the static cache, so the
+                // sender's heartbeat/static sends serve the NEW verse instead
+                // of the pre-change frame still sitting in the cache.
+                transitionPrevVerse = null
+                invalidateBitmapCache()
+            }
             return false
         }
         return true
@@ -501,8 +512,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         if (goLiveStartMs == 0L) return false
         if (!isLive) return false
         val tpl = if (isFull) currentShowTemplate else currentTemplate
-        val dur = tpl.transitionDurationMs
-        if (tpl.transition == TransitionType.CUT || dur <= 0) return false
+        val dur = tpl.boxTransitionDurationMs
+        if (tpl.boxTransition == TransitionType.CUT || tpl.boxTransition == TransitionType.NONE || dur <= 0) return false
         val elapsed = SystemClock.elapsedRealtime() - goLiveStartMs
         if (elapsed >= dur) {
             goLiveStartMs = 0L
@@ -524,8 +535,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         if (clearStartMs == 0L || clearVerse == null) return false
         if (isLive) return false
         val tpl = if (isFull) currentShowTemplate else currentTemplate
-        val dur = tpl.transitionDurationMs
-        if (tpl.transition == TransitionType.CUT || dur <= 0) return false
+        val dur = tpl.boxTransitionDurationMs
+        if (tpl.boxTransition == TransitionType.CUT || tpl.boxTransition == TransitionType.NONE || dur <= 0) return false
         val elapsed = SystemClock.elapsedRealtime() - clearStartMs
         if (elapsed >= dur) {
             clearStartMs = 0L
@@ -541,6 +552,29 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         val tpl = if (isFull) currentShowTemplate else currentTemplate
         val dur = tpl.transitionDurationMs.coerceAtLeast(1)
         return ((SystemClock.elapsedRealtime() - clearStartMs).toFloat() / dur).coerceIn(0f, 1f)
+    }
+
+    // Split transitions (combined batch): the BOX transition runs on
+    // the same verse-change start as the verse transition but with its
+    // own type + duration, so it can outlive or be shorter than the
+    // verse text animation — each finishes on its own duration, as
+    // specified. NONE/CUT = instant (no window).
+    fun isBoxTransitionActiveFor(isFull: Boolean): Boolean {
+        if (transitionPrevVerse == null) return false
+        if (!isLive) return false
+        val tpl = if (isFull) currentShowTemplate else currentTemplate
+        val dur = tpl.boxTransitionDurationMs
+        if (tpl.boxTransition == TransitionType.CUT || tpl.boxTransition == TransitionType.NONE || dur <= 0) return false
+        val elapsed = SystemClock.elapsedRealtime() - transitionStartMs
+        if (elapsed >= dur) return false
+        return true
+    }
+
+    fun boxProgressFor(isFull: Boolean): Float {
+        if (!isBoxTransitionActiveFor(isFull)) return 1f
+        val tpl = if (isFull) currentShowTemplate else currentTemplate
+        val dur = tpl.boxTransitionDurationMs.coerceAtLeast(1)
+        return ((SystemClock.elapsedRealtime() - transitionStartMs).toFloat() / dur).coerceIn(0f, 1f)
     }
 
     fun invalidateBitmapCache() {
@@ -1188,6 +1222,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             put("cornerRadiusDp", tpl.cornerRadiusDp)
             put("transition", tpl.transition.name)
             put("transitionDurationMs", tpl.transitionDurationMs)
+            put("boxTransition", tpl.boxTransition.name)
+            put("boxTransitionDurationMs", tpl.boxTransitionDurationMs)
+            put("boxZoomEnabled", tpl.boxZoomEnabled)
+            put("boxFloatEnabled", tpl.boxFloatEnabled)
+            put("boxSwayEnabled", tpl.boxSwayEnabled)
+            put("boxGlowPulseEnabled", tpl.boxGlowPulseEnabled)
+            put("boxMotionSpeed", tpl.boxMotionSpeed.toDouble())
             put("showAccentBorder", tpl.showAccentBorder)
             put("textShadowEnabled", tpl.textShadowEnabled)
             put("textShadowColorHex", tpl.textShadowColorHex)
@@ -1197,7 +1238,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             put("cardGlowEnabled", tpl.cardGlowEnabled)
             put("cardGlowColorHex", tpl.cardGlowColorHex)
             put("emblem", tpl.emblem)
-            put("isPureTransparentBackground", tpl.isPureTransparentBackground)
+            // Combined batch: pure is derived from opacity 0 (toggle
+            // removed); the legacy flag still counts, so old saves
+            // and a manually-zeroed slider behave identically.
+            put("isPureTransparentBackground", tpl.bgOpacity <= 0f || tpl.isPureTransparentBackground)
             put("isFullScreen", tpl.isFullScreen)
             put("bilingualSpacing", tpl.bilingualSpacing)
             put("showBilingualSpacing", tpl.showBilingualSpacing)
@@ -1554,6 +1598,16 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         <div id="animated-bg-layer" class="animated-bg-layer">
           <video id="custom-video-bg" style="display:none;" autoplay loop muted playsinline></video>
         </div>
+        <!-- Combined batch, HTTP layer fix: card-color overlay, ABOVE
+             the video layer and BELOW the text (card-inner-content,
+             z-index 1). A card box background always paints BEHIND
+             its children, so the old code could never put card color
+             over a video — the video always won, whatever bgOpacity
+             was. With a custom video active, section 6 copies the
+             card fill (flat or gradient, at bgOpacity) onto this
+             overlay and clears the box background, matching the NDI
+             stack: text > card color > video > glow. -->
+        <div id="card-fill-overlay" style="display:none; position:absolute; inset:0; width:100%; height:100%; pointer-events:none; border-radius:inherit;"></div>
         <!-- v1.9.1 parity: the particle canvas is a DIRECT child of the card,
              above its background and below the content (NDI's paint order).
              It used to live inside the animated layer, which Lower mode
@@ -1588,6 +1642,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     const cardBox = document.getElementById('card-box');
     const animBgLayer = document.getElementById('animated-bg-layer');
     const customVideoBg = document.getElementById('custom-video-bg');
+    const cardFillOverlay = document.getElementById('card-fill-overlay');
+    // Combined batch, Play Once state (per page, per feed).
+    // Per Verse key: book:chapter:verse:videoId. Per Go Live: one
+    // play per OFF AIR -> ON AIR session, re-armed on OFF AIR.
+    let playOnceVerseKey = null;
+    let playOnceGoLivePlayed = false;
+    let playOnceGoLiveVideoId = null;
     const particleCanvas = document.getElementById('particle-canvas');
     const citationRow = document.getElementById('citation-row');
     const citationText = document.getElementById('citation-text');
@@ -1763,9 +1824,24 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       // Item 11: show/hide takes the selected transition's duration (CUT =
       // instant), so go-live and clear match the verse-change timing
       // instead of the fixed 0.4s in the stylesheet.
-      const visDur = data.transition === 'CUT' ? 0 : (data.transitionDurationMs !== undefined ? data.transitionDurationMs : 350);
+      // Split transitions (combined batch): show/hide animates the BOX,
+      // so it uses the box type + duration (falling back to the verse
+      // values for payloads that predate the box fields). The verse
+      // transition below (text swap) keeps using data.transition.
+      const boxType = data.boxTransition || data.transition || 'SLIDE_UP';
+      const boxDur = data.boxTransitionDurationMs !== undefined ? data.boxTransitionDurationMs : (data.transitionDurationMs !== undefined ? data.transitionDurationMs : 350);
+      const visDur = (boxType === 'CUT' || boxType === 'NONE') ? 0 : boxDur;
       container.style.transitionDuration = visDur + 'ms';
       if (!data.isLive || !data.arabicText) {
+        // Combined batch, Play Once: OFF AIR ends the live session.
+        playOnceVerseKey = null;
+        playOnceGoLivePlayed = false;
+        playOnceGoLiveVideoId = null;
+        try { customVideoBg.pause(); } catch (e) {}
+        if (window.__boxMotionTimer) { clearInterval(window.__boxMotionTimer); window.__boxMotionTimer = null; }
+        cardBox.style.transform = '';
+        customVideoBg.style.display = 'none';
+        animBgLayer.style.opacity = '0';
         container.classList.remove('visible');
         // v1.9.1: cancel any pending font-gated reveal and force the next
         // live state through the full apply path.
@@ -1873,7 +1949,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         return 'none';
       }
 
-      if (wasVisible && verseChanged && transType !== 'CUT' && transDur > 0) {
+      if (wasVisible && verseChanged && transType !== 'CUT' && transType !== 'NONE' && transDur > 0) {
         const halfDur = Math.floor(transDur / 2);
         const mySwap = ++swapSeq;
         setTextAnim('opacity ' + halfDur + 'ms ease-in-out, transform ' + halfDur + 'ms ease-in-out', '0', textTransformFor(transType));
@@ -2273,6 +2349,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       // Section 7 re-adds its own animated-background classes after
       // this section, so clearing here cannot strand a style.
       if (window.__gradRotateTimer) { clearInterval(window.__gradRotateTimer); window.__gradRotateTimer = null; }
+      if (window.__boxMotionTimer) { clearInterval(window.__boxMotionTimer); window.__boxMotionTimer = null; }
       cardBox.classList.remove('bg-flow');
       cardBox.classList.remove('bg-breath');
       cardBox.style.animationDuration = '';
@@ -2303,8 +2380,17 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
           cardBox.classList.add('bg-flow');
           cardBox.style.animationDuration = (15 / gSpeed) + 's';
         } else if (gAnim === 'pulse' && gSpeed > 0) {
-          cardBox.classList.add('bg-breath');
-          cardBox.style.animationDuration = (5 / gSpeed) + 's';
+          // Combined batch, HTTP Pulse parity fix: DO NOT add
+          // bg-breath here. bg-breath is candleBreath (scale 1 to
+          // 1.1, opacity 0.7 to 1, alternate) on the whole cardBox,
+          // which zoomed the entire lower third on HTTP. NDI Pulse
+          // only breathes gradient alpha (0.7 to 1.0, same formula
+          // below), with no scale at all. Pulse is therefore driven
+          // by the post-chain timer below (alpha only, NDI formula),
+          // never by a transform on the card. NDI Pulse is untouched,
+          // Pulse itself is not removed, and no separate Zoom effect
+          // is added here (that is a separate proposal, pending).
+          // (No class, no animationDuration — timer below owns it.)
         } else if (gAnim === 'rotate' && gSpeed > 0) {
           // CSS cannot animate a gradient angle on its own, so a
           // 50ms timer turns it (NDI turns it natively at the same
@@ -2338,6 +2424,153 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         cardBox.style.boxShadow = cardGlowShadow('0 16px 40px', 0.55);
       }
 
+      // Combined batch, HTTP layer fix: with a custom video, the
+      // card fill computed above must live on the overlay (above
+      // the video), not on the box (behind the video). Copy whatever
+      // section 6 just wrote (gradient or flat, at bgOpacity) onto
+      // the overlay, then clear the box background. Without a custom
+      // video the overlay stays hidden and the box behaves exactly
+      // as before. Pure (opacity 0) still hides the fill: the copied
+      // background is at opacity 0, and the pure branch above wrote
+      // transparent in the first place.
+      var isCustomVideoActive = (data.animatedBackground === 'custom_video' && !!data.customVideoId);
+      if (isCustomVideoActive) {
+        cardFillOverlay.style.background = cardBox.style.background || '';
+        cardFillOverlay.style.backgroundColor = cardBox.style.backgroundColor || '';
+        cardFillOverlay.style.backgroundSize = cardBox.style.backgroundSize || '';
+        cardFillOverlay.style.display = 'block';
+        // Overlay takes over animation: drop the box CSS classes
+        // so pulse/slide do not double-animate the whole card
+        // (including text) underneath the video.
+        cardBox.classList.remove('bg-flow');
+        cardBox.classList.remove('bg-breath');
+        cardBox.style.background = 'transparent';
+        cardBox.style.backgroundColor = 'transparent';
+        cardBox.style.backgroundImage = 'none';
+        cardBox.style.backdropFilter = 'none';
+        cardBox.style.webkitBackdropFilter = 'none';
+      } else {
+        cardFillOverlay.style.display = 'none';
+      }
+
+      // Combined batch, new gradient effects + overlay animation:
+      // FLOW/SHIMMER/WAVE are sin-periodic (phase = 2*PI*speed*
+      // absolute seconds, no modulo wrap), so first frame == last
+      // frame exactly. They run on a 50ms timer like ROTATE.
+      // When the overlay is active (custom video), the timer must
+      // write the OVERLAY, not the box (the box is behind the
+      // video and its animation would be invisible); it also
+      // drives SLIDE/PULSE/ROTATE on the overlay, whose CSS classes
+      // and old timer target the box only.
+      (function() {
+        if (!data.gradientEnabled) return;
+        var anim = data.gradientAnimation || 'none';
+        if (anim === 'none') return;
+        var spd = (data.gradientSpeed !== undefined) ? parseFloat(data.gradientSpeed) : 1;
+        if (!(spd > 0)) return;
+        var target = isCustomVideoActive ? cardFillOverlay : cardBox;
+        var baseAngle = (data.gradientAngleDeg !== undefined) ? data.gradientAngleDeg : 90;
+        var g2r = null;
+        try {
+          var gg = hexToRgb(data.gradientColorHex2 || '#0A1128');
+          g2r = gg || { r: 10, g: 17, b: 40 };
+        } catch (e) { g2r = { r: 10, g: 17, b: 40 }; }
+        // For slide/rotate on a non-video card, keep the existing
+        // CSS/timer behaviour untouched (no double timer). Pulse is
+        // EXCLUDED from that exemption: its old bg-breath class was
+        // removed above (zoom bug), so the timer below must own it
+        // on every card, with NDI's alpha formula.
+        if (!isCustomVideoActive && (anim === 'slide' || anim === 'rotate')) return;
+        if (window.__gradRotateTimer) { clearInterval(window.__gradRotateTimer); window.__gradRotateTimer = null; }
+        target.style.backgroundSize = '200% 200%';
+        window.__gradRotateTimer = setInterval(function() {
+          var phase = 2 * Math.PI * spd * (Date.now() / 1000);
+          var s = Math.sin(phase);
+          if (anim === 'flow') {
+            target.style.background = 'linear-gradient(' + baseAngle + 'deg, rgba(' + r + ',' + g + ',' + b + ',' + opacity + ') 0%, rgba(' + g2r.r + ',' + g2r.g + ',' + g2r.b + ',' + opacity + ') 100%)';
+            target.style.backgroundPosition = (50 + 50 * s) + '% 50%';
+          } else if (anim === 'shimmer') {
+            var m = 0.88 + 0.12 * s;
+            target.style.background = 'linear-gradient(' + baseAngle + 'deg, rgba(' + r + ',' + g + ',' + b + ',' + (opacity * m) + ') 0%, rgba(' + g2r.r + ',' + g2r.g + ',' + g2r.b + ',' + (opacity * m) + ') 100%)';
+            target.style.backgroundPosition = '0% 0%';
+          } else if (anim === 'wave') {
+            var a = baseAngle + 20 * s;
+            target.style.background = 'linear-gradient(' + a + 'deg, rgba(' + r + ',' + g + ',' + b + ',' + opacity + ') 0%, rgba(' + g2r.r + ',' + g2r.g + ',' + g2r.b + ',' + opacity + ') 100%)';
+            target.style.backgroundPosition = '0% 0%';
+          } else if (anim === 'slide') {
+            target.style.background = 'linear-gradient(' + baseAngle + 'deg, rgba(' + r + ',' + g + ',' + b + ',' + opacity + ') 0%, rgba(' + g2r.r + ',' + g2r.g + ',' + g2r.b + ',' + opacity + ') 100%)';
+            target.style.backgroundPosition = (50 + 50 * s) + '% 50%';
+          } else if (anim === 'pulse') {
+            // NDI parity, exact: gradPhase = (sin(t * 1.5 * speed) + 1) / 2
+            // with t = (Date.now() % 60000) / 1000, alpha = opacity *
+            // (0.7 + 0.3 * gradPhase). Alpha/brightness only, NO
+            // transform scale, so the card never zooms. (The other
+            // new effects keep their sin(2*PI) period; Pulse keeps
+            // NDI's own period so the two renderers match frame for
+            // frame, wrap included.)
+            var tt = (Date.now() % 60000) / 1000;
+            var ph = (Math.sin(tt * 1.5 * spd) + 1) / 2;
+            var pm = 0.7 + 0.3 * ph;
+            target.style.background = 'linear-gradient(' + baseAngle + 'deg, rgba(' + r + ',' + g + ',' + b + ',' + (opacity * pm) + ') 0%, rgba(' + g2r.r + ',' + g2r.g + ',' + g2r.b + ',' + (opacity * pm) + ') 100%)';
+            target.style.backgroundPosition = '0% 0%';
+          } else if (anim === 'rotate') {
+            var ra = (baseAngle + (Date.now() / 1000) * 30 * spd) % 360;
+            target.style.background = 'linear-gradient(' + ra + 'deg, rgba(' + r + ',' + g + ',' + b + ',' + opacity + ') 0%, rgba(' + g2r.r + ',' + g2r.g + ',' + g2r.b + ',' + opacity + ') 100%)';
+          }
+        }, 50);
+      })();
+
+      // Split transitions + continuous box effects (combined batch,
+      // II Card): a 50ms timer like the gradient timer. It restarts on
+      // every section-6 apply, and section 6 runs on every data change
+      // (styleKey is the full JSON), so its start time is effectively
+      // the verse-live time. Same math as NDI BoxMotion: phase =
+      // 2*PI * boxMotionSpeed * seconds since the longer of the
+      // verse/box transitions ended; Zoom = 1 + 0.05*(1-cos)/2 (1.0 to
+      // 1.05, neutral at phase 0); Float = +/-8px * sin; Sway =
+      // +/-8px * sin; Glow Pulse = shadow alpha * (1 + 0.3*sin), no
+      // scale, no position change. During the transition window the
+      // transform is cleared (neutral) so the entry transition owns
+      // the box, then the effects ramp in over 600ms (smoothstep) —
+      // no jump from transition to continuous. Transforming cardBox
+      // moves overlay + video + text together, as one box, matching
+      // NDI. Design-gradient Pulse is separate (colour only, no
+      // scale) and is untouched by this timer.
+      (function() {
+        var zoomOn = !!data.boxZoomEnabled, floatOn = !!data.boxFloatEnabled,
+            swayOn = !!data.boxSwayEnabled, glowOn = !!data.boxGlowPulseEnabled;
+        if (!zoomOn && !floatOn && !swayOn && !glowOn) { cardBox.style.transform = ''; return; }
+        var spd = (data.boxMotionSpeed !== undefined) ? parseFloat(data.boxMotionSpeed) : 1;
+        var verseEnd = (transType === 'CUT' || transType === 'NONE') ? 0 : transDur;
+        var boxEnd = (boxType === 'CUT' || boxType === 'NONE') ? 0 : boxDur;
+        var transEnd = Math.max(verseEnd, boxEnd);
+        var start = Date.now();
+        var baseShadow = cardBox.style.boxShadow || '';
+        var shadowRgb = null, shadowAlpha = 0;
+        var sm = baseShadow.match(/rgba\((\d+,\s*\d+,\s*\d+),\s*([\d.]+)\)/);
+        if (sm) { shadowRgb = sm[1]; shadowAlpha = parseFloat(sm[2]); }
+        window.__boxMotionTimer = setInterval(function() {
+          var elapsed = Date.now() - start;
+          if (elapsed <= transEnd) { cardBox.style.transform = ''; return; }
+          var after = (elapsed - transEnd) / 1000;
+          var f = Math.min(1, (elapsed - transEnd) / 600);
+          var ramp = f * f * (3 - 2 * f);
+          var phase = 2 * Math.PI * spd * after;
+          var sn = Math.sin(phase);
+          var zoom = zoomOn ? 1 + 0.05 * (1 - Math.cos(phase)) / 2 * ramp : 1;
+          var fy = floatOn ? 8 * sn * ramp : 0;
+          var sx = swayOn ? 8 * sn * ramp : 0;
+          var t = '';
+          if (sx !== 0 || fy !== 0) t += 'translate(' + sx.toFixed(2) + 'px, ' + fy.toFixed(2) + 'px) ';
+          if (zoom !== 1) t += 'scale(' + zoom.toFixed(4) + ')';
+          cardBox.style.transform = t;
+          if (glowOn && shadowRgb !== null) {
+            var ga = Math.max(0, Math.min(1, shadowAlpha * (1 + 0.3 * sn * ramp)));
+            cardBox.style.boxShadow = baseShadow.replace(/rgba\([\d,\s]+,\s*[\d.]+\)/, 'rgba(' + shadowRgb + ', ' + ga.toFixed(3) + ')');
+          }
+        }, 50);
+      })();
+
       // Text shadow on verse + citation (independent flag, both feeds).
       verseText.style.textShadow = textShadowCss();
       citationRow.style.textShadow = textShadowCss();
@@ -2354,8 +2587,16 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       // the whole section with a fingerprint of everything it consumes:
       // when the animation config is unchanged, the running animation,
       // the particle field and the video are left exactly as they are.
+      // Combined batch, Play Once: the fingerprint must change on
+      // a new verse when Play Once is on, or section 7 would be
+      // skipped and the video would never restart. Loops keep the
+      // old fingerprint (a verse tap must NOT restart a loop).
+      var playOnceMode = data.videoLoopMode || 'fade';
+      var playOnceActive = (playOnceMode === 'once' || playOnceMode === 'once_verse' || playOnceMode === 'once_golive');
+      var playOnceVerseKeyJs = (data.bookId || '') + ':' + (data.chapterNum || '') + ':' + (data.verseNum || '') + ':' + (data.customVideoId || '');
       const animKey = [animType, animOpacity, data.motionSpeed, data.isPureTransparentBackground ? 1 : 0,
-        data.bgOpacity, data.customVideoId || '', data.videoLoopMode || '', isFull ? 1 : 0].join('|');
+        data.bgOpacity, data.customVideoId || '', data.videoLoopMode || '', isFull ? 1 : 0,
+        playOnceActive ? playOnceVerseKeyJs : ''].join('|');
       if (animKey !== activeAnimKey) {
       animBgLayer.className = 'animated-bg-layer';
       customVideoBg.style.display = 'none';
@@ -2428,9 +2669,52 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             if (pr && pr.catch) pr.catch(function() {});
           }
         }
-        customVideoBg.style.display = 'block';
-        customVideoBg.style.opacity = animOpacity;
-        animBgLayer.style.opacity = '1';
+        // Combined batch, Play Once (HTTP): loop=false, ended
+        // turns the WHOLE layer off (hidden + paused, not frozen).
+        // Per Verse: restart on a new verse key. Per Go Live:
+        // restart only once per OFF AIR -> ON AIR session (re-armed
+        // in applyData's OFF AIR branch). Same verse re-apply: do
+        // not restart — if it already ended, stay hidden; if it is
+        // still playing, just keep playing (no seek).
+        customVideoBg.loop = !playOnceActive;
+        customVideoBg.onended = function() {
+          if (!playOnceActive) return;
+          try { customVideoBg.pause(); } catch (e) {}
+          customVideoBg.style.display = 'none';
+          animBgLayer.style.opacity = '0';
+        };
+        var playOnceAlreadyDone = false;
+        var playOnceShouldPlay = true;
+        if (playOnceActive) {
+          if (playOnceMode === 'once_golive') {
+            if (playOnceGoLivePlayed && playOnceGoLiveVideoId === data.customVideoId) {
+              playOnceAlreadyDone = true; playOnceShouldPlay = false;
+            } else {
+              playOnceGoLivePlayed = true; playOnceGoLiveVideoId = data.customVideoId;
+              try { customVideoBg.currentTime = 0; } catch (e) {}
+            }
+          } else {
+            if (playOnceVerseKey === playOnceVerseKeyJs) {
+              // Same verse: if it ended, the onended handler hid it
+              // and display is already none — do not resurrect it.
+              if (customVideoBg.style.display === 'none' && customVideoBg.ended) {
+                playOnceAlreadyDone = true; playOnceShouldPlay = false;
+              }
+            } else {
+              playOnceVerseKey = playOnceVerseKeyJs;
+              try { customVideoBg.currentTime = 0; } catch (e) {}
+            }
+          }
+        }
+        if (playOnceAlreadyDone) {
+          try { customVideoBg.pause(); } catch (e) {}
+          customVideoBg.style.display = 'none';
+          animBgLayer.style.opacity = '0';
+        } else {
+          customVideoBg.style.display = 'block';
+          customVideoBg.style.opacity = animOpacity;
+          animBgLayer.style.opacity = '1';
+        }
         // v1.9.2 (video-loop audit): loop fade driven by
         // requestAnimationFrame, not ontimeupdate — the ~4Hz timeupdate
         // stepped the 500ms fade visibly (2 samples). Matches NDI's
@@ -2439,8 +2723,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         videoFadeBase = animOpacity;
         stopVideoFade();
         customVideoBg.ontimeupdate = null;
-        const wantFade = (data.videoLoopMode || 'fade') === 'fade';
-        if (wantFade) startVideoFade();
+        const wantFade = (!playOnceActive && (data.videoLoopMode || 'fade') === 'fade');
+        if (wantFade && playOnceShouldPlay) startVideoFade();
       } else {
         animBgLayer.style.opacity = '0';
       }
@@ -2581,18 +2865,22 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       activeAnimKey = animKey;
       } // v1.9.2 (#2): end of the motion-background fingerprint guard
 
-      // 8. Entry Transitions
+      // 8. Entry Transitions — split transitions: entry animates the
+      // BOX, so it uses the box type + duration (NONE = no class, the
+      // container simply appears; the verse text swap above already
+      // used the verse type). The box-motion timer below owns the
+      // continuous effects and stays neutral during this entry.
       container.className = isFull ? 'mode-full-show' : '';
-      if (transType === 'FADE') container.classList.add('anim-fade');
-      else if (transType === 'SLIDE_DOWN') container.classList.add('anim-slide-down');
-      else if (transType === 'SLIDE_RIGHT') container.classList.add('anim-slide-right');
-      else if (transType === 'SLIDE_LEFT') container.classList.add('anim-slide-left');
-      else if (transType === 'SCALE_ZOOM') container.classList.add('anim-zoom');
-      else if (transType === 'BOUNCE') container.classList.add('anim-bounce');
-      else if (transType === 'CUT') container.classList.add('anim-cut');
+      if (boxType === 'FADE') container.classList.add('anim-fade');
+      else if (boxType === 'SLIDE_DOWN') container.classList.add('anim-slide-down');
+      else if (boxType === 'SLIDE_RIGHT') container.classList.add('anim-slide-right');
+      else if (boxType === 'SLIDE_LEFT') container.classList.add('anim-slide-left');
+      else if (boxType === 'SCALE_ZOOM') container.classList.add('anim-zoom');
+      else if (boxType === 'BOUNCE') container.classList.add('anim-bounce');
+      else if (boxType === 'CUT' || boxType === 'NONE') container.classList.add('anim-cut');
       else container.classList.add('anim-slide-up');
 
-      container.style.transitionDuration = transDur + 'ms';
+      container.style.transitionDuration = boxDur + 'ms';
       if (wasVisible) container.classList.add('visible');
 
       // v1.9.1: fit + reveal happen through the font gate (finishApply),
@@ -2736,6 +3024,22 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
      */
     private val videoStore by lazy { VideoStore(context) }
     private val videoRenderers = mutableMapOf<Boolean, VideoBackgroundRenderer>()
+    /** Combined batch, Play Once state per feed (isFull -> value).
+     * Per Verse: last verse+video key that started a play.
+     * Per Go Live: whether a play already ran this live session,
+     * plus the video it ran for (a video change re-arms it). */
+    private val playOnceVerseKey = mutableMapOf<Boolean, String?>()
+    private val playOnceGoLivePlayed = mutableMapOf<Boolean, Boolean>()
+    private val playOnceGoLiveVideoId = mutableMapOf<Boolean, String?>()
+
+    /** Setup NDI Motion toggle for a feed (video motion only, per
+     * the combined-batch split). Reads the same prefs NdiService
+     * uses; default false = the sender default spec. */
+    fun isVideoMotionEnabled(isFull: Boolean): Boolean = try {
+        val feedKey = if (isFull) NdiNativeSender.FEED_FULL else NdiNativeSender.FEED_LOWER
+        context.getSharedPreferences("bible_ndi_source_specs", android.content.Context.MODE_PRIVATE)
+            .getBoolean(feedKey + "_motion", false)
+    } catch (e: Exception) { false }
     private fun getVideoRenderer(isFull: Boolean): VideoBackgroundRenderer =
         synchronized(videoRenderers) {
             videoRenderers.getOrPut(isFull) { VideoBackgroundRenderer() }
@@ -3272,8 +3576,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                         val layerPaint = Paint().apply { alpha = ((1f - p) * 255f).toInt().coerceIn(0, 255) }
                         val layer = canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), layerPaint)
                         // Exit = reverse of entry: the frame moves TOWARD the
-                        // entry offset while fading out.
-                        when (tpl.transition) {
+                        // entry offset while fading out. Split transitions:
+                        // the exit animates the BOX, so it uses the box type.
+                        when (tpl.boxTransition) {
                             TransitionType.SLIDE_UP -> canvas.translate(0f, p * 50f * (width / 1920f))
                             TransitionType.SLIDE_DOWN -> canvas.translate(0f, -p * 50f * (width / 1920f))
                             TransitionType.SLIDE_RIGHT -> canvas.translate(p * 60f * (width / 1920f), 0f)
@@ -3294,6 +3599,15 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                     } catch (_: OutOfMemoryError) { /* fall through: transparent */ }
                     catch (_: Exception) { /* fall through: transparent */ }
                 }
+            }
+            // Combined batch, Play Once: OFF AIR ends the live
+            // session — Per Go Live re-arms, Per Verse key clears,
+            // and the video layer is stopped (off, not frozen).
+            playOnceVerseKey[isFull] = null
+            playOnceGoLivePlayed[isFull] = false
+            playOnceGoLiveVideoId[isFull] = null
+            if (!isTransitionSnapshot) {
+                try { synchronized(videoRenderers) { videoRenderers[isFull]?.stopPlayOnce() } } catch (e: Exception) { }
             }
             return
         }
@@ -3317,8 +3631,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             val p = goLiveProgressFor(isFull)
             val layerPaint = Paint().apply { alpha = (p * 255f).toInt().coerceIn(0, 255) }
             transitionLayer = canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), layerPaint)
-            // Apply directional motion or scaling during transition
-            when (tpl.transition) {
+            // Go-live animates the BOX (split transitions): the box
+            // transition type + duration, not the verse transition.
+            when (tpl.boxTransition) {
                 TransitionType.SLIDE_UP -> canvas.translate(0f, (1f - p) * 50f * (width / 1920f))
                 TransitionType.SLIDE_DOWN -> canvas.translate(0f, -(1f - p) * 50f * (width / 1920f))
                 TransitionType.SLIDE_RIGHT -> canvas.translate((1f - p) * 60f * (width / 1920f), 0f)
@@ -3405,6 +3720,62 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         val boxLeft = marginH
         val boxRight = width - marginH
         val rect = RectF(boxLeft, boxTop, boxRight, boxBottom)
+        // Split transitions + continuous box effects (combined batch).
+        // Box transition: same verse-change start as the verse text
+        // animation, own type + duration, applied around the BOX centre
+        // (not the frame centre) so a Lower box slides/scales in place.
+        // Continuous effects: elapsed since the verse went live (latest
+        // of verse-change / go-live start), neutral during the longer
+        // of the verse/box transitions, then BoxMotion.ramp grows them
+        // smoothly; phase starts at 0 at transition end, so sin starts
+        // neutral. Applied to glow + video + card + text together, as
+        // one box (spec: box effects transform the whole card box).
+        // Skipped for text-only renders and transition snapshots, which
+        // borrow the live frame and must not double-transform.
+        var boxSaveCount = -1
+        var boxFadeLayer = -1
+        val boxChangeActive = !isTransitionSnapshot && !textOnly && isBoxTransitionActiveFor(isFull)
+        val boxP = if (boxChangeActive) boxProgressFor(isFull) else 1f
+        val boxVerseDurMs = if (tpl.transition == TransitionType.CUT || tpl.transition == TransitionType.NONE) 0L else tpl.transitionDurationMs.toLong()
+        val boxBoxDurMs = if (tpl.boxTransition == TransitionType.CUT || tpl.boxTransition == TransitionType.NONE) 0L else tpl.boxTransitionDurationMs.toLong()
+        val boxTransEndMs = maxOf(boxVerseDurMs, boxBoxDurMs)
+        val boxLiveStartMs = maxOf(transitionStartMs, goLiveStartMs)
+        val boxElapsedMs = if (boxLiveStartMs > 0L) SystemClock.elapsedRealtime() - boxLiveStartMs else Long.MAX_VALUE / 2
+        val boxEffectsOn = tpl.boxZoomEnabled || tpl.boxFloatEnabled || tpl.boxSwayEnabled || tpl.boxGlowPulseEnabled
+        val boxRamp = if (boxEffectsOn) com.arabicchristianmedia.model.BoxMotion.ramp(boxElapsedMs, boxTransEndMs) else 0f
+        val boxPhase = com.arabicchristianmedia.model.BoxMotion.phase(tpl.boxMotionSpeed, maxOf(0L, boxElapsedMs - boxTransEndMs) / 1000f)
+        val boxZoomScale = if (tpl.boxZoomEnabled) com.arabicchristianmedia.model.BoxMotion.zoomScale(boxPhase, boxRamp) else 1f
+        val boxFloatY = if (tpl.boxFloatEnabled) com.arabicchristianmedia.model.BoxMotion.floatDp(boxPhase, boxRamp) * scale else 0f
+        val boxSwayX = if (tpl.boxSwayEnabled) com.arabicchristianmedia.model.BoxMotion.swayDp(boxPhase, boxRamp) * scale else 0f
+        val boxGlowFactor = if (tpl.boxGlowPulseEnabled) com.arabicchristianmedia.model.BoxMotion.glowFactor(boxPhase, boxRamp) else 1f
+        if (!textOnly && (boxChangeActive || boxZoomScale != 1f || boxFloatY != 0f || boxSwayX != 0f)) {
+            val boxCx = boxLeft + (boxRight - boxLeft) / 2f
+            val boxCy = boxTop + (boxBottom - boxTop) / 2f
+            if (boxChangeActive && tpl.boxTransition == TransitionType.FADE) {
+                boxFadeLayer = canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), Paint().apply { alpha = (boxP * 255f).toInt().coerceIn(0, 255) })
+            } else {
+                boxSaveCount = canvas.save()
+            }
+            if (boxChangeActive) {
+                when (tpl.boxTransition) {
+                    TransitionType.SLIDE_UP -> canvas.translate(0f, (1f - boxP) * 50f * scale)
+                    TransitionType.SLIDE_DOWN -> canvas.translate(0f, -(1f - boxP) * 50f * scale)
+                    TransitionType.SLIDE_RIGHT -> canvas.translate((1f - boxP) * 60f * scale, 0f)
+                    TransitionType.SLIDE_LEFT -> canvas.translate(-(1f - boxP) * 60f * scale, 0f)
+                    TransitionType.SCALE_ZOOM -> {
+                        val bs = 0.92f + 0.08f * boxP
+                        canvas.scale(bs, bs, boxCx, boxCy)
+                    }
+                    TransitionType.BOUNCE -> {
+                        val bp = if (boxP < 0.7f) (boxP / 0.7f) * 1.05f else 1.05f - (boxP - 0.7f) / 0.3f * 0.05f
+                        canvas.scale(bp, bp, boxCx, boxCy)
+                    }
+                    else -> {}
+                }
+            }
+            if (boxSwayX != 0f || boxFloatY != 0f) canvas.translate(boxSwayX, boxFloatY)
+            if (boxZoomScale != 1f) canvas.scale(boxZoomScale, boxZoomScale, boxCx, boxCy)
+        }
         // v1.9.2 (#7): the corner radius applies to Full Show too (was
         // forced to 0 on every surface while the Full card was the frame).
         val radius = tpl.cornerRadiusDp * scale * 2f
@@ -3431,7 +3802,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             }
             val glowCol = try { Color.parseColor(tpl.cardGlowColorHex) } catch (e: Exception) { Color.BLACK }
             val shadowCol = Color.argb(
-                (255 * shadowAlphaF).toInt().coerceIn(0, 255),
+                (255 * shadowAlphaF * boxGlowFactor).toInt().coerceIn(0, 255),
                 Color.red(glowCol), Color.green(glowCol), Color.blue(glowCol)
             )
             val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -3457,15 +3828,48 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             videoRenderer.setAlpha(tpl.animatedBackgroundOpacity)
             videoRenderer.setMuted(tpl.customVideoMuted)
             videoRenderer.setSpeed(tpl.motionSpeed)
-            // v2.0: Apply the template's loop mode (fade or cut).
+            // v2.0: Apply the template's loop mode (fade, cut, or
+            // a Play Once variant). setPlayOnce must follow loopMode
+            // so a freshly created player gets the right looping.
             videoRenderer.loopMode = tpl.videoLoopMode.id
+            videoRenderer.setPlayOnce(tpl.videoLoopMode.isPlayOnce())
+            // Combined batch, Play Once tracking (live, non-transition
+            // draws only — transition snapshots borrow the live frame
+            // and must never restart the video mid-transition).
+            if (!isTransitionSnapshot && isLive) {
+                when (tpl.videoLoopMode) {
+                    com.arabicchristianmedia.model.VideoLoopMode.PLAY_ONCE_PER_VERSE,
+                    com.arabicchristianmedia.model.VideoLoopMode.PLAY_ONCE -> {
+                        val key = (activeVerse.id) + "|" + tpl.customVideoId
+                        if (playOnceVerseKey[isFull] != key) {
+                            playOnceVerseKey[isFull] = key
+                            videoRenderer.restartPlayOnce()
+                        }
+                    }
+                    com.arabicchristianmedia.model.VideoLoopMode.PLAY_ONCE_PER_GOLIVE -> {
+                        val played = playOnceGoLivePlayed[isFull] == true &&
+                            playOnceGoLiveVideoId[isFull] == tpl.customVideoId
+                        if (!played) {
+                            playOnceGoLivePlayed[isFull] = true
+                            playOnceGoLiveVideoId[isFull] = tpl.customVideoId
+                            videoRenderer.restartPlayOnce()
+                        }
+                    }
+                    else -> { /* loops: no restart tracking */ }
+                }
+            }
+            // Combined batch, motion split: a motion tick is no longer
+            // proof that VIDEO motion is on — it may be a gradient-only
+            // tick. Video motion follows the Setup toggle only; when
+            // it is off, the decoder parks (video frozen) while the
+            // gradient phase still advances on the tick.
             // v1.9.2: park the decoder when motion is off — static
             // renders freeze on the last frame, but the player used to
             // keep decoding frames nobody consumed. Motion ticks resume
             // it; transition snapshots touch nothing (they borrow the
             // live frame's state, and pausing there would churn every
             // tick of a transition).
-            if (isMotionTick) videoRenderer.setMotionActive(true)
+            if (isMotionTick) videoRenderer.setMotionActive(isVideoMotionEnabled(isFull))
             else if (!isTransitionSnapshot) videoRenderer.setMotionActive(false)
             if (isMotionTick || !videoRenderer.hasFrame()) videoRenderer.requestFrame()
             val videoRect = Rect(boxLeft.toInt(), boxTop.toInt(), boxRight.toInt(), boxBottom.toInt())
@@ -3485,7 +3889,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             synchronized(videoRenderers) { videoRenderers[isFull]?.pause() }
         }
 
-        if (!textOnly && !tpl.isPureTransparentBackground) { // v1.9: toggle is the single authority (was: style check overrode it)
+        // Combined batch: pure is opacity 0 (or the legacy flag).
+        val isPureDerived = tpl.bgOpacity <= 0f || tpl.isPureTransparentBackground
+        if (!textOnly && !isPureDerived) {
             val bgAlpha = (tpl.bgOpacity * 255).toInt().coerceIn(0, 255)
             val baseBgCol = try { Color.parseColor(tpl.bgColorHex) } catch (e: Exception) { Color.DKGRAY }
 
@@ -3500,18 +3906,38 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 // 270 = right-to-left. No video decode is involved.
                 val gradTimeSec = (System.currentTimeMillis() % 60000L) / 1000f
                 val gradPhase = ((kotlin.math.sin(gradTimeSec.toDouble() * 1.5 * tpl.gradientSpeed).toFloat() + 1f) / 2f)
-                val gradAlpha = if (tpl.gradientAnimation == GradientAnimationType.PULSE)
-                    (bgAlpha * (0.7f + 0.3f * gradPhase)).toInt().coerceIn(0, 255) else bgAlpha
-                val gradAngleDeg = if (tpl.gradientAnimation == GradientAnimationType.ROTATE)
-                    ((tpl.gradientAngleDeg + gradTimeSec * 30f * tpl.gradientSpeed) % 360f) else tpl.gradientAngleDeg.toFloat()
+                // New effects use ABSOLUTE time (no %60 wrap) so the
+                // sin loop can never jump at a wrap boundary.
+                val gradAbsTimeSec = System.currentTimeMillis() / 1000.0
+                val gradMotionPhase = com.arabicchristianmedia.model.GradientMotion.phase(gradAbsTimeSec, tpl.gradientSpeed)
+                val gradAlpha = when (tpl.gradientAnimation) {
+                    GradientAnimationType.PULSE ->
+                        (bgAlpha * (0.7f + 0.3f * gradPhase)).toInt().coerceIn(0, 255)
+                    GradientAnimationType.SHIMMER ->
+                        (bgAlpha * com.arabicchristianmedia.model.GradientMotion.shimmerMultiplier(gradMotionPhase)).toInt().coerceIn(0, 255)
+                    else -> bgAlpha
+                }
+                val gradAngleDeg = when (tpl.gradientAnimation) {
+                    GradientAnimationType.ROTATE ->
+                        ((tpl.gradientAngleDeg + gradTimeSec * 30f * tpl.gradientSpeed) % 360f)
+                    GradientAnimationType.WAVE ->
+                        com.arabicchristianmedia.model.GradientMotion.waveAngle(tpl.gradientAngleDeg.toFloat(), gradMotionPhase)
+                    else -> tpl.gradientAngleDeg.toFloat()
+                }
                 val gradRad = Math.toRadians(gradAngleDeg.toDouble())
                 val dirX = kotlin.math.sin(gradRad).toFloat()
                 val dirY = (-kotlin.math.cos(gradRad)).toFloat()
                 val cx = (boxLeft + boxRight) / 2f
                 val cy = (boxTop + boxBottom) / 2f
                 val extent = (kotlin.math.abs(dirX) * boxWidth + kotlin.math.abs(dirY) * boxHeight) / 2f
-                val slideOffset = if (tpl.gradientAnimation == GradientAnimationType.SLIDE)
-                    (gradPhase * 2f - 1f) * extent * 0.3f else 0f
+                val slideOffset = when (tpl.gradientAnimation) {
+                    GradientAnimationType.SLIDE -> (gradPhase * 2f - 1f) * extent * 0.3f
+                    // FLOW: sin sweep left-to-right then back, 0.35*extent.
+                    // sin(phase + 2*PI) == sin(phase): first frame == last.
+                    GradientAnimationType.FLOW ->
+                        com.arabicchristianmedia.model.GradientMotion.flowOffset(gradMotionPhase) * extent * 0.35f
+                    else -> 0f
+                }
                 val gradCol2 = try { Color.parseColor(tpl.gradientColorHex2) } catch (e: Exception) { baseBgCol }
                 val gradShader = LinearGradient(
                     cx - dirX * extent + dirX * slideOffset,
@@ -3870,6 +4296,14 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // standby badge (the badge is never part of a transition).
         if (textTransitionLayer >= 0) {
             canvas.restoreToCount(textTransitionLayer)
+        }
+        // Split transitions + box effects: close the box transform here
+        // (LIFO: text layer first, box second, go-live layer last), so
+        // the standby badge below is never moved or scaled by them.
+        if (boxFadeLayer >= 0) {
+            canvas.restoreToCount(boxFadeLayer)
+        } else if (boxSaveCount >= 0) {
+            canvas.restoreToCount(boxSaveCount)
         }
 
         if (!isLive && isForStream && !textOnly) {
@@ -5349,6 +5783,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             o.put("cornerRadiusDp", t.cornerRadiusDp)
             o.put("transition", t.transition.name)
             o.put("transitionDurationMs", t.transitionDurationMs)
+            o.put("boxTransition", t.boxTransition.name)
+            o.put("boxTransitionDurationMs", t.boxTransitionDurationMs)
+            o.put("boxZoomEnabled", t.boxZoomEnabled)
+            o.put("boxFloatEnabled", t.boxFloatEnabled)
+            o.put("boxSwayEnabled", t.boxSwayEnabled)
+            o.put("boxGlowPulseEnabled", t.boxGlowPulseEnabled)
+            o.put("boxMotionSpeed", t.boxMotionSpeed.toDouble())
             o.put("showAccentBorder", t.showAccentBorder)
             o.put("textShadowEnabled", t.textShadowEnabled)
             o.put("textShadowColorHex", t.textShadowColorHex)

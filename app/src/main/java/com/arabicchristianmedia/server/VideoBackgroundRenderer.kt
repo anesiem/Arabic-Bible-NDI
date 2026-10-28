@@ -62,6 +62,11 @@ class VideoBackgroundRenderer(
      * draw. Written on the caller thread, read on the decoder thread.
      */
     @Volatile private var motionActive = true
+    /** Play Once: true once the single play has ended. While true,
+     * drawOnto draws nothing and the layer is OFF (not a frozen
+     * last frame — the frame bitmap is cleared on finish). */
+    @Volatile var playOnceFinished = false
+        private set
     /** Last speed from setSpeed (decoder thread only). */
     private var currentSpeed = 1.0f
 
@@ -112,6 +117,61 @@ class VideoBackgroundRenderer(
     init {
         handler.post { initGl() }
     }
+
+    /**
+     * Combined batch: Play Once support. When [once] is true the
+     * player does not loop; on completion it marks finished, pauses,
+     * and clears the frame so the layer turns off entirely.
+     * Call [restartPlayOnce] only on a NEW verse going live.
+     */
+    fun setPlayOnce(once: Boolean) {
+        handler.post {
+            try {
+                val pl = player
+                if (pl != null) {
+                    pl.isLooping = !once
+                    if (once) {
+                        pl.setOnCompletionListener {
+                            playOnceFinished = true
+                            try { pl.pause() } catch (e: Exception) { }
+                            synchronized(lock) {
+                                try { frameBitmap?.recycle() } catch (e: Exception) { }
+                                frameBitmap = null
+                            }
+                        }
+                    } else {
+                        playOnceFinished = false
+                    }
+                }
+            } catch (e: Exception) { }
+        }
+    }
+    /** Restart a Play Once play from the start (new verse only). */
+    fun restartPlayOnce() {
+        playOnceFinished = false
+        handler.post {
+            try {
+                val pl = player ?: return@post
+                pl.isLooping = false
+                try { pl.seekTo(0) } catch (e: Exception) { }
+                if (motionActive && currentSpeed > 0f) {
+                    try { pl.start() } catch (e: Exception) { }
+                }
+            } catch (e: Exception) { }
+        }
+    }
+    /** Stop a Play Once play (OFF AIR / verse cleared): layer off. */
+    fun stopPlayOnce() {
+        playOnceFinished = true
+        handler.post {
+            try { player?.pause() } catch (e: Exception) { }
+            synchronized(lock) {
+                try { frameBitmap?.recycle() } catch (e: Exception) { }
+                frameBitmap = null
+            }
+        }
+    }
+    fun isPlayOnceFinished(): Boolean = playOnceFinished
 
     fun setAlpha(value: Float) {
         alpha = value.coerceIn(0f, 1f)
@@ -195,6 +255,8 @@ class VideoBackgroundRenderer(
 
     /** Draws the latest frame into [dst] with the configured alpha. Thread-safe. */
     fun drawOnto(canvas: Canvas, dst: Rect) {
+        // Play Once finished: layer is OFF, not a frozen last frame.
+        if (playOnceFinished && (loopMode == "once" || loopMode == "once_verse" || loopMode == "once_golive")) return
         // v2.0 (rework): loop fade computed here, at draw time (was a monitor thread).
         val a = (alpha.coerceIn(0f, 1f) * currentLoopFadeAlpha() * 255).toInt()
         if (a <= 0) return
@@ -272,7 +334,17 @@ class VideoBackgroundRenderer(
             player = MediaPlayer().apply {
                 setDataSource(file.absolutePath)
                 setSurface(surface)
-                isLooping = true
+                isLooping = loopMode != "once"
+                if (loopMode == "once") {
+                    setOnCompletionListener {
+                        playOnceFinished = true
+                        try { pause() } catch (e: Exception) { }
+                        synchronized(lock) {
+                            try { frameBitmap?.recycle() } catch (e: Exception) { }
+                            frameBitmap = null
+                        }
+                    }
+                }
                 setOnPreparedListener { it.start() }
                 setOnErrorListener { _, what, extra ->
                     Log.w(TAG, "Player error what=$what extra=$extra file=${file.name}")
@@ -295,6 +367,7 @@ class VideoBackgroundRenderer(
      */
     private fun currentLoopFadeAlpha(): Float {
         if (loopMode != "fade") return 1f
+        if (playOnceFinished) return 0f
         val p = player ?: return 1f
         return try {
             val duration = p.duration

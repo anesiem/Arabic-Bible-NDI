@@ -6,6 +6,8 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.*
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -284,6 +286,16 @@ fun TemplateEditorScreen(
     // after a collapse/expand toggle — which is why jumps worked, then
     // stopped, then worked again after swiping forced a re-layout.)
     val rightLazyListState = rememberLazyListState()
+    // Combined batch, compact sticky Jump-to: a remembered scroll
+    // state for the compact column, plus one BringIntoViewRequester
+    // per section. A compact tap expands the section, flashes it,
+    // and brings it into view (one tap, no manual scrolling). If
+    // the requester is not attached (wide layout), the bring call
+    // times out in 500ms and is dropped — it never blocks a jump.
+    val compactScrollState = rememberScrollState()
+    val compactBringIntoView = remember { mutableMapOf<String, androidx.compose.foundation.relocation.BringIntoViewRequester>() }
+    fun compactRequester(id: String): androidx.compose.foundation.relocation.BringIntoViewRequester =
+        compactBringIntoView.getOrPut(id) { androidx.compose.foundation.relocation.BringIntoViewRequester() }
     var highlightedAnchor by remember { mutableStateOf<String?>(null) }
     val anchorScope = rememberCoroutineScope()
     val anchorParent = mapOf(
@@ -291,20 +303,24 @@ fun TemplateEditorScreen(
         "frame-padding" to "frame", "frame-autofit" to "frame",
         "arabic-citation" to "arabic", "arabic-verse" to "arabic",
         "english-citation" to "english", "english-verse" to "english",
-        "bg-motion" to "bg", "bg-emblem" to "bg",
-        "bg-transition" to "bg", "bg-stream" to "bg",
-        "shadow-text" to "shadow", "shadow-glow" to "shadow"
+        "bg-motion" to "motion", "bg-emblem" to "emblem",
+        "bg-transition" to "transition", "bg-stream" to "motion",
+        "shadow-text" to "textshadow", "shadow-glow" to "glow"
     )
     // Right-column item keys, in order. A jump resolves its id to the
     // parent section key (sub-links) or itself (sections), then scrolls.
-    val rightColumnKeys = listOf("frame", "alpha", "arabic", "language", "english", "bg", "shadow")
+    // Combined batch, layer order: Language, Transition, I Verse
+    // Text (arabic, english, text shadow, emblem), II Card, III Motion,
+    // IV Glow. Frame (box geometry, judged against the preview) stays
+    // first, as in the stage, and is not a layer.
+    val rightColumnKeys = listOf("frame", "language", "transition", "arabic", "english", "textshadow", "emblem", "card", "motion", "glow")
     // Items 1 + 12: expanded state for the collapsible sections, hoisted
     // here so it survives editor-tab switches (the old remember(syncKey)
     // re-seeded on every template change) and so anchor jumps can expand
     // a section before scrolling to it. First view still uses each
     // section's initiallyExpanded; manual toggles stick after that.
     val sectionExpanded = remember { mutableStateMapOf<String, Boolean>() }
-    val collapsibleSectionIds = setOf("frame", "arabic", "language", "english", "bg", "shadow")
+    val collapsibleSectionIds = setOf("frame", "arabic", "language", "english", "card", "motion", "transition", "emblem", "textshadow", "glow")
     fun setSectionExpanded(sectionId: String, value: Boolean) {
         sectionExpanded[sectionId] = value
     }
@@ -317,6 +333,11 @@ fun TemplateEditorScreen(
         highlightedAnchor = id
         val index = rightColumnKeys.indexOf(sectionId)
         if (index >= 0) anchorScope.launch { rightLazyListState.scrollToItem(index) }
+        anchorScope.launch {
+            try {
+                kotlinx.coroutines.withTimeoutOrNull(500) { compactRequester(sectionId).bringIntoView() }
+            } catch (e: Exception) { /* wide layout: no compact requester attached */ }
+        }
     }
     LaunchedEffect(highlightedAnchor) {
         if (highlightedAnchor != null) {
@@ -722,12 +743,9 @@ fun TemplateEditorScreen(
 
         Spacer(Modifier.height(8.dp))
 
-        // v1.9.2 (#10b): stage order is now preview -> Frame & Padding ->
-        // Alpha -> Save/Update. Alpha used to sit inside the preview card
-        // (between the picture and the frame sliders) and saving sat above
-        // the frame controls; the flow now reads pick -> frame -> alpha ->
-        // save, with saving last.
-        FeatureToggleRow("خلفية شفافة تماماً 100% Alpha", editingTemplate.isPureTransparentBackground) { onUpdate(editingTemplate.copy(isPureTransparentBackground = it)) }
+        // Combined batch: the 100% Alpha toggle is removed (pure
+        // is now card opacity 0, in II Card Color). Stage order is
+        // now preview -> Frame & Padding -> save (design menu).
         // Batch item 6: the separate Save/Update buttons are gone — saving
         // lives in the Modified menu (tap the Modified chip).
         Spacer(Modifier.height(8.dp))
@@ -736,7 +754,7 @@ fun TemplateEditorScreen(
     val arabicSectionBlock: @Composable () -> Unit = {
 CollapsibleSection(
                     modifier = anchorModifier("arabic"),
-                    title = "تنسيق الخط العربي (Arabic Typography)",
+                    title = "I — تنسيق الخط العربي (Verse Text · Arabic)",
                     initiallyExpanded = true,
                     expanded = sectionExpanded.getOrPut("arabic") { true },
                     onExpandedChange = { setSectionExpanded("arabic", it) },
@@ -821,7 +839,7 @@ CollapsibleSection(
     val englishSectionBlock: @Composable () -> Unit = {
 CollapsibleSection(
                     modifier = anchorModifier("english"),
-                    title = "تنسيق الخط الإنجليزي (English Typography)",
+                    title = "I — تنسيق الخط الإنجليزي (Verse Text · English)",
                     initiallyExpanded = editingTemplate.languageMode != com.arabicchristianmedia.model.LanguageMode.ARABIC_ONLY,
                     expanded = sectionExpanded.getOrPut("english") { editingTemplate.languageMode != com.arabicchristianmedia.model.LanguageMode.ARABIC_ONLY },
                     onExpandedChange = { setSectionExpanded("english", it) },
@@ -858,19 +876,145 @@ CollapsibleSection(
                     }
     }
 
-    val bgSectionBlock: @Composable () -> Unit = {
+    val cardSectionBlock: @Composable () -> Unit = {
 CollapsibleSection(
-                    modifier = anchorModifier("bg"),
-                    title = "الخلفية والمؤثرات البصرية (Background & Effects)",
-                    initiallyExpanded = editingTemplate.animatedBackground != AnimatedBackgroundType.NONE || editingTemplate.customVideoId.isNotEmpty(),
-                    expanded = sectionExpanded.getOrPut("bg") { editingTemplate.animatedBackground != AnimatedBackgroundType.NONE || editingTemplate.customVideoId.isNotEmpty() },
-                    onExpandedChange = { setSectionExpanded("bg", it) },
-                    summary = "Motion: " + editingTemplate.animatedBackground.displayNameAr + " \u00b7 bg " + (editingTemplate.bgOpacity * 100).toInt() + "%"
+                    modifier = anchorModifier("card"),
+                    title = "II — لون البطاقة (Card Color)",
+                    initiallyExpanded = true,
+                    expanded = sectionExpanded.getOrPut("card") { true },
+                    onExpandedChange = { setSectionExpanded("card", it) },
+                    summary = "Card " + (editingTemplate.bgOpacity * 100).toInt() + "%" + (if (editingTemplate.gradientEnabled) " · gradient" else "")
                 ) {
-                    // v2.0: Card style is now auto-coordinated via motion background picker
-                    // (see getBackgroundPairing). The style field remains adjustable
-                    // via style presets; manual override UI removed for simplicity.
 
+                        SliderWithLabel("درجة شفافية الكارت (Background Opacity)", editingTemplate.bgOpacity, 0f..1f) { onUpdate(editingTemplate.copy(bgOpacity = it)) }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Box(modifier = Modifier.weight(1f)) {
+                                ColorGradePickerRow("لون كارت الخلفية (Card Color)", editingTemplate.bgColorHex, { onUpdate(editingTemplate.copy(bgColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
+                            }
+                            // v1.8: Quick transparent option for card color.
+                            TextButton(
+                                onClick = { onUpdate(editingTemplate.copy(bgColorHex = "#00000000", bgOpacity = 0f)) }
+                            ) {
+                                Text("شفاف", fontSize = 11.sp, color = bento.primary)
+                            }
+                        }
+                    // 2026-10-28 gradient card: OFF by default, so every
+                    // existing style (including ROYAL's own gradient)
+                    // is unchanged. When ON, the two colours + angle +
+                    // animation + speed drive HTTP (CSS gradient) and
+                    // NDI (native gradient) with the same parameters;
+                    // the gradient sits above a motion video and the
+                    // text sits above it (layer order unchanged).
+                    // Angle uses the CSS convention: 90 = left-to-right,
+                    // 270 = right-to-left, 0 = bottom-to-top.
+                    FeatureToggleRow("بطاقة متدرجة اللونين (Gradient card)", editingTemplate.gradientEnabled) { onUpdate(editingTemplate.copy(gradientEnabled = it)) }
+                    if (editingTemplate.gradientEnabled) {
+                        // Combined batch, linked gradient group: First
+                        // color (Card Color, same field as above, so
+                        // it can never be hidden again) directly above
+                        // Second color, with angle, animation, speed
+                        // and transparency in the same bordered group.
+                        androidx.compose.material3.Surface(shape = RoundedCornerShape(12.dp), border = androidx.compose.foundation.BorderStroke(1.dp, bento.border), color = bento.surfaceVariant) {
+                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("ألوان التدرج المرتبطة (Linked gradient colors)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary)
+                        ColorGradePickerRow("اللون الأول (First color)", editingTemplate.bgColorHex, { onUpdate(editingTemplate.copy(bgColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
+                        ColorGradePickerRow("اللون الثاني (Second color)", editingTemplate.gradientColorHex2, { onUpdate(editingTemplate.copy(gradientColorHex2 = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
+                        SliderWithLabel("زاوية التدرج (Angle, 0-360°)", editingTemplate.gradientAngleDeg.toFloat(), 0f..360f) { onUpdate(editingTemplate.copy(gradientAngleDeg = it.toInt())) }
+                        val gradientAnims = listOf(
+                            GradientAnimationType.NONE to "ثابت (None)",
+                            GradientAnimationType.SLIDE to "انزلاق يمين-يسار (Slide)",
+                            GradientAnimationType.ROTATE to "تدوير الزاوية ببطء (Rotate)",
+                            GradientAnimationType.PULSE to "نبض (Pulse)",
+                            GradientAnimationType.FLOW to "تدفق (Flow)",
+                            GradientAnimationType.SHIMMER to "لمعان (Shimmer)",
+                            GradientAnimationType.WAVE to "موجة (Wave)"
+                        )
+                        // Wrapping scroll row: 7 chips must not overflow a narrow phone.
+                        Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            gradientAnims.forEach { (anim, label) ->
+                                val selected = editingTemplate.gradientAnimation == anim
+                                Surface(shape = RoundedCornerShape(999.dp), color = if (selected) bento.primaryContainer else bento.card, border = androidx.compose.foundation.BorderStroke(1.dp, if (selected) bento.primary else bento.border), onClick = { onUpdate(editingTemplate.copy(gradientAnimation = anim)) }) {
+                                    Text(label, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary, modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp))
+                                }
+                            }
+                        }
+                        if (editingTemplate.gradientAnimation != GradientAnimationType.NONE) {
+                            SliderWithLabel("سرعة حركة لون البطاقة (Card gradient speed)", editingTemplate.gradientSpeed, 0f..3f) { onUpdate(editingTemplate.copy(gradientSpeed = it)) }
+                        }
+                        SliderWithLabel("شفافية البطاقة (Card transparency)", editingTemplate.bgOpacity, 0f..1f) { onUpdate(editingTemplate.copy(bgOpacity = it)) }
+                        Text("شفافية 0% تعني شفافاً تماماً (Pure) — لا زر منفصل بعد الآن.", fontSize = 11.sp, color = bento.textSecondary)
+                            }
+                        }
+                    }
+
+                    // v1.9.2 (#9): accents group — the border flag comes
+                    // FIRST and the color follows it, shown only while the
+                    // flag is on (the picker used to render unconditionally,
+                    // above its own toggle, inviting a dead edit). Same
+                    // gated pattern as the Card Glow color in Shadow & Glow.
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        FeatureToggleRow("إظهار الحدود الملونة", editingTemplate.showAccentBorder) { onUpdate(editingTemplate.copy(showAccentBorder = it)) }
+                    }
+                    if (editingTemplate.showAccentBorder) {
+                        ColorGradePickerRow("لون إطار التمييز (Accent Color)", editingTemplate.accentColorHex, { onUpdate(editingTemplate.copy(accentColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
+                    }
+
+                    // Split transitions (combined batch): the BOX
+                    // transition animates only the card box itself when
+                    // the verse changes, with its own type + duration.
+                    // Verse only (Box = None), Box only (Verse = None),
+                    // or Both — each finishes on its own duration.
+                    // Old templates migrate with box == verse, so they
+                    // look exactly as before until the user changes one.
+                    Text("انتقال الصندوق (Box Transition)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
+                    Text("يحرّك الصندوق نفسه عند تغيّر الآية — منفصل عن انتقال الآية في قسم الانتقال أعلاه.", fontSize = 11.sp, color = bento.textSecondary)
+                    Spacer(Modifier.height(4.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                        TransitionType.entries.forEach { t ->
+                            FilterChip(
+                                selected = editingTemplate.boxTransition == t,
+                                onClick = { onUpdate(editingTemplate.copy(boxTransition = t)) },
+                                label = { Text(t.displayName, fontSize = 10.sp) }
+                            )
+                        }
+                    }
+                    SliderWithLabel("مدة انتقال الصندوق (Box duration ms)", editingTemplate.boxTransitionDurationMs.toFloat(), 0f..2000f) { onUpdate(editingTemplate.copy(boxTransitionDurationMs = it.toInt())) }
+                    Spacer(Modifier.height(4.dp))
+                    // Continuous box effects (combined batch): each has
+                    // its own on/off flag; one shared Box Motion Speed
+                    // for all four (less tapping), separate from Video
+                    // speed and Card gradient speed. All start neutral
+                    // at verse live, stay neutral during the transition,
+                    // then grow smoothly after it ends (NDI BoxMotion /
+                    // HTTP timer share the same sin math). Design-
+                    // gradient Pulse is colour only and stays separate.
+                    Text("حركة الصندوق المستمرة (Continuous Box Motion)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
+                    Text("تأثيرات مستمرة على الصندوق كله (فيديو + لون + نص معاً). كل تأثير له زر مستقل، ويمكن الجمع بينها.", fontSize = 11.sp, color = bento.textSecondary)
+                    FeatureToggleRow("تكبير البطاقة (Card Zoom)", editingTemplate.boxZoomEnabled) { onUpdate(editingTemplate.copy(boxZoomEnabled = it)) }
+                    FeatureToggleRow("طفو (Float)", editingTemplate.boxFloatEnabled) { onUpdate(editingTemplate.copy(boxFloatEnabled = it)) }
+                    FeatureToggleRow("تمايل (Sway)", editingTemplate.boxSwayEnabled) { onUpdate(editingTemplate.copy(boxSwayEnabled = it)) }
+                    FeatureToggleRow("نبض التوهج (Glow Pulse)", editingTemplate.boxGlowPulseEnabled) { onUpdate(editingTemplate.copy(boxGlowPulseEnabled = it)) }
+                    if (editingTemplate.boxZoomEnabled || editingTemplate.boxFloatEnabled || editingTemplate.boxSwayEnabled || editingTemplate.boxGlowPulseEnabled) {
+                        SliderWithLabel("سرعة حركة الصندوق (Box Motion Speed)", editingTemplate.boxMotionSpeed, 0f..3f) { onUpdate(editingTemplate.copy(boxMotionSpeed = it)) }
+                    }
+                    Text("تكبير: 1.0 إلى 1.05 وعودة. طفو: ±8dp عمودياً. تمايل: ±8dp أفقياً. نبض التوهج: شدة الظل فقط، بلا حركة.", fontSize = 11.sp, color = bento.textSecondary)
+
+                }
+    }
+
+    val motionSectionBlock: @Composable () -> Unit = {
+CollapsibleSection(
+                    modifier = anchorModifier("motion"),
+                    title = "III — الفيديو المتحرك (Motion Video)",
+                    initiallyExpanded = editingTemplate.animatedBackground != AnimatedBackgroundType.NONE || editingTemplate.customVideoId.isNotEmpty(),
+                    expanded = sectionExpanded.getOrPut("motion") { editingTemplate.animatedBackground != AnimatedBackgroundType.NONE || editingTemplate.customVideoId.isNotEmpty() },
+                    onExpandedChange = { setSectionExpanded("motion", it) },
+                    summary = "Motion: " + editingTemplate.animatedBackground.displayNameAr + " · video " + (editingTemplate.animatedBackgroundOpacity * 100).toInt() + "%"
+                ) {
                     // Animated Motion Backgrounds (Layer 1: Bottom background layer)
                     Text("الخلفيات المتحركة (Motion Video Backgrounds) — طبقة الخلفية", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary, modifier = anchorModifier("bg-motion"))
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -966,18 +1110,29 @@ CollapsibleSection(
                         // before Opacity/Speed (was after them).
                         if (editingTemplate.animatedBackground == AnimatedBackgroundType.CUSTOM_VIDEO) {
                             Text(
-                                "طريقة تكرار الفيديو (Video loop)",
+                                "طريقة تشغيل الفيديو (Video playback)",
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 color = bento.textPrimary
                             )
                             Spacer(modifier = Modifier.height(4.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                VideoLoopMode.values().forEach { mode ->
+                            // Combined batch, Video playback: Loop Fade, Loop
+                            // Cut, Play Once Per Verse, Play Once Per Go
+                            // Live. Labels are explicit (Arabic + English)
+                            // so the two Play Once variants are never
+                            // confused. Legacy PLAY_ONCE is not offered.
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                                val playbackOptions = listOf(
+                                    VideoLoopMode.FADE to "تكرار مع تلاشي (Loop with fade)",
+                                    VideoLoopMode.CUT to "تكرار مع قص (Loop with cut)",
+                                    VideoLoopMode.PLAY_ONCE_PER_VERSE to "تشغيل مرة لكل آية ثم إيقاف (Play once per verse, then off)",
+                                    VideoLoopMode.PLAY_ONCE_PER_GOLIVE to "تشغيل مرة عند البث ثم إيقاف (Play once per go live, then off)"
+                                )
+                                playbackOptions.forEach { (mode, label) ->
                                     FilterChip(
                                         selected = editingTemplate.videoLoopMode == mode,
                                         onClick = { onUpdate(editingTemplate.copy(videoLoopMode = mode)) },
-                                        label = { Text(mode.displayName, fontSize = 12.sp) }
+                                        label = { Text(label, fontSize = 12.sp) }
                                     )
                                 }
                             }
@@ -1016,72 +1171,67 @@ CollapsibleSection(
                         }
                     }
 
-                    FeatureToggleRow("خلفية شفافة تماماً 100% Alpha", editingTemplate.isPureTransparentBackground) { onUpdate(editingTemplate.copy(isPureTransparentBackground = it)) }
-                
-                    if (!editingTemplate.isPureTransparentBackground) {
-                        SliderWithLabel("درجة شفافية الكارت (Background Opacity)", editingTemplate.bgOpacity, 0f..1f) { onUpdate(editingTemplate.copy(bgOpacity = it)) }
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Box(modifier = Modifier.weight(1f)) {
-                                ColorGradePickerRow("لون كارت الخلفية (Card Color)", editingTemplate.bgColorHex, { onUpdate(editingTemplate.copy(bgColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
-                            }
-                            // v1.8: Quick transparent option for card color.
-                            TextButton(
-                                onClick = { onUpdate(editingTemplate.copy(bgColorHex = "#00000000", bgOpacity = 0f)) }
-                            ) {
-                                Text("شفاف", fontSize = 11.sp, color = bento.primary)
+                    Row(modifier = anchorModifier("bg-stream"), verticalAlignment = Alignment.CenterVertically) {
+                        Text("خلفية البث (Stream Background)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary, modifier = Modifier.weight(1f))
+                        InfoPopupButton("خلفية البث (Stream Background)", if (editorTab == 0) "تؤثر فقط في بث MJPEG ‏(/stream) حول تصميم الثلث السفلي — لا تؤثر في NDI ولا في صفحات /lower و/full." else "تُضبط خلفية البث من تبويب الثلث السفلي (Lower Third) — فبث MJPEG ‏(/stream) يعرض دائماً تصميم الثلث السفلي.")
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    if (editorTab == 0) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            StreamBackgroundMode.entries.forEach { mode ->
+                                FilterChip(
+                                    selected = editingTemplate.streamBackgroundMode == mode,
+                                    onClick = { onUpdate(editingTemplate.copy(streamBackgroundMode = mode)) },
+                                    label = { Text(mode.displayNameAr, fontSize = 10.sp) }
+                                )
                             }
                         }
                     }
+                    Spacer(Modifier.height(8.dp))                }
+    }
 
-                    // 2026-10-28 gradient card: OFF by default, so every
-                    // existing style (including ROYAL's own gradient)
-                    // is unchanged. When ON, the two colours + angle +
-                    // animation + speed drive HTTP (CSS gradient) and
-                    // NDI (native gradient) with the same parameters;
-                    // the gradient sits above a motion video and the
-                    // text sits above it (layer order unchanged).
-                    // Angle uses the CSS convention: 90 = left-to-right,
-                    // 270 = right-to-left, 0 = bottom-to-top.
-                    FeatureToggleRow("بطاقة متدرجة اللونين (Gradient card)", editingTemplate.gradientEnabled) { onUpdate(editingTemplate.copy(gradientEnabled = it)) }
-                    if (editingTemplate.gradientEnabled) {
-                        ColorGradePickerRow("اللون الثاني (Second color)", editingTemplate.gradientColorHex2, { onUpdate(editingTemplate.copy(gradientColorHex2 = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
-                        SliderWithLabel("زاوية التدرج (Angle, 0-360°)", editingTemplate.gradientAngleDeg.toFloat(), 0f..360f) { onUpdate(editingTemplate.copy(gradientAngleDeg = it.toInt())) }
-                        val gradientAnims = listOf(
-                            GradientAnimationType.NONE to "ثابت (None)",
-                            GradientAnimationType.SLIDE to "انزلاق يمين-يسار (Slide)",
-                            GradientAnimationType.ROTATE to "تدوير الزاوية ببطء (Rotate)",
-                            GradientAnimationType.PULSE to "نبض (Pulse)"
-                        )
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            gradientAnims.forEach { (anim, label) ->
-                                val selected = editingTemplate.gradientAnimation == anim
-                                Surface(shape = RoundedCornerShape(999.dp), color = if (selected) bento.primaryContainer else bento.card, border = androidx.compose.foundation.BorderStroke(1.dp, if (selected) bento.primary else bento.border), onClick = { onUpdate(editingTemplate.copy(gradientAnimation = anim)) }) {
-                                    Text(label, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary, modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp))
-                                }
-                            }
+    val transitionSectionBlock: @Composable () -> Unit = {
+CollapsibleSection(
+                    modifier = anchorModifier("transition"),
+                    title = "الانتقال — الآية (Verse Transition)",
+                    initiallyExpanded = true,
+                    expanded = sectionExpanded.getOrPut("transition") { true },
+                    onExpandedChange = { setSectionExpanded("transition", it) },
+                    summary = editingTemplate.transition.displayName
+                ) {
+                    Text("حركة انتقال الآية فقط — النص والشاهد داخل البطاقة (Verse Transition — text + citation only)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary, modifier = anchorModifier("bg-transition"))
+                    Spacer(Modifier.height(4.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                        TransitionType.entries.forEach { t ->
+                            FilterChip(
+                                selected = editingTemplate.transition == t,
+                                onClick = { onUpdate(editingTemplate.copy(transition = t)) },
+                                label = { Text(t.displayName, fontSize = 10.sp) }
+                            )
                         }
-                        if (editingTemplate.gradientAnimation != GradientAnimationType.NONE) {
-                            SliderWithLabel("سرعة الحركة (Speed)", editingTemplate.gradientSpeed, 0f..3f) { onUpdate(editingTemplate.copy(gradientSpeed = it)) }
-                        }
-                        Text("اللون الأول هو لون الكارت أعلاه، والشفافية من منزلق الشفافية.", fontSize = 11.sp, color = bento.textSecondary)
                     }
+                    SliderWithLabel("مدة انتقال الآية (Verse duration ms)", editingTemplate.transitionDurationMs.toFloat(), 0f..2000f) { onUpdate(editingTemplate.copy(transitionDurationMs = it.toInt())) }
+                    Text("انتقال الصندوق نفسه له تحكم مستقل في قسم II — البطاقة، قرب حدود البطاقة. عيّن أحدهما None لعزل الآخر، أو كليهما لحركة مشتركة.", fontSize = 11.sp, color = bento.textSecondary)
+                    Spacer(Modifier.height(4.dp))
+                    // v1.9: stream background — what fills the space around the card
+                    // (chroma/luma keys, dark studio, or full transparency).
+                    // v1.9.1: this setting is read ONLY by the MJPEG /stream
+                    // renderer, which always renders the LOWER THIRD template —
+                    // so the chips live in the Lower tab only. In the Full Show
+                    // tab this is an explanatory note instead of a dead control
+                    // (Ashraf's bug report: changing it in Full changed nothing).
+                }
+    }
 
-                    // v1.9.2 (#9): accents group — the border flag comes
-                    // FIRST and the color follows it, shown only while the
-                    // flag is on (the picker used to render unconditionally,
-                    // above its own toggle, inviting a dead edit). Same
-                    // gated pattern as the Card Glow color in Shadow & Glow.
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        FeatureToggleRow("إظهار الحدود الملونة", editingTemplate.showAccentBorder) { onUpdate(editingTemplate.copy(showAccentBorder = it)) }
-                    }
-                    if (editingTemplate.showAccentBorder) {
-                        ColorGradePickerRow("لون إطار التمييز (Accent Color)", editingTemplate.accentColorHex, { onUpdate(editingTemplate.copy(accentColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
-                    }
-
+    val emblemSectionBlock: @Composable () -> Unit = {
+CollapsibleSection(
+                    modifier = anchorModifier("emblem"),
+                    title = "I — رمز (Emblem)",
+                    initiallyExpanded = false,
+                    expanded = sectionExpanded.getOrPut("emblem") { false },
+                    onExpandedChange = { setSectionExpanded("emblem", it) },
+                    summary = if (editingTemplate.emblem.isEmpty()) "بدون رمز (none)" else editingTemplate.emblem
+                ) {
                     Row(Modifier.fillMaxWidth().then(anchorModifier("bg-emblem")), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                         // v1.7: free emblem — the user types any emoji/symbol with the
                         // system keyboard. Empty = no emblem (hint behind the (i)).
@@ -1100,55 +1250,17 @@ CollapsibleSection(
                     // applies where a card exists — not on full-bleed Full Show.
                     // v1.9: verse-change transition (HTTP overlays animate with this;
                     // NDI applies the frame immediately).
-                    Text("حركة انتقال الآية (Transition)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary, modifier = anchorModifier("bg-transition"))
-                    Spacer(Modifier.height(4.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
-                        TransitionType.entries.forEach { t ->
-                            FilterChip(
-                                selected = editingTemplate.transition == t,
-                                onClick = { onUpdate(editingTemplate.copy(transition = t)) },
-                                label = { Text(t.displayName, fontSize = 10.sp) }
-                            )
-                        }
-                    }
-                    SliderWithLabel("مدة الانتقال (Duration ms)", editingTemplate.transitionDurationMs.toFloat(), 0f..2000f) { onUpdate(editingTemplate.copy(transitionDurationMs = it.toInt())) }
-                    Spacer(Modifier.height(4.dp))
-                    // v1.9: stream background — what fills the space around the card
-                    // (chroma/luma keys, dark studio, or full transparency).
-                    // v1.9.1: this setting is read ONLY by the MJPEG /stream
-                    // renderer, which always renders the LOWER THIRD template —
-                    // so the chips live in the Lower tab only. In the Full Show
-                    // tab this is an explanatory note instead of a dead control
-                    // (Ashraf's bug report: changing it in Full changed nothing).
-                    Row(modifier = anchorModifier("bg-stream"), verticalAlignment = Alignment.CenterVertically) {
-                        Text("خلفية البث (Stream Background)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary, modifier = Modifier.weight(1f))
-                        InfoPopupButton("خلفية البث (Stream Background)", if (editorTab == 0) "تؤثر فقط في بث MJPEG ‏(/stream) حول تصميم الثلث السفلي — لا تؤثر في NDI ولا في صفحات /lower و/full." else "تُضبط خلفية البث من تبويب الثلث السفلي (Lower Third) — فبث MJPEG ‏(/stream) يعرض دائماً تصميم الثلث السفلي.")
-                    }
-                    Spacer(Modifier.height(4.dp))
-                    if (editorTab == 0) {
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            StreamBackgroundMode.entries.forEach { mode ->
-                                FilterChip(
-                                    selected = editingTemplate.streamBackgroundMode == mode,
-                                    onClick = { onUpdate(editingTemplate.copy(streamBackgroundMode = mode)) },
-                                    label = { Text(mode.displayNameAr, fontSize = 10.sp) }
-                                )
-                            }
-                        }
-                    }
-                    Spacer(Modifier.height(8.dp))
-                
                 }
     }
 
-    val shadowSectionBlock: @Composable () -> Unit = {
+    val textShadowSectionBlock: @Composable () -> Unit = {
 CollapsibleSection(
-                    modifier = anchorModifier("shadow"),
-                    title = "الظل والتوهج (Shadow & Glow)",
-                    initiallyExpanded = editingTemplate.textShadowEnabled || editingTemplate.cardGlowEnabled,
-                    expanded = sectionExpanded.getOrPut("shadow") { editingTemplate.textShadowEnabled || editingTemplate.cardGlowEnabled },
-                    onExpandedChange = { setSectionExpanded("shadow", it) },
-                    summary = "Shadow " + (if (editingTemplate.textShadowEnabled) "on" else "off") + " \u00b7 Glow " + (if (editingTemplate.cardGlowEnabled) "on" else "off")
+                    modifier = anchorModifier("textshadow"),
+                    title = "I — ظل النص (Text Shadow)",
+                    initiallyExpanded = editingTemplate.textShadowEnabled,
+                    expanded = sectionExpanded.getOrPut("textshadow") { editingTemplate.textShadowEnabled },
+                    onExpandedChange = { setSectionExpanded("textshadow", it) },
+                    summary = "Shadow " + (if (editingTemplate.textShadowEnabled) "on" else "off")
                 ) {
                     FeatureToggleRow("ظل النص (Text Shadow)", editingTemplate.textShadowEnabled, modifier = anchorModifier("shadow-text")) { onUpdate(editingTemplate.copy(textShadowEnabled = it)) }
                     if (editingTemplate.textShadowEnabled) {
@@ -1207,30 +1319,45 @@ CollapsibleSection(
                             }
                         } // Close Box (v1.8: constrains compass size on tablets)
                     }
+                }
+    }
+
+    val glowSectionBlock: @Composable () -> Unit = {
+CollapsibleSection(
+                    modifier = anchorModifier("glow"),
+                    title = "IV — التوهج (Glow)",
+                    initiallyExpanded = editingTemplate.cardGlowEnabled,
+                    expanded = sectionExpanded.getOrPut("glow") { editingTemplate.cardGlowEnabled },
+                    onExpandedChange = { setSectionExpanded("glow", it) },
+                    summary = "Glow " + (if (editingTemplate.cardGlowEnabled) "on" else "off")
+                ) {
                     if (!editingTemplate.isFullScreen) {
                         FeatureToggleRow("توهج الكارت (Card Glow)", editingTemplate.cardGlowEnabled, modifier = anchorModifier("shadow-glow")) { onUpdate(editingTemplate.copy(cardGlowEnabled = it)) }
                         if (editingTemplate.cardGlowEnabled) {
                             ColorGradePickerRow("لون توهج الكارت (Card Glow Color)", editingTemplate.cardGlowColorHex, { onUpdate(editingTemplate.copy(cardGlowColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
                         }
-                    }
-
-                }
+                    }                }
     }
 
     val sheetBlock: @Composable () -> Unit = {
-        // 5. Detailed Independent Configuration Controls
+        // Combined batch, layer order (compact shares this sheet):
+        // Language, Transition, I Verse Text, II Card, III Motion,
+        // IV Glow. Each section is wrapped in a BringIntoView box so
+        // the sticky compact Jump-to can scroll to it in one tap.
         Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = bento.card), modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-                // Style Preset Selector
-                // Primary Typography (Arabic Verse & Citation)
-                arabicSectionBlock()
+                Box(Modifier.bringIntoViewRequester(compactRequester("language"))) { languageSectionBlock() }
                 HorizontalDivider(color = bento.borderSubtle)
-                languageSectionBlock()
-                englishSectionBlock()
+                Box(Modifier.bringIntoViewRequester(compactRequester("transition"))) { transitionSectionBlock() }
                 HorizontalDivider(color = bento.borderSubtle)
-                // Background layers: motion backgrounds (Layer 1, bottom) + card/transparency/accents (Layer 2, above video)
-                bgSectionBlock()
-                shadowSectionBlock()
+                Box(Modifier.bringIntoViewRequester(compactRequester("arabic"))) { arabicSectionBlock() }
+                Box(Modifier.bringIntoViewRequester(compactRequester("english"))) { englishSectionBlock() }
+                Box(Modifier.bringIntoViewRequester(compactRequester("textshadow"))) { textShadowSectionBlock() }
+                Box(Modifier.bringIntoViewRequester(compactRequester("emblem"))) { emblemSectionBlock() }
+                HorizontalDivider(color = bento.borderSubtle)
+                Box(Modifier.bringIntoViewRequester(compactRequester("card"))) { cardSectionBlock() }
+                Box(Modifier.bringIntoViewRequester(compactRequester("motion"))) { motionSectionBlock() }
+                Box(Modifier.bringIntoViewRequester(compactRequester("glow"))) { glowSectionBlock() }
             }
             Spacer(Modifier.height(100.dp))
         }
@@ -1246,26 +1373,24 @@ CollapsibleSection(
             "frame-padding" to "حشوة البطاقة (Card Padding)",
             "frame-autofit" to "ملاءمة تلقائية (Auto-fit)"
         )),
-        "alpha" to ("شفافية 100% (Alpha)" to emptyList()),
-        "arabic" to ("تنسيق الخط العربي (Arabic Typography)" to listOf(
+        "language" to ("لغة العرض (Language)" to emptyList()),
+        "transition" to ("انتقال الآية (Verse Transition)" to emptyList()),
+        "arabic" to ("I — تنسيق الخط العربي (Verse Text · Arabic)" to listOf(
             "arabic-citation" to "الشاهد (Citation)",
             "arabic-verse" to "الآية (Verse)"
         )),
-        "language" to ("لغة العرض (Language)" to emptyList()),
-        "english" to ("تنسيق الخط الإنجليزي (English Typography)" to listOf(
+        "english" to ("I — تنسيق الخط الإنجليزي (Verse Text · English)" to listOf(
             "english-citation" to "الشاهد الإنجليزي (English Citation)",
             "english-verse" to "الآية الإنجليزية (English Verse)"
         )),
-        "bg" to ("الخلفية والمؤثرات البصرية (Background & Effects)" to listOf(
+        "textshadow" to ("I — ظل النص (Text Shadow)" to emptyList()),
+        "emblem" to ("I — رمز (Emblem)" to emptyList()),
+        "card" to ("II — لون البطاقة (Card Color)" to emptyList()),
+        "motion" to ("III — الفيديو المتحرك (Motion Video)" to listOf(
             "bg-motion" to "الخلفيات المتحركة (Motion Backgrounds)",
-            "bg-emblem" to "رمز / إيموجي (Emblem)",
-            "bg-transition" to "حركة انتقال الآية (Transition)",
             "bg-stream" to "خلفية البث (Stream Background)"
         )),
-        "shadow" to ("الظل والتوهج (Shadow & Glow)" to listOf(
-            "shadow-text" to "ظل النص (Text Shadow)",
-            "shadow-glow" to "توهج الكارت (Card Glow)"
-        ))
+        "glow" to ("IV — التوهج (Glow)" to emptyList())
     )
     val anchorsBlock: @Composable () -> Unit = {
         Card(shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = bento.card), modifier = Modifier.fillMaxWidth()) {
@@ -1343,36 +1468,39 @@ CollapsibleSection(
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         item("frame") { frameSectionBlock() }
-                        item("alpha") {
-                            Box(modifier = anchorModifier("alpha")) {
-                                FeatureToggleRow("خلفية شفافة تماماً 100% Alpha", editingTemplate.isPureTransparentBackground) { onUpdate(editingTemplate.copy(isPureTransparentBackground = it)) }
-                            }
-                        }
-                        item("arabic") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = bento.card), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { arabicSectionBlock() } } }
                         item("language") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = bento.card), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { languageSectionBlock() } } }
+                        item("transition") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = bento.card), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { transitionSectionBlock() } } }
+                        item("arabic") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = bento.card), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { arabicSectionBlock() } } }
                         item("english") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = bento.card), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { englishSectionBlock() } } }
-                        item("bg") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = bento.card), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { bgSectionBlock() } } }
-                        item("shadow") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = bento.card), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { shadowSectionBlock() } } }
+                        item("textshadow") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = bento.card), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { textShadowSectionBlock() } } }
+                        item("emblem") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = bento.card), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { emblemSectionBlock() } } }
+                        item("card") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = bento.card), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { cardSectionBlock() } } }
+                        item("motion") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = bento.card), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { motionSectionBlock() } } }
+                        item("glow") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = bento.card), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { glowSectionBlock() } } }
                     }
                 }
             }
         } else {
-            Column(
-                Modifier.fillMaxSize().padding(14.dp)
-                    .verticalScroll(rememberScrollState())
-            ) {
-                headerBlock()
-                stageBlock()
-                // Compact Jump-to index: the same anchorsBlock as wide.
-                // Compact has no LazyColumn, so a tap expands the section
-                // and flashes its border (jumpToAnchor) but does not scroll
-                // to it — scroll-to jumps stay wide-only. This still fixes
-                // the reported findability problem (collapsed Background
-                // hiding gradient/motion/stream) without a LazyColumn
-                // refactor, which is follow-up, not a minor fix.
+            // Combined batch, compact sticky Jump-to: the Jump-to row
+            // sits at the top and never scrolls away; the header,
+            // stage and sheet scroll beneath it. A tap expands the
+            // section, flashes it, and brings it into view (see
+            // jumpToAnchor + compactRequester) — one tap, no manual
+            // scrolling, no new screen.
+            Column(Modifier.fillMaxSize().padding(14.dp)) {
                 anchorsBlock()
                 Spacer(Modifier.height(12.dp))
+                Column(
+                    Modifier.weight(1f).fillMaxWidth()
+                        .verticalScroll(compactScrollState)
+                ) {
+                headerBlock()
+                stageBlock()
+                // Combined batch: the sticky anchorsBlock above is
+                // the only Jump-to in compact now; the sheet below is
+                // reached by its one-tap bring-into-view jumps.
                 sheetBlock()
+                }
             }
         }
     }
@@ -2652,7 +2780,7 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
         // Skipped for transparent styles and full-bleed Full Show — mirrors the
         // NDI canvas renderer and the HTML overlay (which force no glow there).
         val glowCol = try { Color(android.graphics.Color.parseColor(template.cardGlowColorHex)) } catch (e: Exception) { Color.Black }
-        val hasVisibleCard = !template.isPureTransparentBackground &&
+        val hasVisibleCard = template.bgOpacity > 0f && !template.isPureTransparentBackground &&
                 template.style != com.arabicchristianmedia.model.TemplateStyle.TRANSPARENT_OUTLINE
         // v1.9.2 (#3): visible-EDGE rule, same as NDI/HTTP — the shadow
         // shows whenever the card is inset from the frame on any side
@@ -2686,7 +2814,7 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
             contentAlignment = Alignment.BottomCenter
         ) {
             val cardBg = when {
-                template.isPureTransparentBackground || template.style == TemplateStyle.TRANSPARENT_OUTLINE -> Color(0xFF1E293B).copy(alpha = 0.45f)
+                (template.bgOpacity <= 0f || template.isPureTransparentBackground) || template.style == TemplateStyle.TRANSPARENT_OUTLINE -> Color(0xFF1E293B).copy(alpha = 0.45f)
                 else -> bgCol.copy(alpha = template.bgOpacity)
             }
 

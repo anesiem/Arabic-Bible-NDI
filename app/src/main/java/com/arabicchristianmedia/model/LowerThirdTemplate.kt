@@ -10,6 +10,10 @@ enum class TemplateStyle(val displayName: String, val description: String) {
 }
 
 enum class TransitionType(val displayName: String) {
+    // Split transitions (combined batch): NONE = instant, no animation.
+    // It is a no-op in every existing transition when-branch, so adding it
+    // cannot change any saved template's behaviour.
+    NONE("None"),
     FADE("Smooth Fade"),
     SLIDE_UP("Slide From Bottom"),
     SLIDE_DOWN("Slide From Top"),
@@ -42,12 +46,55 @@ enum class LanguageMode(val displayName: String) {
  * v2.0: How a custom background video loops.
  * CUT = hard loop (visible cut); FADE = fade through black at the loop point.
  */
+/**
+ * How a custom background video plays. FADE/CUT are the existing
+ * continuous loops (unchanged ids, so saved templates keep working).
+ * PLAY_ONCE (combined batch, 2026-10-28) is NOT a loop: when a verse
+ * goes live the video plays once from the start; when it ends, the
+ * WHOLE video layer turns off (not frozen on the last frame), card +
+ * text remain alone. It replays once on the next new verse going
+ * live, and stays off while the same verse stays live and when
+ * OFF AIR / the verse is cleared. Applies to video files only:
+ * procedural animated backgrounds have no clip end, so Play Once
+ * does not apply to them (no invented duration).
+ */
 enum class VideoLoopMode(val id: String, val displayName: String) {
     CUT("cut", "Cut"),
-    FADE("fade", "Crossfade");
+    FADE("fade", "Crossfade"),
+    // Legacy single Play Once (combined batch, unpushed): kept only
+    // as a saved-value alias for Per Verse, never offered in UI.
+    PLAY_ONCE("once", "Play once then off"),
+    /** Play once on EVERY new verse going live, then layer off. */
+    PLAY_ONCE_PER_VERSE("once_verse", "Play once per verse"),
+    /** Play once only on the first verse after OFF AIR -> ON AIR,
+     * then layer off through verse changes until OFF AIR again. */
+    PLAY_ONCE_PER_GOLIVE("once_golive", "Play once per go live");
     companion object {
-        fun fromId(id: String): VideoLoopMode = values().find { it.id == id } ?: FADE
+        fun fromId(id: String): VideoLoopMode = when (id) {
+            "once", "play_once", "playOnce" -> PLAY_ONCE_PER_VERSE
+            else -> values().find { it.id == id } ?: FADE
+        }
     }
+    fun isPlayOnce(): Boolean = this == PLAY_ONCE || this == PLAY_ONCE_PER_VERSE || this == PLAY_ONCE_PER_GOLIVE
+}
+
+/** Pure state machine for Play Once, unit-testable without Android.
+ * States: IDLE (layer off), PLAYING, FINISHED (layer off, not last
+ * frame). Transitions: startVerse -> PLAYING (from any state, on a
+ * NEW verse only); onEnded -> FINISHED; clear/offAir -> IDLE.
+ * isLayerVisible is true only while PLAYING. A re-apply for the
+ * SAME verse must not call startVerse again — callers key on verse
+ * identity, this class does not guess it. */
+object PlayOnceState {
+    enum class State { IDLE, PLAYING, FINISHED }
+    fun startVerse(@Suppress("UNUSED_PARAMETER") state: State): State = State.PLAYING
+    /** Per Go Live: only start when not already played this live
+     * session; caller tracks the session, this is the pure guard:
+     * starting from FINISHED in the same session is a no-op. */
+    fun startGoLive(state: State): State = if (state == State.FINISHED) state else State.PLAYING
+    fun onEnded(state: State): State = if (state == State.PLAYING) State.FINISHED else state
+    fun clear(@Suppress("UNUSED_PARAMETER") state: State): State = State.IDLE
+    fun isLayerVisible(state: State): Boolean = state == State.PLAYING
 }
 
 enum class AnimatedBackgroundType(val id: String, val displayNameAr: String, val description: String) {
@@ -75,10 +122,99 @@ enum class GradientAnimationType(val id: String) {
     NONE("none"),
     SLIDE("slide"),
     ROTATE("rotate"),
-    PULSE("pulse");
+    PULSE("pulse"),
+    // Combined batch, 2026-10-28: three new card-color motions.
+    // Existing ids/behaviour are untouched, so saved templates keep
+    // rendering exactly as before. All three are sin-periodic, so
+    // the loop is seamless by construction (see GradientMotion).
+    FLOW("flow"),
+    SHIMMER("shimmer"),
+    WAVE("wave");
     companion object {
         fun fromId(id: String): GradientAnimationType =
             values().find { it.id == id } ?: NONE
+    }
+}
+
+/**
+ * Pure, testable math for the new gradient motions.
+ *
+ * Loop guarantee: every effect is a function of phase = 2*PI * speed
+ * * timeSec, with NO modulo wrap on time (NDI uses absolute
+ * System.currentTimeMillis, HTTP uses Date.now). sin/cos are
+ * 2*PI-periodic, so value(t) == value(t + 1/speed) exactly (up to
+ * float rounding) for any speed > 0. There is no first-frame /
+ * last-frame mismatch, unlike a recorded video loop: the gradient
+ * is generated from the phase, it never has to cut or fade back.
+ * Speed 0 pauses (phase frozen, value constant) — same convention
+ * as the old effects.
+ *
+ * FLOW: bright band sweeps left-to-right then back: offset =
+ * sin(phase) in [-1, 1], multiplied by 0.35 * extent in the
+ * renderer. At phase 0 and 2*PI the offset is 0, at PI/2 it is
+ * full right, at 3*PI/2 full left — a smooth return, never a jump.
+ * SHIMMER: brightness multiplier 0.88 + 0.12*sin(phase), i.e.
+ * 0.76..1.00, subtle enough that verse text stays readable.
+ * WAVE: angle = baseAngle + 20*sin(phase) degrees. The +/-20 deg
+ * swing never wraps past 360, so no angle discontinuity.
+ */
+object GradientMotion {
+    fun phase(timeSec: Double, speed: Float): Double =
+        2.0 * Math.PI * speed.toDouble() * timeSec
+    fun flowOffset(phase: Double): Float = kotlin.math.sin(phase).toFloat()
+    fun shimmerMultiplier(phase: Double): Float =
+        (0.88 + 0.12 * kotlin.math.sin(phase)).toFloat()
+    fun waveAngle(baseDeg: Float, phase: Double): Float =
+        baseDeg + 20f * kotlin.math.sin(phase).toFloat()
+}
+
+/** Pure = card opacity 0, derived, not a user toggle any more.
+ * The legacy [LowerThirdTemplate.isPureTransparentBackground] flag
+ * is still read on import for migration, but renderers must use
+ * this: opacity 0 OR the migrated flag, so a manually-zeroed
+ * slider and an old pure template behave identically. */
+val LowerThirdTemplate.isPureDerived: Boolean
+    get() = bgOpacity <= 0f || isPureTransparentBackground
+
+/**
+ * Continuous box-effect math (combined batch, II Card). Pure functions
+ * so they are unit-testable without Android: every effect is a sin/cos
+ * function of one phase, so first frame == last frame exactly at the
+ * period boundary (period = 1 / boxMotionSpeed seconds) — no reset
+ * jump, no fade dip, unlike recorded video loops.
+ * - Zoom: 1.0 -> 1.05 -> 1.0 via (1 - cos(phase)) / 2, so phase 0 is
+ *   exactly neutral (scale 1), unlike a raw sin which starts mid-swing.
+ * - Float: translateY = +/-8dp * sin(phase); Sway: translateX = +/-8dp
+ *   * sin(phase); both start at 0 (neutral) at phase 0.
+ * - Glow Pulse: shadow intensity factor 0.7..1.3 * sin(phase); no scale,
+ *   no position change, so it never moves text.
+ * - ramp: 0 while the verse/box transition is still running, then a
+ *   smoothstep (f*f*(3-2f)) over 600 ms to 1, so effects fade in
+ *   instead of snapping on at the transition's end.
+ * The same math runs on NDI (Canvas translate/scale around the box
+ * centre, shadow-alpha factor) and HTTP (JS transform on cardBox,
+ * box-shadow alpha), with the same speed and amplitudes.
+ */
+object BoxMotion {
+    fun phase(speed: Float, elapsedSec: Float): Float =
+        (2f * Math.PI.toFloat()) * speed * elapsedSec
+    fun zoomScale(phase: Float, ramp: Float): Float =
+        1f + 0.05f * (1f - kotlin.math.cos(phase)) / 2f * ramp
+    fun floatDp(phase: Float, ramp: Float): Float =
+        8f * kotlin.math.sin(phase) * ramp
+    fun swayDp(phase: Float, ramp: Float): Float =
+        8f * kotlin.math.sin(phase) * ramp
+    fun glowFactor(phase: Float, ramp: Float): Float =
+        1f + 0.3f * kotlin.math.sin(phase) * ramp
+    fun ramp(elapsedMs: Long, transitionEndMs: Long): Float {
+        if (elapsedMs <= transitionEndMs) return 0f
+        val f = ((elapsedMs - transitionEndMs) / 600f).coerceIn(0f, 1f)
+        return f * f * (3f - 2f * f)
+    }
+    /** 0..1 progress of a box transition, or null when it is instant. */
+    fun boxProgress(elapsedMs: Long, durationMs: Int): Float? {
+        if (durationMs <= 0) return null
+        return (elapsedMs.toFloat() / durationMs).coerceIn(0f, 1f)
     }
 }
 
@@ -126,6 +262,29 @@ data class LowerThirdTemplate(
     val cornerRadiusDp: Int = 12,
     val transition: TransitionType = TransitionType.SLIDE_UP,
     val transitionDurationMs: Int = 400,
+    // Split transitions (combined batch): the verse transition above
+    // animates only verse text + citation; the box transition animates
+    // only the card box itself. Each has its own type + duration and
+    // each can be NONE, so verse-only, box-only, or both are possible.
+    // Constructor defaults mirror the verse values, so a freshly built
+    // template moves box + verse together until the user isolates one;
+    // fromJson below does the same migration for saved templates that
+    // predate the box fields (old single value becomes BOTH).
+    val boxTransition: TransitionType = transition,
+    val boxTransitionDurationMs: Int = transitionDurationMs,
+    // Continuous box effects (combined batch, II Card): each has its own
+    // on/off flag and they share ONE Box Motion Speed (less tapping).
+    // All use elapsed time since the verse went live, start neutral
+    // (scale 1, translate 0, glow base) at verse live, stay neutral
+    // during the verse/box transition, then grow smoothly after it
+    // ends (see BoxMotion.ramp) — so transition -> continuous has no
+    // jump. Separate from design-gradient Pulse (colour only, no scale)
+    // and from Video speed / Card gradient speed.
+    val boxZoomEnabled: Boolean = false,
+    val boxFloatEnabled: Boolean = false,
+    val boxSwayEnabled: Boolean = false,
+    val boxGlowPulseEnabled: Boolean = false,
+    val boxMotionSpeed: Float = 1.0f,
     val showAccentBorder: Boolean = false,
     /** Independent text shadow on verse/citation text. */
     val textShadowEnabled: Boolean = true,

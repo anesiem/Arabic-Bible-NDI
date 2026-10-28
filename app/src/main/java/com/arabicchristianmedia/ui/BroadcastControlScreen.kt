@@ -1894,8 +1894,8 @@ private fun NdiSourceSettingsRow(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                Text("الحركة (Motion)", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = tint)
-                InfoPopupButton("الحركة (Motion)", "إعادة رسم الخلفيات المتحركة باستمرار (بحد أقصى 30 إطار/ثا)")
+                Text("حركة الفيديو (Video Motion)", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = tint)
+                InfoPopupButton("حركة الفيديو (Video Motion)", "إعادة رسم الفيديو المتحرك باستمرار (بحد أقصى 30 إطار/ثا). يتحكم بالفيديو فقط — حركة لون البطاقة (التدرج) تعمل مستقلة عنه، حتى لو أُطفئ هذا المفتاح.")
             }
             Switch(
                 checked = spec.motionEnabled,

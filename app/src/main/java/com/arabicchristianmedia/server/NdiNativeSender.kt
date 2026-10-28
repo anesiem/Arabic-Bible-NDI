@@ -102,6 +102,10 @@ class NdiNativeSender {
      */
     private var motionFrameProvider: ((Boolean) -> Bitmap)? = null
     private var motionContentProvider: ((Boolean) -> Boolean)? = null
+    /** Combined batch: gradient-only motion (card animation with no
+     * video). Ticks for this must run even when the Setup Motion
+     * toggle (video only) is off. */
+    private var gradientMotionContentProvider: ((Boolean) -> Boolean)? = null
 
     /** Recent NDI error events for the Advanced diagnostics panel (capped, oldest dropped). */
     private val errorEvents = Collections.synchronizedList(mutableListOf<NdiErrorEvent>())
@@ -246,9 +250,18 @@ class NdiNativeSender {
         transitionProvider = provider
     }
 
-    /** True when this session should render motion ticks right now. */
+    fun setGradientMotionContentProvider(provider: (Boolean) -> Boolean) {
+        gradientMotionContentProvider = provider
+    }
+
+    /** True when this session should render motion ticks right now.
+     * Combined batch, motion split: transitions pump regardless;
+     * VIDEO motion needs the Setup toggle AND video content;
+     * GRADIENT motion needs only a gradient animation, and runs
+     * even when the video toggle is off. */
     private fun isMotionActive(session: SenderSession): Boolean {
         if (transitionProvider?.invoke(session.isFullScreen) == true) return true
+        if (gradientMotionContentProvider?.invoke(session.isFullScreen) == true) return true
         return session.spec.motionEnabled &&
             (motionContentProvider?.invoke(session.isFullScreen) == true)
     }

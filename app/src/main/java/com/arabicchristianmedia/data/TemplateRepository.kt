@@ -2502,11 +2502,47 @@ class TemplateRepository(context: Context) {
                 boxHeightPercent = 100,
                 bilingualMode = false
             ),
+            // Combined batch: Pure Transparent factory theme (replaces
+            // the removed 100% Alpha toggle). Text only over camera:
+            // card opacity 0 (= pure, derived), gradient OFF, glow OFF,
+            // accent border OFF. bgColorHex is kept (amber) so raising
+            // the opacity slider later restores a normal card.
+            LowerThirdTemplate(
+                id = "tpl_pure_transparent",
+                name = "Pure Transparent (شفاف تماماً)",
+                isFullScreen = false,
+                style = TemplateStyle.TRANSPARENT_OUTLINE,
+                bgColorHex = "#F59E0B",
+                bgOpacity = 0f,
+                accentColorHex = "#F59E0B",
+                textColorHex = "#FFFFFF",
+                referenceColorHex = "#FBBF24",
+                verseFontSize = 30,
+                referenceFontSize = 21,
+                fontFamily = "Amiri",
+                languageMode = LanguageMode.ARABIC_ONLY,
+                isPureTransparentBackground = false,
+                animatedBackground = AnimatedBackgroundType.NONE,
+                animatedBackgroundOpacity = 0.65f,
+                gradientEnabled = false,
+                showAccentBorder = false,
+                cardGlowEnabled = false,
+                textShadowEnabled = true,
+                textShadowColorHex = "#000000",
+                emblem = "",
+                bilingualMode = false
+            ),
         )
     }
 
+    /** Combined batch: pure-flag factory/user templates normalize
+     * to opacity 0 on read, so the Editor slider and the renderers
+     * (derived pure = opacity 0) can never disagree. Colors kept. */
+    fun normalizePure(t: LowerThirdTemplate): LowerThirdTemplate =
+        if (t.isPureTransparentBackground) t.copy(bgOpacity = 0f, isPureTransparentBackground = false) else t
+
     fun getAllTemplates(): List<LowerThirdTemplate> {
-        val savedJson = prefs.getString("custom_templates", null) ?: return DEFAULT_TEMPLATES
+        val savedJson = prefs.getString("custom_templates", null) ?: return DEFAULT_TEMPLATES.map { normalizePure(it) }
         return try {
             val list = mutableListOf<LowerThirdTemplate>()
             var migratedAny = false
@@ -2529,7 +2565,7 @@ class TemplateRepository(context: Context) {
             // other non-shipped entries) are never touched.
             val currentIds = DEFAULT_TEMPLATES.map { it.id }.toSet()
             val kept = list.filter { it.id !in LEGACY_FACTORY_IDS && it.id !in currentIds }
-            val refreshed = DEFAULT_TEMPLATES.toMutableList()
+            val refreshed = DEFAULT_TEMPLATES.map { normalizePure(it) }.toMutableList()
             refreshed.addAll(kept)
             if (refreshed.map { it.id } != list.map { it.id } ||
                 refreshed != list
@@ -2543,7 +2579,7 @@ class TemplateRepository(context: Context) {
             }
             list
         } catch (e: Exception) {
-            DEFAULT_TEMPLATES
+            DEFAULT_TEMPLATES.map { normalizePure(it) }
         }
     }
 
@@ -2677,6 +2713,13 @@ class TemplateRepository(context: Context) {
             put("cornerRadiusDp", t.cornerRadiusDp)
             put("transition", t.transition.name)
             put("transitionDurationMs", t.transitionDurationMs)
+            put("boxTransition", t.boxTransition.name)
+            put("boxTransitionDurationMs", t.boxTransitionDurationMs)
+            put("boxZoomEnabled", t.boxZoomEnabled)
+            put("boxFloatEnabled", t.boxFloatEnabled)
+            put("boxSwayEnabled", t.boxSwayEnabled)
+            put("boxGlowPulseEnabled", t.boxGlowPulseEnabled)
+            put("boxMotionSpeed", t.boxMotionSpeed.toDouble())
             put("showAccentBorder", t.showAccentBorder)
             put("textShadowEnabled", t.textShadowEnabled)
             put("textShadowColorHex", t.textShadowColorHex)
@@ -2724,12 +2767,25 @@ class TemplateRepository(context: Context) {
         val migratedTransparent = obj.optBoolean("isPureTransparentBackground", false) ||
                 migratedStyle == TemplateStyle.TRANSPARENT_OUTLINE
         val safeGlowDefault = legacyShadow && !migratedTransparent
+        // Split-transition migration: the old single transition value is
+        // read once here and reused for the verse fields below AND for
+        // the box fields when the saved JSON predates them (no
+        // "boxTransition" key), so old templates look exactly as before.
+        val parsedTransition = try { TransitionType.valueOf(obj.optString("transition")) }
+            catch (e: Exception) { TransitionType.FADE }
+        val parsedTransitionDurationMs = obj.optInt("transitionDurationMs", 350)
         return LowerThirdTemplate(
             id = obj.optString("id", "tpl_${System.currentTimeMillis()}"),
             name = obj.optString("name", "Custom Template"),
             style = try { TemplateStyle.valueOf(obj.optString("style")) } catch (e: Exception) { TemplateStyle.MODERN_GLASS },
             bgColorHex = obj.optString("bgColorHex", "#0A1128"),
-            bgOpacity = obj.optDouble("bgOpacity", 0.85).toFloat(),
+            // Combined batch: 100% Alpha toggle removed. Pure is now
+            // simply bgOpacity == 0. A saved pure flag migrates to
+            // opacity 0 and the flag is cleared; every other field
+            // (including bgColorHex) is preserved, so returning the
+            // slider to 1 restores the exact old card.
+            bgOpacity = if (obj.optBoolean("isPureTransparentBackground", false)) 0f
+                        else obj.optDouble("bgOpacity", 0.85).toFloat(),
             accentColorHex = obj.optString("accentColorHex", "#E5A93C"),
             textColorHex = obj.optString("textColorHex", "#FFFFFF"),
             referenceColorHex = obj.optString("referenceColorHex", "#F4D06F"),
@@ -2759,8 +2815,17 @@ class TemplateRepository(context: Context) {
             positionBottomPercent = obj.optInt("positionBottomPercent", 6),
             horizontalMarginPercent = obj.optInt("horizontalMarginPercent", 6),
             cornerRadiusDp = obj.optInt("cornerRadiusDp", 16),
-            transition = try { TransitionType.valueOf(obj.optString("transition")) } catch (e: Exception) { TransitionType.FADE },
-            transitionDurationMs = obj.optInt("transitionDurationMs", 350),
+            transition = parsedTransition,
+            transitionDurationMs = parsedTransitionDurationMs,
+            boxTransition = if (obj.has("boxTransition")) {
+                try { TransitionType.valueOf(obj.optString("boxTransition")) } catch (e: Exception) { parsedTransition }
+            } else parsedTransition,
+            boxTransitionDurationMs = if (obj.has("boxTransitionDurationMs")) obj.optInt("boxTransitionDurationMs", parsedTransitionDurationMs) else parsedTransitionDurationMs,
+            boxZoomEnabled = obj.optBoolean("boxZoomEnabled", false),
+            boxFloatEnabled = obj.optBoolean("boxFloatEnabled", false),
+            boxSwayEnabled = obj.optBoolean("boxSwayEnabled", false),
+            boxGlowPulseEnabled = obj.optBoolean("boxGlowPulseEnabled", false),
+            boxMotionSpeed = obj.optDouble("boxMotionSpeed", 1.0).toFloat(),
             showAccentBorder = obj.optBoolean("showAccentBorder", true),
             // One-time migration: old styles without the new keys gain text shadow
             // (on, black). Transparent styles migrate glow to OFF (no card to glow).
@@ -2789,7 +2854,7 @@ class TemplateRepository(context: Context) {
             } else {
                 com.arabicchristianmedia.model.LanguageMode.ARABIC_ONLY
             },
-            isPureTransparentBackground = obj.optBoolean("isPureTransparentBackground", false),
+            isPureTransparentBackground = false, // migrated above; flag no longer a user mode
             animatedBackground = try { com.arabicchristianmedia.model.AnimatedBackgroundType.valueOf(obj.optString("animatedBackground")) } catch (e: Exception) { com.arabicchristianmedia.model.AnimatedBackgroundType.NONE },
             animatedBackgroundOpacity = obj.optDouble("animatedBackgroundOpacity", 0.65).toFloat(),
             customVideoUrl = obj.optString("customVideoUrl", ""),

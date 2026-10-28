@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import com.arabicchristianmedia.model.AnimatedBackgroundType
 import com.arabicchristianmedia.model.BroadcastTextAlignment
 import com.arabicchristianmedia.model.LanguageMode
+import com.arabicchristianmedia.model.GradientAnimationType
 import com.arabicchristianmedia.model.LowerThirdTemplate
 import com.arabicchristianmedia.model.TemplateStyle
 import com.arabicchristianmedia.model.TransitionType
@@ -2631,7 +2632,7 @@ class TemplateRepository(context: Context) {
             val obj = JSONObject(json)
             if (obj.optString("name", "").trim().isEmpty()) return null
             // Sanity: a real style carries several known keys.
-            val knownKeys = listOf("fontFamily", "bgColorHex", "textColorHex", "verseFontSize", "style", "showCrossEmblem", "emblem", "autoFitMinVerseSp", "autoFitMaxVerseSp", "boxHeightPercent", "isFullScreen", "id", "useSystemFontForBrackets")
+            val knownKeys = listOf("fontFamily", "bgColorHex", "textColorHex", "verseFontSize", "style", "showCrossEmblem", "emblem", "autoFitMinVerseSp", "autoFitMaxVerseSp", "boxHeightPercent", "isFullScreen", "id", "useSystemFontForBrackets", "gradientColorHex2", "gradientAngleDeg", "gradientAnimation", "autoFitMinCitationSp", "autoFitRatioLock")
             if (knownKeys.none { obj.has(it) }) return null
             fromJson(obj)
         } catch (e: Exception) {
@@ -2703,6 +2704,13 @@ class TemplateRepository(context: Context) {
             put("autoFitText", t.autoFitText)
             put("autoFitMaxVerseSp", t.autoFitMaxVerseSp)
             put("boxHeightPercent", t.boxHeightPercent)
+            put("gradientEnabled", t.gradientEnabled)
+            put("gradientColorHex2", t.gradientColorHex2)
+            put("gradientAngleDeg", t.gradientAngleDeg)
+            put("gradientAnimation", t.gradientAnimation.id)
+            put("gradientSpeed", t.gradientSpeed)
+            put("autoFitMinCitationSp", t.autoFitMinCitationSp)
+            put("autoFitRatioLock", t.autoFitRatioLock)
         }
     }
 
@@ -2806,7 +2814,14 @@ class TemplateRepository(context: Context) {
             autoFitMaxVerseSp = (if (obj.has("autoFitMaxVerseSp")) obj.optInt("autoFitMaxVerseSp", 48)
                                  else maxOf(obj.optInt("autoFitMinVerseSp", 48), obj.optInt("verseFontSize", 26))).coerceIn(10, 200),
             boxHeightPercent = obj.optInt("boxHeightPercent",
-                if (obj.optBoolean("isFullScreen", false)) 100 else 45).coerceIn(10, 100)
+                if (obj.optBoolean("isFullScreen", false)) 100 else 45).coerceIn(10, 100),
+            gradientEnabled = obj.optBoolean("gradientEnabled", false),
+            gradientColorHex2 = obj.optString("gradientColorHex2", "#0A1128"),
+            gradientAngleDeg = obj.optInt("gradientAngleDeg", 90).coerceIn(0, 360),
+            gradientAnimation = GradientAnimationType.fromId(obj.optString("gradientAnimation", "none")),
+            gradientSpeed = obj.optDouble("gradientSpeed", 1.0).toFloat().coerceIn(0f, 3.0f),
+            autoFitMinCitationSp = obj.optInt("autoFitMinCitationSp", 10).coerceIn(10, 120),
+            autoFitRatioLock = obj.optBoolean("autoFitRatioLock", true)
         ).let { migrateLegacyVideo(it) }
     }
 

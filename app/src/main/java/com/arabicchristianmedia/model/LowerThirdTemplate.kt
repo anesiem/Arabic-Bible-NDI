@@ -63,6 +63,25 @@ enum class AnimatedBackgroundType(val id: String, val displayNameAr: String, val
     CUSTOM_VIDEO("custom_video", "رابط فيديو مخصص (Custom MP4)", "Custom transparent/looping video URL")
 }
 
+/**
+ * Design-gradient card animation (2026-10-28 batch): the user chooses
+ * two card colors and an angle, and the gradient itself moves. NONE is
+ * a static gradient; SLIDE sweeps right-to-left; ROTATE turns the angle
+ * slowly; PULSE breathes the card opacity. No video decode is involved.
+ * CSS angle convention (shared with NDI): 0 = bottom-to-top,
+ * 90 = left-to-right, 180 = top-to-bottom, 270 = right-to-left.
+ */
+enum class GradientAnimationType(val id: String) {
+    NONE("none"),
+    SLIDE("slide"),
+    ROTATE("rotate"),
+    PULSE("pulse");
+    companion object {
+        fun fromId(id: String): GradientAnimationType =
+            values().find { it.id == id } ?: NONE
+    }
+}
+
 enum class StreamBackgroundMode(val displayNameAr: String, val colorHex: String) {
     TRANSPARENT_ALPHA("خلفية شفافة تماماً (100% Alpha — تظهر خضراء في بث MJPEG)", "#00000000"),
     CHROMA_GREEN("خلفية خضراء للتفريغ (Chroma Green)", "#00FF00"),
@@ -191,4 +210,32 @@ data class LowerThirdTemplate(
      * budget); Full Show templates use 100 (the whole frame).
      */
     val boxHeightPercent: Int = 45,
+    /**
+     * Design-gradient card (2026-10-28 batch, off by default so every
+     * existing style renders exactly as before). When on, the card fill
+     * is a two-color gradient from [bgColorHex] to [gradientColorHex2]
+     * at [gradientAngleDeg] degrees, at [bgOpacity] transparency, on
+     * BOTH renderers (HTTP CSS gradient, NDI native gradient shader).
+     * [gradientSpeed] scales the animation only (0 = paused); video
+     * speed ([motionSpeed]) is untouched.
+     */
+    val gradientEnabled: Boolean = false,
+    val gradientColorHex2: String = "#0A1128",
+    val gradientAngleDeg: Int = 90,
+    val gradientAnimation: GradientAnimationType = GradientAnimationType.NONE,
+    val gradientSpeed: Float = 1.0f,
+    /**
+     * Auto-fit citation floor (2026-10-28 batch): the primary citation
+     * never renders below this size (sp) under auto-fit. Default 10
+     * preserves the old hard floor; raising it is the fix for
+     * "increasing the citation makes it smaller".
+     */
+    val autoFitMinCitationSp: Int = 10,
+    /**
+     * Auto-fit ratio lock (on by default): verse and citation shrink
+     * by one shared ratio, preserving their designed ratio. Off: the
+     * citation stays at its set size (clamped to the floor above)
+     * while only the verse shrinks to fit the box.
+     */
+    val autoFitRatioLock: Boolean = true,
 )

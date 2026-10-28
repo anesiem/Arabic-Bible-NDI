@@ -193,7 +193,7 @@ class TemplateRepositoryTest {
             assertTrue("$id should glow", defaults.first { it.id == id }.cardGlowEnabled)
         }
         assertTrue(defaults.first { it.id == "tpl_fs_pure_word" }.isFullScreen)
-        assertEquals(27, defaults.count { !it.isFullScreen })
+        assertEquals(28, defaults.count { !it.isFullScreen })
         assertEquals(11, defaults.count { it.isFullScreen })
     }
 

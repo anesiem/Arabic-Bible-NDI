@@ -107,11 +107,19 @@ object ReferenceScanner {
                     if (parsed.verseList != null && parsed.verseList.size > 1) {
                         val segments = Regex("""[,،]\s*\d+""").findAll(m.value).toList()
                         for (seg in segments) {
-                            val windowPos = m.range.first + seg.range.last + 1
-                            if (windowPos >= window.length) break
-                            val after = window.substring(windowPos).trimStart()
+                            // Digit index in the window (seg.range.last is
+                            // the digit inside m.value). The digit itself
+                            // is part of the next book name ("2 Kings"),
+                            // so check from the digit, not after it:
+                            // ", 2 Kings" was previously missed because
+                            // after the digit only "Kings" remained.
+                            val digitPos = m.range.first + seg.range.last
+                            if (digitPos >= window.length) break
+                            val fromDigit = window.substring(digitPos)
+                            val after = window.substring(digitPos + 1).trimStart()
                             val isBookNext = variants.any { v ->
-                                after.startsWith(v.name, ignoreCase = true)
+                                fromDigit.startsWith(v.name, ignoreCase = true) ||
+                                    after.startsWith(v.name, ignoreCase = true)
                             }
                             if (isBookNext) {
                                 val truncated = m.value.substring(0, seg.range.first).trim()

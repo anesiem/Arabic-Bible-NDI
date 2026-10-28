@@ -396,8 +396,8 @@ fun TemplateEditorScreen(
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Box(modifier = Modifier.weight(1f)) { editorTitleBlock() }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    // Item 4: the feed indicator moved to the style row as the
-                    // import button (feedButtonBlock) — one feed control, not two.
+                    // 2026-10-28: the feed indicator moved to the design
+                    // menu (Import lives there) — one design control, not two.
                     // v1.9: info icon reopens the How-it-works tips when hidden.
                     if (!showHowItWorks) {
                         IconButton(onClick = {

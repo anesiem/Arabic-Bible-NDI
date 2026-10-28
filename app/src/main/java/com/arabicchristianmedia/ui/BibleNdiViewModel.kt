@@ -1880,6 +1880,49 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
     }
 
     /**
+     * 2026-10-28 design menu: export the WORKING design, so a dirty
+     * design exports its current values, not the stale saved style.
+     * The JSON keeps the working id/name; importing it creates a new
+     * id (importNewTemplate) or overwrites the target (update path),
+     * so no saved style is clobbered by the round-trip.
+     */
+    fun exportWorkingTemplateJson(isFullScreen: Boolean): String {
+        val working = if (isFullScreen) _uiState.value.activeShowTemplate else _uiState.value.activeTemplate
+        return templateRepo.templateToJsonString(working)
+    }
+
+    /**
+     * 2026-10-28 design menu: rename a saved style. Factory styles
+     * fork to a user copy (like Update does), because a factory id is
+     * re-supplied on every launch and a rename in place would vanish.
+     * The working copy's name follows, so a clean design stays clean.
+     */
+    fun renameTemplate(templateId: String, newName: String, isFullScreen: Boolean) {
+        val current = _uiState.value.templates.firstOrNull { it.id == templateId } ?: return
+        if (TemplateRepository.isFactoryStyleId(templateId)) {
+            val working = if (isFullScreen) _uiState.value.activeShowTemplate else _uiState.value.activeTemplate
+            saveAsNewTemplate(newName, working.copy(name = newName), isFullScreen)
+            return
+        }
+        val updated = current.copy(name = newName)
+        val newList = _uiState.value.templates.map { if (it.id == templateId) updated else it }
+        templateRepo.saveTemplates(newList)
+        val state = _uiState.value
+        val wasHighlighted = if (isFullScreen) state.highlightedShowStyleId == templateId else state.highlightedLowerStyleId == templateId
+        if (wasHighlighted) {
+            if (isFullScreen) {
+                _uiState.value = state.copy(templates = newList, activeShowTemplate = state.activeShowTemplate.copy(name = newName))
+                broadcastServer.updateShowTemplate(_uiState.value.activeShowTemplate)
+            } else {
+                _uiState.value = state.copy(templates = newList, activeTemplate = state.activeTemplate.copy(name = newName))
+                broadcastServer.updateTemplate(_uiState.value.activeTemplate)
+            }
+        } else {
+            _uiState.value = state.copy(templates = newList)
+        }
+    }
+
+    /**
      * Update an existing style's values from imported JSON. The style id is
      * preserved (highlight/selection references stay valid) and the tab's
      * isFullScreen is enforced so collections stay partitioned. When the

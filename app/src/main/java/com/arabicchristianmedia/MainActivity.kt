@@ -139,6 +139,13 @@ class MainActivity : ComponentActivity() {
                 val bento = LocalBentoColors.current
                 val snackbarHostState = remember { SnackbarHostState() }
                 var selectedTab by rememberSaveable { mutableIntStateOf(0) }
+                // 2026-10-28 K7 gate, shared by the top bar and the
+                // Editor body: width >= 900 AND height >= 600.
+                val topBarWide = LocalConfiguration.current.screenWidthDp >= 900 && LocalConfiguration.current.screenHeightDp >= 600
+                // 2026-10-28: every Library-tab tap bumps this, even
+                // when already on Library — BibleReaderScreen closes
+                // search / recents sheet / chapter picker on the bump.
+                var libraryTabTapNonce by remember { mutableIntStateOf(0) }
                 // v2.0: a successful share (sermonListNonce bump) opens the
                 // sermon list tab so the operator lands on the verses.
                 LaunchedEffect(uiState.sermonListNonce) {
@@ -236,16 +243,19 @@ class MainActivity : ComponentActivity() {
                                 // Wide Editor layout: the Editor's header chips
                                 // live on this line, beside the NDI pill, so the
                                 // Editor gains a full row of scroll room.
-                                if (selectedTab == 1 && LocalConfiguration.current.screenWidthDp >= 900) {
+                                // 2026-10-28 K7 gate: width >= 900 AND height
+                                // >= 600 — the same thresholds as
+                                // isWideLayout — so the top-bar chips and
+                                // the Editor's wide branch can never
+                                // disagree and show both header rows.
+                                if (selectedTab == 1 && topBarWide) {
                                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                        // Batch item 5: the feed chip is also the
-                                        // import entry (was the removed row's
-                                        // feed button) — tapping it opens the
-                                        // import dialog for a new style.
+                                        // 2026-10-28: the feed chip is a label
+                                        // only now — Import lives in the design
+                                        // menu, so no separate import button.
                                         Surface(
                                             shape = RoundedCornerShape(999.dp),
-                                            color = bento.primaryContainer,
-                                            onClick = { editorImportTargetTpl = null; editorShowImportDialog = true }
+                                            color = bento.primaryContainer
                                         ) {
                                             Text(
                                                 if (editorTab == 0) "السفلي · Lower" else "الكامل · Full",
@@ -254,11 +264,20 @@ class MainActivity : ComponentActivity() {
                                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                                             )
                                         }
-                                        if (if (editorTab == 0) uiState.lowerWorkingDirty else uiState.showWorkingDirty) {
-                                            // Batch item 6: tapping Modified opens
-                                            // the save menu (Update / Save as new).
+                                        // 2026-10-28 design button: always
+                                        // visible, name first, Modified
+                                        // prefix only when dirty — the
+                                        // same button as the compact stage
+                                        // row, which hides when this shows.
+                                        run {
+                                            val designName = if (editorTab == 0) {
+                                                uiState.templates.firstOrNull { it.id == uiState.highlightedLowerStyleId }?.name ?: uiState.activeTemplate.name
+                                            } else {
+                                                uiState.templates.firstOrNull { it.id == uiState.highlightedShowStyleId }?.name ?: uiState.activeShowTemplate.name
+                                            }
+                                            val dirty = if (editorTab == 0) uiState.lowerWorkingDirty else uiState.showWorkingDirty
                                             Surface(shape = RoundedCornerShape(10.dp), color = bento.primaryContainer, onClick = { editorShowModifiedMenu = true }) {
-                                                Text("معدّل (Modified)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.onPrimaryContainer, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
+                                                Text(if (dirty) "معدّل · $designName (Modified · $designName)" else designName, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.onPrimaryContainer, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
                                             }
                                         }
                                         // Batch item 5: style help, moved up from
@@ -287,19 +306,19 @@ class MainActivity : ComponentActivity() {
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(20.dp))
                                         .clickable { selectedTab = 2 }
-                                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                                        .padding(horizontal = 14.dp, vertical = 8.dp)
                                 ) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Box(
                                             modifier = Modifier
-                                                .size(8.dp)
+                                                .size(10.dp)
                                                 .clip(CircleShape)
                                                 .background(if (uiState.isLiveOnAir && uiState.activeVerse != null) bento.liveRedBright else if (uiState.isNativeNdiActive || uiState.isNativeShowActive) bento.green else bento.textSecondary)
                                         )
-                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Spacer(modifier = Modifier.width(8.dp))
                                         Text(
                                             text = if (uiState.isLiveOnAir && uiState.activeVerse != null) "LIVE" else "NDI",
-                                            fontSize = 11.sp,
+                                            fontSize = 12.sp,
                                             fontWeight = FontWeight.Bold,
                                             color = if (uiState.isLiveOnAir && uiState.activeVerse != null) bento.liveRed else bento.textSecondary
                                         )
@@ -322,7 +341,7 @@ class MainActivity : ComponentActivity() {
                             ) {
                                 NavigationBarItem(
                                     selected = selectedTab == 0,
-                                    onClick = { selectedTab = 0 },
+                                    onClick = { selectedTab = 0; libraryTabTapNonce++ },
                                     icon = {
                                         Icon(
                                             imageVector = if (selectedTab == 0) Icons.AutoMirrored.Filled.MenuBook else Icons.AutoMirrored.Outlined.MenuBook,
@@ -422,7 +441,10 @@ class MainActivity : ComponentActivity() {
                                 onToggleLive = { viewModel.toggleLive() },
                                 onIncreaseFontSize = { viewModel.increaseFontSize() },
                                 onDecreaseFontSize = { viewModel.decreaseFontSize() },
-                                onSetAppThemeMode = { viewModel.setAppThemeMode(it) }
+                                onSetAppThemeMode = { viewModel.setAppThemeMode(it) },
+                                closeOverlaysNonce = libraryTabTapNonce,
+                                onRemoveRecent = { viewModel.removeRecentVerse(it) },
+                                onRestoreRecent = { verse, index -> viewModel.restoreRecentVerse(verse, index) }
                             )
                             1 -> TemplateEditorScreen(
                                 currentTemplate = uiState.activeTemplate,
@@ -459,7 +481,10 @@ class MainActivity : ComponentActivity() {
                                 onShowImportDialogChange = { editorShowImportDialog = it },
                                 onImportTargetTplChange = { editorImportTargetTpl = it },
                                 showModifiedMenu = editorShowModifiedMenu,
-                                onShowModifiedMenuChange = { editorShowModifiedMenu = it }
+                                onShowModifiedMenuChange = { editorShowModifiedMenu = it },
+                                topBarDesignButtonVisible = topBarWide,
+                                onExportWorkingTemplate = { isFull -> viewModel.exportWorkingTemplateJson(isFull) },
+                                onRenameTemplate = { id, name, isFull -> viewModel.renameTemplate(id, name, isFull) }
                             )
                             2 -> BroadcastControlScreen(
                                 uiState = uiState,

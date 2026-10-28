@@ -158,9 +158,22 @@ fun TemplateEditorScreen(
     // top-bar badge opens the same menu as the compact badge.
     showModifiedMenu: Boolean,
     onShowModifiedMenuChange: (Boolean) -> Unit,
+    // 2026-10-28 K7 gate: true when the MainActivity top bar already
+    // shows the design button (width >= 900 AND height >= 600, the
+    // same thresholds as isWideLayout). The compact stage then hides
+    // its own design button, so exactly one design button exists.
+    topBarDesignButtonVisible: Boolean = false,
+    // 2026-10-28 design menu: export the WORKING design (not just a
+    // saved style by id, which would export stale values when dirty).
+    onExportWorkingTemplate: (Boolean) -> String? = { null },
+    // 2026-10-28 design menu: rename the highlighted saved style
+    // (factory styles fork to a user copy, like Update does).
+    onRenameTemplate: (String, String, Boolean) -> Unit = { _, _, _ -> },
     modifier: Modifier = Modifier
 ) {
     var showSaveDialog by remember { mutableStateOf(false) }
+    var showRenameDialog by remember { mutableStateOf(false) }
+    var renameInput by remember { mutableStateOf("") }
     var templateToDelete by remember { mutableStateOf<LowerThirdTemplate?>(null) }
     var styleMenuTpl by remember { mutableStateOf<LowerThirdTemplate?>(null) } // long-press actions menu
     var newTemplateName by remember { mutableStateOf("") }
@@ -609,6 +622,29 @@ fun TemplateEditorScreen(
                     FeatureToggleRow("ملاءمة تلقائية للنص (Auto-fit text)", editingTemplate.autoFitText, modifier = anchorModifier("frame-autofit")) { onUpdate(editingTemplate.copy(autoFitText = it)) }
                     if (editingTemplate.autoFitText) {
                         SliderWithLabel("أكبر حجم للنص (Max size)", editingTemplate.autoFitMaxVerseSp.toFloat(), 10f..120f) { onUpdate(editingTemplate.copy(autoFitMaxVerseSp = it.toInt())) }
+                        // 2026-10-28 auto-fit: citation floor + ratio lock.
+                        // Floor = smallest size the citation may shrink to
+                        // (default 10sp = old behaviour); lock ON (default)
+                        // shrinks verse + citation together by one shared
+                        // ratio, so raising a size never makes the
+                        // citation smaller — the complaint that led here.
+                        // Lock OFF keeps the citation at its set size
+                        // (or the floor) while only the verse shrinks.
+                        SliderWithLabel("أصغر حجم للمرجع (Citation floor)", editingTemplate.autoFitMinCitationSp.toFloat(), 10f..60f) { onUpdate(editingTemplate.copy(autoFitMinCitationSp = it.toInt())) }
+                        FeatureToggleRow("قفل النسبة (verse + citation together)", editingTemplate.autoFitRatioLock) { onUpdate(editingTemplate.copy(autoFitRatioLock = it)) }
+                        // Live readout, labelled honestly: these are the
+                        // at-cap sizes before box shrink (the box-fitted
+                        // size depends on verse length and the preview
+                        // shows it live). "Rendering at X, capped at Y"
+                        // in the user's words: at-cap verse, cap, and
+                        // the citation size that follows from the lock.
+                        val atCapVerse = minOf(editingTemplate.verseFontSize, editingTemplate.autoFitMaxVerseSp)
+                        val atCapCitation = if (editingTemplate.autoFitRatioLock) {
+                            if (editingTemplate.verseFontSize > 0) maxOf(editingTemplate.autoFitMinCitationSp, (editingTemplate.referenceFontSize * atCapVerse / editingTemplate.verseFontSize)) else editingTemplate.referenceFontSize
+                        } else {
+                            maxOf(editingTemplate.referenceFontSize, editingTemplate.autoFitMinCitationSp)
+                        }
+                        Text("عند الحد الأقصى: النص $atCapVerse، المرجع $atCapCitation (قبل ملاءمة الصندوق — المعاينة تعرض الحجم النهائي)", fontSize = 11.sp, color = bento.textSecondary)
                     }
                     // Audit fix (D): a WARNING, never a block - the fit obeys
                     // destructive combinations silently (Ashraf's Midnight
@@ -630,39 +666,32 @@ fun TemplateEditorScreen(
         }
     }
 
-    // Item 4: the style row's feed button — its label follows the current
-    // feed, and tapping it opens that feed's import box (the old Import
-    // button is gone). Modified sits immediately before it.
-    val modifiedBadgeBlock: @Composable () -> Unit = {
-        if (tabIsDirty) {
-            // Batch item 6: tapping Modified opens the save menu.
+    // 2026-10-28 design menu button: ALWAYS visible (not only when
+    // dirty) — its label IS the design name, prefixed with Modified
+    // only when the working copy differs from the saved design, and
+    // just the name when clean. Tapping opens the one design menu
+    // (Save current / Save as new / Duplicate / Rename / Export /
+    // Import / Delete). Separate storage buttons are gone: the old
+    // Import feed button is removed from the stage row, and the
+    // top-bar feed chip no longer opens import (see MainActivity).
+    // When the top bar already shows this button (K7 gate), the
+    // compact stage hides it, so the two can never both show.
+    val designMenuButtonBlock: @Composable () -> Unit = {
+        if (!topBarDesignButtonVisible) {
+            val designName = templates.firstOrNull { it.id == highlightedId }?.name ?: editingTemplate.name
+            val designLabel = if (tabIsDirty) "معدّل · $designName (Modified · $designName)" else designName
             Surface(shape = RoundedCornerShape(10.dp), color = bento.primaryContainer, onClick = { onShowModifiedMenuChange(true) }) {
-                Text("معدّل (Modified)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.onPrimaryContainer, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
+                Text(designLabel, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.onPrimaryContainer, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
             }
-        }
-    }
-    val feedButtonBlock: @Composable () -> Unit = {
-        Surface(
-            shape = RoundedCornerShape(999.dp),
-            color = bento.primaryContainer,
-            onClick = { onImportTargetTplChange(null); onShowImportDialogChange(true) }
-        ) {
-            Text(
-                if (editorTab == 0) "استيراد · Lower" else "استيراد · Full",
-                fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.onPrimaryContainer,
-                maxLines = 1,
-                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
-            )
         }
     }
     val stageBlock: @Composable () -> Unit = {
         // 4. Style Selector (per-tab collection; highlight = selected style id, NOT the working template id)
-        // Item 4: no "Select style" label (the cards are self-evident);
-        // Modified + feed button + (i) for the style help, then the cards.
+        // 2026-10-28: the design button + style help, then the cards.
+        // No separate Import button — Import lives in the design menu.
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            modifiedBadgeBlock()
-            feedButtonBlock()
-            InfoPopupButton("اختر النمط (Select Style)", "اضغط مطولاً على أي نمط للتصدير / التحديث بالاستيراد / الحذف • التعديل بدون حفظ يمسح التمييز")
+            designMenuButtonBlock()
+            InfoPopupButton("اختر النمط (Select Style)", "اضغط على زر التصميم للحفظ / التصدير / الاستيراد / الحذف • اضغط مطولاً على أي نمط لنفس الخيارات • التعديل بدون حفظ يمسح التمييز")
         }
         styleCardsRow()
 
@@ -994,6 +1023,39 @@ CollapsibleSection(
                         }
                     }
 
+                    // 2026-10-28 gradient card: OFF by default, so every
+                    // existing style (including ROYAL's own gradient)
+                    // is unchanged. When ON, the two colours + angle +
+                    // animation + speed drive HTTP (CSS gradient) and
+                    // NDI (native gradient) with the same parameters;
+                    // the gradient sits above a motion video and the
+                    // text sits above it (layer order unchanged).
+                    // Angle uses the CSS convention: 90 = left-to-right,
+                    // 270 = right-to-left, 0 = bottom-to-top.
+                    FeatureToggleRow("بطاقة متدرجة اللونين (Gradient card)", editingTemplate.gradientEnabled) { onUpdate(editingTemplate.copy(gradientEnabled = it)) }
+                    if (editingTemplate.gradientEnabled) {
+                        ColorGradePickerRow("اللون الثاني (Second color)", editingTemplate.gradientColorHex2, { onUpdate(editingTemplate.copy(gradientColorHex2 = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
+                        SliderWithLabel("زاوية التدرج (Angle, 0-360°)", editingTemplate.gradientAngleDeg.toFloat(), 0f..360f) { onUpdate(editingTemplate.copy(gradientAngleDeg = it.toInt())) }
+                        val gradientAnims = listOf(
+                            GradientAnimationType.NONE to "ثابت (None)",
+                            GradientAnimationType.SLIDE to "انزلاق يمين-يسار (Slide)",
+                            GradientAnimationType.ROTATE to "تدوير الزاوية ببطء (Rotate)",
+                            GradientAnimationType.PULSE to "نبض (Pulse)"
+                        )
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            gradientAnims.forEach { (anim, label) ->
+                                val selected = editingTemplate.gradientAnimation == anim
+                                Surface(shape = RoundedCornerShape(999.dp), color = if (selected) bento.primaryContainer else bento.card, border = androidx.compose.foundation.BorderStroke(1.dp, if (selected) bento.primary else bento.border), onClick = { onUpdate(editingTemplate.copy(gradientAnimation = anim)) }) {
+                                    Text(label, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary, modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp))
+                                }
+                            }
+                        }
+                        if (editingTemplate.gradientAnimation != GradientAnimationType.NONE) {
+                            SliderWithLabel("سرعة الحركة (Speed)", editingTemplate.gradientSpeed, 0f..3f) { onUpdate(editingTemplate.copy(gradientSpeed = it)) }
+                        }
+                        Text("اللون الأول هو لون الكارت أعلاه، والشفافية من منزلق الشفافية.", fontSize = 11.sp, color = bento.textSecondary)
+                    }
+
                     // v1.9.2 (#9): accents group — the border flag comes
                     // FIRST and the color follows it, shown only while the
                     // flag is on (the picker used to render unconditionally,
@@ -1298,15 +1360,22 @@ CollapsibleSection(
             )
         }
 
-        // Batch item 6: saving lives IN the Modified chip — tapping it
-        // opens this small menu. Update keeps the factory rule (a factory
-        // style saves as the user's own copy, via its dialog); Update
-        // only shows when a style is highlighted.
+        // 2026-10-28 design menu: the design button opens ONE menu
+        // with every design action — Save current (Update), Save as
+        // new, Duplicate, Rename, Export (working design, not stale
+        // saved values), Import new, Update from import, Delete.
+        // Delete is guarded: factory styles hide it (they are
+        // re-supplied on launch, like built-in themes) and every
+        // delete goes through the confirmation dialog, which keeps
+        // the working values as unsaved edits. No separate storage
+        // buttons exist anymore.
         if (showModifiedMenu) {
-            val modifiedMenuName = templates.firstOrNull { it.id == highlightedId }?.name ?: editingTemplate.name
+            val designMenuName = templates.firstOrNull { it.id == highlightedId }?.name ?: editingTemplate.name
+            val designMenuTitle = if (tabIsDirty) "معدّل · $designMenuName (Modified · $designMenuName)" else designMenuName
+            val highlightedTpl = templates.firstOrNull { it.id == highlightedId }
             AlertDialog(
                 onDismissRequest = { onShowModifiedMenuChange(false) },
-                title = { Text("معدّل (Modified)") },
+                title = { Text(designMenuTitle, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         if (highlightedId != null) {
@@ -1318,7 +1387,7 @@ CollapsibleSection(
                                 },
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Text("تحديث «$modifiedMenuName» (Update)", fontSize = 13.sp)
+                                Text("حفظ الحالي «$designMenuName» (Save current / Update)", fontSize = 13.sp)
                             }
                         }
                         Button(
@@ -1331,10 +1400,98 @@ CollapsibleSection(
                         ) {
                             Text("حفظ كنمط جديد (Save as new style)", fontSize = 13.sp)
                         }
+                        Button(
+                            onClick = {
+                                onShowModifiedMenuChange(false)
+                                onSaveAsNew("${editingTemplate.name} النسخة", editingTemplate, editorTab == 1)
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("نسخ (Duplicate)", fontSize = 13.sp)
+                        }
+                        if (highlightedId != null) {
+                            Button(
+                                onClick = {
+                                    onShowModifiedMenuChange(false)
+                                    renameInput = designMenuName
+                                    showRenameDialog = true
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("إعادة تسمية (Rename)", fontSize = 13.sp)
+                            }
+                        }
+                        TextButton(
+                            onClick = {
+                                onShowModifiedMenuChange(false)
+                                onExportWorkingTemplate(editorTab == 1)?.let { json ->
+                                    val intent = Intent(Intent.ACTION_SEND).apply {
+                                        type = "text/plain"
+                                        putExtra(Intent.EXTRA_SUBJECT, "Bible NDI style: ${editingTemplate.name}")
+                                        putExtra(Intent.EXTRA_TEXT, json)
+                                    }
+                                    context.startActivity(Intent.createChooser(intent, "تصدير القالب (Export style)"))
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("تصدير / مشاركة (Export / Share)", fontSize = 13.sp)
+                        }
+                        TextButton(
+                            onClick = {
+                                onShowModifiedMenuChange(false)
+                                onImportTargetTplChange(null); onShowImportDialogChange(true)
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("استيراد قالب جديد (Import new style)", fontSize = 13.sp)
+                        }
+                        if (highlightedTpl != null) {
+                            TextButton(
+                                onClick = {
+                                    onShowModifiedMenuChange(false)
+                                    onImportTargetTplChange(highlightedTpl); onShowImportDialogChange(true)
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("تحديث باستيراد JSON (Update from import)", fontSize = 13.sp)
+                            }
+                            if (!highlightedStyleIsFactory) {
+                                TextButton(
+                                    onClick = {
+                                        onShowModifiedMenuChange(false)
+                                        templateToDelete = highlightedTpl
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text("حذف (Delete)", fontSize = 13.sp, color = bento.liveRed)
+                                }
+                            } else {
+                                Text("الأنماط الجاهزة لا تُحذف (تُجدَّد مع كل تشغيل).", fontSize = 11.sp, color = bento.textSecondary)
+                            }
+                        }
                     }
                 },
                 confirmButton = {},
                 dismissButton = { TextButton(onClick = { onShowModifiedMenuChange(false) }) { Text("إلغاء") } }
+            )
+        }
+
+        if (showRenameDialog) {
+            AlertDialog(
+                onDismissRequest = { showRenameDialog = false },
+                title = { Text("إعادة تسمية النمط (Rename style)") },
+                text = { OutlinedTextField(value = renameInput, onValueChange = { renameInput = it }, label = { Text("اسم النمط") }, singleLine = true) },
+                confirmButton = {
+                    Button(onClick = {
+                        val id = highlightedId
+                        if (id != null && renameInput.isNotBlank()) {
+                            onRenameTemplate(id, renameInput.trim(), editorTab == 1)
+                        }
+                        showRenameDialog = false
+                    }) { Text("حفظ") }
+                },
+                dismissButton = { TextButton(onClick = { showRenameDialog = false }) { Text("إلغاء") } }
             )
         }
 
@@ -1921,11 +2078,42 @@ fun ColorGradePickerRow(
             }
         }
 
-        // Recent Colors row with (x) close button on each chip
+        // Recent Colors row with (x) close button on each chip.
+        // 2026-10-28: a Clear (checkerboard) chip is ALWAYS first,
+        // so transparency is one tap away without opening the modal.
         LazyRow(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             contentPadding = PaddingValues(vertical = 2.dp)
         ) {
+            item(key = "clear") {
+                val clearSelected = selectedHex.equals("#00000000", ignoreCase = true)
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = bento.surfaceVariant,
+                    border = BorderStroke(if (clearSelected) 2.dp else 1.dp, if (clearSelected) bento.primary else bento.border),
+                    modifier = Modifier.clickable { onColorSelected("#00000000") }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        androidx.compose.foundation.Canvas(modifier = Modifier.size(22.dp).clip(CircleShape).border(1.dp, Color.Black.copy(alpha = 0.2f), CircleShape)) {
+                            val cell = size.width / 4f
+                            for (row in 0 until 4) {
+                                for (col in 0 until 4) {
+                                    if ((row + col) % 2 == 0) {
+                                        drawRect(Color.White, topLeft = androidx.compose.ui.geometry.Offset(col * cell, row * cell), size = androidx.compose.ui.geometry.Size(cell, cell))
+                                    } else {
+                                        drawRect(Color(0xFFCBD5E1), topLeft = androidx.compose.ui.geometry.Offset(col * cell, row * cell), size = androidx.compose.ui.geometry.Size(cell, cell))
+                                    }
+                                }
+                            }
+                        }
+                        Text("شفاف (Clear)", fontSize = 9.sp, fontWeight = FontWeight.SemiBold, color = bento.textSecondary, maxLines = 1)
+                    }
+                }
+            }
             items(recentColors, key = { it }) { hex ->
                 val isSelected = selectedHex.equals(hex, ignoreCase = true)
                 Surface(
@@ -1941,13 +2129,30 @@ fun ColorGradePickerRow(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(22.dp)
-                                .clip(CircleShape)
-                                .background(try { Color(android.graphics.Color.parseColor(hex)) } catch (e: Exception) { Color.Gray })
-                                .border(1.dp, Color.Black.copy(alpha = 0.2f), CircleShape)
-                        )
+                        // Transparent recent colours show the checkerboard,
+                        // not a solid (invisible) swatch.
+                        if (hex.equals("#00000000", ignoreCase = true)) {
+                            androidx.compose.foundation.Canvas(modifier = Modifier.size(22.dp).clip(CircleShape).border(1.dp, Color.Black.copy(alpha = 0.2f), CircleShape)) {
+                                val cell = size.width / 4f
+                                for (row in 0 until 4) {
+                                    for (col in 0 until 4) {
+                                        if ((row + col) % 2 == 0) {
+                                            drawRect(Color.White, topLeft = androidx.compose.ui.geometry.Offset(col * cell, row * cell), size = androidx.compose.ui.geometry.Size(cell, cell))
+                                        } else {
+                                            drawRect(Color(0xFFCBD5E1), topLeft = androidx.compose.ui.geometry.Offset(col * cell, row * cell), size = androidx.compose.ui.geometry.Size(cell, cell))
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .size(22.dp)
+                                    .clip(CircleShape)
+                                    .background(try { Color(android.graphics.Color.parseColor(hex)) } catch (e: Exception) { Color.Gray })
+                                    .border(1.dp, Color.Black.copy(alpha = 0.2f), CircleShape)
+                            )
+                        }
                         Text(
                             text = hex.uppercase().removePrefix("#"),
                             fontSize = 9.sp,
@@ -1988,7 +2193,34 @@ fun ColorGradeSpectrumModal(
 ) {
     var hexInput by remember { mutableStateOf(currentHex) }
     var hueValue by remember { mutableFloatStateOf(0f) }
+    // 2026-10-28 full spectrum: saturation + brightness/value join
+    // hue, so white (sat 0 / value 1) and black (value 0) are
+    // reachable from the sliders, not only via presets/hex.
+    var satValue by remember { mutableFloatStateOf(0.85f) }
+    var valValue by remember { mutableFloatStateOf(0.95f) }
+    // 2026-10-28: opacity rides the hex alpha channel (#AARRGGBB,
+    // which parseColor already accepts). At 100% the hex stays
+    // 6-digit, so every existing colour is byte-identical; below
+    // 100% the slider rewrites only the alpha prefix, never the RGB.
+    var opacityValue by remember { mutableFloatStateOf(1f) }
+    fun withOpacity(rgbHex: String): String {
+        val rgb = rgbHex.removePrefix("#").takeLast(6)
+        return if (opacityValue >= 0.999f) "#$rgb"
+               else String.format("#%02X%s", (opacityValue * 255).toInt().coerceIn(0, 255), rgb)
+    }
     val bento = LocalBentoColors.current
+    // Seed the sliders from the current colour when it parses.
+    androidx.compose.runtime.LaunchedEffect(currentHex) {
+        try {
+            val parsed = android.graphics.Color.parseColor(currentHex)
+            val hsv = FloatArray(3)
+            android.graphics.Color.colorToHSV(parsed, hsv)
+            hueValue = hsv[0]; satValue = hsv[1]; valValue = hsv[2]
+            opacityValue = android.graphics.Color.alpha(parsed) / 255f
+        } catch (e: Exception) {
+            // Keep defaults; the hex field stays authoritative.
+        }
+    }
 
     val presetGrades = listOf(
         "#FBBF24", "#F59E0B", "#D97706", "#B45309", "#78350F",
@@ -2048,7 +2280,7 @@ fun ColorGradeSpectrumModal(
                                     .clip(CircleShape)
                                     .background(Color(android.graphics.Color.parseColor(hex)))
                                     .border(if (hexInput.equals(hex, true)) 3.dp else 1.dp, if (hexInput.equals(hex, true)) bento.primary else Color.Gray.copy(alpha = 0.3f), CircleShape)
-                                    .clickable { hexInput = hex }
+                                    .clickable { hexInput = withOpacity(hex) }
                             )
                         }
                     }
@@ -2072,12 +2304,37 @@ fun ColorGradeSpectrumModal(
                     value = hueValue,
                     onValueChange = { h ->
                         hueValue = h
-                        val hsv = floatArrayOf(h, 0.85f, 0.95f)
+                        val hsv = floatArrayOf(h, satValue, valValue)
                         val colorInt = android.graphics.Color.HSVToColor(hsv)
-                        hexInput = String.format("#%06X", 0xFFFFFF and colorInt)
+                        hexInput = withOpacity(String.format("#%06X", 0xFFFFFF and colorInt))
                     },
                     valueRange = 0f..360f,
                     colors = SliderDefaults.colors(thumbColor = bento.primary, activeTrackColor = Color.Transparent, inactiveTrackColor = Color.Transparent)
+                )
+
+                Text("التشبع (Saturation)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
+                Slider(
+                    value = satValue,
+                    onValueChange = { s ->
+                        satValue = s
+                        val hsv = floatArrayOf(hueValue, s, valValue)
+                        val colorInt = android.graphics.Color.HSVToColor(hsv)
+                        hexInput = withOpacity(String.format("#%06X", 0xFFFFFF and colorInt))
+                    },
+                    valueRange = 0f..1f,
+                    colors = SliderDefaults.colors(thumbColor = bento.primary)
+                )
+                Text("السطوع (Brightness)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
+                Slider(
+                    value = valValue,
+                    onValueChange = { v ->
+                        valValue = v
+                        val hsv = floatArrayOf(hueValue, satValue, v)
+                        val colorInt = android.graphics.Color.HSVToColor(hsv)
+                        hexInput = withOpacity(String.format("#%06X", 0xFFFFFF and colorInt))
+                    },
+                    valueRange = 0f..1f,
+                    colors = SliderDefaults.colors(thumbColor = bento.primary)
                 )
 
                 OutlinedTextField(
@@ -2087,6 +2344,20 @@ fun ColorGradeSpectrumModal(
                     singleLine = true,
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.fillMaxWidth()
+                )
+
+                Text("الشفافية (Opacity)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
+                Slider(
+                    value = opacityValue,
+                    onValueChange = { o ->
+                        opacityValue = o
+                        // Re-apply the alpha prefix to the current RGB.
+                        val rgb = hexInput.removePrefix("#").takeLast(6)
+                        hexInput = if (o >= 0.999f) "#$rgb"
+                                   else String.format("#%02X%s", (o * 255).toInt().coerceIn(0, 255), rgb)
+                    },
+                    valueRange = 0f..1f,
+                    colors = SliderDefaults.colors(thumbColor = bento.primary)
                 )
             }
         },
@@ -2107,7 +2378,13 @@ fun ColorGradeSpectrumModal(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("إلغاء") }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                // 2026-10-28: Clear is always present in the modal too —
+                // it returns the transparent hex, which downstream code
+                // already parses as fully transparent.
+                TextButton(onClick = { onSelectColor("#00000000") }) { Text("شفاف (Clear)") }
+                TextButton(onClick = onDismiss) { Text("إلغاء") }
+            }
         }
     )
 }

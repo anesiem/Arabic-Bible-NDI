@@ -4,7 +4,7 @@ name: Build check
 # releases are signed by Ashraf in Android Studio, never here.
 on:
   push:
-    branches: [fix/pixel-ndi-title, feature/design-gradient-remote, fix/scanner-comma, feature/combined-layer-apis, feature/clear-mode, feature/one-update]
+    branches: [fix/pixel-ndi-title, feature/design-gradient-remote, fix/scanner-comma, feature/combined-layer-apis, feature/clear-mode, feature/one-update, feature/batch-2]
   workflow_dispatch:
 
 jobs:

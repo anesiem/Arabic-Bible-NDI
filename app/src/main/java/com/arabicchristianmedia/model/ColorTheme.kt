@@ -130,7 +130,8 @@ object ColorThemes {
             textPrimary = 0xFFE6E1E5, textSecondary = 0xFFCAC4D0,
             primary = 0xFFD0BCFF, primaryContainer = 0xFF4F378B,
             bandA = 0xFF3B3052, bandB = 0xFF2B3A42, recents = 0xFF0D9488, warning = 0xFFFBBF24,
-            liveHighlight = 0xFF1E293B, sermonTint = 0xFF2B3A42,
+            // Item 11: default live style from remote page — navy bg.
+            liveHighlight = 0xFF1B3A5C, sermonTint = 0xFF2B3A42,
             groupPentateuch = 0xFFF59E0B,
             groupHistorical = 0xFF38BDF8,
             groupPoetry = 0xFFA78BFA,

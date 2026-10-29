@@ -1166,12 +1166,18 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             it.bookId == verse.bookId && it.chapter == verse.chapter && it.verse == verse.verse
         } ?: verse
 
+        // Item 12: recents on LOSE-FOCUS — the previous verse (losing focus)
+        // goes to recents, not the newly selected one. Prevents the current
+        // verse appearing in recents (and twice on the remote page).
+        val previousVerse1 = _uiState.value.activeVerse
         _uiState.value = _uiState.value.copy(
             activeVerse = displayVerse,
             readerFocusVerseId = null,
             statusMessage = "Selected: ${displayVerse.getFormattedArabicCitation()}",
             isSearching = false,
-            recentVerses = (listOf(displayVerse) + _uiState.value.recentVerses.filterNot { it.id == displayVerse.id }).take(20)
+            recentVerses = if (previousVerse1 != null && previousVerse1.id != displayVerse.id)
+                (listOf(previousVerse1) + _uiState.value.recentVerses.filterNot { it.id == previousVerse1.id }).take(20)
+            else _uiState.value.recentVerses
         )
         broadcastServer.setRecentVerses(_uiState.value.recentVerses)
         persistRecentState()
@@ -1219,13 +1225,17 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             it.bookId == verse.bookId && it.chapter == verse.chapter && it.verse == verse.verse
         } ?: verse
 
+        // Item 12: recents on LOSE-FOCUS (see above).
+        val previousVerse2 = _uiState.value.activeVerse
         _uiState.value = _uiState.value.copy(
             activeVerse = displayVerse,
             isLiveOnAir = true,
             readerFocusVerseId = null,
             statusMessage = "Cued & Live: ${displayVerse.getFormattedArabicCitation()}",
             isSearching = false, // Close search view on click
-            recentVerses = (listOf(displayVerse) + _uiState.value.recentVerses.filterNot { it.id == displayVerse.id }).take(20)
+            recentVerses = if (previousVerse2 != null && previousVerse2.id != displayVerse.id)
+                (listOf(previousVerse2) + _uiState.value.recentVerses.filterNot { it.id == previousVerse2.id }).take(20)
+            else _uiState.value.recentVerses
         )
 
         // v1.9.3 patch (item 12): mirror the recents to the remote page.
@@ -1322,11 +1332,15 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             val verse = verses.firstOrNull { it.verse == verseNum } ?: return false
 
             // Update UI state (no navigation — this is a remote trigger).
+            // Item 12: recents on LOSE-FOCUS (see above).
+            val previousVerse3 = _uiState.value.activeVerse
             _uiState.value = _uiState.value.copy(
                 activeVerse = verse,
                 isLiveOnAir = true,
                 statusMessage = "Remote trigger: ${verse.getFormattedArabicCitation()}",
-                recentVerses = (listOf(verse) + _uiState.value.recentVerses.filterNot { it.id == verse.id }).take(20)
+                recentVerses = if (previousVerse3 != null && previousVerse3.id != verse.id)
+                    (listOf(previousVerse3) + _uiState.value.recentVerses.filterNot { it.id == previousVerse3.id }).take(20)
+                else _uiState.value.recentVerses
             )
 
             // v1.9.3 patch (item 12): mirror the recents to the remote page.
@@ -1934,6 +1948,36 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         _uiState.value = _uiState.value.copy(recentVerses = emptyList())
         recentStore.clear()
         broadcastServer.setRecentVerses(emptyList())
+    }
+
+    /**
+     * Item 12: Send recents to sermon. Merge=true adds recents to the top
+     * of the current playlist (deduped); false replaces the playlist.
+     */
+    fun sendRecentsToSermon(merge: Boolean) {
+        val recents = _uiState.value.recentVerses
+        if (recents.isEmpty()) return
+        val current = _uiState.value.sermonPlaylist
+        // Group recents by reference for the sermon grouping.
+        val groups = SermonGrouping.groupVerses(recents)
+        var nextGroupId = (current.maxOfOrNull { it.groupId } ?: 0L) + 1L
+        val shades = SermonGrouping.shadesForNewBatch(current.firstOrNull()?.shade, groups.size)
+        val newEntries = groups.flatMapIndexed { index, verses ->
+            val gid = nextGroupId++
+            verses.map { SermonEntry(it, gid, shades[index]) }
+        }
+        val updated = if (merge) {
+            val newKeys = newEntries.map { it.key }.toSet()
+            newEntries + current.filterNot { it.key in newKeys }
+        } else {
+            newEntries
+        }
+        _uiState.value = _uiState.value.copy(
+            sermonPlaylist = updated,
+            statusMessage = if (merge) "Merged ${recents.size} recent verses into sermon"
+                           else "Sermon replaced with ${recents.size} recent verses"
+        )
+        persistSermonWorking()
     }
 
     /**

@@ -158,7 +158,7 @@ class TemplateRepositoryTest {
     @Test
     fun `factory styles carry explicit safe shadow and glow values`() {
         val defaults = TemplateRepository.DEFAULT_TEMPLATES
-        assertEquals(20, defaults.size)
+        assertEquals(23, defaults.size)
         defaults.forEach { tpl ->
             assertTrue(tpl.textShadowEnabled)
             assertTrue(tpl.textShadowColorHex.isNotBlank())

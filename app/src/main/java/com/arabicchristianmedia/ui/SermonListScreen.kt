@@ -25,6 +25,10 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -138,6 +142,10 @@ fun SermonListScreen(
     var showClearConfirm by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    // Item 14: collapsible groups — set of collapsed groupIds.
+    var collapsedGroups by remember { mutableStateOf(setOf<Long>()) }
+    // Item 14 (#23): share as plain text.
+    val context = LocalContext.current
 
     // Presenter keys are handled here (this screen is foreground only
     // when the Sermon tab is selected, so keys cannot step a sermon
@@ -213,6 +221,23 @@ fun SermonListScreen(
                             tint = bento.textSecondary
                         )
                     }
+                    // Item 14 (#23): share as plain text (one verse per line).
+                    IconButton(onClick = {
+                        val text = playlist.joinToString("\n") { entry ->
+                            entry.verse.getFormattedArabicCitation()
+                        }
+                        val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(android.content.Intent.EXTRA_TEXT, text)
+                        }
+                        context.startActivity(android.content.Intent.createChooser(intent, "مشاركة العظة (Share sermon)"))
+                    }) {
+                        Icon(
+                            imageVector = Icons.Filled.Share,
+                            contentDescription = "مشاركة (Share)",
+                            tint = bento.textSecondary
+                        )
+                    }
                 }
             }
 
@@ -240,38 +265,87 @@ fun SermonListScreen(
                     )
                 }
             } else {
+                // Item 14: collapsible groups — entries grouped by groupId,
+                // each with a slim header (tap to expand/collapse).
+                val grouped = remember(playlist) {
+                    playlist.groupBy { it.groupId }.entries.toList()
+                }
                 LazyColumn(
                     verticalArrangement = Arrangement.spacedBy(VerseRowSpec.RowSpacing),
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    itemsIndexed(
-                        playlist,
-                        key = { _, e -> "${e.groupId}-${e.verse.id}" }
-                    ) { index, entry ->
-                        SermonRow(
-                            entry = entry,
-                            index = index,
-                            isLive = uiState.activeVerse?.id == entry.verse.id && uiState.isLiveOnAir,
-                            isRecent = entry.verse.id in recentVerseIds,
-                            onTap = { onShowVerse(entry) },
-                            onOpenInReader = { onOpenInReader(entry) },
-                            onRemove = {
-                                val removed = entry to index
-                                onRemove(entry)
-                                scope.launch {
-                                    val result = snackbarHostState.showSnackbar(
-                                        message = "تم حذف الآية من القائمة",
-                                        actionLabel = "تراجع",
-                                        duration = SnackbarDuration.Long
+                    grouped.forEach { (groupId, entries) ->
+                        val isCollapsed = groupId in collapsedGroups
+                        val firstVerse = entries.firstOrNull()?.verse
+                        // Group header
+                        item(key = "header-$groupId") {
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable {
+                                        collapsedGroups = if (isCollapsed)
+                                            collapsedGroups - groupId
+                                        else collapsedGroups + groupId
+                                    },
+                                color = bento.surfaceVariant.copy(alpha = 0.5f),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        if (isCollapsed) Icons.Filled.ChevronRight else Icons.Filled.ExpandMore,
+                                        contentDescription = null,
+                                        tint = bento.textSecondary,
+                                        modifier = Modifier.size(18.dp)
                                     )
-                                    if (result == SnackbarResult.ActionPerformed) {
-                                        onRestoreVerse(removed.first, removed.second)
-                                    }
+                                    Spacer(Modifier.width(4.dp))
+                                    Text(
+                                        text = "${firstVerse?.getFormattedArabicCitation() ?: ""} (${entries.size})",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = bento.textPrimary,
+                                        modifier = Modifier.weight(1f)
+                                    )
                                 }
-                            },
-                            shadeColorA = listColors.bandA,
-                            shadeColorB = listColors.bandB
-                        )
+                            }
+                        }
+                        // Group entries (if expanded)
+                        if (!isCollapsed) {
+                            itemsIndexed(
+                                entries,
+                                key = { _, e -> "${e.groupId}-${e.verse.id}" }
+                            ) { index, entry ->
+                                // Find global index for restore
+                                val globalIndex = playlist.indexOf(entry)
+                                SermonRow(
+                                    entry = entry,
+                                    index = globalIndex,
+                                    isLive = uiState.activeVerse?.id == entry.verse.id && uiState.isLiveOnAir,
+                                    isRecent = entry.verse.id in recentVerseIds,
+                                    onTap = { onShowVerse(entry) },
+                                    onOpenInReader = { onOpenInReader(entry) },
+                                    onRemove = {
+                                        val removed = entry to globalIndex
+                                        onRemove(entry)
+                                        scope.launch {
+                                            val result = snackbarHostState.showSnackbar(
+                                                message = "تم حذف الآية من القائمة",
+                                                actionLabel = "تراجع",
+                                                duration = SnackbarDuration.Long
+                                            )
+                                            if (result == SnackbarResult.ActionPerformed) {
+                                                onRestoreVerse(removed.first, removed.second)
+                                            }
+                                        }
+                                    },
+                                    shadeColorA = listColors.bandA,
+                                    shadeColorB = listColors.bandB
+                                )
+                            }
+                        }
                     }
                 }
             }

@@ -453,9 +453,13 @@ class MainActivity : ComponentActivity() {
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(20.dp))
                                         .clickable { selectedTab = 2 }
-                                        .padding(horizontal = 14.dp, vertical = 8.dp)
                                 ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                    // Item 10: padding moved INSIDE the pill so the
+                                    // text/dot have breathing room from the edge.
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                                    ) {
                                         Box(
                                             modifier = Modifier
                                                 .size(10.dp)
@@ -589,6 +593,7 @@ class MainActivity : ComponentActivity() {
                                 searchFocusNonce = searchFocusNonce,
                                 onOpenRecentVerse = { viewModel.openRecentVerseInReader(it) },
                                 onClearRecents = { viewModel.clearRecents() },
+                                onSendRecentsToSermon = { merge -> viewModel.sendRecentsToSermon(merge) },
                                 onToggleLive = { viewModel.toggleLive() },
                                 onIncreaseFontSize = { viewModel.increaseFontSize() },
                                 onDecreaseFontSize = { viewModel.decreaseFontSize() },

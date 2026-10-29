@@ -158,6 +158,8 @@ dependencies {
   // implementation(libs.coil.compose)
   implementation(libs.converter.moshi)
   implementation(libs.firebase.ai)
+  // Item 22: QR codes for Setup URLs.
+  implementation("com.google.zxing:core:3.5.3")
   // Uncomment to use Firestore:
   // implementation(libs.firebase.firestore)
 

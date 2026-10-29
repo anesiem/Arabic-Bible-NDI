@@ -107,6 +107,8 @@ fun BibleReaderScreen(
     onRestoreRecent: (BibleVerse, Int) -> Unit = { _, _ -> },
     // One-update item 3: recents sheet font — null = follow universal.
     onSetRecentsFontSize: (Int?) -> Unit = {},
+    // Item 12: Send recents to sermon — merge=true adds to top, false replaces.
+    onSendRecentsToSermon: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var showSearchBar by remember { mutableStateOf(false) }
@@ -251,14 +253,34 @@ fun BibleReaderScreen(
                             .background(bento.card)
                             .padding(12.dp)
                     ) {
-                        // Batch item 3: reader-size +/- inside the picker
-                        // (+/- only, not the full display dialog).
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Text("حجم الخط", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
-                            Button(onClick = onDecreaseFontSize) { Text("-") }
-                            Text(uiState.readerFontSize.toString(), fontWeight = FontWeight.Bold)
-                            Button(onClick = onIncreaseFontSize) { Text("+") }
+                        // Item 18: OT/NT filter + Search on one top line.
+                        // Font size moved to gear at bottom. Recents removed.
+                        var otNtFilter by remember { mutableStateOf<Testament?>(null) }
+                        var bookSearch by remember { mutableStateOf("") }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            FilterChip(
+                                selected = otNtFilter == Testament.OLD_TESTAMENT,
+                                onClick = { otNtFilter = if (otNtFilter == Testament.OLD_TESTAMENT) null else Testament.OLD_TESTAMENT },
+                                label = { Text("OT", fontSize = 12.sp) }
+                            )
+                            FilterChip(
+                                selected = otNtFilter == Testament.NEW_TESTAMENT,
+                                onClick = { otNtFilter = if (otNtFilter == Testament.NEW_TESTAMENT) null else Testament.NEW_TESTAMENT },
+                                label = { Text("NT", fontSize = 12.sp) }
+                            )
+                            OutlinedTextField(
+                                value = bookSearch,
+                                onValueChange = { bookSearch = it },
+                                placeholder = { Text("ابحث…", fontSize = 12.sp) },
+                                singleLine = true,
+                                modifier = Modifier.weight(1f).trackTextInputFocus(),
+                            )
                         }
+                        Spacer(Modifier.height(8.dp))
 
                         // One-update item 21: grouped COLOR GRID picker — replaces
                         // the OT/NT tabs + long scrolling book list. 10
@@ -269,66 +291,26 @@ fun BibleReaderScreen(
                         // Recent-books row on top.
                         // J15: the picker font scales book names and chapter
                         // numbers, not only verses (18 -> 13sp, 30 -> 21sp).
+                        // Item 18: recents removed (saves space).
+                        // Book label size scales with reader font.
                         val bookLabelSize = (uiState.readerFontSize * 13 / 18).coerceIn(11, 24).sp
-                        val recentBookIds = remember(uiState.recentVerses) {
-                            uiState.recentVerses.map { it.bookId }.distinct().take(6)
-                        }
-                        val recentBooks = remember(recentBookIds) {
-                            recentBookIds.mapNotNull { id -> BibleRepository.allBooks.find { it.id == id } }
-                        }
-                        if (recentBooks.isNotEmpty()) {
-                            Text(
-                                "قرأت مؤخراً:",
-                                fontSize = 12.sp, fontWeight = FontWeight.Bold,
-                                color = bento.textSecondary,
-                                modifier = Modifier.padding(top = 4.dp, bottom = 4.dp)
-                            )
-                            LazyRow(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                items(recentBooks, key = { it.id }) { book ->
-                                    FilterChip(
-                                        selected = book.id == uiState.selectedBook.id,
-                                        onClick = {
-                                            pickerJumpChapter = 1
-                                            onSelectBook(book, 1)
-                                        },
-                                        label = {
-                                            Text(
-                                                BibleBookGroups.shortDisplayName(book.arabicName),
-                                                fontSize = bookLabelSize, maxLines = 1
-                                            )
-                                        }
-                                    )
-                                }
-                            }
-                        }
 
                         // ONE generic search across all 66 books (moved out
                         // of the OT/NT tabs). Picking a book follows its
-                        // testament (selectBook sets selectedTestament).
-                        var bookSearch by remember { mutableStateOf("") }
+                        // Item 18: search is at top (with OT/NT). This old field removed.
                         val bookQuery = bookSearch.trim()
-                        OutlinedTextField(
-                            value = bookSearch,
-                            onValueChange = { bookSearch = it },
-                            placeholder = { Text("ابحث في كل الأسفار…", fontSize = 12.sp) },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp).trackTextInputFocus(),
-                            shape = RoundedCornerShape(12.dp),
-                            trailingIcon = { if (bookSearch.isNotEmpty()) IconButton(onClick = { bookSearch = "" }) { Icon(Icons.Default.Close, "Clear book search", tint = bento.textSecondary) } }
-                        )
                         val isDarkMode = when (uiState.appThemeMode) {
                             AppThemeMode.SYSTEM -> isSystemInDarkTheme()
                             AppThemeMode.LIGHT -> false
                             AppThemeMode.DARK -> true
                         }
                         if (bookQuery.isNotEmpty()) {
-                            val matches = remember(bookQuery) {
-                                BibleRepository.allBooks.filter {
-                                    it.arabicName.contains(bookQuery) ||
-                                        it.englishName.contains(bookQuery, ignoreCase = true)
+                            // Item 18: search respects OT/NT filter.
+                            val matches = remember(bookQuery, otNtFilter) {
+                                BibleRepository.allBooks.filter { book ->
+                                    (otNtFilter == null || book.testament == otNtFilter) &&
+                                    (book.arabicName.contains(bookQuery) ||
+                                        book.englishName.contains(bookQuery, ignoreCase = true))
                                 }
                             }
                             if (matches.isEmpty()) {
@@ -616,6 +598,33 @@ fun BibleReaderScreen(
                                 if (uiState.recentVerses.isNotEmpty()) {
                                     TextButton(onClick = { onClearRecents() }) {
                                         Text("مسح (Clear)", fontSize = 12.sp)
+                                    }
+                                    // Item 12: Send recents to sermon.
+                                    var showSendDialog by remember { mutableStateOf(false) }
+                                    TextButton(onClick = { showSendDialog = true }) {
+                                        Text("إرسال للعظة (To Sermon)", fontSize = 12.sp)
+                                    }
+                                    if (showSendDialog) {
+                                        AlertDialog(
+                                            onDismissRequest = { showSendDialog = false },
+                                            title = { Text("إرسال الآيات الأخيرة للعظة") },
+                                            text = { Text("القائمة الحالية تحتوي على آيات. هل تستبدلها بالآيات الأخيرة، أم تدمجها في أعلى القائمة الحالية؟") },
+                                            confirmButton = {
+                                                TextButton(onClick = {
+                                                    onSendRecentsToSermon(false)
+                                                    showSendDialog = false
+                                                }) { Text("استبدال (Replace)") }
+                                            },
+                                            dismissButton = {
+                                                Row {
+                                                    TextButton(onClick = {
+                                                        onSendRecentsToSermon(true)
+                                                        showSendDialog = false
+                                                    }) { Text("دمج (Merge)") }
+                                                    TextButton(onClick = { showSendDialog = false }) { Text("إلغاء") }
+                                                }
+                                            }
+                                        )
                                     }
                                 }
                             }

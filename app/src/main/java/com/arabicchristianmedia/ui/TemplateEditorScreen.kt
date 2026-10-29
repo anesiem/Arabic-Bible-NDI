@@ -228,6 +228,25 @@ fun TemplateEditorScreen(
         recentColorsPrefs.edit().putStringSet("recent_colors", recentColors.toSet()).apply()
     }
 
+    // Item 21: recent videos — same pattern as recent colors. Stores video
+    // IDs; tap a card to re-apply, X to remove. Persists in prefs.
+    val recentVideosPrefs = remember { context.getSharedPreferences("editor_recent_videos", android.content.Context.MODE_PRIVATE) }
+    var recentVideos by remember {
+        mutableStateOf(
+            recentVideosPrefs.getStringSet("recent_videos", null)?.toList()?.take(8) ?: emptyList()
+        )
+    }
+    val onAddRecentVideo: (String) -> Unit = { id ->
+        if (id.isNotEmpty() && !recentVideos.contains(id)) {
+            recentVideos = (listOf(id) + recentVideos).take(8)
+            recentVideosPrefs.edit().putStringSet("recent_videos", recentVideos.toSet()).apply()
+        }
+    }
+    val onRemoveRecentVideo: (String) -> Unit = { id ->
+        recentVideos = recentVideos.filterNot { it == id }
+        recentVideosPrefs.edit().putStringSet("recent_videos", recentVideos.toSet()).apply()
+    }
+
     val bento = LocalBentoColors.current
     // One-update item 6: theme list colors — bandA/bandB alternate the
     // Editor section cards (user-controllable in Theme).
@@ -250,6 +269,8 @@ fun TemplateEditorScreen(
                     isImportingVideo = false
                     val current = currentEditingTemplate.value
                     if (id != null) {
+                        // Item 21: remember in recents.
+                        onAddRecentVideo(id)
                         onUpdate(current.copy(customVideoId = id, customVideoUrl = "", animatedBackground = AnimatedBackgroundType.CUSTOM_VIDEO))
                     }
                 }
@@ -1247,6 +1268,63 @@ CollapsibleSection(
                             colors = ButtonDefaults.buttonColors(containerColor = bento.primary)
                         ) {
                             Icon(Icons.Default.VideoLibrary, null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text(if (isImportingVideo) "جاري الاستيراد…" else "اختر فيديو (Choose video)", fontSize = 12.sp)
+                        }
+                        // Item 21: recent videos row — tap to re-apply, X to remove.
+                        if (recentVideos.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                "فيديوهات أخيرة (Recent videos)",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = bento.textSecondary
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            LazyRow(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                items(recentVideos, key = { it }) { videoId ->
+                                    val isSelected = editingTemplate.customVideoId == videoId
+                                    Surface(
+                                        modifier = Modifier
+                                            .size(72.dp)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .clickable {
+                                                onAddRecentVideo(videoId)
+                                                onUpdate(editingTemplate.copy(customVideoId = videoId, customVideoUrl = "", animatedBackground = AnimatedBackgroundType.CUSTOM_VIDEO))
+                                            },
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = bento.surfaceVariant,
+                                        border = if (isSelected) androidx.compose.foundation.BorderStroke(2.dp, bento.primary) else null
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Icon(
+                                                Icons.Default.VideoLibrary,
+                                                contentDescription = null,
+                                                tint = bento.textSecondary,
+                                                modifier = Modifier.size(28.dp)
+                                            )
+                                            // X to remove
+                                            IconButton(
+                                                onClick = { onRemoveRecentVideo(videoId) },
+                                                modifier = Modifier
+                                                    .align(Alignment.TopEnd)
+                                                    .size(20.dp)
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.Close,
+                                                    contentDescription = "Remove",
+                                                    tint = bento.textSecondary,
+                                                    modifier = Modifier.size(14.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                             Spacer(Modifier.width(6.dp))
                             Text(if (isImportingVideo) "جاري الاستيراد..." else "اختيار ملف فيديو مخصص (MP4)", fontSize = 12.sp)
                         }

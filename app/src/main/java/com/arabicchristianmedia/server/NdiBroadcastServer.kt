@@ -304,7 +304,27 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     @Volatile var sseLastDropReason: String = ""; private set
     private val sseDropReasons = java.util.concurrent.ConcurrentHashMap<String, Int>()
     private val sseConnInfo = java.util.concurrent.ConcurrentHashMap<PrintWriter, LongArray>()
+    // Item 15 (#4): last successful SSE write per client, for stale flags.
+    private val sseLastWrite = java.util.concurrent.ConcurrentHashMap<PrintWriter, Long>()
     val sseConnectedNow: Int get() = sseClients.size
+
+    /**
+     * Item 15: Pre-flight health (#1, #4, #8).
+     * Returns: (readyForService, verdicts, staleClientCount)
+     */
+    fun getPreflightHealth(): Triple<Boolean, List<String>, Int> {
+        val verdicts = mutableListOf<String>()
+        var ready = true
+        // HTTP server (isRunning = server socket active)
+        if (isRunning) verdicts.add("✓ HTTP server running") else { verdicts.add("✗ HTTP server not running"); ready = false }
+        // Stale clients (>25s since last SSE write)
+        val now = System.currentTimeMillis()
+        val stale = sseLastWrite.count { (_, last) -> now - last > 25000 }
+        if (stale > 0) verdicts.add("⚠ $stale stale client(s) (>25s)") else verdicts.add("✓ No stale clients")
+        // Verse loaded
+        if (currentVerse != null) verdicts.add("✓ Verse loaded") else { verdicts.add("✗ No verse loaded"); ready = false }
+        return Triple(ready, verdicts, stale)
+    }
 
     private fun journalSse(line: String) {
         synchronized(sseJournal) {
@@ -791,6 +811,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                         deadClients.add(pair); deadWhy[writer] = "viewer-left"
                     } else {
                         sseConnInfo[writer]?.let { it[1]++ }
+                        // Item 15 (#4): record last successful write.
+                        sseLastWrite[writer] = System.currentTimeMillis()
                     }
                 } catch (e: Exception) {
                     deadClients.add(pair); deadWhy[writer] = "exception:${e.javaClass.simpleName}"
@@ -2044,12 +2066,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // v1.9.2 (#7): the Full container IS the slider box — same model
         // as Lower (and as NDI): horizontal margin, bottom position, and
         // box height come from the style; the stage bottom-anchors it.
-        container.style.marginBottom = (data.positionBottomPercent || 6) + 'vh';
-        container.style.marginLeft = (data.horizontalMarginPercent || 6) + 'vw';
-        container.style.marginRight = (data.horizontalMarginPercent || 6) + 'vw';
+        container.style.marginBottom = (data.positionBottomPercent ?? 6) + 'vh';
+        container.style.marginLeft = (data.horizontalMarginPercent ?? 6) + 'vw';
+        container.style.marginRight = (data.horizontalMarginPercent ?? 6) + 'vw';
         container.style.width = '';
         // v1.9.2 (#7): clamped like the renderers — box top stays in frame.
-        container.style.height = Math.min(data.boxHeightPercent || 100, 100 - (data.positionBottomPercent || 0)) + '%';
+        container.style.height = Math.min(data.boxHeightPercent || 100, 100 - (data.positionBottomPercent ?? 0)) + '%';
 
         cardBox.style.display = 'flex';
         cardBox.style.flexDirection = 'column';
@@ -2087,8 +2109,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         englishText.style.width = '100%';
         englishText.style.textAlign = enAlignCss;
       } else {
-        const botMargin = (data.positionBottomPercent || 6) + 'vh';
-        const hMargin = (data.horizontalMarginPercent || 6) + 'vw';
+        const botMargin = (data.positionBottomPercent ?? 6) + 'vh';
+        const hMargin = (data.horizontalMarginPercent ?? 6) + 'vw';
         container.style.marginBottom = botMargin;
         container.style.marginLeft = hMargin;
         container.style.marginRight = hMargin;
@@ -2097,7 +2119,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // changes), exactly like NDI. With auto-fit OFF the card keeps
         // hugging its content.
         if (data.autoFitText !== false) {
-          container.style.height = Math.min(data.boxHeightPercent || 45, 100 - (data.positionBottomPercent || 0)) + '%';
+          container.style.height = Math.min(data.boxHeightPercent || 45, 100 - (data.positionBottomPercent ?? 0)) + '%';
           cardBox.style.height = '100%';
         } else {
           container.style.height = '';
@@ -2196,7 +2218,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         function contentHeight() { return cardBox.scrollHeight - padTopPx - padBotPx; }
         // v1.9.2 (#7): the budget is the DRAWN box height — clamped so
         // the box top stays in the frame, exactly as the native fit does.
-        const effBoxPct = Math.min(isFull ? (data.boxHeightPercent || 100) : (data.boxHeightPercent || 45), 100 - (data.positionBottomPercent || 0));
+        const effBoxPct = Math.min(isFull ? (data.boxHeightPercent ?? 100) : (data.boxHeightPercent ?? 45), 100 - (data.positionBottomPercent ?? 0));
         const maxContentH = isFull
           ? (stage.clientHeight * (effBoxPct / 100) - padTopPx - padBotPx)
           : (stage.clientHeight * (effBoxPct / 100) - padTopPx - padBotPx - 16 * ss);
@@ -2382,7 +2404,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // Lower's card is always inset in practice; Full is inset when
         // any box slider leaves a gap.
         if (!data.cardGlowEnabled) return 'none';
-        if (isFull && !(data.horizontalMarginPercent > 0 || data.positionBottomPercent > 0 || (data.boxHeightPercent || 100) < 100)) return 'none';
+        if (isFull && !(data.horizontalMarginPercent > 0 || data.positionBottomPercent > 0 || (data.boxHeightPercent ?? 100) < 100)) return 'none';
         var c = hexToRgb(data.cardGlowColorHex);
         if (!c) return 'none';
         return shape + ' rgba(' + c.r + ',' + c.g + ',' + c.b + ',' + alpha + ')';
@@ -3762,8 +3784,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         val shadowDx = (cos(shadowAngleRad) * tpl.textShadowOffsetDp * scale).toFloat()
         val shadowDy = (sin(shadowAngleRad) * tpl.textShadowOffsetDp * scale).toFloat()
         val shadowBlur = tpl.textShadowBlurDp * scale
-        val marginH = (width * (tpl.horizontalMarginPercent / 100f)).coerceAtLeast(40f * scale)
-        val marginB = (height * (tpl.positionBottomPercent / 100f)).coerceAtLeast(30f * scale)
+        // Item 8: 0% padding respected — the coerceAtLeast minimums used to
+        // force a margin even when the user set 0%. Now 0 means 0.
+        val marginH = width * (tpl.horizontalMarginPercent / 100f)
+        val marginB = height * (tpl.positionBottomPercent / 100f)
         val boxWidth = width - (2 * marginH)
 
         // v1.8: three-way language control.

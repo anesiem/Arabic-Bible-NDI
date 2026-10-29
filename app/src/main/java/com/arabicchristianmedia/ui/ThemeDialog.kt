@@ -48,6 +48,10 @@ import com.arabicchristianmedia.model.SermonShadePair
 import com.arabicchristianmedia.model.SermonShadePairs
 import com.arabicchristianmedia.ui.theme.LocalBentoColors
 
+// Item 11: Long ARGB <-> hex string for ColorGradePickerRow.
+private fun Long.toArgbHex(): String = "#%08X".format(this)
+private fun String.hexToArgbLong(): Long = removePrefix("#").toLong(16)
+
 /**
  * App theme picker (Setup → Customizations).
  *
@@ -116,50 +120,100 @@ fun ThemeDialog(
                         )
                     }
                 }
-                Text("الوضع الداكن — ألوان الصفوف (Dark bands)", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = bento.textPrimary)
-                SermonShadePairs.DARK.forEach { pair ->
-                    PairOptionRow(
-                        pair = pair,
-                        selected = working.dark.bandA == pair.shadeA && working.dark.bandB == pair.shadeB,
-                        onClick = {
-                            working = working.copy(
-                                dark = working.dark.copy(bandA = pair.shadeA, bandB = pair.shadeB)
-                            )
-                        }
-                    )
-                }
-                Text("الوضع الفاتح — ألوان الصفوف (Light bands)", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = bento.textPrimary)
-                SermonShadePairs.LIGHT.forEach { pair ->
-                    PairOptionRow(
-                        pair = pair,
-                        selected = working.light.bandA == pair.shadeA && working.light.bandB == pair.shadeB,
-                        onClick = {
-                            working = working.copy(
-                                light = working.light.copy(bandA = pair.shadeA, bandB = pair.shadeB)
-                            )
-                        }
-                    )
-                }
+                // Item 11: full color picker for bands (was preset pairs).
+                Text("الوضع الداكن — لون الصف أ (Dark band A)", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = bento.textPrimary)
+                ColorGradePickerRow(
+                    label = "Band A",
+                    selectedHex = working.dark.bandA.toArgbHex(),
+                    onColorSelected = { hex -> working = working.copy(dark = working.dark.copy(bandA = hex.hexToArgbLong())) },
+                    recentColors = emptyList(),
+                    onRemoveRecentColor = {},
+                    onAddRecentColor = {}
+                )
+                Text("الوضع الداكن — لون الصف ب (Dark band B)", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = bento.textPrimary)
+                ColorGradePickerRow(
+                    label = "Band B",
+                    selectedHex = working.dark.bandB.toArgbHex(),
+                    onColorSelected = { hex -> working = working.copy(dark = working.dark.copy(bandB = hex.hexToArgbLong())) },
+                    recentColors = emptyList(),
+                    onRemoveRecentColor = {},
+                    onAddRecentColor = {}
+                )
+                Text("الوضع الفاتح — لون الصف أ (Light band A)", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = bento.textPrimary)
+                ColorGradePickerRow(
+                    label = "Band A",
+                    selectedHex = working.light.bandA.toArgbHex(),
+                    onColorSelected = { hex -> working = working.copy(light = working.light.copy(bandA = hex.hexToArgbLong())) },
+                    recentColors = emptyList(),
+                    onRemoveRecentColor = {},
+                    onAddRecentColor = {}
+                )
+                Text("الوضع الفاتح — لون الصف ب (Light band B)", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = bento.textPrimary)
+                ColorGradePickerRow(
+                    label = "Band B",
+                    selectedHex = working.light.bandB.toArgbHex(),
+                    onColorSelected = { hex -> working = working.copy(light = working.light.copy(bandB = hex.hexToArgbLong())) },
+                    recentColors = emptyList(),
+                    onRemoveRecentColor = {},
+                    onAddRecentColor = {}
+                )
+                // Item 11: full color picker for recents (was preset swatches).
                 Text("الوضع الداكن — لون الآيات الأخيرة (Dark recents)", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = bento.textPrimary)
-                DarkRecentsSwatches.forEachIndexed { index, swatch ->
-                    RecentsOptionRow(
-                        swatch = swatch,
-                        bandBg = if (index % 2 == 0) Color(working.dark.bandA) else Color(working.dark.bandB),
-                        textColor = Color(working.dark.textPrimary),
-                        selected = working.dark.recents == swatch.argb,
-                        onClick = { working = working.copy(dark = working.dark.copy(recents = swatch.argb)) }
-                    )
-                }
+                ColorGradePickerRow(
+                    label = "Recents",
+                    selectedHex = working.dark.recents.toArgbHex(),
+                    onColorSelected = { hex -> working = working.copy(dark = working.dark.copy(recents = hex.hexToArgbLong())) },
+                    recentColors = emptyList(),
+                    onRemoveRecentColor = {},
+                    onAddRecentColor = {}
+                )
                 Text("الوضع الفاتح — لون الآيات الأخيرة (Light recents)", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = bento.textPrimary)
-                LightRecentsSwatches.forEachIndexed { index, swatch ->
-                    RecentsOptionRow(
-                        swatch = swatch,
-                        bandBg = if (index % 2 == 0) Color(working.light.bandA) else Color(working.light.bandB),
-                        textColor = Color(working.light.textPrimary),
-                        selected = working.light.recents == swatch.argb,
-                        onClick = { working = working.copy(light = working.light.copy(recents = swatch.argb)) }
-                    )
-                }
+                ColorGradePickerRow(
+                    label = "Recents",
+                    selectedHex = working.light.recents.toArgbHex(),
+                    onColorSelected = { hex -> working = working.copy(light = working.light.copy(recents = hex.hexToArgbLong())) },
+                    recentColors = emptyList(),
+                    onRemoveRecentColor = {},
+                    onAddRecentColor = {}
+                )
+                // Item 11: sermon tint (NEW — was not customizable).
+                Text("الوضع الداكن — لون آيات العظة (Dark sermon tint)", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = bento.textPrimary)
+                ColorGradePickerRow(
+                    label = "Sermon tint",
+                    selectedHex = working.dark.sermonTint.toArgbHex(),
+                    onColorSelected = { hex -> working = working.copy(dark = working.dark.copy(sermonTint = hex.hexToArgbLong())) },
+                    recentColors = emptyList(),
+                    onRemoveRecentColor = {},
+                    onAddRecentColor = {}
+                )
+                Text("الوضع الفاتح — لون آيات العظة (Light sermon tint)", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = bento.textPrimary)
+                ColorGradePickerRow(
+                    label = "Sermon tint",
+                    selectedHex = working.light.sermonTint.toArgbHex(),
+                    onColorSelected = { hex -> working = working.copy(light = working.light.copy(sermonTint = hex.hexToArgbLong())) },
+                    recentColors = emptyList(),
+                    onRemoveRecentColor = {},
+                    onAddRecentColor = {}
+                )
+                // Item 11: live color (NEW — was not customizable).
+                Text("الوضع الداكن — لون البث المباشر (Dark live)", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = bento.textPrimary)
+                ColorGradePickerRow(
+                    label = "Live",
+                    selectedHex = working.dark.liveHighlight.toArgbHex(),
+                    onColorSelected = { hex -> working = working.copy(dark = working.dark.copy(liveHighlight = hex.hexToArgbLong())) },
+                    recentColors = emptyList(),
+                    onRemoveRecentColor = {},
+                    onAddRecentColor = {}
+                )
+                Text("الوضع الفاتح — لون البث المباشر (Light live)", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = bento.textPrimary)
+                ColorGradePickerRow(
+                    label = "Live",
+                    selectedHex = working.light.liveHighlight.toArgbHex(),
+                    onColorSelected = { hex -> working = working.copy(light = working.light.copy(liveHighlight = hex.hexToArgbLong())) },
+                    recentColors = emptyList(),
+                    onRemoveRecentColor = {},
+                    onAddRecentColor = {}
+                )
                 // One-update item 21: the 10 Bible-study group colors are
                 // theme variables — fully user-controllable per mode.
                 Text("الوضع الداكن — ألوان مجموعات الأسفار (Dark book groups)", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = bento.textPrimary)

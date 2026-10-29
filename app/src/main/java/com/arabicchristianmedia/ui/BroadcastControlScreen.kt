@@ -51,6 +51,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.NetworkCheck
+import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PlayArrow
@@ -88,6 +89,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -1874,6 +1876,68 @@ private fun NdiDropdown(
 }
 
 /**
+ * Item 22: QR code dialog for a Setup URL. Generates the QR with ZXing,
+ * displays it with the label. The URL uses the tablet IP (or custom
+ * domain if the user configured one).
+ */
+@Composable
+private fun QrCodeDialog(
+    url: String,
+    label: String,
+    onDismiss: () -> Unit
+) {
+    val qrBitmap = remember(url) {
+        try {
+            val writer = com.google.zxing.qrcode.QRCodeWriter()
+            val bitMatrix = writer.encode(url, com.google.zxing.BarcodeFormat.QR_CODE, 512, 512)
+            val width = bitMatrix.width
+            val height = bitMatrix.height
+            val bitmap = android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.RGB_565)
+            for (x in 0 until width) {
+                for (y in 0 until height) {
+                    bitmap.setPixel(x, y, if (bitMatrix[x, y]) android.graphics.Color.BLACK else android.graphics.Color.WHITE)
+                }
+            }
+            bitmap
+        } catch (e: Exception) {
+            null
+        }
+    }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { androidx.compose.material3.Text(label, fontSize = 14.sp, fontWeight = FontWeight.Bold) },
+        text = {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                if (qrBitmap != null) {
+                    androidx.compose.foundation.Image(
+                        bitmap = qrBitmap.asImageBitmap(),
+                        contentDescription = "QR for $url",
+                        modifier = Modifier.size(256.dp)
+                    )
+                } else {
+                    androidx.compose.material3.Text("فشل إنشاء QR", fontSize = 12.sp)
+                }
+                Spacer(Modifier.height(8.dp))
+                androidx.compose.material3.Text(
+                    url,
+                    fontSize = 10.sp,
+                    fontFamily = FontFamily.Monospace,
+                    color = LocalBentoColors.current.textSecondary
+                )
+            }
+        },
+        confirmButton = {
+            androidx.compose.material3.TextButton(onClick = onDismiss) {
+                androidx.compose.material3.Text("إغلاق (Close)")
+            }
+        }
+    )
+}
+
+/**
  * Lists every HTTP endpoint the tablet serves, so the user knows all the URLs
  * they can use (browser sources, MJPEG, snapshots, events, status, API).
  */
@@ -1891,20 +1955,13 @@ private fun AllUrlsCard(
     // then trigger, remote, vMix XML, JSON in order. No gap, no
     // collapsed "All links" number — every row carries its own.
     val urls = listOf(
+        // Item 16: simplified URLs — user-facing only + API Docs.
+        // API endpoints moved to /api-docs (Swagger).
         Triple("١", "Lower Third (Browser Source)", "/lower"),
         Triple("٢", "العرض الكامل (Full Show)", "/full"),
         Triple("٣", "بث MJPEG", "/stream"),
-        Triple("٤", "لقطة PNG (Lower)", "/lower/snapshot.png"),
-        Triple("٥", "لقطة PNG (Full)", "/full/snapshot.png"),
-        Triple("٦", "أحداث SSE (الآيات)", "/events"),
-        Triple("٧", "الحالة", "/api/status"),
-        Triple("٨", "واجهة الآيات (API)", "/api/verse"),
-        Triple("٩", "تشغيل آية عن بُعد", "/api/trigger?ref=John+3:16"),
-        Triple("١٠", "صفحة التحكم عن بُعد", "/remote"),
-        Triple("١١", "خلاصة vMix (XML) — Lower", "/lower/bibleshow.xml"),
-        Triple("١٢", "خلاصة vMix (XML) — Full", "/full/bibleshow.xml"),
-        Triple("١٣", "خلاصة (JSON) — Lower", "/lower/bibleshow.json"),
-        Triple("١٤", "خلاصة (JSON) — Full", "/full/bibleshow.json")
+        Triple("٤", "صفحة التحكم عن بُعد", "/remote"),
+        Triple("٥", "توثيق API (API Docs)", "/api-docs")
     )
     Text(
         text = "جميع الروابط المتاحة:",
@@ -1936,6 +1993,8 @@ private fun AllUrlsCard(
                 urls.forEach { (num, label, path) ->
                     // v1.8: Strip /lower from base to avoid duplication (e.g., /lower/full).
                     val full = baseUrl.removeSuffix("/lower") + path
+                    // Item 22: QR dialog state per URL.
+                    var showQr by remember { mutableStateOf(false) }
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -1945,9 +2004,18 @@ private fun AllUrlsCard(
                             Text("$num. $label", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = textPrimary)
                             Text(full, fontSize = 9.sp, fontFamily = FontFamily.Monospace, color = textSecondary)
                         }
-                        androidx.compose.material3.IconButton(onClick = { onCopy(label, full) }) {
-                            Icon(Icons.Default.ContentCopy, contentDescription = "Copy $label", tint = textSecondary, modifier = Modifier.size(16.dp))
+                        Row {
+                            // Item 22: QR code button.
+                            androidx.compose.material3.IconButton(onClick = { showQr = true }) {
+                                Icon(Icons.Default.QrCode, contentDescription = "QR $label", tint = textSecondary, modifier = Modifier.size(16.dp))
+                            }
+                            androidx.compose.material3.IconButton(onClick = { onCopy(label, full) }) {
+                                Icon(Icons.Default.ContentCopy, contentDescription = "Copy $label", tint = textSecondary, modifier = Modifier.size(16.dp))
+                            }
                         }
+                    }
+                    if (showQr) {
+                        QrCodeDialog(url = full, label = label, onDismiss = { showQr = false })
                     }
                 }
             }

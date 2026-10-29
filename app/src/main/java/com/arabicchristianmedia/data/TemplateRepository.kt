@@ -991,7 +991,7 @@ class TemplateRepository(context: Context) {
                 secondaryFontFamily = "System",
                 isFullScreen = true,
                 positionBottomPercent = 8,
-                boxHeightPercent = 60,
+                boxHeightPercent = 100,
                 cardPaddingTopDp = 40.0f,
                 cardPaddingBottomDp = 40.0f,
                 cardPaddingLeftDp = 48.0f,

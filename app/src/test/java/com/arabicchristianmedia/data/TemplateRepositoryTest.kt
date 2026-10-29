@@ -185,8 +185,8 @@ class TemplateRepositoryTest {
         }
         assertTrue(defaults.first { it.id == "tpl_fs_pure_word" }.isFullScreen)
         assertTrue(defaults.first { it.id == "tpl_lt_pure_word" }.let { !it.isFullScreen })
-        assertEquals(10, defaults.count { !it.isFullScreen })
-        assertEquals(10, defaults.count { it.isFullScreen })
+        assertEquals(11, defaults.count { !it.isFullScreen })
+        assertEquals(12, defaults.count { it.isFullScreen })
     }
 
     @Test

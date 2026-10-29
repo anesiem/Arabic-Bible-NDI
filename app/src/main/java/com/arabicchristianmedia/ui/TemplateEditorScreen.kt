@@ -846,7 +846,7 @@ CollapsibleSection(
                     }
                     // One-update item 6: verse + citation colors as one linked group.
                     LinkedColorGroup("ألوان النص العربي (Arabic text colors)") {
-                            ColorGradePickerRow("لون الشاهد العربي (Citation Color)", editingTemplate.referenceColorHex, { onUpdate(editingTemplate.copy(referenceColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor), previewTemplate = editingTemplate, previewField = "referenceColorHex"
+                            ColorGradePickerRow("لون الشاهد العربي (Citation Color)", editingTemplate.referenceColorHex, { onUpdate(editingTemplate.copy(referenceColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor, previewTemplate = editingTemplate, previewField = "referenceColorHex")
                     }
                     SliderWithLabel("حجم الشاهد العربي", editingTemplate.referenceFontSize.toFloat(), 10f..120f) {
                         val newCit = it.toInt()
@@ -865,7 +865,7 @@ CollapsibleSection(
                         StyleToggle("B", editingTemplate.verseIsBold) { onUpdate(editingTemplate.copy(verseIsBold = it)) }
                         StyleToggle("I", editingTemplate.verseIsItalic) { onUpdate(editingTemplate.copy(verseIsItalic = it)) }
                     }
-                    ColorGradePickerRow("لون النص العربي (Verse Color)", editingTemplate.textColorHex, { onUpdate(editingTemplate.copy(textColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor), previewTemplate = editingTemplate, previewField = "textColorHex"
+                    ColorGradePickerRow("لون النص العربي (Verse Color)", editingTemplate.textColorHex, { onUpdate(editingTemplate.copy(textColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor, previewTemplate = editingTemplate, previewField = "textColorHex")
                     SliderWithLabel("حجم النص العربي", editingTemplate.verseFontSize.toFloat(), 10f..180f) {
                         val newVerse = it.toInt()
                         // One-update item 8: once the ratio is frozen, a
@@ -998,7 +998,7 @@ CollapsibleSection(
                         }
                         // One-update item 6: verse + citation colors as one linked group.
                         LinkedColorGroup("ألوان النص الإنجليزي (English text colors)") {
-                                ColorGradePickerRow("لون الشاهد الإنجليزي (English Citation Color)", editingTemplate.secondaryReferenceColorHex, { onUpdate(editingTemplate.copy(secondaryReferenceColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor), previewTemplate = editingTemplate, previewField = "secondaryReferenceColorHex"
+                                ColorGradePickerRow("لون الشاهد الإنجليزي (English Citation Color)", editingTemplate.secondaryReferenceColorHex, { onUpdate(editingTemplate.copy(secondaryReferenceColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor, previewTemplate = editingTemplate, previewField = "secondaryReferenceColorHex")
                         }
                         SliderWithLabel("حجم الشاهد الإنجليزي", editingTemplate.secondaryReferenceFontSize.toFloat(), 8f..100f) { onUpdate(editingTemplate.copy(secondaryReferenceFontSize = it.toInt())) }
 
@@ -1015,7 +1015,7 @@ CollapsibleSection(
                             StyleToggle("B", editingTemplate.secondaryVerseIsBold) { onUpdate(editingTemplate.copy(secondaryVerseIsBold = it)) }
                             StyleToggle("I", editingTemplate.secondaryVerseIsItalic) { onUpdate(editingTemplate.copy(secondaryVerseIsItalic = it)) }
                         }
-                        ColorGradePickerRow("لون النص الإنجليزي (English Verse Color)", editingTemplate.secondaryTextColorHex, { onUpdate(editingTemplate.copy(secondaryTextColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor), previewTemplate = editingTemplate, previewField = "secondaryTextColorHex"
+                        ColorGradePickerRow("لون النص الإنجليزي (English Verse Color)", editingTemplate.secondaryTextColorHex, { onUpdate(editingTemplate.copy(secondaryTextColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor, previewTemplate = editingTemplate, previewField = "secondaryTextColorHex")
                         SliderWithLabel("حجم النص الإنجليزي", editingTemplate.secondaryVerseFontSize.toFloat(), 8f..120f) { onUpdate(editingTemplate.copy(secondaryVerseFontSize = it.toInt())) }
                         // One-update item 7: per-language line spacing.
                         SliderWithLabel("تباعد أسطر الإنجليزي (English line spacing)", editingTemplate.lineSpacingEnglish, 1f..3f) { onUpdate(editingTemplate.copy(lineSpacingEnglish = it)) }
@@ -1043,7 +1043,7 @@ CollapsibleSection(
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Box(modifier = Modifier.weight(1f)) {
-                                ColorGradePickerRow("لون كارت الخلفية (Card Color)", editingTemplate.bgColorHex, { onUpdate(editingTemplate.copy(bgColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor), previewTemplate = editingTemplate, previewField = "bgColorHex"
+                                ColorGradePickerRow("لون كارت الخلفية (Card Color)", editingTemplate.bgColorHex, { onUpdate(editingTemplate.copy(bgColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor, previewTemplate = editingTemplate, previewField = "bgColorHex")
                             }
                             // v1.8: Quick transparent option for card color.
                             TextButton(
@@ -1071,8 +1071,8 @@ CollapsibleSection(
                         androidx.compose.material3.Surface(shape = RoundedCornerShape(12.dp), border = androidx.compose.foundation.BorderStroke(1.dp, bento.border), color = bento.surfaceVariant) {
                             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("ألوان التدرج المرتبطة (Linked gradient colors)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary)
-                        ColorGradePickerRow("اللون الأول (First color)", editingTemplate.bgColorHex, { onUpdate(editingTemplate.copy(bgColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor), previewTemplate = editingTemplate, previewField = "bgColorHex"
-                        ColorGradePickerRow("اللون الثاني (Second color)", editingTemplate.gradientColorHex2, { onUpdate(editingTemplate.copy(gradientColorHex2 = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor), previewTemplate = editingTemplate, previewField = "gradientColorHex2"
+                        ColorGradePickerRow("اللون الأول (First color)", editingTemplate.bgColorHex, { onUpdate(editingTemplate.copy(bgColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor, previewTemplate = editingTemplate, previewField = "bgColorHex")
+                        ColorGradePickerRow("اللون الثاني (Second color)", editingTemplate.gradientColorHex2, { onUpdate(editingTemplate.copy(gradientColorHex2 = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor, previewTemplate = editingTemplate, previewField = "gradientColorHex2")
                         SliderWithLabel("زاوية التدرج (Angle, 0-360°)", editingTemplate.gradientAngleDeg.toFloat(), 0f..360f) { onUpdate(editingTemplate.copy(gradientAngleDeg = it.toInt())) }
                         val gradientAnims = listOf(
                             GradientAnimationType.NONE to "ثابت (None)",
@@ -1108,7 +1108,7 @@ CollapsibleSection(
                         FeatureToggleRow("إظهار الحدود الملونة", editingTemplate.showAccentBorder) { onUpdate(editingTemplate.copy(showAccentBorder = it)) }
                     }
                     if (editingTemplate.showAccentBorder) {
-                        ColorGradePickerRow("لون إطار التمييز (Accent Color)", editingTemplate.accentColorHex, { onUpdate(editingTemplate.copy(accentColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor), previewTemplate = editingTemplate, previewField = "accentColorHex"
+                        ColorGradePickerRow("لون إطار التمييز (Accent Color)", editingTemplate.accentColorHex, { onUpdate(editingTemplate.copy(accentColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor, previewTemplate = editingTemplate, previewField = "accentColorHex")
                     }
 
                     // Split transitions (combined batch): the BOX
@@ -1414,7 +1414,7 @@ CollapsibleSection(
                 ) {
                     FeatureToggleRow("ظل النص (Text Shadow)", editingTemplate.textShadowEnabled, modifier = anchorModifier("shadow-text")) { onUpdate(editingTemplate.copy(textShadowEnabled = it)) }
                     if (editingTemplate.textShadowEnabled) {
-                        ColorGradePickerRow("لون ظل النص (Text Shadow Color)", editingTemplate.textShadowColorHex, { onUpdate(editingTemplate.copy(textShadowColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor), previewTemplate = editingTemplate, previewField = "textShadowColorHex"
+                        ColorGradePickerRow("لون ظل النص (Text Shadow Color)", editingTemplate.textShadowColorHex, { onUpdate(editingTemplate.copy(textShadowColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor, previewTemplate = editingTemplate, previewField = "textShadowColorHex")
                         // v1.8: shadow thickness (blur), distance (offset), and 8-direction compass.
                         SliderWithLabel("سماكة الظل (Thickness)", editingTemplate.textShadowBlurDp, 0f..32f) {
                             onUpdate(editingTemplate.copy(textShadowBlurDp = it))
@@ -1484,7 +1484,7 @@ CollapsibleSection(
                     if (!editingTemplate.isFullScreen) {
                         FeatureToggleRow("توهج الكارت (Card Glow)", editingTemplate.cardGlowEnabled, modifier = anchorModifier("shadow-glow")) { onUpdate(editingTemplate.copy(cardGlowEnabled = it)) }
                         if (editingTemplate.cardGlowEnabled) {
-                            ColorGradePickerRow("لون توهج الكارت (Card Glow Color)", editingTemplate.cardGlowColorHex, { onUpdate(editingTemplate.copy(cardGlowColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor), previewTemplate = editingTemplate, previewField = "cardGlowColorHex"
+                            ColorGradePickerRow("لون توهج الكارت (Card Glow Color)", editingTemplate.cardGlowColorHex, { onUpdate(editingTemplate.copy(cardGlowColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor, previewTemplate = editingTemplate, previewField = "cardGlowColorHex")
                         }
                     }                }
     }

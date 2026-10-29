@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import com.arabicchristianmedia.model.AnimatedBackgroundType
 import com.arabicchristianmedia.model.BroadcastTextAlignment
+import com.arabicchristianmedia.model.ClearMode
 import com.arabicchristianmedia.model.LanguageMode
 import com.arabicchristianmedia.model.GradientAnimationType
 import com.arabicchristianmedia.model.LowerThirdTemplate

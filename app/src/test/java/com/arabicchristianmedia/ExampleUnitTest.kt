@@ -58,7 +58,10 @@ class ExampleUnitTest {
         assertTrue("John 3 should have verses", johnVerses.isNotEmpty())
         val jhn316 = johnVerses.firstOrNull { it.verse == 16 }
         assertNotNull("John 3:16 should be present", jhn316)
-        assertTrue(jhn316!!.arabicText.contains("الله"))
+        // Tashkeel defaults ON (one-update item 13), so strip diacritics
+        // before asserting on the plain word.
+        val stripped = jhn316!!.arabicText.replace(Regex("[\\u064B-\\u0652\\u0670]"), "")
+        assertTrue(stripped.contains("الله"))
 
         val psalm23 = BibleRepository.getVerses("psa", 23)
         assertTrue("Psalm 23 should have verses", psalm23.isNotEmpty())

@@ -1958,13 +1958,15 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         val recents = _uiState.value.recentVerses
         if (recents.isEmpty()) return
         val current = _uiState.value.sermonPlaylist
-        // Group recents by reference for the sermon grouping.
-        val groups = SermonGrouping.groupVerses(recents)
+        // Group recents by book+chapter for the sermon grouping.
+        val groups: List<List<com.arabicchristianmedia.model.BibleVerse>> =
+            recents.groupBy { "${it.bookId}:${it.chapter}" }.values.toList()
         var nextGroupId = (current.maxOfOrNull { it.groupId } ?: 0L) + 1L
         val shades = SermonGrouping.shadesForNewBatch(current.firstOrNull()?.shade, groups.size)
-        val newEntries = groups.flatMapIndexed { index, verses ->
+        val newEntries: List<com.arabicchristianmedia.model.SermonEntry> =
+            groups.flatMapIndexed { index: Int, verses: List<com.arabicchristianmedia.model.BibleVerse> ->
             val gid = nextGroupId++
-            verses.map { SermonEntry(it, gid, shades[index]) }
+            verses.map { v -> SermonEntry(v, gid, shades[index]) }
         }
         val updated = if (merge) {
             val newKeys = newEntries.map { it.key }.toSet()

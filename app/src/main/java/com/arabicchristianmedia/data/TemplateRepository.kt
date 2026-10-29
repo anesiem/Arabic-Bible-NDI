@@ -77,7 +77,7 @@ class TemplateRepository(context: Context) {
             LowerThirdTemplate(
                 id = "tpl_default_lower",
                 name = "Default",
-                style = TemplateStyle.SOLID,
+                style = TemplateStyle.CLASSIC_BANNER,
                 bgColorHex = "#1E293B",
                 textColorHex = "#FFFFFF",
                 verseFontSize = 36,
@@ -978,7 +978,7 @@ class TemplateRepository(context: Context) {
             LowerThirdTemplate(
                 id = "tpl_default_full",
                 name = "Default",
-                style = TemplateStyle.SOLID,
+                style = TemplateStyle.CLASSIC_BANNER,
                 bgColorHex = "#1E293B",
                 textColorHex = "#FFFFFF",
                 verseFontSize = 48,
@@ -1005,7 +1005,7 @@ class TemplateRepository(context: Context) {
             LowerThirdTemplate(
                 id = "tpl_simple_fullscreen",
                 name = "Simple Fullscreen",
-                style = TemplateStyle.SOLID,
+                style = TemplateStyle.CLASSIC_BANNER,
                 bgColorHex = "#0F172A",
                 textColorHex = "#FFFFFF",
                 verseFontSize = 64,

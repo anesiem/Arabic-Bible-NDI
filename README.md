@@ -147,6 +147,44 @@ setting apply exactly as if you'd tapped the verse in the reader.
 
 ---
 
+## ⌨️ Keyboard Shortcuts
+
+The app is fully keyboard-operable (tablet + Bluetooth keyboard). Shortcuts
+never fire while typing in a text field. Press `?` or tap the keyboard icon
+in the top bar for the in-app card.
+
+| Key | Action |
+|-----|--------|
+| `→` / `PageDown` | Next sermon verse live |
+| `←` / `PageUp` | Previous sermon verse live (stops at ends) |
+| `↑` / `↓` | Move selection in Library / search / recents / sermon (focus ring) |
+| `Enter` | Go live on the selected verse |
+| `Space` | Next in sermon |
+| `Esc` | Close sheet/search/dialog, then Clear → OFF AIR |
+| `C` | Clear (per-feed Clear mode) |
+| `O` | ON AIR toggle |
+| `Ctrl+F` | Search |
+| `Ctrl+1` … `Ctrl+4` | Switch tabs (Library, Editor, Broadcast, Sermon) |
+| `+` / `−` | Library font size |
+| `?` | Shortcuts help card |
+
+The **remote page** (desktop browser) has its own map: `/` or `Ctrl+F`
+focuses the reference, `Enter` triggers, `↑↓` + `Enter` navigate/trigger
+verses, `←→` / `PageUp` / `PageDown` step the sermon, `O` / `C` / `R` /
+`Esc` / `?` work as above, and `?` opens the shortcuts overlay (hint line
+under the control bar).
+
+## 🎨 Templates
+
+20 built-in designs (10 Lower Third + 10 Full Show): Pure Word
+(transparent), Royal Gold, Midnight Sapphire, Emerald Garden, Rose Dawn,
+Desert Sand, Ocean Deep, Violet Dusk, Classic White, Crimson Liturgy. Each
+sets every value explicitly (gradient pairs are real companions, never
+equal). Factory styles are fully user-editable (Update/Delete allowed) and
+restore on data clear.
+
+---
+
 ## 📲 Install
 
 Requires **Android 7.0+**. Download the signed APK from the

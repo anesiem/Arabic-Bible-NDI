@@ -8,9 +8,16 @@ import org.json.JSONObject
  * of themes (they keep their own per-feed colors). ON AIR red/grey and the
  * green action button are FIXED across all themes (standing rulings, never
  * themed). Tokens not carried here (onPrimaryContainer, secondary,
- * onSecondary, sermon-live navy/yellow, verse-live-highlight) stay at
- * Classic values; onPrimary is derived from the primary (see
- * [onPrimaryFor]) so vivid primaries keep readable button text.
+ * onSecondary) stay at Classic values; onPrimary is derived from the
+ * primary (see [onPrimaryFor]) so vivid primaries keep readable button
+ * text.
+ *
+ * One-update item 17: liveHighlight (live-verse row highlight in
+ * Library/recents/sermon), recents (recents marker + side line) and
+ * sermonTint (muted band colour for sermon verses) are theme variables —
+ * every surface reads them from the active theme, including the remote
+ * page tokens. Item 6: bandA/bandB are the alternate Editor-section-card
+ * backgrounds (user-controllable here).
  *
  * Contrast, verified by relative-luminance calculation (not eyeballed):
  * body text on card >= 7:1, secondary on card >= 4.5:1, recents marker on
@@ -32,7 +39,9 @@ data class ColorThemeTokens(
     val bandA: Long,
     val bandB: Long,
     val recents: Long,
-    val warning: Long
+    val warning: Long,
+    val liveHighlight: Long,
+    val sermonTint: Long
 )
 
 data class ColorTheme(
@@ -77,14 +86,16 @@ object ColorThemes {
             surfaceVariant = 0xFF4A4458, border = 0xFF49454F, borderSubtle = 0xFF36343B,
             textPrimary = 0xFFE6E1E5, textSecondary = 0xFFCAC4D0,
             primary = 0xFFD0BCFF, primaryContainer = 0xFF4F378B,
-            bandA = 0xFF3B3052, bandB = 0xFF2B3A42, recents = 0xFF0D9488, warning = 0xFFFBBF24
+            bandA = 0xFF3B3052, bandB = 0xFF2B3A42, recents = 0xFF0D9488, warning = 0xFFFBBF24,
+            liveHighlight = 0xFF1E293B, sermonTint = 0xFF2B3A42
         ),
         light = ColorThemeTokens(
             bg = 0xFFFEF7FF, card = 0xFFFFFFFF, surfaceContainer = 0xFFF3EDF7,
             surfaceVariant = 0xFFEADDFF, border = 0xFFCAC4D0, borderSubtle = 0xFFE7E0EC,
             textPrimary = 0xFF1D1B20, textSecondary = 0xFF49454F,
             primary = 0xFF6750A4, primaryContainer = 0xFFEADDFF,
-            bandA = 0xFFEAE3F6, bandB = 0xFFDFE9F3, recents = 0xFF0D9488, warning = 0xFFB45309
+            bandA = 0xFFEAE3F6, bandB = 0xFFDFE9F3, recents = 0xFF0D9488, warning = 0xFFB45309,
+            liveHighlight = 0xFFE0F2FE, sermonTint = 0xFFDFE9F3
         )
     )
 
@@ -98,14 +109,16 @@ object ColorThemes {
             surfaceVariant = 0xFF4A3F2A, border = 0xFF57503F, borderSubtle = 0xFF3A332A,
             textPrimary = 0xFFFFFFFF, textSecondary = 0xFFD6D0C4,
             primary = 0xFFEAB308, primaryContainer = 0xFF5A4A1A,
-            bandA = 0xFF3A3226, bandB = 0xFF2E3A2E, recents = 0xFFF59E0B, warning = 0xFFFBBF24
+            bandA = 0xFF3A3226, bandB = 0xFF2E3A2E, recents = 0xFFF59E0B, warning = 0xFFFBBF24,
+            liveHighlight = 0xFF1E293B, sermonTint = 0xFF2E3A2E
         ),
         light = ColorThemeTokens(
             bg = 0xFFFDF8F0, card = 0xFFFFFFFF, surfaceContainer = 0xFFF5EFE2,
             surfaceVariant = 0xFFE8DCC8, border = 0xFFC9BFA8, borderSubtle = 0xFFEDE6D6,
             textPrimary = 0xFF000000, textSecondary = 0xFF333333,
             primary = 0xFF1E40AF, primaryContainer = 0xFFDCE6F5,
-            bandA = 0xFFF5E6C8, bandB = 0xFFDDE8D0, recents = 0xFFB45309, warning = 0xFFB45309
+            bandA = 0xFFF5E6C8, bandB = 0xFFDDE8D0, recents = 0xFFB45309, warning = 0xFFB45309,
+            liveHighlight = 0xFFE0F2FE, sermonTint = 0xFFDDE8D0
         )
     )
 
@@ -121,14 +134,16 @@ object ColorThemes {
             surfaceVariant = 0xFF3D2A5E, border = 0xFF4A3A6B, borderSubtle = 0xFF2E2347,
             textPrimary = 0xFFF5F3FF, textSecondary = 0xFFC4B5FD,
             primary = 0xFF7C3AED, primaryContainer = 0xFF4C2E8B,
-            bandA = 0xFF2D1B4E, bandB = 0xFF123B3F, recents = 0xFF22D3EE, warning = 0xFFFBBF24
+            bandA = 0xFF2D1B4E, bandB = 0xFF123B3F, recents = 0xFF22D3EE, warning = 0xFFFBBF24,
+            liveHighlight = 0xFF1E293B, sermonTint = 0xFF123B3F
         ),
         light = ColorThemeTokens(
             bg = 0xFFF5F3FF, card = 0xFFFFFFFF, surfaceContainer = 0xFFF0EDFB,
             surfaceVariant = 0xFFDDD6FE, border = 0xFFC9C2E0, borderSubtle = 0xFFE9E5F7,
             textPrimary = 0xFF1E1B4B, textSecondary = 0xFF4C4A6B,
             primary = 0xFF7C3AED, primaryContainer = 0xFFE6DFF5,
-            bandA = 0xFFEDE9FE, bandB = 0xFFCFFAFE, recents = 0xFF0891B2, warning = 0xFFB45309
+            bandA = 0xFFEDE9FE, bandB = 0xFFCFFAFE, recents = 0xFF0891B2, warning = 0xFFB45309,
+            liveHighlight = 0xFFE0F2FE, sermonTint = 0xFFCFFAFE
         )
     )
 
@@ -142,14 +157,16 @@ object ColorThemes {
             surfaceVariant = 0xFF2A4A3E, border = 0xFF3D5A4E, borderSubtle = 0xFF24382F,
             textPrimary = 0xFFECFDF5, textSecondary = 0xFFA7F3D0,
             primary = 0xFF34D399, primaryContainer = 0xFF14532D,
-            bandA = 0xFF14352C, bandB = 0xFF3B2A12, recents = 0xFFFBBF24, warning = 0xFFFBBF24
+            bandA = 0xFF14352C, bandB = 0xFF3B2A12, recents = 0xFFFBBF24, warning = 0xFFFBBF24,
+            liveHighlight = 0xFF1E293B, sermonTint = 0xFF3B2A12
         ),
         light = ColorThemeTokens(
             bg = 0xFFF0FDF9, card = 0xFFFFFFFF, surfaceContainer = 0xFFEAF9F1,
             surfaceVariant = 0xFFCFF5E0, border = 0xFFB9D8C6, borderSubtle = 0xFFE2F2E8,
             textPrimary = 0xFF0F172A, textSecondary = 0xFF475569,
             primary = 0xFF047857, primaryContainer = 0xFFC9EBD9,
-            bandA = 0xFFD1FAE5, bandB = 0xFFFEF3C7, recents = 0xFFB45309, warning = 0xFFB45309
+            bandA = 0xFFD1FAE5, bandB = 0xFFFEF3C7, recents = 0xFFB45309, warning = 0xFFB45309,
+            liveHighlight = 0xFFE0F2FE, sermonTint = 0xFFFEF3C7
         )
     )
 
@@ -163,18 +180,89 @@ object ColorThemes {
             surfaceVariant = 0xFF4A3F31, border = 0xFF57503F, borderSubtle = 0xFF3A332B,
             textPrimary = 0xFFF5F5F4, textSecondary = 0xFFD6D3D1,
             primary = 0xFFC89B6A, primaryContainer = 0xFF5C4626,
-            bandA = 0xFF3B332B, bandB = 0xFF2E352E, recents = 0xFFE8A33D, warning = 0xFFFBBF24
+            bandA = 0xFF3B332B, bandB = 0xFF2E352E, recents = 0xFFE8A33D, warning = 0xFFFBBF24,
+            liveHighlight = 0xFF1E293B, sermonTint = 0xFF2E352E
         ),
         light = ColorThemeTokens(
             bg = 0xFFFDF6E3, card = 0xFFFFFBEB, surfaceContainer = 0xFFF7ECD2,
             surfaceVariant = 0xFFEFE0BC, border = 0xFFD8CBA8, borderSubtle = 0xFFEFE7D0,
             textPrimary = 0xFF292524, textSecondary = 0xFF57534E,
             primary = 0xFF92400E, primaryContainer = 0xFFF0DCB8,
-            bandA = 0xFFF5E6C8, bandB = 0xFFE7E5D4, recents = 0xFFB45309, warning = 0xFFB45309
+            bandA = 0xFFF5E6C8, bandB = 0xFFE7E5D4, recents = 0xFFB45309, warning = 0xFFB45309,
+            liveHighlight = 0xFFE0F2FE, sermonTint = 0xFFE7E5D4
         )
     )
 
-    val BUILT_INS: List<ColorTheme> = listOf(CLASSIC, CLEAR, PULSE, FRESH, GENTLE)
+    /** One-update item 18: Bento Blue — blue shades primary, yellow
+     * live/highlight, grey surfaces. Designed separately for dark and
+     * light. */
+    val BENTO_BLUE = ColorTheme(
+        id = "bento_blue",
+        name = "Bento Blue",
+        dark = ColorThemeTokens(
+            bg = 0xFF101418, card = 0xFF1A2027, surfaceContainer = 0xFF222B34,
+            surfaceVariant = 0xFF2E3947, border = 0xFF3A4552, borderSubtle = 0xFF28303A,
+            textPrimary = 0xFFF1F5F9, textSecondary = 0xFF94A3B8,
+            primary = 0xFF3B82F6, primaryContainer = 0xFF1E3A5F,
+            bandA = 0xFF1E293B, bandB = 0xFF1C2B3A, recents = 0xFFF59E0B, warning = 0xFFFBBF24,
+            liveHighlight = 0xFFFACC15, sermonTint = 0xFF243447
+        ),
+        light = ColorThemeTokens(
+            bg = 0xFFF8FAFC, card = 0xFFFFFFFF, surfaceContainer = 0xFFF1F5F9,
+            surfaceVariant = 0xFFE2E8F0, border = 0xFFCBD5E1, borderSubtle = 0xFFE2E8F0,
+            textPrimary = 0xFF0F172A, textSecondary = 0xFF475569,
+            primary = 0xFF1D4ED8, primaryContainer = 0xFFDBEAFE,
+            bandA = 0xFFDBEAFE, bandB = 0xFFFEF3C7, recents = 0xFFB45309, warning = 0xFFB45309,
+            liveHighlight = 0xFFFEF08A, sermonTint = 0xFFE0EAF5
+        )
+    )
+
+    /** One-update item 18: Desert Dawn — warm, low-glare, recommended for
+     * long daytime use. */
+    val DESERT_DAWN = ColorTheme(
+        id = "desert_dawn",
+        name = "Desert Dawn",
+        dark = ColorThemeTokens(
+            bg = 0xFF1C1712, card = 0xFF262019, surfaceContainer = 0xFF2E2820,
+            surfaceVariant = 0xFF453A2A, border = 0xFF57493A, borderSubtle = 0xFF38302A,
+            textPrimary = 0xFFFFF7ED, textSecondary = 0xFFD6C4A8,
+            primary = 0xFFF59E0B, primaryContainer = 0xFF5A3D14,
+            bandA = 0xFF33291D, bandB = 0xFF3A2E1E, recents = 0xFFFB923C, warning = 0xFFFBBF24,
+            liveHighlight = 0xFF7C2D12, sermonTint = 0xFF3A2F22
+        ),
+        light = ColorThemeTokens(
+            bg = 0xFFFDF8F0, card = 0xFFFFFFFF, surfaceContainer = 0xFFFAF3E8,
+            surfaceVariant = 0xFFF0E4D0, border = 0xFFD8C9A8, borderSubtle = 0xFFEDE4D0,
+            textPrimary = 0xFF292524, textSecondary = 0xFF57534E,
+            primary = 0xFFB45309, primaryContainer = 0xFFF5E0C0,
+            bandA = 0xFFF5E6C8, bandB = 0xFFEDE0C8, recents = 0xFFB45309, warning = 0xFFB45309,
+            liveHighlight = 0xFFFEF3C7, sermonTint = 0xFFF0E4CE
+        )
+    )
+
+    /** One-update item 18: Midnight — deep navy-black dark-first theme. */
+    val MIDNIGHT = ColorTheme(
+        id = "midnight",
+        name = "Midnight",
+        dark = ColorThemeTokens(
+            bg = 0xFF060913, card = 0xFF0C1220, surfaceContainer = 0xFF111A2E,
+            surfaceVariant = 0xFF1B2540, border = 0xFF2A3654, borderSubtle = 0xFF182036,
+            textPrimary = 0xFFE2E8F0, textSecondary = 0xFF94A3B8,
+            primary = 0xFF60A5FA, primaryContainer = 0xFF1E3A8A,
+            bandA = 0xFF101A30, bandB = 0xFF0F2033, recents = 0xFF22D3EE, warning = 0xFFFBBF24,
+            liveHighlight = 0xFF1E3A8A, sermonTint = 0xFF14243D
+        ),
+        light = ColorThemeTokens(
+            bg = 0xFFF0F4FA, card = 0xFFFFFFFF, surfaceContainer = 0xFFE8EEF7,
+            surfaceVariant = 0xFFD6E2F2, border = 0xFFB8C9E2, borderSubtle = 0xFFDDE6F2,
+            textPrimary = 0xFF0F1B2D, textSecondary = 0xFF475569,
+            primary = 0xFF1E40AF, primaryContainer = 0xFFDBEAFE,
+            bandA = 0xFFDBEAFE, bandB = 0xFFCFFAFE, recents = 0xFF0891B2, warning = 0xFFB45309,
+            liveHighlight = 0xFFFEF08A, sermonTint = 0xFFD9E6F5
+        )
+    )
+
+    val BUILT_INS: List<ColorTheme> = listOf(CLASSIC, CLEAR, PULSE, FRESH, GENTLE, BENTO_BLUE, DESERT_DAWN, MIDNIGHT)
 
     fun isBuiltIn(id: String?): Boolean = BUILT_INS.any { it.id == id }
 
@@ -199,6 +287,7 @@ fun ColorTheme.toJson(): JSONObject {
             put("text", hex(t.textPrimary)); put("textSec", hex(t.textSecondary))
             put("primary", hex(t.primary)); put("primaryCont", hex(t.primaryContainer))
             put("bandA", hex(t.bandA)); put("bandB", hex(t.bandB)); put("recents", hex(t.recents)); put("warning", hex(t.warning))
+            put("liveHighlight", hex(t.liveHighlight)); put("sermonTint", hex(t.sermonTint))
         }
     }
     return JSONObject().apply {
@@ -223,7 +312,12 @@ fun colorThemeFromJson(obj: JSONObject): ColorTheme? {
                 bandA = argb("bandA"), bandB = argb("bandB"), recents = argb("recents"),
                 // Pre-warning custom themes (saved before this field existed)
                 // fall back to the per-mode amber, not black.
-                warning = argb("warning", if (isDark) "#FBBF24" else "#B45309")
+                warning = argb("warning", if (isDark) "#FBBF24" else "#B45309"),
+                // One-update item 17: pre-update custom themes fall back to
+                // the old fixed values (dark slate / light ice-blue for
+                // live highlight, bandB for sermon tint).
+                liveHighlight = argb("liveHighlight", if (isDark) "#1E293B" else "#E0F2FE"),
+                sermonTint = argb("sermonTint", if (isDark) "#2B3A42" else "#DFE9F3")
             )
         }
         ColorTheme(

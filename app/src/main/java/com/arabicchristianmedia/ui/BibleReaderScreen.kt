@@ -11,6 +11,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -25,6 +27,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -55,8 +62,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.arabicchristianmedia.data.ArabicTextFormatter
 import com.arabicchristianmedia.data.BibleRepository
+import com.arabicchristianmedia.trackTextInputFocus
 import com.arabicchristianmedia.model.AppThemeMode
 import com.arabicchristianmedia.model.BibleBook
+import com.arabicchristianmedia.model.BibleBookGroups
 import com.arabicchristianmedia.model.BibleVerse
 import com.arabicchristianmedia.model.BibleVersion
 import com.arabicchristianmedia.model.Testament
@@ -76,6 +85,14 @@ fun BibleReaderScreen(
     onSelectVersion: (BibleVersion) -> Unit,
     onSearchChanged: (String) -> Unit,
     onClearSearch: () -> Unit,
+    // One-update item 1: search-result tap selects WITHOUT going live;
+    // box-reopen re-arms remembered results; dismiss closes-but-remembers.
+    onSearchResultClicked: (BibleVerse) -> Unit = {},
+    onSearchBoxReopened: () -> Unit = {},
+    onDismissSearch: () -> Unit = {},
+    // One-update item 20: Ctrl+F nonce from MainActivity — opens the
+    // search bar and focuses the field.
+    searchFocusNonce: Int = 0,
     onOpenRecentVerse: (BibleVerse) -> Unit = {},
     onClearRecents: () -> Unit = {},
     onToggleLive: () -> Unit,
@@ -88,11 +105,21 @@ fun BibleReaderScreen(
     // 2026-10-28: recents swipe-to-delete (sermon pattern, with Undo).
     onRemoveRecent: (BibleVerse) -> Unit = {},
     onRestoreRecent: (BibleVerse, Int) -> Unit = { _, _ -> },
+    // One-update item 3: recents sheet font — null = follow universal.
+    onSetRecentsFontSize: (Int?) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var showSearchBar by remember { mutableStateOf(false) }
     var showRecentsSheet by remember { mutableStateOf(false) }
     val searchFocusRequester = remember { FocusRequester() }
+    // One-update item 20: Ctrl+F opens the search bar and focuses it.
+    LaunchedEffect(searchFocusNonce) {
+        if (searchFocusNonce > 0) {
+            showSearchBar = true
+            onSearchBoxReopened()
+            searchFocusRequester.requestFocus()
+        }
+    }
     var displayMenuExpanded by remember { mutableStateOf(false) }
     var scripturePickerExpanded by remember { mutableStateOf(false) }
     // Batch item 3: pending picker chapter jump (target chapter); the
@@ -128,12 +155,14 @@ fun BibleReaderScreen(
     // 2026-10-28 auto-close rule: tapping the Library tab (or
     // navigating to Library) closes search, the recents sheet and
     // the chapter picker by themselves — never left open behind.
+    // One-update item 1: search closes BUT REMEMBERS query+results
+    // (reopening the box restores them); only the × button fully clears.
     LaunchedEffect(closeOverlaysNonce) {
         if (closeOverlaysNonce > 0) {
             showSearchBar = false
             showRecentsSheet = false
             scripturePickerExpanded = false
-            onClearSearch()
+            onDismissSearch()
         }
     }
 
@@ -231,76 +260,194 @@ fun BibleReaderScreen(
                             Button(onClick = onIncreaseFontSize) { Text("+") }
                         }
 
-                        // OT/NT Selector
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            FilterChip(
-                                selected = uiState.selectedTestament == Testament.NEW_TESTAMENT,
-                                onClick = { onSelectTestament(Testament.NEW_TESTAMENT) },
-                                label = { Text("العهد الجديد") },
-                                modifier = Modifier.weight(1f)
-                            )
-                            FilterChip(
-                                selected = uiState.selectedTestament == Testament.OLD_TESTAMENT,
-                                onClick = { onSelectTestament(Testament.OLD_TESTAMENT) },
-                                label = { Text("العهد القديم") },
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-                        
-                        // 2026-10-28 picker book scroll + J15: the
-                        // picker font must scale book names and chapter
-                        // numbers, not only verses. Book label scales
-                        // with readerFontSize (18 -> 13sp, 30 -> 21sp);
-                        // chapter numbers scale the same way below.
-                        // Phone (narrow): horizontal row + a book search
-                        // that jumps to any book even if scrolling fails.
-                        // Tablet wide (>=900x600, the K7 thresholds):
-                        // wrapped rows so every book is visible at once.
-                        var bookSearch by remember { mutableStateOf("") }
-                        val books = BibleRepository.allBooks.filter { it.testament == uiState.selectedTestament }
-                        val shownBooks = if (bookSearch.isBlank()) books else books.filter { it.arabicName.contains(bookSearch.trim()) }
+                        // One-update item 21: grouped COLOR GRID picker — replaces
+                        // the OT/NT tabs + long scrolling book list. 10
+                        // Bible-study groups, each with a color-coded header
+                        // (theme dark/light variants); books as short chips
+                        // in 3 columns, سفر/إنجيل/رسالة prefix stripped for
+                        // display only (citations keep the full names).
+                        // Recent-books row on top.
+                        // J15: the picker font scales book names and chapter
+                        // numbers, not only verses (18 -> 13sp, 30 -> 21sp).
                         val bookLabelSize = (uiState.readerFontSize * 13 / 18).coerceIn(11, 24).sp
-                        val config = androidx.compose.ui.platform.LocalConfiguration.current
-                        val pickerWide = config.screenWidthDp >= 900 && config.screenHeightDp >= 600
-                        OutlinedTextField(
-                            value = bookSearch,
-                            onValueChange = { bookSearch = it },
-                            placeholder = { Text("ابحث عن سفر…", fontSize = 12.sp) },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                            shape = RoundedCornerShape(12.dp),
-                            trailingIcon = { if (bookSearch.isNotEmpty()) IconButton(onClick = { bookSearch = "" }) { Icon(Icons.Default.Close, "Clear book search", tint = bento.textSecondary) } }
-                        )
-                        if (pickerWide) {
-                            LazyVerticalGrid(
-                                columns = GridCells.Adaptive(minSize = 120.dp),
-                                modifier = Modifier.fillMaxWidth().heightIn(max = 220.dp).padding(vertical = 8.dp),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                        val recentBookIds = remember(uiState.recentVerses) {
+                            uiState.recentVerses.map { it.bookId }.distinct().take(6)
+                        }
+                        val recentBooks = remember(recentBookIds) {
+                            recentBookIds.mapNotNull { id -> BibleRepository.allBooks.find { it.id == id } }
+                        }
+                        if (recentBooks.isNotEmpty()) {
+                            Text(
+                                "قرأت مؤخراً:",
+                                fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                                color = bento.textSecondary,
+                                modifier = Modifier.padding(top = 4.dp, bottom = 4.dp)
+                            )
+                            LazyRow(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                items(shownBooks, key = { it.id }) { book ->
+                                items(recentBooks, key = { it.id }) { book ->
                                     FilterChip(
                                         selected = book.id == uiState.selectedBook.id,
-                                        onClick = { onSelectBook(book, 1) },
-                                        label = { Text(book.arabicName, fontSize = bookLabelSize) },
-                                        modifier = Modifier.fillMaxWidth()
-                                    )
-                                }
-                            }
-                        } else {
-                            LazyRow(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                items(shownBooks, key = { it.id }) { book ->
-                                    FilterChip(
-                                        selected = book.id == uiState.selectedBook.id,
-                                        onClick = { onSelectBook(book, 1) },
-                                        label = { Text(book.arabicName, fontSize = bookLabelSize) }
+                                        onClick = {
+                                            pickerJumpChapter = 1
+                                            onSelectBook(book, 1)
+                                        },
+                                        label = {
+                                            Text(
+                                                BibleBookGroups.shortDisplayName(book.arabicName),
+                                                fontSize = bookLabelSize, maxLines = 1
+                                            )
+                                        }
                                     )
                                 }
                             }
                         }
 
+                        // ONE generic search across all 66 books (moved out
+                        // of the OT/NT tabs). Picking a book follows its
+                        // testament (selectBook sets selectedTestament).
+                        var bookSearch by remember { mutableStateOf("") }
+                        val bookQuery = bookSearch.trim()
+                        OutlinedTextField(
+                            value = bookSearch,
+                            onValueChange = { bookSearch = it },
+                            placeholder = { Text("ابحث في كل الأسفار…", fontSize = 12.sp) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp).trackTextInputFocus(),
+                            shape = RoundedCornerShape(12.dp),
+                            trailingIcon = { if (bookSearch.isNotEmpty()) IconButton(onClick = { bookSearch = "" }) { Icon(Icons.Default.Close, "Clear book search", tint = bento.textSecondary) } }
+                        )
+                        val isDarkMode = when (uiState.appThemeMode) {
+                            AppThemeMode.SYSTEM -> isSystemInDarkTheme()
+                            AppThemeMode.LIGHT -> false
+                            AppThemeMode.DARK -> true
+                        }
+                        if (bookQuery.isNotEmpty()) {
+                            val matches = remember(bookQuery) {
+                                BibleRepository.allBooks.filter {
+                                    it.arabicName.contains(bookQuery) ||
+                                        it.englishName.contains(bookQuery, ignoreCase = true)
+                                }
+                            }
+                            if (matches.isEmpty()) {
+                                Text(
+                                    "لا نتائج مطابقة.",
+                                    fontSize = 12.sp, color = bento.textSecondary,
+                                    modifier = Modifier.padding(vertical = 8.dp)
+                                )
+                            } else {
+                                @OptIn(ExperimentalLayoutApi::class)
+                                FlowRow(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    matches.forEach { book ->
+                                        FilterChip(
+                                            selected = book.id == uiState.selectedBook.id,
+                                            onClick = {
+                                                pickerJumpChapter = 1
+                                                onSelectBook(book, 1)
+                                            },
+                                            label = {
+                                                Text(
+                                                    BibleBookGroups.shortDisplayName(book.arabicName),
+                                                    fontSize = bookLabelSize, maxLines = 1
+                                                )
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        } else {
+                            // Grouped color grid: 10 sections, 3-column chips.
+                            BibleBookGroups.ALL.forEach { group ->
+                                val groupColor = BookGroupColors.color(group.id, isDarkMode)
+                                val groupBooks = remember(group) {
+                                    group.bookIds.mapNotNull { id -> BibleRepository.allBooks.find { it.id == id } }
+                                }
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 4.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier.size(10.dp).clip(CircleShape).background(groupColor)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        group.arabicName,
+                                        fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                                        color = groupColor, maxLines = 1,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    Text(
+                                        "${groupBooks.size}",
+                                        fontSize = 11.sp, color = bento.textSecondary
+                                    )
+                                }
+                                @OptIn(ExperimentalLayoutApi::class)
+                                FlowRow(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    groupBooks.forEach { book ->
+                                        FilterChip(
+                                            selected = book.id == uiState.selectedBook.id,
+                                            onClick = {
+                                                pickerJumpChapter = 1
+                                                onSelectBook(book, 1)
+                                            },
+                                            label = {
+                                                Text(
+                                                    BibleBookGroups.shortDisplayName(book.arabicName),
+                                                    fontSize = bookLabelSize, maxLines = 1
+                                                )
+                                            },
+                                            modifier = Modifier.weight(1f, fill = false)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+
                         // Chapters Grid
-                        Text("الفصل:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary, modifier = Modifier.padding(top = 8.dp))
+                        // One-update item 21: chapter number field beside
+                        // the +/- steppers, then the number grid (tap = jump).
+                        var chapterField by remember(uiState.selectedBook.id, uiState.selectedChapter) {
+                            mutableStateOf(uiState.selectedChapter.toString())
+                        }
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                        ) {
+                            Text("الفصل:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
+                            Button(onClick = onPrevChapter, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)) { Text("−") }
+                            OutlinedTextField(
+                                value = chapterField,
+                                onValueChange = { v -> if (v.all { it.isDigit() } && v.length <= 3) chapterField = v },
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+                                keyboardActions = KeyboardActions(onDone = {
+                                    val n = chapterField.toIntOrNull()
+                                    if (n != null) {
+                                        pickerJumpChapter = n.coerceIn(1, uiState.selectedBook.totalChapters)
+                                        onSelectChapter(pickerJumpChapter!!)
+                                    }
+                                }),
+                                modifier = Modifier.width(76.dp).trackTextInputFocus(),
+                                textStyle = LocalTextStyle.current.copy(textAlign = TextAlign.Center, fontSize = 13.sp)
+                            )
+                            Button(onClick = onNextChapter, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)) { Text("+") }
+                            Text(
+                                "/ ${uiState.selectedBook.totalChapters}",
+                                fontSize = 12.sp, color = bento.textSecondary
+                            )
+                        }
                         Box(modifier = Modifier.heightIn(min = 120.dp, max = 220.dp)) {
                             LazyVerticalGrid(
                                 columns = GridCells.Adaptive(minSize = 52.dp),
@@ -351,7 +498,14 @@ fun BibleReaderScreen(
                     IconButton(onClick = onPrevChapter) {
                         Icon(Icons.AutoMirrored.Filled.ArrowForward, "Previous chapter", tint = bento.textSecondary)
                     }
-                    IconButton(onClick = { showSearchBar = !showSearchBar; if (!showSearchBar) onClearSearch() }) {
+                    IconButton(onClick = {
+                        showSearchBar = !showSearchBar
+                        if (!showSearchBar) onClearSearch()
+                        // One-update item 1: reopening re-arms remembered
+                        // results (no retyping); closing via the icon is an
+                        // explicit dismiss like ×, so it fully clears.
+                        else onSearchBoxReopened()
+                    }) {
                         Icon(if (showSearchBar) Icons.Default.Close else Icons.Default.Search, null, tint = bento.textSecondary)
                     }
                     IconButton(onClick = { showRecentsSheet = true }) {
@@ -396,7 +550,8 @@ fun BibleReaderScreen(
                         value = uiState.searchQuery, onValueChange = onSearchChanged,
                         placeholder = { Text("بحث…", maxLines = 1) },
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)
-                            .focusRequester(searchFocusRequester),
+                            .focusRequester(searchFocusRequester)
+                            .trackTextInputFocus(),
                         shape = RoundedCornerShape(12.dp),
                         trailingIcon = {
                             if (uiState.searchQuery.isNotEmpty()) {
@@ -428,16 +583,21 @@ fun BibleReaderScreen(
                         // Items 6+7: chapter bands (same pair as the Library)
                         // own the row background; rows are Arabic-only.
                         // Theme bands (same pair as the Sermon list, from the theme).
+                        // One-update item 3: the whole sheet is RTL — header
+                        // and rows align right for Arabic.
+                        // One-update item 3: chapter bands via the
+                        // testable BibleBookGroups.chapterBands.
                         val recentsBandA = remember(uiState.recentVerses) {
-                            var bandA = true
-                            var prevKey: Pair<String, Int>? = null
-                            uiState.recentVerses.map { verse ->
-                                val key = verse.bookId to verse.chapter
-                                if (prevKey != null && key != prevKey) bandA = !bandA
-                                prevKey = key
-                                bandA
-                            }
+                            BibleBookGroups.chapterBands(uiState.recentVerses)
                         }
+                        // One-update item 3: sheet font — follow universal
+                        // (reader size) by default, or the local override.
+                        // Citation keeps the 14->11 body/citation ratio.
+                        val recentsBodySp = uiState.recentsFontSize ?: uiState.readerFontSize
+                        val recentsBodySize = recentsBodySp.sp
+                        val recentsCitationSize = (recentsBodySp * 11 / 14).coerceAtLeast(9).sp
+                        var recentsFontDialog by remember { mutableStateOf(false) }
+                        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
                         Column(modifier = Modifier.fillMaxWidth().fillMaxHeight(0.75f).padding(horizontal = 16.dp, vertical = 8.dp)) {
                             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                 Text(
@@ -447,6 +607,10 @@ fun BibleReaderScreen(
                                     color = bento.textPrimary,
                                     modifier = Modifier.weight(1f)
                                 )
+                                // One-update item 3: per-section font gear.
+                                IconButton(onClick = { recentsFontDialog = true }) {
+                                    Icon(Icons.Filled.Settings, "حجم خط الآيات الأخيرة", tint = bento.textSecondary)
+                                }
                                 // Item 10: user reset for the persisted recents
                                 // (stays open so the empty state confirms it).
                                 if (uiState.recentVerses.isNotEmpty()) {
@@ -526,14 +690,14 @@ fun BibleReaderScreen(
                                         ) {
                                             Text(
                                                 text = verse.getFormattedArabicCitation(),
-                                                fontSize = VerseRowSpec.CitationSize,
+                                                fontSize = recentsCitationSize,
                                                 fontWeight = FontWeight.Bold,
                                                 color = bento.primary
                                             )
                                             Spacer(modifier = Modifier.height(VerseRowSpec.CitationBodySpacing))
                                             Text(
                                                 text = verse.arabicText,
-                                                fontSize = 14.sp,
+                                                fontSize = recentsBodySize,
                                                 color = bento.textPrimary
                                             )
                                         }
@@ -543,6 +707,44 @@ fun BibleReaderScreen(
                             }
                             SnackbarHost(hostState = recentsSnackbarHostState)
                         }
+                        // One-update item 3: per-section font dialog —
+                        // "Follow universal" (default) + local sizes.
+                        if (recentsFontDialog) {
+                            AlertDialog(
+                                onDismissRequest = { recentsFontDialog = false },
+                                title = { Text("حجم خط الآيات الأخيرة", fontSize = 15.sp, fontWeight = FontWeight.Bold) },
+                                text = {
+                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        val followUniversal = uiState.recentsFontSize == null
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
+                                                .clickable { onSetRecentsFontSize(null); recentsFontDialog = false }
+                                                .padding(10.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            RadioButton(selected = followUniversal, onClick = { onSetRecentsFontSize(null); recentsFontDialog = false })
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text("اتبع العام (Follow universal: ${uiState.readerFontSize}sp)", fontSize = 13.sp)
+                                        }
+                                        listOf(12, 14, 16, 18, 20, 24).forEach { size ->
+                                            val selected = uiState.recentsFontSize == size
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
+                                                    .clickable { onSetRecentsFontSize(size); recentsFontDialog = false }
+                                                    .padding(10.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                RadioButton(selected = selected, onClick = { onSetRecentsFontSize(size); recentsFontDialog = false })
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Text("$size sp", fontSize = 13.sp)
+                                            }
+                                        }
+                                    }
+                                },
+                                confirmButton = {}
+                            )
+                        }
+                        } // CompositionLocalProvider(Rtl) — one-update item 3
                     }
                 }
 
@@ -632,7 +834,20 @@ fun BibleReaderScreen(
                             version = uiState.bibleVersion,
                             fontSizeSp = uiState.readerFontSize,
                             showCitation = uiState.isSearching,
-                            onClick = { onVerseClicked(verse) }
+                            lineSpacingArabic = uiState.activeTemplate.lineSpacingArabic,
+                            lineSpacingEnglish = uiState.activeTemplate.lineSpacingEnglish,
+                            // One-update item 1: a search-result tap selects
+                            // (cues + closes the box, remembers the query)
+                            // and NEVER goes live; a Library-list tap keeps
+                            // today's go-live behaviour.
+                            onClick = {
+                                if (uiState.isSearching) {
+                                    onSearchResultClicked(verse)
+                                    showSearchBar = false
+                                } else {
+                                    onVerseClicked(verse)
+                                }
+                            }
                         )
                     }
                 }
@@ -682,7 +897,11 @@ fun BentoVerseCard(
     onClick: () -> Unit,
     isFocused: Boolean = false,
     inSermonList: Boolean = false,
-    isRecent: Boolean = false
+    isRecent: Boolean = false,
+    // One-update item 7: verse line spacing from the active template
+    // (1.5 = the old fixed rendering).
+    lineSpacingArabic: Float = 1.5f,
+    lineSpacingEnglish: Float = 1.5f
 ) {
     val bento = LocalBentoColors.current
     val listColors = LocalListColors.current
@@ -739,7 +958,7 @@ fun BentoVerseCard(
                         }
                         append(verse.arabicText)
                     },
-                    fontSize = fontSizeSp.sp, lineHeight = (fontSizeSp * 1.5).sp,
+                    fontSize = fontSizeSp.sp, lineHeight = (fontSizeSp * lineSpacingArabic).sp,
                     color = bento.textPrimary, textAlign = TextAlign.Right, modifier = Modifier.fillMaxWidth()
                 )
 
@@ -748,7 +967,8 @@ fun BentoVerseCard(
                     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
                         Text(
                             text = verse.englishText ?: "",
-                            fontSize = (fontSizeSp - 4).sp, color = bento.textSecondary,
+                            fontSize = (fontSizeSp - 4).sp, lineHeight = ((fontSizeSp - 4) * lineSpacingEnglish).sp,
+                            color = bento.textSecondary,
                             textAlign = TextAlign.Left, modifier = Modifier.fillMaxWidth()
                         )
                     }

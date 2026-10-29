@@ -1,5 +1,7 @@
 package com.arabicchristianmedia.model
 
+import kotlin.math.roundToInt
+
 enum class TemplateStyle(val displayName: String, val description: String) {
     MODERN_GLASS("Modern Glass", "Frosted glass card with vibrant accent border and clean typography"),
     CLASSIC_BANNER("Classic Broadcast", "Full-width traditional television lower third with split reference"),
@@ -439,4 +441,42 @@ data class LowerThirdTemplate(
      * while only the verse shrinks to fit the box.
      */
     val autoFitRatioLock: Boolean = true,
+    /**
+     * Verse line spacing multipliers (one-update item 7): line height
+     * within a wrapped verse, separate for Arabic and English. 1.5
+     * reproduces the pre-item-7 rendering exactly (NDI StaticLayout
+     * multipliers and the HTTP line-height formulas are scaled by
+     * value/1.5), so existing templates look identical until the user
+     * moves a slider. Range in the Editor: 1.0..3.0.
+     */
+    val lineSpacingArabic: Float = 1.5f,
+    val lineSpacingEnglish: Float = 1.5f,
+    /**
+     * Auto-fit frozen verse:citation ratio (one-update item 8). Null =
+     * never recorded (sliders behave independently, as before). Once
+     * auto-fit is applied the ratio verseFontSize/referenceFontSize is
+     * recorded here; later slider moves scale verse+citation TOGETHER
+     * preserving it, and the Editor shows the recorded percentage live.
+     * A different percentage is set explicitly once and becomes the new
+     * recorded value. Toggling auto-fit off/on never clears it.
+     */
+    val autoFitFrozenRatio: Float? = null,
 )
+
+/** Auto-fit frozen-ratio math (one-update item 8), pure and unit-testable.
+ * The frozen ratio is verseSp / citationSp recorded when auto-fit first
+ * applies. [record] captures it from current sizes (no-op when one is
+ * zero). [scaledCitation] returns the citation size that preserves the
+ * ratio for a new verse size, so one slider move updates both. */
+object AutoFitRatio {
+    fun record(verseSp: Int, citationSp: Int): Float? {
+        if (verseSp <= 0 || citationSp <= 0) return null
+        return verseSp.toFloat() / citationSp.toFloat()
+    }
+    fun scaledCitation(newVerseSp: Int, frozenRatio: Float): Int {
+        if (frozenRatio <= 0f) return 0
+        return (newVerseSp / frozenRatio).roundToInt().coerceAtLeast(1)
+    }
+    /** Display percentage of the ratio, e.g. 214% for 30sp/14sp. */
+    fun percent(frozenRatio: Float): Int = (frozenRatio * 100f).roundToInt()
+}

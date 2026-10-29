@@ -1108,6 +1108,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             put("bandLightB", bandHex(theme.light.bandB))
             put("recentsDark", bandHex(theme.dark.recents))
             put("recentsLight", bandHex(theme.light.recents))
+            // One-update item 17: live-highlight + sermon-tint theme
+            // variables, synced to the remote page like the bands.
+            put("liveHighlightDark", bandHex(theme.dark.liveHighlight))
+            put("liveHighlightLight", bandHex(theme.light.liveHighlight))
+            put("sermonTintDark", bandHex(theme.dark.sermonTint))
+            put("sermonTintLight", bandHex(theme.light.sermonTint))
             put("liveNavy", "#1B3A5C")
             put("liveYellow", "#F5D76E")
             put("livePaleYellow", "#FDE9A8")
@@ -2004,9 +2010,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         englishText.style.color = data.secondaryTextColorHex || '#CBD5E1';
         englishCitation.style.color = data.secondaryReferenceColorHex || '#94A3B8';
         englishText.style.fontSize = scaledPx(data.secondaryVerseFontSize || 18);
-        englishText.style.lineHeight = (1.15 + 2 / (data.secondaryVerseFontSize || 18)).toFixed(3);
+        // One-update item 7: user line-spacing multiplier (default 1.5 =
+        // old rendering exactly).
+        englishText.style.lineHeight = ((1.15 + 2 / (data.secondaryVerseFontSize || 18)) * ((data.lineSpacingEnglish || 1.5) / 1.5)).toFixed(3);
         englishCitation.style.fontSize = scaledPx(data.secondaryReferenceFontSize || 14);
-        englishCitation.style.lineHeight = (1.15 + 2 / (data.secondaryReferenceFontSize || 14)).toFixed(3);
+        englishCitation.style.lineHeight = ((1.15 + 2 / (data.secondaryReferenceFontSize || 14)) * ((data.lineSpacingEnglish || 1.5) / 1.5)).toFixed(3);
         // Round 2 (#5): 'System' is not a CSS family - assigning it raw
         // made the browser fall back to its default SERIF while NDI drew
         // the system sans. Map it to the sans stack; named fonts get a
@@ -2140,7 +2148,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       citationRow.style.fontWeight = data.referenceIsBold ? 'bold' : 'normal';
       citationRow.style.fontStyle = data.referenceIsItalic ? 'italic' : 'normal';
       verseText.style.fontSize = scaledPx(data.verseFontSize || 26);
-      verseText.style.lineHeight = (1.25 + 3 / (data.verseFontSize || 26)).toFixed(3);
+      // One-update item 7: Arabic line-spacing multiplier (default 1.5 =
+      // old rendering exactly).
+      verseText.style.lineHeight = ((1.25 + 3 / (data.verseFontSize || 26)) * ((data.lineSpacingArabic || 1.5) / 1.5)).toFixed(3);
       citationRow.style.fontSize = scaledPx(data.referenceFontSize || 18);
       // v1.9: reset the span too — the auto-fit loop shrinks citationText directly,
       // so without this each applyData compounds the shrink.
@@ -2298,6 +2308,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       const rv = parseInt(hex.slice(1,3), 16); const r = isNaN(rv) ? 10 : rv;
       const gv = parseInt(hex.slice(3,5), 16); const g = isNaN(gv) ? 17 : gv;
       const bv = parseInt(hex.slice(5,7), 16); const b = isNaN(bv) ? 40 : bv;
+      // One-update item 11: the first color's own alpha (#RRGGBBAA),
+      // default 1 — multiplied by card opacity below.
+      const av = hex.length >= 9 ? parseInt(hex.slice(7,9), 16) / 255 : 1;
+      const a1own = isNaN(av) ? 1 : av;
 
       const accent = data.accentColorHex || '#E5A93C';
       const textColor = data.textColorHex || '#FFFFFF';
@@ -2341,6 +2355,19 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         var n = parseInt(h, 16);
         if (isNaN(n)) return null;
         return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+      }
+      // One-update item 11: like hexToRgb but keeps the color's OWN
+      // alpha from #RRGGBBAA (defaults to 1 for 6-digit hex). Each
+      // gradient stop's alpha is its own alpha × card opacity, so a
+      // Clear second color fades to truly transparent instead of
+      // rendering as opaque black.
+      function hexToRgba(hex) {
+        var h = (hex || '#000000').replace('#', '');
+        if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+        var r = parseInt(h.substring(0, 2), 16), g = parseInt(h.substring(2, 4), 16), b = parseInt(h.substring(4, 6), 16);
+        var a = h.length >= 8 ? parseInt(h.substring(6, 8), 16) / 255 : 1;
+        if (isNaN(r)) r = 0; if (isNaN(g)) g = 0; if (isNaN(b)) b = 0; if (isNaN(a)) a = 1;
+        return { r: r, g: g, b: b, a: a };
       }
       function cardGlowShadow(shape, alpha) {
         // v1.9.2 (#3): the shadow draws whenever the card has a VISIBLE
@@ -2394,12 +2421,14 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // both renderers (NDI uses the same colors/angle/opacity).
         // Wins over the style's own gradient (ROYAL's red-to-dark)
         // because the user chose this gradient explicitly.
-        var g2 = hexToRgb(data.gradientColorHex2 || '#0A1128') || { r: 10, g: 17, b: 40 };
+        var g2 = hexToRgba(data.gradientColorHex2 || '#0A1128') || { r: 10, g: 17, b: 40, a: 1 };
         var gAngle = (data.gradientAngleDeg !== undefined) ? data.gradientAngleDeg : 90;
         var gAnim = data.gradientAnimation || 'none';
         var gSpeed = (data.gradientSpeed !== undefined) ? parseFloat(data.gradientSpeed) : 1;
-        var gA = 'rgba(' + r + ',' + g + ',' + b + ',' + opacity + ')';
-        var gB = 'rgba(' + g2.r + ',' + g2.g + ',' + g2.b + ',' + opacity + ')';
+        // One-update item 11: each stop keeps its own alpha × card opacity.
+        var a1e = a1own * opacity, a2e = (g2.a !== undefined ? g2.a : 1) * opacity;
+        var gA = 'rgba(' + r + ',' + g + ',' + b + ',' + a1e + ')';
+        var gB = 'rgba(' + g2.r + ',' + g2.g + ',' + g2.b + ',' + a2e + ')';
         cardBox.style.background = 'linear-gradient(' + gAngle + 'deg, ' + gA + ' 0%, ' + gB + ' 100%)';
         cardBox.style.border = data.showAccentBorder ? (6 * getStageScale()) + 'px solid ' + accent : 'none';
         cardBox.style.boxShadow = cardGlowShadow('0 16px 40px', 0.55);
@@ -2433,7 +2462,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
           })();
         }
       } else if (data.style === 'CLASSIC_BANNER') {
-        cardBox.style.backgroundColor = 'rgba(' + r + ',' + g + ',' + b + ',' + opacity + ')';
+        // One-update item 11: first color's own alpha × card opacity.
+        cardBox.style.backgroundColor = 'rgba(' + r + ',' + g + ',' + b + ',' + (a1own * opacity) + ')';
         // v2.0: border width scaled (NDI stroke: 6 x frame scale); the
         // corner radius keeps the scaled value set above (NDI honors the
         // style's cornerRadiusDp for the banner too — was hardcoded 4px).
@@ -2441,11 +2471,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         cardBox.style.borderLeft = 'none';
         cardBox.style.boxShadow = cardGlowShadow('0 12px 36px', 0.6);
       } else if (data.style === 'ROYAL_LITURGICAL') {
-        cardBox.style.background = 'linear-gradient(135deg, rgba(' + r + ',' + g + ',' + b + ',' + opacity + ') 0%, rgba(20,20,35,' + opacity + ') 100%)';
+        cardBox.style.background = 'linear-gradient(135deg, rgba(' + r + ',' + g + ',' + b + ',' + (a1own * opacity) + ') 0%, rgba(20,20,35,' + opacity + ') 100%)';
         cardBox.style.border = data.showAccentBorder ? (6 * getStageScale()) + 'px solid ' + accent : 'none';
         cardBox.style.boxShadow = cardGlowShadow('0 10px 40px', 0.7);
       } else {
-        cardBox.style.backgroundColor = 'rgba(' + r + ',' + g + ',' + b + ',' + opacity + ')';
+        // One-update item 11: first color's own alpha × card opacity.
+        cardBox.style.backgroundColor = 'rgba(' + r + ',' + g + ',' + b + ',' + (a1own * opacity) + ')';
         cardBox.style.backdropFilter = 'blur(16px)';
         cardBox.style.webkitBackdropFilter = 'blur(16px)';
         cardBox.style.border = data.showAccentBorder ? (6 * getStageScale()) + 'px solid ' + accent : 'none';
@@ -2500,9 +2531,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         var baseAngle = (data.gradientAngleDeg !== undefined) ? data.gradientAngleDeg : 90;
         var g2r = null;
         try {
-          var gg = hexToRgb(data.gradientColorHex2 || '#0A1128');
-          g2r = gg || { r: 10, g: 17, b: 40 };
-        } catch (e) { g2r = { r: 10, g: 17, b: 40 }; }
+          var gg = hexToRgba(data.gradientColorHex2 || '#0A1128');
+          g2r = gg || { r: 10, g: 17, b: 40, a: 1 };
+        } catch (e) { g2r = { r: 10, g: 17, b: 40, a: 1 }; }
+        // One-update item 11: per-stop alpha (own alpha × card opacity).
+        var ga1 = a1own * opacity, ga2 = (g2r.a !== undefined ? g2r.a : 1) * opacity;
         // For slide/rotate on a non-video card, keep the existing
         // CSS/timer behaviour untouched (no double timer). Pulse is
         // EXCLUDED from that exemption: its old bg-breath class was
@@ -2515,18 +2548,18 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
           var phase = 2 * Math.PI * spd * (Date.now() / 1000);
           var s = Math.sin(phase);
           if (anim === 'flow') {
-            target.style.background = 'linear-gradient(' + baseAngle + 'deg, rgba(' + r + ',' + g + ',' + b + ',' + opacity + ') 0%, rgba(' + g2r.r + ',' + g2r.g + ',' + g2r.b + ',' + opacity + ') 100%)';
+            target.style.background = 'linear-gradient(' + baseAngle + 'deg, rgba(' + r + ',' + g + ',' + b + ',' + ga1 + ') 0%, rgba(' + g2r.r + ',' + g2r.g + ',' + g2r.b + ',' + ga2 + ') 100%)';
             target.style.backgroundPosition = (50 + 50 * s) + '% 50%';
           } else if (anim === 'shimmer') {
             var m = 0.88 + 0.12 * s;
-            target.style.background = 'linear-gradient(' + baseAngle + 'deg, rgba(' + r + ',' + g + ',' + b + ',' + (opacity * m) + ') 0%, rgba(' + g2r.r + ',' + g2r.g + ',' + g2r.b + ',' + (opacity * m) + ') 100%)';
+            target.style.background = 'linear-gradient(' + baseAngle + 'deg, rgba(' + r + ',' + g + ',' + b + ',' + (ga1 * m) + ') 0%, rgba(' + g2r.r + ',' + g2r.g + ',' + g2r.b + ',' + (ga2 * m) + ') 100%)';
             target.style.backgroundPosition = '0% 0%';
           } else if (anim === 'wave') {
             var a = baseAngle + 20 * s;
-            target.style.background = 'linear-gradient(' + a + 'deg, rgba(' + r + ',' + g + ',' + b + ',' + opacity + ') 0%, rgba(' + g2r.r + ',' + g2r.g + ',' + g2r.b + ',' + opacity + ') 100%)';
+            target.style.background = 'linear-gradient(' + a + 'deg, rgba(' + r + ',' + g + ',' + b + ',' + ga1 + ') 0%, rgba(' + g2r.r + ',' + g2r.g + ',' + g2r.b + ',' + ga2 + ') 100%)';
             target.style.backgroundPosition = '0% 0%';
           } else if (anim === 'slide') {
-            target.style.background = 'linear-gradient(' + baseAngle + 'deg, rgba(' + r + ',' + g + ',' + b + ',' + opacity + ') 0%, rgba(' + g2r.r + ',' + g2r.g + ',' + g2r.b + ',' + opacity + ') 100%)';
+            target.style.background = 'linear-gradient(' + baseAngle + 'deg, rgba(' + r + ',' + g + ',' + b + ',' + ga1 + ') 0%, rgba(' + g2r.r + ',' + g2r.g + ',' + g2r.b + ',' + ga2 + ') 100%)';
             target.style.backgroundPosition = (50 + 50 * s) + '% 50%';
           } else if (anim === 'pulse') {
             // NDI parity, exact: gradPhase = (sin(t * 1.5 * speed) + 1) / 2
@@ -2539,11 +2572,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             var tt = (Date.now() % 60000) / 1000;
             var ph = (Math.sin(tt * 1.5 * spd) + 1) / 2;
             var pm = 0.7 + 0.3 * ph;
-            target.style.background = 'linear-gradient(' + baseAngle + 'deg, rgba(' + r + ',' + g + ',' + b + ',' + (opacity * pm) + ') 0%, rgba(' + g2r.r + ',' + g2r.g + ',' + g2r.b + ',' + (opacity * pm) + ') 100%)';
+            target.style.background = 'linear-gradient(' + baseAngle + 'deg, rgba(' + r + ',' + g + ',' + b + ',' + (ga1 * pm) + ') 0%, rgba(' + g2r.r + ',' + g2r.g + ',' + g2r.b + ',' + (ga2 * pm) + ') 100%)';
             target.style.backgroundPosition = '0% 0%';
           } else if (anim === 'rotate') {
             var ra = (baseAngle + (Date.now() / 1000) * 30 * spd) % 360;
-            target.style.background = 'linear-gradient(' + ra + 'deg, rgba(' + r + ',' + g + ',' + b + ',' + opacity + ') 0%, rgba(' + g2r.r + ',' + g2r.g + ',' + g2r.b + ',' + opacity + ') 100%)';
+            target.style.background = 'linear-gradient(' + ra + 'deg, rgba(' + r + ',' + g + ',' + b + ',' + ga1 + ') 0%, rgba(' + g2r.r + ',' + g2r.g + ',' + g2r.b + ',' + ga2 + ') 100%)';
           }
         }, 50);
       })();
@@ -3403,10 +3436,14 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         } else verseText
 
         val staticLayout: StaticLayout? = if (showArabic) {
+            // One-update item 7: user line-spacing multiplier, scaled by
+            // value/1.5 so the 1.5 default reproduces the old rendering
+            // exactly on every existing template.
+            val arLineMult = 1.25f * (tpl.lineSpacingArabic / 1.5f)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             StaticLayout.Builder.obtain(layoutVerseText, 0, layoutVerseText.length, verseTextPaint, contentWidth)
                 .setAlignment(alignment)
-                .setLineSpacing(6f * scale * fitRatio, 1.25f)
+                .setLineSpacing(6f * scale * fitRatio, arLineMult)
                 .setIncludePad(true)
                 // v2.0: greedy line breaking like the browser (HTTP overlay).
                 // The default HIGH_QUALITY balances lines (breaks early), so
@@ -3415,7 +3452,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 .build()
         } else {
             @Suppress("DEPRECATION")
-            StaticLayout(layoutVerseText, verseTextPaint, contentWidth, alignment, 1.25f, 6f * scale * fitRatio, true)
+            StaticLayout(layoutVerseText, verseTextPaint, contentWidth, alignment, arLineMult, 6f * scale * fitRatio, true)
         }
         } else null
 
@@ -3461,15 +3498,17 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             }
 
             secondaryLayout = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                // One-update item 7: English line-spacing multiplier.
+                val enLineMult = 1.15f * (tpl.lineSpacingEnglish / 1.5f)
                 StaticLayout.Builder.obtain(fullSecondaryText, 0, fullSecondaryText.length, secondaryTextPaint, contentWidth)
                     .setAlignment(secAlignment)
-                    .setLineSpacing(4f * scale * fitRatio, 1.15f)
+                    .setLineSpacing(4f * scale * fitRatio, enLineMult)
                     .setIncludePad(true)
                     .setBreakStrategy(Layout.BREAK_STRATEGY_SIMPLE)
                     .build()
             } else {
                 @Suppress("DEPRECATION")
-                StaticLayout(fullSecondaryText, secondaryTextPaint, contentWidth, secAlignment, 1.15f, 4f * scale * fitRatio, true)
+                StaticLayout(fullSecondaryText, secondaryTextPaint, contentWidth, secAlignment, 1.15f * (tpl.lineSpacingEnglish / 1.5f), 4f * scale * fitRatio, true)
             }
 
             if (!isEnglishOnly) {
@@ -3492,13 +3531,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 secondaryCitationLayout = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                     StaticLayout.Builder.obtain(secCitationText, 0, secCitationText.length, secCitationPaint, contentWidth)
                         .setAlignment(secAlignment)
-                        .setLineSpacing(4f * scale * fitRatio, 1.15f)
+                        .setLineSpacing(4f * scale * fitRatio, 1.15f * (tpl.lineSpacingEnglish / 1.5f))
                         .setIncludePad(true)
                         .setBreakStrategy(Layout.BREAK_STRATEGY_SIMPLE)
                         .build()
                 } else {
                     @Suppress("DEPRECATION")
-                    StaticLayout(secCitationText, secCitationPaint, contentWidth, secAlignment, 1.15f, 4f * scale * fitRatio, true)
+                    StaticLayout(secCitationText, secCitationPaint, contentWidth, secAlignment, 1.15f * (tpl.lineSpacingEnglish / 1.5f), 4f * scale * fitRatio, true)
                 }
             }
         }
@@ -3970,12 +4009,17 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 // sin loop can never jump at a wrap boundary.
                 val gradAbsTimeSec = System.currentTimeMillis() / 1000.0
                 val gradMotionPhase = com.arabicchristianmedia.model.GradientMotion.phase(gradAbsTimeSec, tpl.gradientSpeed)
-                val gradAlpha = when (tpl.gradientAnimation) {
-                    GradientAnimationType.PULSE ->
-                        (bgAlpha * (0.7f + 0.3f * gradPhase)).toInt().coerceIn(0, 255)
+                // (animFactor below carries the PULSE/SHIMMER modulation;
+                // gradAlpha was folded into the per-stop alphas, item 11.)
+                // One-update item 11: each stop keeps its OWN alpha (parsed
+                // from #RRGGBBAA by Color.parseColor) multiplied by the
+                // card/animated alpha — a Clear stop fades to truly
+                // transparent instead of rendering as opaque black.
+                val animFactor = when (tpl.gradientAnimation) {
+                    GradientAnimationType.PULSE -> 0.7f + 0.3f * gradPhase
                     GradientAnimationType.SHIMMER ->
-                        (bgAlpha * com.arabicchristianmedia.model.GradientMotion.shimmerMultiplier(gradMotionPhase)).toInt().coerceIn(0, 255)
-                    else -> bgAlpha
+                        com.arabicchristianmedia.model.GradientMotion.shimmerMultiplier(gradMotionPhase)
+                    else -> 1f
                 }
                 val gradAngleDeg = when (tpl.gradientAnimation) {
                     GradientAnimationType.ROTATE ->
@@ -3999,14 +4043,16 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                     else -> 0f
                 }
                 val gradCol2 = try { Color.parseColor(tpl.gradientColorHex2) } catch (e: Exception) { baseBgCol }
+                val stopAlpha1 = (Color.alpha(baseBgCol) / 255f * bgAlpha * animFactor).toInt().coerceIn(0, 255)
+                val stopAlpha2 = (Color.alpha(gradCol2) / 255f * bgAlpha * animFactor).toInt().coerceIn(0, 255)
                 val gradShader = LinearGradient(
                     cx - dirX * extent + dirX * slideOffset,
                     cy - dirY * extent + dirY * slideOffset,
                     cx + dirX * extent + dirX * slideOffset,
                     cy + dirY * extent + dirY * slideOffset,
                     intArrayOf(
-                        Color.argb(gradAlpha, Color.red(baseBgCol), Color.green(baseBgCol), Color.blue(baseBgCol)),
-                        Color.argb(gradAlpha, Color.red(gradCol2), Color.green(gradCol2), Color.blue(gradCol2))
+                        Color.argb(stopAlpha1, Color.red(baseBgCol), Color.green(baseBgCol), Color.blue(baseBgCol)),
+                        Color.argb(stopAlpha2, Color.red(gradCol2), Color.green(gradCol2), Color.blue(gradCol2))
                     ),
                     null, Shader.TileMode.CLAMP
                 )
@@ -6402,6 +6448,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     .vrow.band-a { background: var(--band-a, #3B3052); }
     .vrow.band-b { background: var(--band-b, #2B3A42); }
   }
+  .vrow.kbd-focus { outline: 3px solid var(--live-yellow, #F5D76E); outline-offset: -3px; border-radius: 10px; }
   .vrow.live { background: var(--live-bg, #1B3A5C); border: 2px solid var(--live-yellow, #F5D76E); border-radius: 10px; color: var(--live-text, #FFFFFF); }
   .vrow.recent { border-inline-start: 3px solid var(--recents, #0D9488); padding-inline-start: 9px; }
   /* 2026-10-28 remote redesign: tablet RTL control order (Clear
@@ -6429,6 +6476,17 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     .status { order: 5; }
     body.recents-open #recentCard { display: block; position: fixed; left: 8px; right: 8px; bottom: 8px; max-height: 75vh; z-index: 50; overflow-y: auto; }
     body.recents-open #recentCard .vlist { max-height: 60vh; }
+    /* One-update item 19: when the recents sheet is open on narrow
+       screens, lock body scroll and keep one scroll container with
+       overscroll-behavior:contain, so the sheet scrolls alone. */
+    body.recents-open { overflow: hidden; }
+    body.recents-open #recentCard {
+      overscroll-behavior: contain;
+      -webkit-overflow-scrolling: touch;
+    }
+    /* One-update item 19: RTL Arabic support for the recents sheet. */
+    body.recents-open #recentCard .vrow { direction: rtl; text-align: right; }
+    body.recents-open #recentCard .vrow .ve { direction: ltr; text-align: left; }
   }
   .vn { font-weight: 800; min-width: 30px; text-align: center; opacity: 0.65; padding-top: 2px; }
   .va { font-size: 17px; line-height: 1.8; }
@@ -6461,7 +6519,26 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     <button id="prevBtn" onclick="sermonStep('prev')">◀ Prev</button>
     <button id="nextBtn" onclick="sermonStep('next')">Next ▶</button>
   </div>
+  <div class="hint" id="kbdHint">⌨ <b>?</b> shortcuts · <b>/</b> reference · <b>Enter</b> go · <b>↑↓</b> select · <b>O</b> on-air · <b>C</b> clear · <b>R</b> recents · <b>←→</b> sermon</div>
   <button id="recentsToggle" onclick="toggleRecents()">🕐 Recents <span id="recentsCount"></span></button>
+  <div id="kbdOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:100;align-items:center;justify-content:center;" onclick="if(event.target===this)toggleKbdOverlay(false)">
+    <div class="card" style="max-width:420px;max-height:80vh;overflow-y:auto;">
+      <label>⌨ Keyboard shortcuts</label>
+      <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:14px;margin-top:8px;">
+        <b>/</b><span>Focus reference (or Ctrl+F)</span>
+        <b>Enter</b><span>Trigger reference / go live on selected verse</span>
+        <b>↑ / ↓</b><span>Move verse selection</span>
+        <b>→ / PageDown</b><span>Next sermon</span>
+        <b>← / PageUp</b><span>Previous sermon</span>
+        <b>O</b><span>ON AIR toggle</span>
+        <b>C</b><span>Clear verse</span>
+        <b>R</b><span>Recents sheet</span>
+        <b>?</b><span>This overlay</span>
+        <b>Esc</b><span>Close overlay / sheet</span>
+      </div>
+      <div style="margin-top:12px;"><button class="btn" onclick="toggleKbdOverlay(false)">Close</button></div>
+    </div>
+  </div>
   <div class="card" id="recentCard">
     <label>الآيات الأخيرة — Recent verses</label>
     <div id="recentList" class="vlist"></div>
@@ -6843,6 +6920,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         document.documentElement.style.setProperty('--band-a', darkMode ? j.bandDarkA : j.bandLightA);
         document.documentElement.style.setProperty('--band-b', darkMode ? j.bandDarkB : j.bandLightB);
         document.documentElement.style.setProperty('--recents', darkMode ? (j.recentsDark || '#0D9488') : (j.recentsLight || '#0D9488'));
+        // One-update item 17: live-highlight + sermon-tint theme variables.
+        document.documentElement.style.setProperty('--live-highlight', darkMode ? (j.liveHighlightDark || '#1E293B') : (j.liveHighlightLight || '#E0F2FE'));
+        document.documentElement.style.setProperty('--sermon-tint', darkMode ? (j.sermonTintDark || '#2B3A42') : (j.sermonTintLight || '#DFE9F3'));
         document.documentElement.style.setProperty('--live-bg', j.liveNavy || '#1B3A5C');
         document.documentElement.style.setProperty('--live-yellow', j.liveYellow || '#F5D76E');
         document.documentElement.style.setProperty('--live-text', '#FFFFFF');
@@ -6873,6 +6953,68 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       setStatus('⚠ Disconnected from tablet — retrying…', 'err');
     });
   }
+
+  // One-update item 20: remote page keyboard (desktop). Never while
+  // typing in the reference field or a select (except the keys that
+  // belong to them: Enter triggers, Esc blurs).
+  var kbdVerseIdx = -1;
+  function kbdVerseRows() {
+    var list = document.getElementById('vList');
+    return list ? Array.prototype.slice.call(list.querySelectorAll('.vrow')) : [];
+  }
+  function kbdMarkVerse(idx) {
+    var rows = kbdVerseRows();
+    rows.forEach(function(r) { r.classList.remove('kbd-focus'); });
+    kbdVerseIdx = idx;
+    if (idx >= 0 && idx < rows.length) {
+      rows[idx].classList.add('kbd-focus');
+      rows[idx].scrollIntoView({ block: 'nearest' });
+    }
+  }
+  function toggleKbdOverlay(show) {
+    var ov = document.getElementById('kbdOverlay');
+    if (show === undefined) show = ov.style.display === 'none';
+    ov.style.display = show ? 'flex' : 'none';
+  }
+  document.addEventListener('keydown', function(e) {
+    var tag = (document.activeElement && document.activeElement.tagName) || '';
+    var typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+    var ref = document.getElementById('ref');
+    // '/' or Ctrl+F focuses the reference (even while typing elsewhere).
+    if ((e.key === '/' && !typing) || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f')) {
+      e.preventDefault();
+      if (ref) ref.focus();
+      return;
+    }
+    if (typing) {
+      if (e.key === 'Escape' && document.activeElement) document.activeElement.blur();
+      return; // never hijack typing (Enter belongs to the field).
+    }
+    var handled = true;
+    switch (e.key) {
+      case '?': toggleKbdOverlay(); break;
+      case 'Escape':
+        if (document.getElementById('kbdOverlay').style.display !== 'none') toggleKbdOverlay(false);
+        else if (document.body.classList.contains('recents-open')) toggleRecents();
+        else handled = false;
+        break;
+      case 'o': case 'O': toggleOnAir(); break;
+      case 'c': case 'C': clearVerse(); break;
+      case 'r': case 'R': toggleRecents(); break;
+      case 'Enter':
+        if (kbdVerseIdx >= 0) {
+          var rows = kbdVerseRows();
+          if (rows[kbdVerseIdx]) rows[kbdVerseIdx].click();
+        } else triggerRef();
+        break;
+      case 'ArrowUp': kbdMarkVerse(Math.max(0, (kbdVerseIdx < 0 ? kbdVerseRows().length : kbdVerseIdx) - 1)); break;
+      case 'ArrowDown': kbdMarkVerse(kbdVerseIdx + 1 < kbdVerseRows().length ? kbdVerseIdx + 1 : kbdVerseIdx); break;
+      case 'ArrowRight': case 'PageDown': sermonStep('next'); break;
+      case 'ArrowLeft': case 'PageUp': sermonStep('prev'); break;
+      default: handled = false;
+    }
+    if (handled) e.preventDefault();
+  });
 
   loadBooks();
   pollNow();

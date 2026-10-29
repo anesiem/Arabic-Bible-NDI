@@ -63,13 +63,14 @@ val LocalBentoColors = staticCompositionLocalOf {
  * List colors: chapter bands + recents marker + live-row treatments, all
  * resolved from the selected app theme for the current mode. Every list
  * (Library, Sermon, recents sheet, remote page tokens) reads these — never
- * a scattered hex, and never the old per-screen pair lookup. Sermon-live
- * and verse-live-highlight stay at Classic values in v1 (theme model).
- * 2026-10-28: focusedBorder (yellow border for the focused verse),
+ * a scattered hex, and never the old per-screen pair lookup.
+ * One-update item 17: verseLiveHighlight (live-verse row highlight),
  * recentLine (thin side line for a recent verse — the theme recents
  * variable, so a theme change recolours it on every surface) and
  * sermonTint (muted band colour for sermon verses) are theme variables
  * too: Library, Sermon, recents and the remote tokens all read them.
+ * 2026-10-28: focusedBorder (yellow border for the focused verse) is the
+ * remaining fixed accent (ON AIR red/grey are fixed by standing ruling).
  */
 data class ListColors(
     val bandA: Color,
@@ -168,10 +169,12 @@ fun MyApplicationTheme(
         sermonLiveNavy = SermonLiveNavy,
         sermonLiveYellow = SermonLiveYellow,
         sermonLivePaleYellow = SermonLivePaleYellow,
-        verseLiveHighlight = if (isDark) VerseLiveHighlightDark else VerseLiveHighlightLight,
+        // One-update item 17: live highlight + sermon tint are theme
+        // variables now (were fixed Classic values).
+        verseLiveHighlight = Color(tokens.liveHighlight),
         focusedBorder = SermonLiveYellow,
         recentLine = Color(tokens.recents),
-        sermonTint = Color(tokens.bandB)
+        sermonTint = Color(tokens.sermonTint)
     )
 
     CompositionLocalProvider(

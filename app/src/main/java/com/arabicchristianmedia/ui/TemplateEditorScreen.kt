@@ -28,6 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -127,6 +128,9 @@ fun TemplateEditorScreen(
     templates: List<LowerThirdTemplate>,
     highlightedLowerStyleId: String?,
     highlightedShowStyleId: String?,
+    // One-update item 16: the style being edited (separate from highlight).
+    editingLowerStyleId: String? = null,
+    editingShowStyleId: String? = null,
     lowerWorkingDirty: Boolean,
     showWorkingDirty: Boolean,
     activeVerse: BibleVerse?,
@@ -174,6 +178,12 @@ fun TemplateEditorScreen(
     onRenameTemplate: (String, String, Boolean) -> Unit = { _, _, _ -> },
     // Deep-test fix: empty-state "Restore factory styles" button.
     onRestoreFactoryTemplates: () -> Unit = {},
+    // One-update item 13: Tashkeel + English version live in the Editor
+    // (top of their language groups), GLOBAL effect — not per template.
+    tashkeelEnabled: Boolean = true,
+    onTashkeelChange: (Boolean) -> Unit = {},
+    englishVersion: String = "asv",
+    onEnglishVersionChange: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var showSaveDialog by remember { mutableStateOf(false) }
@@ -194,22 +204,34 @@ fun TemplateEditorScreen(
     val tipsPrefs = remember { context.getSharedPreferences("editor_ui_prefs", android.content.Context.MODE_PRIVATE) }
     var howItWorksExpanded by rememberSaveable { mutableStateOf(tipsPrefs.getBoolean("how_it_works_expanded", false)) }
 
-    // Dynamic Recent Colors with delete (x) button
+    // One-update item 9: ONE persisted global recent-colors list —
+    // appended by ANY color pick in the app, shown identically by every
+    // color picker, survives restart. Seeded from the 9 defaults on
+    // first run (migration).
+    val recentColorsPrefs = remember { context.getSharedPreferences("editor_recent_colors", android.content.Context.MODE_PRIVATE) }
     var recentColors by remember {
-        mutableStateOf(listOf("#FFFFFF", "#FBBF24", "#F59E0B", "#EF4444", "#10B981", "#3B82F6", "#8B5CF6", "#000000", "#94A3B8"))
+        mutableStateOf(
+            recentColorsPrefs.getStringSet("recent_colors", null)?.toList()?.take(12)?.ifEmpty { null }
+                ?: listOf("#FFFFFF", "#FBBF24", "#F59E0B", "#EF4444", "#10B981", "#3B82F6", "#8B5CF6", "#000000", "#94A3B8")
+        )
     }
 
     val onAddRecentColor: (String) -> Unit = { hex ->
         if (!recentColors.any { it.equals(hex, ignoreCase = true) }) {
             recentColors = (listOf(hex) + recentColors).take(12)
+            recentColorsPrefs.edit().putStringSet("recent_colors", recentColors.toSet()).apply()
         }
     }
 
     val onRemoveRecentColor: (String) -> Unit = { hex ->
         recentColors = recentColors.filterNot { it.equals(hex, ignoreCase = true) }
+        recentColorsPrefs.edit().putStringSet("recent_colors", recentColors.toSet()).apply()
     }
 
     val bento = LocalBentoColors.current
+    // One-update item 6: theme list colors — bandA/bandB alternate the
+    // Editor section cards (user-controllable in Theme).
+    val listColors = LocalListColors.current
     val editingTemplate = if (editorTab == 0) currentTemplate else activeShowTemplate
     val onUpdate = if (editorTab == 0) onUpdateTemplate else onUpdateShowTemplate
     // Fresh template reference for async callbacks (avoids stale captures).
@@ -255,7 +277,6 @@ fun TemplateEditorScreen(
     var pendingFontUri by remember { mutableStateOf<Uri?>(null) }
     var fontNameInput by remember { mutableStateOf("") }
     var fontToDelete by remember { mutableStateOf<CustomFont?>(null) }
-    var showFactoryUpdateDialog by remember { mutableStateOf(false) }
     val fontPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             fontNameInput = com.arabicchristianmedia.server.FontStore(context)
@@ -274,6 +295,9 @@ fun TemplateEditorScreen(
     // Round 2 (#10): hoisted from the style-selector block - the stage
     // footer (Save / Update) reads them from a different block now.
         val highlightedId = if (editorTab == 0) highlightedLowerStyleId else highlightedShowStyleId
+        // One-update item 16: the editing origin — Update writes back here
+        // even when dirty (highlight cleared).
+        val editingOriginId = if (editorTab == 0) editingLowerStyleId else editingShowStyleId
         val tabIsDirty = if (editorTab == 0) lowerWorkingDirty else showWorkingDirty
 
     // Wide two-pane layout: right-panel anchor jumps. The right panel is
@@ -729,7 +753,7 @@ fun TemplateEditorScreen(
     val designMenuButtonBlock: @Composable () -> Unit = {
         if (!topBarDesignButtonVisible) {
             val designName = templates.firstOrNull { it.id == highlightedId }?.name ?: editingTemplate.name
-            val designLabel = if (tabIsDirty) "معدّل · $designName (Modified · $designName)" else designName
+            val designLabel = if (tabIsDirty) "معدّل · $designName" else designName
             Surface(shape = RoundedCornerShape(10.dp), color = bento.primaryContainer, onClick = { onShowModifiedMenuChange(true) }) {
                 Text(designLabel, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.onPrimaryContainer, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
             }
@@ -754,7 +778,10 @@ fun TemplateEditorScreen(
         // Round 2 (#10): the frame cluster (alignment, position, box height,
         // padding, auto-fit) moved out of Background & Effects onto the stage -
         // these are the numbers judged against the preview.
-        frameSectionBlock()
+        // One-update item 6: its own card, bandA (first of the alternation).
+        Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandA), modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp)) { frameSectionBlock() }
+        }
 
         Spacer(Modifier.height(8.dp))
 
@@ -775,6 +802,35 @@ CollapsibleSection(
                     onExpandedChange = { setSectionExpanded("arabic", it) },
                     summary = editingTemplate.fontFamily + " \u00b7 verse " + editingTemplate.verseFontSize + " \u00b7 citation " + editingTemplate.referenceFontSize
                 ) {
+                    // One-update item 13: Tashkeel at the TOP of the Arabic
+                    // group - GLOBAL (applies to all styles), not per template.
+                    // Default ON.
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "التشكيل (Tashkeel Diacritics)",
+                                fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                                color = bento.textPrimary
+                            )
+                            Text(
+                                "يطبق على كل الأنماط (applies to all styles)",
+                                fontSize = 10.sp, color = bento.textSecondary
+                            )
+                        }
+                        Switch(
+                            checked = tashkeelEnabled,
+                            onCheckedChange = { onTashkeelChange(it) },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = bento.primary
+                            )
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
                     FontDropdown(
                         selected = editingTemplate.fontFamily,
                         onSelect = { onUpdate(editingTemplate.copy(fontFamily = it)) },
@@ -788,16 +844,60 @@ CollapsibleSection(
                         StyleToggle("B", editingTemplate.referenceIsBold) { onUpdate(editingTemplate.copy(referenceIsBold = it)) }
                         StyleToggle("I", editingTemplate.referenceIsItalic) { onUpdate(editingTemplate.copy(referenceIsItalic = it)) }
                     }
-                    ColorGradePickerRow("لون الشاهد العربي (Citation Color)", editingTemplate.referenceColorHex, { onUpdate(editingTemplate.copy(referenceColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
-                    SliderWithLabel("حجم الشاهد العربي", editingTemplate.referenceFontSize.toFloat(), 10f..120f) { onUpdate(editingTemplate.copy(referenceFontSize = it.toInt())) }
+                    // One-update item 6: verse + citation colors as one linked group.
+                    LinkedColorGroup("ألوان النص العربي (Arabic text colors)") {
+                            ColorGradePickerRow("لون الشاهد العربي (Citation Color)", editingTemplate.referenceColorHex, { onUpdate(editingTemplate.copy(referenceColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor), previewTemplate = editingTemplate, previewField = "referenceColorHex"
+                    }
+                    SliderWithLabel("حجم الشاهد العربي", editingTemplate.referenceFontSize.toFloat(), 10f..120f) {
+                        val newCit = it.toInt()
+                        // One-update item 8: an explicit citation size sets
+                        // the new frozen ratio (verse:citation).
+                        if (editingTemplate.autoFitText) {
+                            val newFrozen = AutoFitRatio.record(editingTemplate.verseFontSize, newCit)
+                            onUpdate(editingTemplate.copy(referenceFontSize = newCit, autoFitFrozenRatio = newFrozen))
+                        } else {
+                            onUpdate(editingTemplate.copy(referenceFontSize = newCit))
+                        }
+                    }
 
                     Row(modifier = anchorModifier("arabic-verse"), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text("الآية:", fontSize = 11.sp, color = bento.textSecondary)
                         StyleToggle("B", editingTemplate.verseIsBold) { onUpdate(editingTemplate.copy(verseIsBold = it)) }
                         StyleToggle("I", editingTemplate.verseIsItalic) { onUpdate(editingTemplate.copy(verseIsItalic = it)) }
                     }
-                    ColorGradePickerRow("لون النص العربي (Verse Color)", editingTemplate.textColorHex, { onUpdate(editingTemplate.copy(textColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
-                    SliderWithLabel("حجم النص العربي", editingTemplate.verseFontSize.toFloat(), 10f..180f) { onUpdate(editingTemplate.copy(verseFontSize = it.toInt())) }
+                    ColorGradePickerRow("لون النص العربي (Verse Color)", editingTemplate.textColorHex, { onUpdate(editingTemplate.copy(textColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor), previewTemplate = editingTemplate, previewField = "textColorHex"
+                    SliderWithLabel("حجم النص العربي", editingTemplate.verseFontSize.toFloat(), 10f..180f) {
+                        val newVerse = it.toInt()
+                        // One-update item 8: once the ratio is frozen, a
+                        // verse-size move scales the citation with it.
+                        // First move records the ratio (from the pre-move
+                        // sizes) when auto-fit is on.
+                        if (editingTemplate.autoFitText) {
+                            val frozen = editingTemplate.autoFitFrozenRatio
+                                ?: AutoFitRatio.record(editingTemplate.verseFontSize, editingTemplate.referenceFontSize)
+                            if (frozen != null && frozen > 0f) {
+                                onUpdate(editingTemplate.copy(
+                                    verseFontSize = newVerse,
+                                    referenceFontSize = AutoFitRatio.scaledCitation(newVerse, frozen),
+                                    autoFitFrozenRatio = frozen
+                                ))
+                            } else {
+                                onUpdate(editingTemplate.copy(verseFontSize = newVerse))
+                            }
+                        } else {
+                            onUpdate(editingTemplate.copy(verseFontSize = newVerse))
+                        }
+                    }
+                    // One-update item 8: live rendered sizes + the recorded
+                    // percentage, so the user sees what a size change does.
+                    if (editingTemplate.autoFitText && editingTemplate.autoFitFrozenRatio != null) {
+                        Text(
+                            "النسبة المحفوظة: " + AutoFitRatio.percent(editingTemplate.autoFitFrozenRatio!!) + "% (الآية " + editingTemplate.verseFontSize + "sp · الشاهد " + editingTemplate.referenceFontSize + "sp)",
+                            fontSize = 11.sp, color = bento.textSecondary
+                        )
+                    }
+                    // One-update item 7: per-language line spacing.
+                    SliderWithLabel("تباعد أسطر العربي (Arabic line spacing)", editingTemplate.lineSpacingArabic, 1f..3f) { onUpdate(editingTemplate.copy(lineSpacingArabic = it)) }
                     FeatureToggleRow("علامات الترقيم العربية (Use Arabic punctuation ، ؛ ؟)", editingTemplate.useArabicPunctuation) { onUpdate(editingTemplate.copy(useArabicPunctuation = it)) }
                     FeatureToggleRow("الأرقام العربية المشرقية (Eastern Arabic numerals ١٢٣)", editingTemplate.useEasternArabicNumerals) { onUpdate(editingTemplate.copy(useEasternArabicNumerals = it)) }
                     FeatureToggleRow("تصحيح الأقواس بخط النظام (Use system font for brackets ( ) [ ] { })", editingTemplate.useSystemFontForBrackets) { onUpdate(editingTemplate.copy(useSystemFontForBrackets = it)) }
@@ -861,13 +961,45 @@ CollapsibleSection(
                     summary = editingTemplate.secondaryFontFamily + " \u00b7 verse " + editingTemplate.secondaryVerseFontSize + " \u00b7 citation " + editingTemplate.secondaryReferenceFontSize
                 ) {
                     
-                        // English Citation Controls
+                        // One-update item 13: English version at the TOP of the
+                    // English group - GLOBAL (applies to all styles).
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            "الترجمة الإنجليزية (English Bible Version)",
+                            fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                            color = bento.textPrimary
+                        )
+                        Text(
+                            "يطبق على كل الأنماط (applies to all styles)",
+                            fontSize = 10.sp, color = bento.textSecondary
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf("asv" to "ASV", "kjv" to "KJV").forEach { (id, label) ->
+                                FilterChip(
+                                    selected = englishVersion == id,
+                                    onClick = { onEnglishVersionChange(id) },
+                                    label = { Text(label, fontSize = 12.sp) }
+                                )
+                            }
+                        }
+                        Text(
+                            "All versions are public domain",
+                            fontSize = 10.sp, color = bento.textSecondary,
+                            modifier = Modifier.padding(top = 2.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    // English Citation Controls
                         Row(modifier = anchorModifier("english-citation"), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             Text("الشاهد الإنجليزي:", fontSize = 11.sp, color = bento.textSecondary)
                             StyleToggle("B", editingTemplate.secondaryReferenceIsBold) { onUpdate(editingTemplate.copy(secondaryReferenceIsBold = it)) }
                             StyleToggle("I", editingTemplate.secondaryReferenceIsItalic) { onUpdate(editingTemplate.copy(secondaryReferenceIsItalic = it)) }
                         }
-                        ColorGradePickerRow("لون الشاهد الإنجليزي (English Citation Color)", editingTemplate.secondaryReferenceColorHex, { onUpdate(editingTemplate.copy(secondaryReferenceColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
+                        // One-update item 6: verse + citation colors as one linked group.
+                        LinkedColorGroup("ألوان النص الإنجليزي (English text colors)") {
+                                ColorGradePickerRow("لون الشاهد الإنجليزي (English Citation Color)", editingTemplate.secondaryReferenceColorHex, { onUpdate(editingTemplate.copy(secondaryReferenceColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor), previewTemplate = editingTemplate, previewField = "secondaryReferenceColorHex"
+                        }
                         SliderWithLabel("حجم الشاهد الإنجليزي", editingTemplate.secondaryReferenceFontSize.toFloat(), 8f..100f) { onUpdate(editingTemplate.copy(secondaryReferenceFontSize = it.toInt())) }
 
                         // English Verse Controls
@@ -883,8 +1015,10 @@ CollapsibleSection(
                             StyleToggle("B", editingTemplate.secondaryVerseIsBold) { onUpdate(editingTemplate.copy(secondaryVerseIsBold = it)) }
                             StyleToggle("I", editingTemplate.secondaryVerseIsItalic) { onUpdate(editingTemplate.copy(secondaryVerseIsItalic = it)) }
                         }
-                        ColorGradePickerRow("لون النص الإنجليزي (English Verse Color)", editingTemplate.secondaryTextColorHex, { onUpdate(editingTemplate.copy(secondaryTextColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
+                        ColorGradePickerRow("لون النص الإنجليزي (English Verse Color)", editingTemplate.secondaryTextColorHex, { onUpdate(editingTemplate.copy(secondaryTextColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor), previewTemplate = editingTemplate, previewField = "secondaryTextColorHex"
                         SliderWithLabel("حجم النص الإنجليزي", editingTemplate.secondaryVerseFontSize.toFloat(), 8f..120f) { onUpdate(editingTemplate.copy(secondaryVerseFontSize = it.toInt())) }
+                        // One-update item 7: per-language line spacing.
+                        SliderWithLabel("تباعد أسطر الإنجليزي (English line spacing)", editingTemplate.lineSpacingEnglish, 1f..3f) { onUpdate(editingTemplate.copy(lineSpacingEnglish = it)) }
 
                         SliderWithLabel("المسافة الفاصلة بين اللغتين", editingTemplate.bilingualSpacing.toFloat(), 0f..150f) { onUpdate(editingTemplate.copy(bilingualSpacing = it.toInt())) }
                         FeatureToggleRow("إظهار المسافة بين اللغتين (Show spacing)", editingTemplate.showBilingualSpacing) { onUpdate(editingTemplate.copy(showBilingualSpacing = it)) }
@@ -902,13 +1036,14 @@ CollapsibleSection(
                 ) {
 
                         SliderWithLabel("درجة شفافية الكارت (Background Opacity)", editingTemplate.bgOpacity, 0f..1f) { onUpdate(editingTemplate.copy(bgOpacity = it)) }
+                        Text("شفافية 0% تعني شفافاً تماماً (Pure) — لا زر منفصل بعد الآن.", fontSize = 11.sp, color = bento.textSecondary)
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Box(modifier = Modifier.weight(1f)) {
-                                ColorGradePickerRow("لون كارت الخلفية (Card Color)", editingTemplate.bgColorHex, { onUpdate(editingTemplate.copy(bgColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
+                                ColorGradePickerRow("لون كارت الخلفية (Card Color)", editingTemplate.bgColorHex, { onUpdate(editingTemplate.copy(bgColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor), previewTemplate = editingTemplate, previewField = "bgColorHex"
                             }
                             // v1.8: Quick transparent option for card color.
                             TextButton(
@@ -936,8 +1071,8 @@ CollapsibleSection(
                         androidx.compose.material3.Surface(shape = RoundedCornerShape(12.dp), border = androidx.compose.foundation.BorderStroke(1.dp, bento.border), color = bento.surfaceVariant) {
                             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("ألوان التدرج المرتبطة (Linked gradient colors)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary)
-                        ColorGradePickerRow("اللون الأول (First color)", editingTemplate.bgColorHex, { onUpdate(editingTemplate.copy(bgColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
-                        ColorGradePickerRow("اللون الثاني (Second color)", editingTemplate.gradientColorHex2, { onUpdate(editingTemplate.copy(gradientColorHex2 = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
+                        ColorGradePickerRow("اللون الأول (First color)", editingTemplate.bgColorHex, { onUpdate(editingTemplate.copy(bgColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor), previewTemplate = editingTemplate, previewField = "bgColorHex"
+                        ColorGradePickerRow("اللون الثاني (Second color)", editingTemplate.gradientColorHex2, { onUpdate(editingTemplate.copy(gradientColorHex2 = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor), previewTemplate = editingTemplate, previewField = "gradientColorHex2"
                         SliderWithLabel("زاوية التدرج (Angle, 0-360°)", editingTemplate.gradientAngleDeg.toFloat(), 0f..360f) { onUpdate(editingTemplate.copy(gradientAngleDeg = it.toInt())) }
                         val gradientAnims = listOf(
                             GradientAnimationType.NONE to "ثابت (None)",
@@ -958,10 +1093,8 @@ CollapsibleSection(
                             }
                         }
                         if (editingTemplate.gradientAnimation != GradientAnimationType.NONE) {
-                            SliderWithLabel("سرعة حركة لون البطاقة (Card gradient speed)", editingTemplate.gradientSpeed, 0f..3f) { onUpdate(editingTemplate.copy(gradientSpeed = it)) }
+                            SliderWithLabel("سرعة حركة التدرج (Gradient animation speed)", editingTemplate.gradientSpeed, 0f..3f) { onUpdate(editingTemplate.copy(gradientSpeed = it)) }
                         }
-                        SliderWithLabel("شفافية البطاقة (Card transparency)", editingTemplate.bgOpacity, 0f..1f) { onUpdate(editingTemplate.copy(bgOpacity = it)) }
-                        Text("شفافية 0% تعني شفافاً تماماً (Pure) — لا زر منفصل بعد الآن.", fontSize = 11.sp, color = bento.textSecondary)
                             }
                         }
                     }
@@ -975,7 +1108,7 @@ CollapsibleSection(
                         FeatureToggleRow("إظهار الحدود الملونة", editingTemplate.showAccentBorder) { onUpdate(editingTemplate.copy(showAccentBorder = it)) }
                     }
                     if (editingTemplate.showAccentBorder) {
-                        ColorGradePickerRow("لون إطار التمييز (Accent Color)", editingTemplate.accentColorHex, { onUpdate(editingTemplate.copy(accentColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
+                        ColorGradePickerRow("لون إطار التمييز (Accent Color)", editingTemplate.accentColorHex, { onUpdate(editingTemplate.copy(accentColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor), previewTemplate = editingTemplate, previewField = "accentColorHex"
                     }
 
                     // Split transitions (combined batch): the BOX
@@ -1014,7 +1147,7 @@ CollapsibleSection(
                     FeatureToggleRow("تمايل (Sway)", editingTemplate.boxSwayEnabled) { onUpdate(editingTemplate.copy(boxSwayEnabled = it)) }
                     FeatureToggleRow("نبض التوهج (Glow Pulse)", editingTemplate.boxGlowPulseEnabled) { onUpdate(editingTemplate.copy(boxGlowPulseEnabled = it)) }
                     if (editingTemplate.boxZoomEnabled || editingTemplate.boxFloatEnabled || editingTemplate.boxSwayEnabled || editingTemplate.boxGlowPulseEnabled) {
-                        SliderWithLabel("سرعة حركة الصندوق (Box Motion Speed)", editingTemplate.boxMotionSpeed, 0f..3f) { onUpdate(editingTemplate.copy(boxMotionSpeed = it)) }
+                        SliderWithLabel("سرعة مؤثرات الصندوق (Box effects speed)", editingTemplate.boxMotionSpeed, 0f..3f) { onUpdate(editingTemplate.copy(boxMotionSpeed = it)) }
                     }
                     Text("تكبير: 1.0 إلى 1.05 وعودة. طفو: ±8dp عمودياً. تمايل: ±8dp أفقياً. نبض التوهج: شدة الظل فقط، بلا حركة.", fontSize = 11.sp, color = bento.textSecondary)
 
@@ -1162,8 +1295,10 @@ CollapsibleSection(
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         // v1.8: Motion speed slider (0 to 3.0x) — right after opacity.
+                        // One-update item 5: distinct name — this is the VIDEO
+                        // motion speed (custom video + procedural animation).
                         SliderWithLabel(
-                            "سرعة الحركة (Motion speed)",
+                            "سرعة فيديو الحركة (Video motion speed)",
                             editingTemplate.motionSpeed,
                             0f..3f
                         ) {
@@ -1279,7 +1414,7 @@ CollapsibleSection(
                 ) {
                     FeatureToggleRow("ظل النص (Text Shadow)", editingTemplate.textShadowEnabled, modifier = anchorModifier("shadow-text")) { onUpdate(editingTemplate.copy(textShadowEnabled = it)) }
                     if (editingTemplate.textShadowEnabled) {
-                        ColorGradePickerRow("لون ظل النص (Text Shadow Color)", editingTemplate.textShadowColorHex, { onUpdate(editingTemplate.copy(textShadowColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
+                        ColorGradePickerRow("لون ظل النص (Text Shadow Color)", editingTemplate.textShadowColorHex, { onUpdate(editingTemplate.copy(textShadowColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor), previewTemplate = editingTemplate, previewField = "textShadowColorHex"
                         // v1.8: shadow thickness (blur), distance (offset), and 8-direction compass.
                         SliderWithLabel("سماكة الظل (Thickness)", editingTemplate.textShadowBlurDp, 0f..32f) {
                             onUpdate(editingTemplate.copy(textShadowBlurDp = it))
@@ -1349,7 +1484,7 @@ CollapsibleSection(
                     if (!editingTemplate.isFullScreen) {
                         FeatureToggleRow("توهج الكارت (Card Glow)", editingTemplate.cardGlowEnabled, modifier = anchorModifier("shadow-glow")) { onUpdate(editingTemplate.copy(cardGlowEnabled = it)) }
                         if (editingTemplate.cardGlowEnabled) {
-                            ColorGradePickerRow("لون توهج الكارت (Card Glow Color)", editingTemplate.cardGlowColorHex, { onUpdate(editingTemplate.copy(cardGlowColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor)
+                            ColorGradePickerRow("لون توهج الكارت (Card Glow Color)", editingTemplate.cardGlowColorHex, { onUpdate(editingTemplate.copy(cardGlowColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor), previewTemplate = editingTemplate, previewField = "cardGlowColorHex"
                         }
                     }                }
     }
@@ -1357,23 +1492,34 @@ CollapsibleSection(
     val sheetBlock: @Composable () -> Unit = {
         // Combined batch, layer order (compact shares this sheet):
         // Language, Transition, I Verse Text, II Card, III Motion,
-        // IV Glow. Each section is wrapped in a BringIntoView box so
-        // the sticky compact Jump-to can scroll to it in one tap.
-        Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = bento.card), modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-                Box(Modifier.bringIntoViewRequester(compactRequester("language"))) { languageSectionBlock() }
-                HorizontalDivider(color = bento.borderSubtle)
-                Box(Modifier.bringIntoViewRequester(compactRequester("transition"))) { transitionSectionBlock() }
-                HorizontalDivider(color = bento.borderSubtle)
-                Box(Modifier.bringIntoViewRequester(compactRequester("arabic"))) { arabicSectionBlock() }
-                Box(Modifier.bringIntoViewRequester(compactRequester("english"))) { englishSectionBlock() }
-                Box(Modifier.bringIntoViewRequester(compactRequester("textshadow"))) { textShadowSectionBlock() }
-                Box(Modifier.bringIntoViewRequester(compactRequester("emblem"))) { emblemSectionBlock() }
-                HorizontalDivider(color = bento.borderSubtle)
-                Box(Modifier.bringIntoViewRequester(compactRequester("card"))) { cardSectionBlock() }
-                Box(Modifier.bringIntoViewRequester(compactRequester("motion"))) { motionSectionBlock() }
-                Box(Modifier.bringIntoViewRequester(compactRequester("glow"))) { glowSectionBlock() }
+        // IV Glow. Each section is its own card (one-update item 6),
+        // alternating the theme bandA/bandB variables, wrapped in a
+        // BringIntoView box so the sticky compact Jump-to can scroll
+        // to it in one tap.
+        @Composable
+        fun CompactSectionCard(index: Int, anchorId: String, content: @Composable () -> Unit) {
+            Card(
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (index % 2 == 0) listColors.bandA else listColors.bandB
+                ),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Box(Modifier.bringIntoViewRequester(compactRequester(anchorId))) {
+                    Column(Modifier.padding(16.dp)) { content() }
+                }
             }
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            CompactSectionCard(0, "language") { languageSectionBlock() }
+            CompactSectionCard(1, "transition") { transitionSectionBlock() }
+            CompactSectionCard(2, "arabic") { arabicSectionBlock() }
+            CompactSectionCard(3, "english") { englishSectionBlock() }
+            CompactSectionCard(4, "textshadow") { textShadowSectionBlock() }
+            CompactSectionCard(5, "emblem") { emblemSectionBlock() }
+            CompactSectionCard(6, "card") { cardSectionBlock() }
+            CompactSectionCard(7, "motion") { motionSectionBlock() }
+            CompactSectionCard(8, "glow") { glowSectionBlock() }
             Spacer(Modifier.height(100.dp))
         }
     }
@@ -1408,31 +1554,63 @@ CollapsibleSection(
         )),
         "glow" to ("IV — التوهج (Glow)" to emptyList())
     )
+    // One-update item 22: compact Jump-to — a single sticky HORIZONTAL
+    // scrollable chip row (not the tall card), collapsible to the full
+    // list. One tap jumps + expands the section + brings it into view.
+    // The card style is kept.
+    var anchorsExpanded by remember { mutableStateOf(false) }
     val anchorsBlock: @Composable () -> Unit = {
         Card(shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = bento.card), modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text("الانتقال السريع (Jump to)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = bento.textPrimary, modifier = Modifier.padding(bottom = 4.dp))
-                anchorSections.forEach { (sectionId, section) ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(if (highlightedAnchor == sectionId) bento.primaryContainer else Color.Transparent)
-                            .clickable { jumpToAnchor(sectionId) }
-                            .padding(vertical = 6.dp, horizontal = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(section.first, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary)
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("الانتقال السريع (Jump to)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = bento.textPrimary)
+                    TextButton(onClick = { anchorsExpanded = !anchorsExpanded }) {
+                        Text(if (anchorsExpanded) "إخفاء القائمة" else "كل الأقسام", fontSize = 11.sp)
                     }
-                    section.second.forEach { (subId, subTitle) ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth()
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(if (highlightedAnchor == subId) bento.primaryContainer else Color.Transparent)
-                                .clickable { jumpToAnchor(subId) }
-                                .padding(start = 16.dp, top = 2.dp, bottom = 2.dp, end = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(subTitle, fontSize = 11.sp, color = bento.textSecondary)
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    anchorSections.forEach { (sectionId, section) ->
+                        val shortLabel = section.first.substringBefore(" (").substringBefore(" —")
+                        FilterChip(
+                            selected = highlightedAnchor == sectionId,
+                            onClick = { jumpToAnchor(sectionId) },
+                            label = { Text(shortLabel, fontSize = 11.sp, maxLines = 1) }
+                        )
+                    }
+                }
+                if (anchorsExpanded) {
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        anchorSections.forEach { (sectionId, section) ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (highlightedAnchor == sectionId) bento.primaryContainer else Color.Transparent)
+                                    .clickable { jumpToAnchor(sectionId) }
+                                    .padding(vertical = 6.dp, horizontal = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(section.first, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary)
+                            }
+                            section.second.forEach { (subId, subTitle) ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth()
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(if (highlightedAnchor == subId) bento.primaryContainer else Color.Transparent)
+                                        .clickable { jumpToAnchor(subId) }
+                                        .padding(start = 16.dp, top = 2.dp, bottom = 2.dp, end = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(subTitle, fontSize = 11.sp, color = bento.textSecondary)
+                                }
+                            }
                         }
                     }
                 }
@@ -1483,16 +1661,16 @@ CollapsibleSection(
                         state = rightLazyListState,
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        item("frame") { frameSectionBlock() }
-                        item("language") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = bento.card), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { languageSectionBlock() } } }
-                        item("transition") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = bento.card), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { transitionSectionBlock() } } }
-                        item("arabic") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = bento.card), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { arabicSectionBlock() } } }
-                        item("english") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = bento.card), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { englishSectionBlock() } } }
-                        item("textshadow") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = bento.card), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { textShadowSectionBlock() } } }
-                        item("emblem") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = bento.card), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { emblemSectionBlock() } } }
-                        item("card") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = bento.card), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { cardSectionBlock() } } }
-                        item("motion") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = bento.card), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { motionSectionBlock() } } }
-                        item("glow") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = bento.card), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { glowSectionBlock() } } }
+                        item("frame") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandA), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { frameSectionBlock() } } }
+                        item("language") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandB), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { languageSectionBlock() } } }
+                        item("transition") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandA), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { transitionSectionBlock() } } }
+                        item("arabic") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandB), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { arabicSectionBlock() } } }
+                        item("english") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandA), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { englishSectionBlock() } } }
+                        item("textshadow") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandB), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { textShadowSectionBlock() } } }
+                        item("emblem") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandA), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { emblemSectionBlock() } } }
+                        item("card") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandB), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { cardSectionBlock() } } }
+                        item("motion") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandA), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { motionSectionBlock() } } }
+                        item("glow") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandB), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { glowSectionBlock() } } }
                     }
                 }
             }
@@ -1541,23 +1719,27 @@ CollapsibleSection(
         // buttons exist anymore.
         if (showModifiedMenu) {
             val designMenuName = templates.firstOrNull { it.id == highlightedId }?.name ?: editingTemplate.name
-            val designMenuTitle = if (tabIsDirty) "معدّل · $designMenuName (Modified · $designMenuName)" else designMenuName
+            val designMenuTitle = if (tabIsDirty) "معدّل · $designMenuName" else designMenuName
             val highlightedTpl = templates.firstOrNull { it.id == highlightedId }
             AlertDialog(
                 onDismissRequest = { onShowModifiedMenuChange(false) },
                 title = { Text(designMenuTitle, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        if (highlightedId != null) {
+                        // One-update item 16: Update ALWAYS shows when there is
+                        // a style being edited (the origin), even when dirty.
+                        // Factory styles update directly now (they restore
+                        // on data clear) — no fork-to-copy dialog.
+                        if (editingOriginId != null) {
+                            val originName = templates.firstOrNull { it.id == editingOriginId }?.name ?: designMenuName
                             Button(
                                 onClick = {
                                     onShowModifiedMenuChange(false)
-                                    if (highlightedStyleIsFactory) showFactoryUpdateDialog = true
-                                    else onUpdateStyleInPlace(editorTab == 1)
+                                    onUpdateStyleInPlace(editorTab == 1)
                                 },
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Text("حفظ الحالي «$designMenuName» (Save current / Update)", fontSize = 13.sp)
+                                Text("حفظ الحالي «$originName» (Save current / Update)", fontSize = 13.sp)
                             }
                         }
                         Button(
@@ -1626,18 +1808,16 @@ CollapsibleSection(
                             ) {
                                 Text("تحديث باستيراد JSON (Update from import)", fontSize = 13.sp)
                             }
-                            if (!highlightedStyleIsFactory) {
-                                TextButton(
-                                    onClick = {
-                                        onShowModifiedMenuChange(false)
-                                        templateToDelete = highlightedTpl
-                                    },
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Text("حذف (Delete)", fontSize = 13.sp, color = bento.liveRed)
-                                }
-                            } else {
-                                Text("الأنماط الجاهزة لا تُحذف (تُجدَّد مع كل تشغيل).", fontSize = 11.sp, color = bento.textSecondary)
+                            // One-update item 16: factory styles ARE deletable
+                            // (they restore from code on data clear).
+                            TextButton(
+                                onClick = {
+                                    onShowModifiedMenuChange(false)
+                                    templateToDelete = highlightedTpl
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("حذف (Delete)", fontSize = 13.sp, color = bento.liveRed)
                             }
                         }
                     }
@@ -1711,25 +1891,6 @@ CollapsibleSection(
         }
 
         // v1.9.1: updating a FACTORY style — the app re-supplies shipped
-        // styles on every launch, so the edit is saved as the user's own
-        // copy under the same name (and the highlight moves to the copy).
-        if (showFactoryUpdateDialog) {
-            AlertDialog(
-                onDismissRequest = { showFactoryUpdateDialog = false },
-                title = { Text("تحديث نمط جاهز (Factory style)") },
-                text = {
-                    Text("هذا النمط من الأنماط الجاهزة التي يجدّدها التطبيق مع كل تشغيل، فلا يمكن الكتابة فوقه مباشرة. سيتم حفظ تعديلاتك كنسختك الخاصة بنفس الاسم، وستصبح هي النمط المحدد.")
-                },
-                confirmButton = {
-                    Button(onClick = {
-                        onUpdateStyleInPlace(editorTab == 1)
-                        showFactoryUpdateDialog = false
-                    }) { Text("حفظ كنسختي") }
-                },
-                dismissButton = { TextButton(onClick = { showFactoryUpdateDialog = false }) { Text("إلغاء") } }
-            )
-        }
-
         // Long-press style menu: export / update-from-import / delete (full user control).
         styleMenuTpl?.let { tpl ->
             AlertDialog(
@@ -1755,16 +1916,12 @@ CollapsibleSection(
                             onClick = { onImportTargetTplChange(tpl); onShowImportDialogChange(true); styleMenuTpl = null },
                             modifier = Modifier.fillMaxWidth()
                         ) { Text("تحديث باستيراد JSON (Update from import)", fontSize = 13.sp) }
-                        // Factory styles cannot be deleted (they are
-                        // re-supplied from code on every launch, so a
-                        // delete would silently undo itself) — the menu
-                        // hides Delete for them, like built-in themes.
-                        if (!TemplateRepository.isFactoryStyleId(tpl.id)) {
-                            TextButton(
-                                onClick = { templateToDelete = tpl; styleMenuTpl = null },
-                                modifier = Modifier.fillMaxWidth()
-                            ) { Text("حذف (Delete)", fontSize = 13.sp, color = bento.liveRed) }
-                        }
+                        // One-update item 16: factory styles ARE deletable
+                        // (they restore from code on data clear).
+                        TextButton(
+                            onClick = { templateToDelete = tpl; styleMenuTpl = null },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("حذف (Delete)", fontSize = 13.sp, color = bento.liveRed) }
                     }
                 },
                 confirmButton = {},
@@ -2171,6 +2328,29 @@ fun EditorTabItem(label: String, selected: Boolean, onClick: () -> Unit, modifie
     }
 }
 
+/**
+ * One-update item 6: the bordered linked-group pattern (from the gradient
+ * group) extended to every color group — related pickers live in one
+ * bordered Surface so they read as a single unit.
+ */
+@Composable
+fun LinkedColorGroup(
+    title: String,
+    content: @Composable () -> Unit
+) {
+    val bento = LocalBentoColors.current
+    androidx.compose.material3.Surface(
+        shape = RoundedCornerShape(12.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, bento.border),
+        color = bento.surfaceVariant
+    ) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(title, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary)
+            content()
+        }
+    }
+}
+
 @Composable
 fun ColorGradePickerRow(
     label: String,
@@ -2179,7 +2359,11 @@ fun ColorGradePickerRow(
     recentColors: List<String>,
     onRemoveRecentColor: (String) -> Unit,
     onAddRecentColor: (String) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    // One-update item 10: live preview in the spectrum modal — the template
+    // whose colors preview, and which field the candidate swaps.
+    previewTemplate: LowerThirdTemplate? = null,
+    previewField: String? = null
 ) {
     val bento = LocalBentoColors.current
     var showGradeDialog by remember { mutableStateOf(false) }
@@ -2280,7 +2464,7 @@ fun ColorGradePickerRow(
                                 }
                             }
                         }
-                        Text("شفاف (Clear)", fontSize = 9.sp, fontWeight = FontWeight.SemiBold, color = bento.textSecondary, maxLines = 1)
+                        Text("شفاف (Transparent)", fontSize = 9.sp, fontWeight = FontWeight.SemiBold, color = bento.textSecondary, maxLines = 1)
                     }
                 }
             }
@@ -2350,7 +2534,9 @@ fun ColorGradePickerRow(
                 onColorSelected(newHex)
                 onAddRecentColor(newHex)
                 showGradeDialog = false
-            }
+            },
+            previewTemplate = previewTemplate,
+            previewField = previewField
         )
     }
 }
@@ -2359,7 +2545,11 @@ fun ColorGradePickerRow(
 fun ColorGradeSpectrumModal(
     currentHex: String,
     onDismiss: () -> Unit,
-    onSelectColor: (String) -> Unit
+    onSelectColor: (String) -> Unit,
+    // One-update item 10: live preview — the template and the field the
+    // candidate hex swaps. Null = no preview (plain color modal).
+    previewTemplate: LowerThirdTemplate? = null,
+    previewField: String? = null
 ) {
     var hexInput by remember { mutableStateOf(currentHex) }
     // Deep-test fix: an invalid hex used to silently become #FFFFFF on
@@ -2435,6 +2625,56 @@ fun ColorGradeSpectrumModal(
                                 .border(2.dp, bento.primary, CircleShape)
                         )
                         Text(hexInput.uppercase(), fontWeight = FontWeight.Bold, fontSize = 12.sp, color = bento.textPrimary)
+                    }
+                }
+
+                // One-update item 10: full live preview — a real verse
+                // card (Arabic verse, citation, English, card color,
+                // border, glow) with ONLY the candidate field swapped.
+                // Preset taps and H/S/B sliders update it LIVE; Cancel
+                // restores the original (onDismiss never commits).
+                if (previewTemplate != null && previewField != null) {
+                    val tpl = previewTemplate
+                    // Resolve the candidate hex (fall back to the field's
+                    // current value when the input does not parse).
+                    val candidateOk = try { android.graphics.Color.parseColor(if (hexInput.startsWith("#")) hexInput else "#$hexInput"); true } catch (e: Exception) { false }
+                    val cand = if (candidateOk) (if (hexInput.startsWith("#")) hexInput else "#$hexInput") else currentHex
+                    fun fieldHex(field: String, orig: String): String =
+                        if (field == previewField) cand else orig
+                    val cardBg = try { Color(android.graphics.Color.parseColor(fieldHex(previewField, tpl.bgColorHex))) } catch (e: Exception) { Color.DarkGray }
+                    val verseCol = try { Color(android.graphics.Color.parseColor(fieldHex("textColorHex", tpl.textColorHex))) } catch (e: Exception) { Color.White }
+                    val citCol = try { Color(android.graphics.Color.parseColor(fieldHex("referenceColorHex", tpl.referenceColorHex))) } catch (e: Exception) { Color.White }
+                    val enCol = try { Color(android.graphics.Color.parseColor(fieldHex("secondaryTextColorHex", tpl.secondaryTextColorHex))) } catch (e: Exception) { Color.White }
+                    val accentCol = try { Color(android.graphics.Color.parseColor(fieldHex("accentColorHex", tpl.accentColorHex))) } catch (e: Exception) { Color.Transparent }
+                    val glowCol = try { Color(android.graphics.Color.parseColor(fieldHex("cardGlowColorHex", tpl.cardGlowColorHex))) } catch (e: Exception) { Color.Transparent }
+                    val showGlow = tpl.cardGlowEnabled && previewField != "cardGlowColorHex" || previewField == "cardGlowColorHex"
+                    Text("معاينة حية (Live preview)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(cardBg)
+                            .then(if (showGlow) Modifier.shadow(8.dp, RoundedCornerShape(12.dp), ambientColor = glowCol, spotColor = glowCol) else Modifier)
+                            .border(if (tpl.showAccentBorder) 2.dp else 0.dp, accentCol, RoundedCornerShape(12.dp))
+                            .padding(12.dp)
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(
+                                "اَللهُ مَحَبَّةٌ",
+                                color = verseCol, fontSize = 16.sp, fontWeight = FontWeight.Bold,
+                                textAlign = TextAlign.Right, modifier = Modifier.fillMaxWidth()
+                            )
+                            Text(
+                                "يوحنا الأولى 4: 8",
+                                color = citCol, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                                textAlign = TextAlign.Right, modifier = Modifier.fillMaxWidth()
+                            )
+                            Text(
+                                "God is love",
+                                color = enCol, fontSize = 12.sp,
+                                textAlign = TextAlign.Left, modifier = Modifier.fillMaxWidth()
+                            )
+                        }
                     }
                 }
 
@@ -2562,7 +2802,7 @@ fun ColorGradeSpectrumModal(
                 // 2026-10-28: Clear is always present in the modal too —
                 // it returns the transparent hex, which downstream code
                 // already parses as fully transparent.
-                TextButton(onClick = { onSelectColor("#00000000") }) { Text("شفاف (Clear)") }
+                TextButton(onClick = { onSelectColor("#00000000") }) { Text("شفاف (Transparent)") }
                 TextButton(onClick = onDismiss) { Text("إلغاء") }
             }
         }

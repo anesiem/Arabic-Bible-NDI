@@ -130,8 +130,6 @@ fun BroadcastControlScreen(
     onSetAdvertiseByName: (Boolean) -> Unit = {},
     onSetAdvertiseName: (String) -> Unit = {},
     onToggleAdvertiseTips: () -> Unit = {},
-    onToggleTashkeel: (Boolean) -> Unit = {},
-    onSelectEnglishVersion: (String) -> Unit = {},
     selectedTheme: ColorTheme = ColorThemes.CLASSIC,
     customThemes: List<ColorTheme> = emptyList(),
     onSelectTheme: (String) -> Unit = {},
@@ -195,71 +193,6 @@ fun BroadcastControlScreen(
     val netWarning = uiState.activeIpAddress.isBlank() ||
         (uiState.availableInterfaces.isNotEmpty() && uiState.availableInterfaces.none { it.isRecommended })
 
-    val bibleBlock: @Composable () -> Unit = {
-        // The Bible strip: tashkeel (Ashraf's rule: always at the very top
-        // of the Setup tab) and the English version picker.
-        // v1.9.2 (#10a): now a collapsible SetupSection like every other
-        // Setup block — still FIRST, but closed it costs one summary line
-        // instead of ~a third of the tablet screen (in the wide layout the
-        // strip is pinned above the panes and could never scroll away).
-        SetupSection(
-            title = "الكتاب المقدس (Bible)",
-            summary = "Tashkeel " + (if (uiState.tashkeelEnabled) "On" else "Off") +
-                " · English: " + uiState.englishVersion.uppercase(),
-            seedExpanded = false
-        ) {
-            Column {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                SplitLabel(
-                    parts = listOf("التشكيل ", "(Tashkeel Diacritics)"),
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = bento.textPrimary
-                )
-                Switch(
-                    checked = uiState.tashkeelEnabled,
-                    onCheckedChange = { onToggleTashkeel(it) },
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = Color.White,
-                        checkedTrackColor = bento.primary
-                    )
-                )
-            }
-                androidx.compose.material3.HorizontalDivider(color = bento.borderSubtle, modifier = Modifier.padding(vertical = 10.dp))
-            Column {
-                Text(
-                    text = "الترجمة الإنجليزية (English Bible Version)",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = bento.textPrimary
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf(
-                        "asv" to "ASV",
-                        "kjv" to "KJV"
-                    ).forEach { (id, label) ->
-                        FilterChip(
-                            selected = uiState.englishVersion == id,
-                            onClick = { onSelectEnglishVersion(id) },
-                            label = { Text(label, fontSize = 12.sp) }
-                        )
-                    }
-                }
-                Text(
-                    text = "All versions are public domain",
-                    fontSize = 10.sp,
-                    color = bento.textSecondary,
-                    modifier = Modifier.padding(top = 4.dp)
-                )
-            }
-            }
-        }
-    }
     val broadcastStatusBlock: @Composable () -> Unit = {
         // Card 1: NDI & Stream Server Status + Master Controls
         // Sender state (not the HTTP flag) gates the whole card: after a
@@ -1584,7 +1517,6 @@ fun BroadcastControlScreen(
         val screenConfig = LocalConfiguration.current
         if (isWideLayout(screenConfig.screenWidthDp.dp, screenConfig.screenHeightDp.dp)) {
             Column(Modifier.fillMaxSize()) {
-                Column(Modifier.padding(start = 14.dp, end = 14.dp, top = 14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) { bibleBlock() }
                 // Setup anchors (wide only): fixed chip strip above the
                 // two scroll columns — same jump + flash as the Editor.
                 Row(
@@ -1661,7 +1593,6 @@ fun BroadcastControlScreen(
                 Modifier.fillMaxSize().padding(14.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                bibleBlock()
                 SetupSectionHeader("البث (Broadcast)")
                 broadcastStatusBlock()
                 overlayBlock()

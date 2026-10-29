@@ -59,7 +59,7 @@ data class BibleNdiUiState(
     val selectedBook: BibleBook = BibleRepository.getBookById("jhn") ?: BibleRepository.allBooks.first(),
     val selectedChapter: Int = 3,
     val bibleVersion: BibleVersion = BibleVersion.ARABIC_SVD,
-    val tashkeelEnabled: Boolean = false,
+    val tashkeelEnabled: Boolean = true,
     val englishVersion: String = "asv",
     val displayedVerses: List<BibleVerse> = emptyList(),
     val searchQuery: String = "",
@@ -108,6 +108,12 @@ data class BibleNdiUiState(
     // (user edited without saving). Persisted across restarts.
     val highlightedLowerStyleId: String? = null,
     val highlightedShowStyleId: String? = null,
+    // One-update item 16: the style BEING EDITED, separate from the
+    // highlight. Set on select, preserved through dirty edits (the
+    // highlight clears on edit), so Update always writes back to the
+    // style being edited — even when dirty, even for factory styles.
+    val editingLowerStyleId: String? = null,
+    val editingShowStyleId: String? = null,
     // True when the working template has unsaved edits (drives the "modified" badge).
     val lowerWorkingDirty: Boolean = false,
     val showWorkingDirty: Boolean = false,
@@ -118,6 +124,10 @@ data class BibleNdiUiState(
     val customThemes: List<ColorTheme> = emptyList(),
     val readerFontSize: Int = 18,
     val isKeepScreenOn: Boolean = true,
+    // One-update item 3: per-section recents font size. Null = follow the
+    // universal readerFontSize; a value = local override for the recents
+    // sheet only (persisted; "universal size later if he dislikes it").
+    val recentsFontSize: Int? = null,
     // True while the Bible databases are being copied/loaded on first launch.
     val isLoadingBible: Boolean = false,
     // v2.0: sermon playlist built from text shared from other apps
@@ -559,11 +569,20 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         // that the next process death undoes.
         nativeSender.stopAll()
         NdiService.clearBroadcastActive(getApplication())
+        // One-update item 12: never leave stale live state — if the HTTP
+        // server is not running either, no output carries the verse, so
+        // the verse is off air (the pill is a pure live indicator).
+        val httpRunning = _uiState.value.isServerRunning
         _uiState.value = _uiState.value.copy(
             isNativeNdiActive = false,
             isNativeShowActive = false,
+            isLiveOnAir = if (httpRunning) _uiState.value.isLiveOnAir else false,
             statusMessage = "All NDI Sources Stopped"
         )
+        if (!httpRunning) {
+            broadcastServer.setLiveState(false)
+            triggerAllFrames()
+        }
         // refreshNotification is a safe no-op while the flag is false
         // (see NdiService), so the notification is left as-is rather
         // than letting REFRESH stopSelf() the service and kill the
@@ -817,10 +836,13 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             AppThemeMode.valueOf(prefs?.getString("app_theme_mode", null) ?: "SYSTEM")
         } catch (e: Exception) { AppThemeMode.SYSTEM }
         val keepOn = prefs?.getBoolean("keep_screen_on", true) ?: true
+        val recentsFontRaw = prefs?.getInt("recents_font_size", -1) ?: -1
         _uiState.value = _uiState.value.copy(
             readerFontSize = fontSize,
             appThemeMode = mode,
-            isKeepScreenOn = keepOn
+            isKeepScreenOn = keepOn,
+            // One-update item 3: -1 = follow universal (the default).
+            recentsFontSize = if (recentsFontRaw < 0) null else recentsFontRaw.coerceIn(12, 36)
         )
     }
 
@@ -830,7 +852,17 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             ?.putInt("reader_font_size", state.readerFontSize)
             ?.putString("app_theme_mode", state.appThemeMode.name)
             ?.putBoolean("keep_screen_on", state.isKeepScreenOn)
+            ?.putInt("recents_font_size", state.recentsFontSize ?: -1)
             ?.apply()
+    }
+
+    /**
+     * One-update item 3: recents sheet font — null follows the universal
+     * reader size, a value is the sheet's own local override. Persisted.
+     */
+    fun setRecentsFontSize(size: Int?) {
+        _uiState.value = _uiState.value.copy(recentsFontSize = size?.coerceIn(12, 36))
+        persistUiPrefs()
     }
 
     private fun loadThemePrefs() {
@@ -976,7 +1008,10 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             selectedChapter = chapter,
             displayedVerses = verses,
             selectedTestament = book.testament,
-            readerFocusVerseId = null
+            readerFocusVerseId = null,
+            // One-update item 1: chapter navigation closes the search VIEW
+            // but remembers query+results (reopening the box restores them).
+            isSearching = false
         )
         // v2.0: removed setLiveState(false) — browsing chapters must not take
         // the broadcast off-air. Outputs hold the previous verse until a new
@@ -994,7 +1029,9 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         _uiState.value = _uiState.value.copy(
             selectedChapter = chapter,
             displayedVerses = verses,
-            readerFocusVerseId = null
+            readerFocusVerseId = null,
+            // One-update item 1: close-but-remember search (see selectBook).
+            isSearching = false
         )
         // v2.0: removed setLiveState(false) — see selectBook above.
         // v1.9.1 (F5): activeVerse stays — see selectBook.
@@ -1112,6 +1149,56 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
     }
 
     /**
+     * One-update item 1: a search-result tap SELECTS but never goes live.
+     * Navigates to the verse's chapter, cues the verse (activeVerse
+     * highlight + auto-scroll), and closes the search VIEW — but the
+     * query + results are REMEMBERED (reopening the box shows them, no
+     * retyping). The live outputs are never touched: no
+     * updateVerse(live=true), no isLiveOnAir change, no vMix push.
+     */
+    fun onSearchResultClicked(verse: BibleVerse) {
+        val book = BibleRepository.allBooks.find { it.id == verse.bookId } ?: _uiState.value.selectedBook
+        // selectBook loads the chapter (and closes-but-remembers search).
+        selectBook(book, verse.chapter)
+
+        // v2.0: Use the tashkeel-aware verse from the loaded chapter if available.
+        val displayVerse = _uiState.value.displayedVerses.find {
+            it.bookId == verse.bookId && it.chapter == verse.chapter && it.verse == verse.verse
+        } ?: verse
+
+        _uiState.value = _uiState.value.copy(
+            activeVerse = displayVerse,
+            readerFocusVerseId = null,
+            statusMessage = "Selected: ${displayVerse.getFormattedArabicCitation()}",
+            isSearching = false,
+            recentVerses = (listOf(displayVerse) + _uiState.value.recentVerses.filterNot { it.id == displayVerse.id }).take(20)
+        )
+        broadcastServer.setRecentVerses(_uiState.value.recentVerses)
+        persistRecentState()
+    }
+
+    /**
+     * One-update item 1: close the search VIEW but remember the query +
+     * results (Library-tab tap, chapter picker/arrows). Reopening the box
+     * re-arms the remembered results via [onSearchBoxReopened].
+     */
+    fun dismissSearch() {
+        searchJob?.cancel()
+        _uiState.value = _uiState.value.copy(isSearching = false)
+    }
+
+    /**
+     * One-update item 1: when the search box reopens with a remembered
+     * (non-empty) query + results, show them again without retyping.
+     */
+    fun onSearchBoxReopened() {
+        val s = _uiState.value
+        if (!s.isSearching && s.searchQuery.isNotEmpty() && s.searchResults.isNotEmpty()) {
+            _uiState.value = s.copy(isSearching = true)
+        }
+    }
+
+    /**
      * Called when the user clicks a verse in the Bible reader.
      * Feeds the verse to NDI protocol instantly and takes it live!
      */
@@ -1156,6 +1243,35 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
 
         // Item 27: Library tap is a trigger source of its own.
         broadcastServer.setLastTrigger("library", displayVerse.getFormattedArabicCitation())
+    }
+
+    /**
+     * One-update item 20: move the keyboard focus ring up/down in the
+     * Library verse list (or search results when searching). The focused
+     * row gets the yellow border (BentoVerseCard isFocused).
+     */
+    fun moveReaderFocus(direction: Int) {
+        val state = _uiState.value
+        val list = if (state.isSearching) state.searchResults else state.displayedVerses
+        if (list.isEmpty()) return
+        val currentIndex = list.indexOfFirst { it.id == state.readerFocusVerseId }
+        val newIndex = if (currentIndex == -1) {
+            if (direction > 0) 0 else list.lastIndex
+        } else {
+            (currentIndex + direction).coerceIn(0, list.lastIndex)
+        }
+        _uiState.value = state.copy(readerFocusVerseId = list[newIndex].id)
+    }
+
+    /**
+     * One-update item 20: Enter goes live on the keyboard-focused verse.
+     */
+    fun goLiveOnFocused() {
+        val state = _uiState.value
+        val focusId = state.readerFocusVerseId ?: return
+        val list = if (state.isSearching) state.searchResults else state.displayedVerses
+        val verse = list.firstOrNull { it.id == focusId } ?: return
+        onVerseClicked(verse)
     }
 
     fun toggleLive() {
@@ -1947,6 +2063,8 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         _uiState.value = _uiState.value.copy(
             activeTemplate = working,
             highlightedLowerStyleId = template.id,
+            // One-update item 16: the editing origin follows the selection.
+            editingLowerStyleId = template.id,
             lowerWorkingDirty = false
         )
         templateRepo.saveWorkingTemplate(working)
@@ -1965,6 +2083,8 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         _uiState.value = _uiState.value.copy(
             activeShowTemplate = working,
             highlightedShowStyleId = template.id,
+            // One-update item 16: the editing origin follows the selection.
+            editingShowStyleId = template.id,
             showWorkingDirty = false
         )
         templateRepo.saveWorkingTemplate(working)
@@ -2065,34 +2185,25 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
     }
 
     /**
-     * v1.9.1: "Update current style" (Ashraf's request — revises the v1.6
-     * save-as-new-only rule). Writes the working values back into the
-     * highlighted style: same id, same name, same position, highlight kept,
-     * dirty cleared.
-     *
-     * Factory styles are re-supplied from code on every launch, so an edit
-     * to one is saved as the user's own copy under the same name (the
-     * editor explains this before calling us) and the highlight moves to
-     * the copy.
+     * One-update item 16: "Update current style" writes the working values
+     * back into the style BEING EDITED (the editing origin, not the
+     * highlight — so it works even when dirty). Factory styles are now
+     * directly editable too (they restore from code on data clear).
+     * Same id, same name, same position, highlight restored, dirty cleared.
      */
     fun updateStyleInPlace(isFullScreen: Boolean) {
         val state = _uiState.value
-        val highlightId = (if (isFullScreen) state.highlightedShowStyleId
-                           else state.highlightedLowerStyleId) ?: return
+        // One-update item 16: the editing origin, not the highlight.
+        val originId = (if (isFullScreen) state.editingShowStyleId
+                        else state.editingLowerStyleId)
+            ?: (if (isFullScreen) state.highlightedShowStyleId
+                else state.highlightedLowerStyleId) ?: return
         val saved = state.templates.firstOrNull {
-            it.id == highlightId && it.isFullScreen == isFullScreen
+            it.id == originId && it.isFullScreen == isFullScreen
         } ?: return
         val working = if (isFullScreen) state.activeShowTemplate else state.activeTemplate
 
-        if (TemplateRepository.isFactoryStyleId(highlightId)) {
-            saveAsNewTemplate(saved.name, working, isFullScreen)
-            _uiState.value = _uiState.value.copy(
-                statusMessage = "تم حفظ تعديلاتك كنسختك الخاصة من «${saved.name}»"
-            )
-            return
-        }
-
-        val updated = working.copy(id = highlightId, name = saved.name, isFullScreen = isFullScreen)
+        val updated = working.copy(id = originId, name = saved.name, isFullScreen = isFullScreen)
         val newList = TemplateRepository.updatedTemplates(state.templates, updated)
         templateRepo.saveTemplates(newList)
         templateRepo.saveWorkingTemplate(updated)
@@ -2101,18 +2212,24 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             _uiState.value = _uiState.value.copy(
                 templates = newList,
                 activeShowTemplate = updated,
+                highlightedShowStyleId = originId,
+                editingShowStyleId = originId,
                 showWorkingDirty = false,
                 statusMessage = "تم تحديث النمط «${saved.name}»"
             )
+            templateRepo.setActiveShowTemplateId(originId)
             broadcastServer.updateShowTemplate(updated)
             nativeSender.triggerFrame(NdiNativeSender.FEED_FULL, true)
         } else {
             _uiState.value = _uiState.value.copy(
                 templates = newList,
                 activeTemplate = updated,
+                highlightedLowerStyleId = originId,
+                editingLowerStyleId = originId,
                 lowerWorkingDirty = false,
                 statusMessage = "تم تحديث النمط «${saved.name}»"
             )
+            templateRepo.setActiveTemplateId(originId)
             broadcastServer.updateTemplate(updated)
             triggerAllFrames()
         }
@@ -2230,12 +2347,8 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
      * if the highlighted style was deleted) — nothing is reverted silently.
      */
     fun deleteTemplate(templateId: String, isFullScreen: Boolean) {
-        // Factory styles are re-supplied from code on every launch:
-        // deleting one only works in-session and it silently returns
-        // next launch. Guarded on both sides like built-in themes — the
-        // menu hides Delete for factory styles, and this is the backstop
-        // for any other caller.
-        if (TemplateRepository.isFactoryStyleId(templateId)) return
+        // One-update item 16: factory styles ARE deletable now (they
+        // restore from code on data clear). The menu confirms first.
         val newList = _uiState.value.templates.filterNot { it.id == templateId }
         templateRepo.saveTemplates(newList)
         if (isFullScreen) {

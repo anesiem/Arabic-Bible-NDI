@@ -97,8 +97,9 @@ object BibleRepository {
 
     /** True when the user has enabled tashkeel (diacritics) for Arabic text. */
     fun isTashkeelEnabled(): Boolean {
+        // One-update item 13: Tashkeel defaults ON.
         return appContext?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            ?.getBoolean(KEY_TASHKEEL_ENABLED, false) ?: false
+            ?.getBoolean(KEY_TASHKEEL_ENABLED, true) ?: true
     }
 
     /** Persist the tashkeel preference. */

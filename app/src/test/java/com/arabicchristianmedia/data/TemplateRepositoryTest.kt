@@ -105,15 +105,17 @@ class TemplateRepositoryTest {
     @Test
     fun `legacy tpl_modern_glass migrates to its redesigned successor`() {
         repo.setActiveTemplateId("tpl_modern_glass")
-        assertEquals("tpl_lt_broadcast_glass", repo.getActiveTemplateId())
+        assertEquals("tpl_g2_lt_royal_gold", repo.getActiveTemplateId())
     }
 
     @Test
     fun `any other legacy factory id migrates to the pure-word default`() {
         repo.setActiveTemplateId("tpl_vivid_neon_night")
         assertEquals("tpl_lt_pure_word", repo.getActiveTemplateId())
+        // tpl_lt_golden_glory was deleted in the one-update redesign —
+        // it is now a legacy id and migrates to pure word too.
         repo.setActiveTemplateId("tpl_lt_golden_glory")
-        assertEquals("tpl_lt_golden_glory", repo.getActiveTemplateId())
+        assertEquals("tpl_lt_pure_word", repo.getActiveTemplateId())
     }
 
     @Test
@@ -156,45 +158,35 @@ class TemplateRepositoryTest {
     @Test
     fun `factory styles carry explicit safe shadow and glow values`() {
         val defaults = TemplateRepository.DEFAULT_TEMPLATES
-        assertEquals(39, defaults.size)
+        assertEquals(20, defaults.size)
         defaults.forEach { tpl ->
             assertTrue(tpl.textShadowEnabled)
             assertTrue(tpl.textShadowColorHex.isNotBlank())
             assertTrue(tpl.cardGlowColorHex.isNotBlank())
         }
-        // Transparent styles must not glow: there is no card, and the feeds
-        // promise 100% transparency. Card styles keep the glow.
-        val transparentIds = listOf(
-            "tpl_lt_golden_trumpet", "tpl_lt_azure_heaven", "tpl_lt_neon_night",
-            "tpl_lt_velvet_worship", "tpl_lt_garden_peace", "tpl_lt_rose_sharon",
-            "tpl_lt_pure_word", "tpl_lt_crystal_english",
-            "tpl_fs_starlit_heaven", "tpl_fs_pure_word"
-        )
+        // One-update item 14: Pure Word templates (both feeds) are the
+        // only transparent ones — no card, no glow, 100% transparent.
+        // The 18 designed templates are card styles with real gradients.
+        val transparentIds = listOf("tpl_lt_pure_word", "tpl_fs_pure_word")
         transparentIds.forEach { id ->
             val tpl = defaults.first { it.id == id }
             assertFalse("$id should not glow", tpl.cardGlowEnabled)
-            assertTrue("$id should be pure transparent", tpl.isPureTransparentBackground)
             assertEquals("$id should be 100% transparent", 0.0f, tpl.bgOpacity, 0.001f)
         }
-        // Combined batch: Pure Transparent factory theme is pure by
-        // derived opacity (bgOpacity 0), not by the legacy flag, so it
-        // must not glow and must be 100% transparent, even though its
-        // legacy flag field is false by design.
-        val pure = defaults.first { it.id == "tpl_pure_transparent" }
-        assertFalse("tpl_pure_transparent should not glow", pure.cardGlowEnabled)
-        assertTrue("tpl_pure_transparent should be pure transparent", pure.isPureDerived)
-        assertEquals("tpl_pure_transparent should be 100% transparent", 0.0f, pure.bgOpacity, 0.001f)
-        val cardIds = listOf(
-            "tpl_lt_golden_glory", "tpl_lt_sanctuary_gold", "tpl_lt_broadcast_glass",
-            "tpl_lt_classic_banner", "tpl_lt_cathedral_gold", "tpl_lt_bilingual_harmony",
-            "tpl_fs_glory_revealed"
-        )
-        cardIds.forEach { id ->
-            assertTrue("$id should glow", defaults.first { it.id == id }.cardGlowEnabled)
+        // New designs: gradient second color is a real companion —
+        // never equal to first, never a dropped-alpha black.
+        defaults.filter { it.id !in transparentIds }.forEach { tpl ->
+            if (tpl.useGradient) {
+                assertFalse(
+                    "${tpl.id} gradient colors must differ",
+                    tpl.gradientColor1.equals(tpl.gradientColor2, ignoreCase = true)
+                )
+            }
         }
         assertTrue(defaults.first { it.id == "tpl_fs_pure_word" }.isFullScreen)
-        assertEquals(28, defaults.count { !it.isFullScreen })
-        assertEquals(11, defaults.count { it.isFullScreen })
+        assertTrue(defaults.first { it.id == "tpl_lt_pure_word" }.let { !it.isFullScreen })
+        assertEquals(10, defaults.count { !it.isFullScreen })
+        assertEquals(10, defaults.count { it.isFullScreen })
     }
 
     @Test

@@ -1,5 +1,21 @@
 package com.arabicchristianmedia
 
+/**
+ * One-update item 20: tracks whether a text field has focus anywhere in
+ * the app. The Activity's keyboard shortcuts never fire while typing.
+ * Text fields opt in via Modifier.trackTextInputFocus().
+ */
+object TextInputFocusTracker {
+    var isFocused: Boolean = false
+}
+
+/**
+ * One-update item 20: attach to text fields so the Activity keyboard
+ * shortcuts never fire while the user is typing.
+ */
+fun androidx.compose.ui.Modifier.trackTextInputFocus(): androidx.compose.ui.Modifier =
+    this.onFocusChanged { TextInputFocusTracker.isFocused = it.isFocused }
+
 import android.content.Intent
 import android.os.Bundle
 import android.view.KeyEvent
@@ -33,6 +49,7 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.Cast
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
@@ -88,6 +105,7 @@ import com.arabicchristianmedia.model.LowerThirdTemplate
 import com.arabicchristianmedia.ui.theme.LocalBentoColors
 import com.arabicchristianmedia.ui.theme.MyApplicationTheme
 import com.arabicchristianmedia.model.ColorThemes
+import androidx.compose.ui.focus.onFocusChanged
 
 class MainActivity : ComponentActivity() {
 
@@ -127,17 +145,90 @@ class MainActivity : ComponentActivity() {
      * returns no entry and the key falls through (e.g. to scroll),
      * instead of changing the live verse.
      */
+    // One-update item 20: keyboard state bridged from Compose.
+    private var currentTab: Int = 0
+    private var requestTab: Int? = null
+    private var searchFocusNonce: Int = 0
+    private var showShortcutsCard: Boolean = false
+
+    /**
+     * One-update item 20: full keyboard map, app-wide. Never fires while
+     * typing in a text field (TextInputFocusTracker). Unmapped keys fall
+     * through to super (volume, Back, etc. untouched).
+     */
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
-        val step = when (keyCode) {
-            KeyEvent.KEYCODE_PAGE_DOWN -> +1
-            KeyEvent.KEYCODE_PAGE_UP -> -1
-            else -> null
+        if (TextInputFocusTracker.isFocused) return super.onKeyDown(keyCode, event)
+        if (event?.repeatCount != 0) return super.onKeyDown(keyCode, event)
+        val ctrl = event.isCtrlPressed
+        val handled = when {
+            // Ctrl+F: open Library search.
+            ctrl && keyCode == KeyEvent.KEYCODE_F -> {
+                requestTab = 0; searchFocusNonce++; true
+            }
+            // Ctrl+1..4: switch tabs (Library, Editor, Broadcast, Sermon).
+            ctrl && keyCode in KeyEvent.KEYCODE_1..KeyEvent.KEYCODE_4 -> {
+                requestTab = keyCode - KeyEvent.KEYCODE_1; true
+            }
+            // ?: shortcuts help card.
+            keyCode == KeyEvent.KEYCODE_SLASH && event.isShiftPressed -> {
+                showShortcutsCard = true; true
+            }
+            // O: ON AIR toggle.
+            keyCode == KeyEvent.KEYCODE_O -> {
+                try { viewModel.toggleLive() } catch (e: Exception) {}
+                true
+            }
+            // C: Clear (per-feed Clear mode) -> OFF AIR.
+            keyCode == KeyEvent.KEYCODE_C -> {
+                try { viewModel.clearBroadcast() } catch (e: Exception) {}
+                true
+            }
+            // Esc: close the shortcuts card, else Clear -> OFF AIR.
+            keyCode == KeyEvent.KEYCODE_ESCAPE -> {
+                if (showShortcutsCard) showShortcutsCard = false
+                else try { viewModel.clearBroadcast() } catch (e: Exception) {}
+                true
+            }
+            // Enter: go live on the keyboard-focused verse (Library).
+            (keyCode == KeyEvent.KEYCODE_ENTER || keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER) && currentTab == 0 -> {
+                try { viewModel.goLiveOnFocused() } catch (e: Exception) {}
+                true
+            }
+            // Space: next sermon live.
+            keyCode == KeyEvent.KEYCODE_SPACE -> {
+                try { viewModel.stepSermon(+1) } catch (e: Exception) {}
+                true
+            }
+            // +/-: Library font size.
+            keyCode == KeyEvent.KEYCODE_PLUS || keyCode == KeyEvent.KEYCODE_EQUALS -> {
+                try { viewModel.increaseFontSize() } catch (e: Exception) {}
+                true
+            }
+            keyCode == KeyEvent.KEYCODE_MINUS -> {
+                try { viewModel.decreaseFontSize() } catch (e: Exception) {}
+                true
+            }
+            // Right/PageDown: next sermon; Left/PageUp: previous (stop at ends).
+            keyCode == KeyEvent.KEYCODE_DPAD_RIGHT || keyCode == KeyEvent.KEYCODE_PAGE_DOWN -> {
+                val outcome = try { viewModel.stepSermon(+1) } catch (e: Exception) { null }
+                outcome?.entry != null
+            }
+            keyCode == KeyEvent.KEYCODE_DPAD_LEFT || keyCode == KeyEvent.KEYCODE_PAGE_UP -> {
+                val outcome = try { viewModel.stepSermon(-1) } catch (e: Exception) { null }
+                outcome?.entry != null
+            }
+            // Up/Down: move the focus ring in the Library list.
+            keyCode == KeyEvent.KEYCODE_DPAD_UP && currentTab == 0 -> {
+                try { viewModel.moveReaderFocus(-1) } catch (e: Exception) {}
+                true
+            }
+            keyCode == KeyEvent.KEYCODE_DPAD_DOWN && currentTab == 0 -> {
+                try { viewModel.moveReaderFocus(+1) } catch (e: Exception) {}
+                true
+            }
+            else -> false
         }
-        if (step != null && event?.repeatCount == 0) {
-            val outcome = try { viewModel.stepSermon(step) } catch (e: Exception) { null }
-            if (outcome?.entry != null) return true
-        }
-        return super.onKeyDown(keyCode, event)
+        return if (handled) true else super.onKeyDown(keyCode, event)
     }
 
     @OptIn(ExperimentalMaterial3Api::class)
@@ -164,6 +255,15 @@ class MainActivity : ComponentActivity() {
                 val bento = LocalBentoColors.current
                 val snackbarHostState = remember { SnackbarHostState() }
                 var selectedTab by rememberSaveable { mutableIntStateOf(0) }
+                // One-update item 20: bridge Activity keyboard state.
+                LaunchedEffect(selectedTab) { currentTab = selectedTab }
+                LaunchedEffect(requestTab) {
+                    requestTab?.let { selectedTab = it; requestTab = null }
+                }
+                var shortcutsOpen by remember { mutableStateOf(false) }
+                LaunchedEffect(showShortcutsCard) { shortcutsOpen = showShortcutsCard }
+                // Keep the Activity flag in sync when the dialog closes.
+                LaunchedEffect(shortcutsOpen) { if (!shortcutsOpen) showShortcutsCard = false }
                 // 2026-10-28 K7 gate, shared by the top bar and the
                 // Editor body: width >= 900 AND height >= 600.
                 val topBarWide = LocalConfiguration.current.screenWidthDp >= 900 && LocalConfiguration.current.screenHeightDp >= 600
@@ -204,6 +304,13 @@ class MainActivity : ComponentActivity() {
                         snackbarHostState.showSnackbar(msg)
                         viewModel.dismissStatusMessage()
                     }
+                }
+
+                // One-update item 20: shortcuts help card (? key or top-bar icon).
+                if (shortcutsOpen) {
+                    com.arabicchristianmedia.ui.ShortcutsHelpDialog(
+                        onDismiss = { shortcutsOpen = false }
+                    )
                 }
 
                 Scaffold(
@@ -302,7 +409,7 @@ class MainActivity : ComponentActivity() {
                                             }
                                             val dirty = if (editorTab == 0) uiState.lowerWorkingDirty else uiState.showWorkingDirty
                                             Surface(shape = RoundedCornerShape(10.dp), color = bento.primaryContainer, onClick = { editorShowModifiedMenu = true }) {
-                                                Text(if (dirty) "معدّل · $designName (Modified · $designName)" else designName, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.onPrimaryContainer, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
+                                                Text(if (dirty) "معدّل · $designName" else designName, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.onPrimaryContainer, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
                                             }
                                         }
                                         // Batch item 5: style help, moved up from
@@ -321,12 +428,22 @@ class MainActivity : ComponentActivity() {
                                 }
 
                                 // Live Badge & Quick Switch
+                                // One-update item 20: keyboard icon on every
+                                // tab — opens the shortcuts help card.
+                                IconButton(onClick = { shortcutsOpen = true }) {
+                                    Icon(Icons.Filled.Keyboard, "اختصارات لوحة المفاتيح (Keyboard shortcuts)", tint = bento.textSecondary)
+                                }
+                                // One-update item 12: a PURE live indicator —
+                                // red LIVE when a verse is live on ANY output
+                                // (HTTP or NDI), grey OFF AIR when not live.
+                                // Never hard-coded "NDI".
+                                val pillIsLive = uiState.isLiveOnAir && uiState.activeVerse != null
                                 Surface(
                                     shape = RoundedCornerShape(20.dp),
-                                    color = if (uiState.isLiveOnAir && uiState.activeVerse != null) Color(0xFFFFDAD6) else bento.surfaceContainer,
+                                    color = if (pillIsLive) Color(0xFFFFDAD6) else bento.surfaceContainer,
                                     border = androidx.compose.foundation.BorderStroke(
                                         1.dp,
-                                        if (uiState.isLiveOnAir && uiState.activeVerse != null) bento.liveRed else bento.border
+                                        if (pillIsLive) bento.liveRed else bento.border
                                     ),
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(20.dp))
@@ -338,14 +455,14 @@ class MainActivity : ComponentActivity() {
                                             modifier = Modifier
                                                 .size(10.dp)
                                                 .clip(CircleShape)
-                                                .background(if (uiState.isLiveOnAir && uiState.activeVerse != null) bento.liveRedBright else if (uiState.isNativeNdiActive || uiState.isNativeShowActive) bento.green else bento.textSecondary)
+                                                .background(if (pillIsLive) bento.liveRedBright else bento.textSecondary)
                                         )
                                         Spacer(modifier = Modifier.width(8.dp))
                                         Text(
-                                            text = if (uiState.isLiveOnAir && uiState.activeVerse != null) "LIVE" else "NDI",
+                                            text = if (pillIsLive) "LIVE" else "OFF AIR",
                                             fontSize = 12.sp,
                                             fontWeight = FontWeight.Bold,
-                                            color = if (uiState.isLiveOnAir && uiState.activeVerse != null) bento.liveRed else bento.textSecondary
+                                            color = if (pillIsLive) bento.liveRed else bento.textSecondary
                                         )
                                     }
                                 }
@@ -461,6 +578,10 @@ class MainActivity : ComponentActivity() {
                                 onSelectVersion = { viewModel.setBibleVersion(it) },
                                 onSearchChanged = { viewModel.onSearchQueryChanged(it) },
                                 onClearSearch = { viewModel.clearSearch() },
+                                onSearchResultClicked = { viewModel.onSearchResultClicked(it) },
+                                onSearchBoxReopened = { viewModel.onSearchBoxReopened() },
+                                onDismissSearch = { viewModel.dismissSearch() },
+                                searchFocusNonce = searchFocusNonce,
                                 onOpenRecentVerse = { viewModel.openRecentVerseInReader(it) },
                                 onClearRecents = { viewModel.clearRecents() },
                                 onToggleLive = { viewModel.toggleLive() },
@@ -469,7 +590,8 @@ class MainActivity : ComponentActivity() {
                                 onSetAppThemeMode = { viewModel.setAppThemeMode(it) },
                                 closeOverlaysNonce = libraryTabTapNonce,
                                 onRemoveRecent = { viewModel.removeRecentVerse(it) },
-                                onRestoreRecent = { verse, index -> viewModel.restoreRecentVerse(verse, index) }
+                                onRestoreRecent = { verse, index -> viewModel.restoreRecentVerse(verse, index) },
+                                onSetRecentsFontSize = { viewModel.setRecentsFontSize(it) }
                             )
                             1 -> TemplateEditorScreen(
                                 currentTemplate = uiState.activeTemplate,
@@ -477,6 +599,12 @@ class MainActivity : ComponentActivity() {
                                 templates = uiState.templates,
                                 highlightedLowerStyleId = uiState.highlightedLowerStyleId,
                                 highlightedShowStyleId = uiState.highlightedShowStyleId,
+                                editingLowerStyleId = uiState.editingLowerStyleId,
+                                editingShowStyleId = uiState.editingShowStyleId,
+                                tashkeelEnabled = uiState.tashkeelEnabled,
+                                onTashkeelChange = { viewModel.setTashkeelEnabled(it) },
+                                englishVersion = uiState.englishVersion,
+                                onEnglishVersionChange = { viewModel.setEnglishVersion(it) },
                                 lowerWorkingDirty = uiState.lowerWorkingDirty,
                                 showWorkingDirty = uiState.showWorkingDirty,
                                 activeVerse = uiState.activeVerse,
@@ -535,8 +663,6 @@ class MainActivity : ComponentActivity() {
                                 onSetAdvertiseByName = { viewModel.setAdvertiseByName(it) },
                                 onSetAdvertiseName = { viewModel.setAdvertiseName(it) },
                                 onToggleAdvertiseTips = { viewModel.toggleAdvertiseTips() },
-                                onToggleTashkeel = { viewModel.setTashkeelEnabled(it) },
-                                onSelectEnglishVersion = { viewModel.setEnglishVersion(it) },
                                 selectedTheme = ColorThemes.byId(uiState.selectedThemeId, uiState.customThemes),
                                 customThemes = uiState.customThemes,
                                 onSelectTheme = { viewModel.selectTheme(it) },

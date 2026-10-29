@@ -999,6 +999,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 cleanPath == "/api/debug" -> {
                     serveApiDebug(out)
                 }
+                cleanPath == "/api/openapi.json" -> {
+                    serveOpenApiSpec(out)
+                }
+                cleanPath == "/api-docs" -> {
+                    serveApiDocsPage(out)
+                }
                 cleanPath == "/api/clientstat" -> {
                     serveApiClientStat(out, fullPath)
                 }
@@ -4174,7 +4180,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         } else if (tpl.animatedBackground != AnimatedBackgroundType.NONE && tpl.animatedBackground != AnimatedBackgroundType.CUSTOM_VIDEO) {
             // If Pure Transparent background with animated motion background is selected:
             // Draw a delicate, ethereal luminous motion glow directly behind the verse while maintaining 100% alpha transparency elsewhere!
-            val animAlpha = (tpl.animatedBackgroundOpacity * 75).toInt().coerceIn(15, 120)
+            // Batch-2: use full opacity range (like HTTP and MP4), not the
+            // compressed "delicate" 15-120 range. The slider now actually works.
+            val animAlpha = (tpl.animatedBackgroundOpacity * 255).toInt().coerceIn(0, 255)
             val timeSec = (System.currentTimeMillis() % 12000L) / 1000f
             // v1.9: motion speed scales procedural animations too (was fixed speed).
             val phase = (sin(timeSec.toDouble() * 1.5 * tpl.motionSpeed).toFloat() + 1f) / 2f
@@ -6021,6 +6029,33 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         sb.append("\"memory\":{\"usedMb\":$usedMb,\"maxMb\":$maxMb}")
         sb.append("}")
         sendJson(out, 200, sb.toString())
+    }
+
+    /**
+     * GET /api/openapi.json — OpenAPI 3.0 spec for the HTTP API.
+     * The spec lives in ApiDocs.OPENAPI_JSON; /api-docs renders it.
+     */
+    private fun serveOpenApiSpec(out: OutputStream) {
+        sendJson(out, 200, ApiDocs.OPENAPI_JSON.trim())
+    }
+
+    /**
+     * GET /api-docs — self-contained API test page (offline-first, no CDN).
+     * Fetches /api/openapi.json and renders a Try-it-out UI per endpoint,
+     * plus help, tips, and copy-paste examples.
+     */
+    private fun serveApiDocsPage(out: OutputStream) {
+        val html = ApiDocs.API_DOCS_HTML.trim()
+        val bytes = html.toByteArray(Charsets.UTF_8)
+        val writer = PrintWriter(out)
+        writer.print("HTTP/1.1 200 OK\r\n")
+        writer.print("Content-Type: text/html; charset=utf-8\r\n")
+        writer.print("Content-Length: ${bytes.size}\r\n")
+        writer.print("Cache-Control: no-cache, no-store, must-revalidate\r\n")
+        writer.print("Access-Control-Allow-Origin: *\r\n")
+        writer.print("Connection: close\r\n\r\n")
+        writer.flush()
+        out.write(bytes)
     }
 
 /**

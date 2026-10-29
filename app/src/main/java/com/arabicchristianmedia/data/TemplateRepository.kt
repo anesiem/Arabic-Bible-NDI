@@ -147,6 +147,10 @@ class TemplateRepository(context: Context) {
                 cardPaddingBottomDp = 32.0f,
                 cardPaddingLeftDp = 36.0f,
                 cardPaddingRightDp = 36.0f,
+                verseCitationGapArabicDp = 12.0f,
+                verseCitationGapEnglishDp = 12.0f,
+                boxLoopContinuous = true,
+                trueFullscreen = false,
                 autoFitText = true,
                 autoFitMaxVerseSp = 48,
                 boxHeightPercent = 45,
@@ -230,6 +234,10 @@ class TemplateRepository(context: Context) {
                 cardPaddingBottomDp = 32.0f,
                 cardPaddingLeftDp = 36.0f,
                 cardPaddingRightDp = 36.0f,
+                verseCitationGapArabicDp = 12.0f,
+                verseCitationGapEnglishDp = 12.0f,
+                boxLoopContinuous = true,
+                trueFullscreen = false,
                 autoFitText = true,
                 autoFitMaxVerseSp = 48,
                 boxHeightPercent = 45,
@@ -313,6 +321,10 @@ class TemplateRepository(context: Context) {
                 cardPaddingBottomDp = 32.0f,
                 cardPaddingLeftDp = 36.0f,
                 cardPaddingRightDp = 36.0f,
+                verseCitationGapArabicDp = 12.0f,
+                verseCitationGapEnglishDp = 12.0f,
+                boxLoopContinuous = true,
+                trueFullscreen = false,
                 autoFitText = true,
                 autoFitMaxVerseSp = 48,
                 boxHeightPercent = 45,
@@ -396,6 +408,10 @@ class TemplateRepository(context: Context) {
                 cardPaddingBottomDp = 32.0f,
                 cardPaddingLeftDp = 36.0f,
                 cardPaddingRightDp = 36.0f,
+                verseCitationGapArabicDp = 12.0f,
+                verseCitationGapEnglishDp = 12.0f,
+                boxLoopContinuous = true,
+                trueFullscreen = false,
                 autoFitText = true,
                 autoFitMaxVerseSp = 48,
                 boxHeightPercent = 45,
@@ -479,6 +495,10 @@ class TemplateRepository(context: Context) {
                 cardPaddingBottomDp = 32.0f,
                 cardPaddingLeftDp = 36.0f,
                 cardPaddingRightDp = 36.0f,
+                verseCitationGapArabicDp = 12.0f,
+                verseCitationGapEnglishDp = 12.0f,
+                boxLoopContinuous = true,
+                trueFullscreen = false,
                 autoFitText = true,
                 autoFitMaxVerseSp = 48,
                 boxHeightPercent = 45,
@@ -562,6 +582,10 @@ class TemplateRepository(context: Context) {
                 cardPaddingBottomDp = 32.0f,
                 cardPaddingLeftDp = 36.0f,
                 cardPaddingRightDp = 36.0f,
+                verseCitationGapArabicDp = 12.0f,
+                verseCitationGapEnglishDp = 12.0f,
+                boxLoopContinuous = true,
+                trueFullscreen = false,
                 autoFitText = true,
                 autoFitMaxVerseSp = 48,
                 boxHeightPercent = 45,
@@ -645,6 +669,10 @@ class TemplateRepository(context: Context) {
                 cardPaddingBottomDp = 32.0f,
                 cardPaddingLeftDp = 36.0f,
                 cardPaddingRightDp = 36.0f,
+                verseCitationGapArabicDp = 12.0f,
+                verseCitationGapEnglishDp = 12.0f,
+                boxLoopContinuous = true,
+                trueFullscreen = false,
                 autoFitText = true,
                 autoFitMaxVerseSp = 48,
                 boxHeightPercent = 45,
@@ -728,6 +756,10 @@ class TemplateRepository(context: Context) {
                 cardPaddingBottomDp = 32.0f,
                 cardPaddingLeftDp = 36.0f,
                 cardPaddingRightDp = 36.0f,
+                verseCitationGapArabicDp = 12.0f,
+                verseCitationGapEnglishDp = 12.0f,
+                boxLoopContinuous = true,
+                trueFullscreen = false,
                 autoFitText = true,
                 autoFitMaxVerseSp = 48,
                 boxHeightPercent = 45,
@@ -811,6 +843,10 @@ class TemplateRepository(context: Context) {
                 cardPaddingBottomDp = 32.0f,
                 cardPaddingLeftDp = 36.0f,
                 cardPaddingRightDp = 36.0f,
+                verseCitationGapArabicDp = 12.0f,
+                verseCitationGapEnglishDp = 12.0f,
+                boxLoopContinuous = true,
+                trueFullscreen = false,
                 autoFitText = true,
                 autoFitMaxVerseSp = 48,
                 boxHeightPercent = 45,
@@ -894,6 +930,10 @@ class TemplateRepository(context: Context) {
                 cardPaddingBottomDp = 32.0f,
                 cardPaddingLeftDp = 36.0f,
                 cardPaddingRightDp = 36.0f,
+                verseCitationGapArabicDp = 12.0f,
+                verseCitationGapEnglishDp = 12.0f,
+                boxLoopContinuous = true,
+                trueFullscreen = false,
                 autoFitText = true,
                 autoFitMaxVerseSp = 48,
                 boxHeightPercent = 45,
@@ -977,6 +1017,10 @@ class TemplateRepository(context: Context) {
                 cardPaddingBottomDp = 32.0f,
                 cardPaddingLeftDp = 36.0f,
                 cardPaddingRightDp = 36.0f,
+                verseCitationGapArabicDp = 12.0f,
+                verseCitationGapEnglishDp = 12.0f,
+                boxLoopContinuous = true,
+                trueFullscreen = false,
                 autoFitText = true,
                 autoFitMaxVerseSp = 72,
                 boxHeightPercent = 100,
@@ -1060,6 +1104,10 @@ class TemplateRepository(context: Context) {
                 cardPaddingBottomDp = 32.0f,
                 cardPaddingLeftDp = 36.0f,
                 cardPaddingRightDp = 36.0f,
+                verseCitationGapArabicDp = 12.0f,
+                verseCitationGapEnglishDp = 12.0f,
+                boxLoopContinuous = true,
+                trueFullscreen = false,
                 autoFitText = true,
                 autoFitMaxVerseSp = 72,
                 boxHeightPercent = 100,
@@ -1143,6 +1191,10 @@ class TemplateRepository(context: Context) {
                 cardPaddingBottomDp = 32.0f,
                 cardPaddingLeftDp = 36.0f,
                 cardPaddingRightDp = 36.0f,
+                verseCitationGapArabicDp = 12.0f,
+                verseCitationGapEnglishDp = 12.0f,
+                boxLoopContinuous = true,
+                trueFullscreen = false,
                 autoFitText = true,
                 autoFitMaxVerseSp = 72,
                 boxHeightPercent = 100,
@@ -1226,6 +1278,10 @@ class TemplateRepository(context: Context) {
                 cardPaddingBottomDp = 32.0f,
                 cardPaddingLeftDp = 36.0f,
                 cardPaddingRightDp = 36.0f,
+                verseCitationGapArabicDp = 12.0f,
+                verseCitationGapEnglishDp = 12.0f,
+                boxLoopContinuous = true,
+                trueFullscreen = false,
                 autoFitText = true,
                 autoFitMaxVerseSp = 72,
                 boxHeightPercent = 100,
@@ -1309,6 +1365,10 @@ class TemplateRepository(context: Context) {
                 cardPaddingBottomDp = 32.0f,
                 cardPaddingLeftDp = 36.0f,
                 cardPaddingRightDp = 36.0f,
+                verseCitationGapArabicDp = 12.0f,
+                verseCitationGapEnglishDp = 12.0f,
+                boxLoopContinuous = true,
+                trueFullscreen = false,
                 autoFitText = true,
                 autoFitMaxVerseSp = 72,
                 boxHeightPercent = 100,
@@ -1392,6 +1452,10 @@ class TemplateRepository(context: Context) {
                 cardPaddingBottomDp = 32.0f,
                 cardPaddingLeftDp = 36.0f,
                 cardPaddingRightDp = 36.0f,
+                verseCitationGapArabicDp = 12.0f,
+                verseCitationGapEnglishDp = 12.0f,
+                boxLoopContinuous = true,
+                trueFullscreen = false,
                 autoFitText = true,
                 autoFitMaxVerseSp = 72,
                 boxHeightPercent = 100,
@@ -1475,6 +1539,10 @@ class TemplateRepository(context: Context) {
                 cardPaddingBottomDp = 32.0f,
                 cardPaddingLeftDp = 36.0f,
                 cardPaddingRightDp = 36.0f,
+                verseCitationGapArabicDp = 12.0f,
+                verseCitationGapEnglishDp = 12.0f,
+                boxLoopContinuous = true,
+                trueFullscreen = false,
                 autoFitText = true,
                 autoFitMaxVerseSp = 72,
                 boxHeightPercent = 100,
@@ -1558,6 +1626,10 @@ class TemplateRepository(context: Context) {
                 cardPaddingBottomDp = 32.0f,
                 cardPaddingLeftDp = 36.0f,
                 cardPaddingRightDp = 36.0f,
+                verseCitationGapArabicDp = 12.0f,
+                verseCitationGapEnglishDp = 12.0f,
+                boxLoopContinuous = true,
+                trueFullscreen = false,
                 autoFitText = true,
                 autoFitMaxVerseSp = 72,
                 boxHeightPercent = 100,
@@ -1641,6 +1713,10 @@ class TemplateRepository(context: Context) {
                 cardPaddingBottomDp = 32.0f,
                 cardPaddingLeftDp = 36.0f,
                 cardPaddingRightDp = 36.0f,
+                verseCitationGapArabicDp = 12.0f,
+                verseCitationGapEnglishDp = 12.0f,
+                boxLoopContinuous = true,
+                trueFullscreen = false,
                 autoFitText = true,
                 autoFitMaxVerseSp = 72,
                 boxHeightPercent = 100,
@@ -1724,6 +1800,10 @@ class TemplateRepository(context: Context) {
                 cardPaddingBottomDp = 32.0f,
                 cardPaddingLeftDp = 36.0f,
                 cardPaddingRightDp = 36.0f,
+                verseCitationGapArabicDp = 12.0f,
+                verseCitationGapEnglishDp = 12.0f,
+                boxLoopContinuous = true,
+                trueFullscreen = false,
                 autoFitText = true,
                 autoFitMaxVerseSp = 72,
                 boxHeightPercent = 100,
@@ -1764,15 +1844,20 @@ class TemplateRepository(context: Context) {
             }
             if (list.isEmpty()) return DEFAULT_TEMPLATES
             // v1.9: merge in any factory presets added since the user last saved.
-            // Shipped (factory) styles are the app's own design: entries from a
-            // previous shipped set (LEGACY_FACTORY_IDS) are replaced by the
-            // current DEFAULT_TEMPLATES so a redesign actually reaches devices.
-            // User styles (Save As / Import carry "tpl_<timestamp>" IDs, and any
-            // other non-shipped entries) are never touched.
+            // Batch-2 fix: preserve user-modified factory templates. Previously,
+            // ANY saved template with a current factory ID was discarded and
+            // replaced with the factory default, losing the user's Update.
+            // Now: if the saved list has a version of a factory template, keep
+            // the saved (user-modified) version. Only LEGACY_FACTORY_IDS are
+            // replaced (true redesigns).
             val currentIds = DEFAULT_TEMPLATES.map { it.id }.toSet()
-            val kept = list.filter { it.id !in LEGACY_FACTORY_IDS && it.id !in currentIds }
-            val refreshed = DEFAULT_TEMPLATES.map { normalizePure(it) }.toMutableList()
-            refreshed.addAll(kept)
+            val kept = list.filter { it.id !in LEGACY_FACTORY_IDS }
+            val savedById = kept.associateBy { it.id }
+            val refreshed = DEFAULT_TEMPLATES.map { default ->
+                normalizePure(savedById[default.id] ?: default)
+            }.toMutableList()
+            // Add user templates (non-factory IDs)
+            refreshed.addAll(kept.filter { it.id !in currentIds })
             if (refreshed.map { it.id } != list.map { it.id } ||
                 refreshed != list
             ) {
@@ -1875,7 +1960,7 @@ class TemplateRepository(context: Context) {
             val obj = JSONObject(json)
             if (obj.optString("name", "").trim().isEmpty()) return null
             // Sanity: a real style carries several known keys.
-            val knownKeys = listOf("fontFamily", "bgColorHex", "textColorHex", "verseFontSize", "style", "showCrossEmblem", "emblem", "autoFitMinVerseSp", "autoFitMaxVerseSp", "boxHeightPercent", "isFullScreen", "id", "useSystemFontForBrackets", "gradientColorHex2", "gradientAngleDeg", "gradientAnimation", "autoFitMinCitationSp", "autoFitRatioLock", "clearMode", "lineSpacingArabic", "lineSpacingEnglish", "autoFitFrozenRatio")
+            val knownKeys = listOf("fontFamily", "bgColorHex", "textColorHex", "verseFontSize", "style", "showCrossEmblem", "emblem", "autoFitMinVerseSp", "autoFitMaxVerseSp", "boxHeightPercent", "isFullScreen", "id", "useSystemFontForBrackets", "gradientColorHex2", "gradientAngleDeg", "gradientAnimation", "autoFitMinCitationSp", "autoFitRatioLock", "clearMode", "lineSpacingArabic", "lineSpacingEnglish", "autoFitFrozenRatio", "verseCitationGapArabicDp", "verseCitationGapEnglishDp", "boxLoopContinuous", "trueFullscreen")
             if (knownKeys.none { obj.has(it) }) return null
             fromJson(obj)
         } catch (e: Exception) {
@@ -1952,6 +2037,10 @@ class TemplateRepository(context: Context) {
             put("cardPaddingBottomDp", t.cardPaddingBottomDp.toDouble())
             put("cardPaddingLeftDp", t.cardPaddingLeftDp.toDouble())
             put("cardPaddingRightDp", t.cardPaddingRightDp.toDouble())
+            put("verseCitationGapArabicDp", t.verseCitationGapArabicDp.toDouble())
+            put("verseCitationGapEnglishDp", t.verseCitationGapEnglishDp.toDouble())
+            put("boxLoopContinuous", t.boxLoopContinuous)
+            put("trueFullscreen", t.trueFullscreen)
             put("autoFitText", t.autoFitText)
             put("autoFitMaxVerseSp", t.autoFitMaxVerseSp)
             put("boxHeightPercent", t.boxHeightPercent)
@@ -2087,6 +2176,10 @@ class TemplateRepository(context: Context) {
             cardPaddingBottomDp = obj.optDouble("cardPaddingBottomDp", 32.0).toFloat().coerceIn(0f, 200f),
             cardPaddingLeftDp = obj.optDouble("cardPaddingLeftDp", 36.0).toFloat().coerceIn(0f, 300f),
             cardPaddingRightDp = obj.optDouble("cardPaddingRightDp", 36.0).toFloat().coerceIn(0f, 300f),
+            verseCitationGapArabicDp = obj.optDouble("verseCitationGapArabicDp", 12.0).toFloat().coerceIn(0f, 100f),
+            verseCitationGapEnglishDp = obj.optDouble("verseCitationGapEnglishDp", 12.0).toFloat().coerceIn(0f, 100f),
+            boxLoopContinuous = obj.optBoolean("boxLoopContinuous", true),
+            trueFullscreen = obj.optBoolean("trueFullscreen", false),
             autoFitText = obj.optBoolean("autoFitText", true),
             // v1.9.1: the size setting changed meaning (floor -> CAP, Ashraf's
             // model). Legacy saves carry only autoFitMinVerseSp: migrate its

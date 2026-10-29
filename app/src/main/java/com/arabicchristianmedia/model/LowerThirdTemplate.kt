@@ -392,6 +392,26 @@ data class LowerThirdTemplate(
     val cardPaddingLeftDp: Float = 36f,
     val cardPaddingRightDp: Float = 36f,
     /**
+     * Batch-2: verse-to-citation gap (dp) — space between the verse text and
+     * its citation, per language. Separate from card padding (which is the
+     * box edge breathing room).
+     */
+    val verseCitationGapArabicDp: Float = 12f,
+    val verseCitationGapEnglishDp: Float = 12f,
+    /**
+     * Batch-2: box transition loop mode. True = transition loops continuously
+     * during live (current behavior). False = plays once per verse change,
+     * then holds still.
+     */
+    val boxLoopContinuous: Boolean = true,
+    /**
+     * Batch-2: true fullscreen. When true, bypasses the card/box entirely —
+     * no padding, no border, no box transitions — verse fills the screen
+     * edge-to-edge, respecting positionBottomPercent/boxHeightPercent
+     * (0% bottom + 100% height = true full bleed).
+     */
+    val trueFullscreen: Boolean = false,
+    /**
      * v1.9: shrink-to-fit. When true, verse + citation + English section
      * (preserving their ratio) are capped at [autoFitMaxVerseSp] and shrink
      * together until they fit the text box ([boxHeightPercent] of the frame,

@@ -1963,6 +1963,7 @@ class TemplateRepository(context: Context) {
             put("autoFitRatioLock", t.autoFitRatioLock)
             put("lineSpacingArabic", t.lineSpacingArabic.toDouble())
             put("lineSpacingEnglish", t.lineSpacingEnglish.toDouble())
+            if (t.autoFitFrozenRatio != null) put("autoFitFrozenRatio", t.autoFitFrozenRatio!!.toDouble())
             if (t.autoFitFrozenRatio != null) put("autoFitFrozenRatio", t.autoFitFrozenRatio.toDouble())
         }
     }

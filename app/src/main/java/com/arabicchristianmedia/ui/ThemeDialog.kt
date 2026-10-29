@@ -7,6 +7,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -14,6 +15,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -34,8 +38,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.arabicchristianmedia.model.BibleBookGroups
 import com.arabicchristianmedia.model.ColorTheme
 import com.arabicchristianmedia.model.ColorThemes
+import com.arabicchristianmedia.model.groupColor
+import com.arabicchristianmedia.model.withGroupColor
 import com.arabicchristianmedia.model.SermonShadePair
 import com.arabicchristianmedia.model.SermonShadePairs
 import com.arabicchristianmedia.ui.theme.LocalBentoColors
@@ -150,6 +157,26 @@ fun ThemeDialog(
                         textColor = Color(working.light.textPrimary),
                         selected = working.light.recents == swatch.argb,
                         onClick = { working = working.copy(light = working.light.copy(recents = swatch.argb)) }
+                    )
+                }
+                // One-update item 21: the 10 Bible-study group colors are
+                // theme variables — fully user-controllable per mode.
+                Text("الوضع الداكن — ألوان مجموعات الأسفار (Dark book groups)", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = bento.textPrimary)
+                BibleBookGroups.ALL.forEach { group ->
+                    GroupColorRow(
+                        groupName = group.arabicName,
+                        current = working.dark.groupColor(group.id),
+                        swatches = GroupSwatchesDark,
+                        onPick = { argb -> working = working.copy(dark = working.dark.withGroupColor(group.id, argb)) }
+                    )
+                }
+                Text("الوضع الفاتح — ألوان مجموعات الأسفار (Light book groups)", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = bento.textPrimary)
+                BibleBookGroups.ALL.forEach { group ->
+                    GroupColorRow(
+                        groupName = group.arabicName,
+                        current = working.light.groupColor(group.id),
+                        swatches = GroupSwatchesLight,
+                        onPick = { argb -> working = working.copy(light = working.light.withGroupColor(group.id, argb)) }
                     )
                 }
                 if (dirty) {
@@ -311,5 +338,52 @@ private fun RecentsOptionRow(swatch: RecentsSwatch, bandBg: Color, textColor: Co
         )
         Text(swatch.name, fontSize = 13.sp, color = textColor, modifier = Modifier.weight(1f))
         if (selected) Icon(Icons.Filled.Check, null, tint = textColor)
+    }
+}
+
+// One-update item 21: categorical swatches for the book-group colors
+// (dark list bright on dark rows; light list deep on light rows).
+private val GroupSwatchesDark = listOf(
+    0xFFF59E0BL, 0xFF38BDF8L, 0xFFA78BFAL, 0xFFF472B6L, 0xFFFB923CL, 0xFF34D399L,
+    0xFF22D3EEL, 0xFF60A5FAL, 0xFFA3E635L, 0xFFF87171L, 0xFF94A3B8L, 0xFFFBBF24L
+)
+
+private val GroupSwatchesLight = listOf(
+    0xFFB45309L, 0xFF0284C7L, 0xFF7C3AEDL, 0xFFDB2777L, 0xFFEA580CL, 0xFF047857L,
+    0xFF0891B2L, 0xFF1D4ED8L, 0xFF4D7C0FL, 0xFFDC2626L, 0xFF64748BL, 0xFF0D9488L
+)
+
+@Composable
+private fun GroupColorRow(groupName: String, current: Long, swatches: List<Long>, onPick: (Long) -> Unit) {
+    val bento = LocalBentoColors.current
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Box(
+                Modifier.size(14.dp).clip(CircleShape).background(Color(current))
+            )
+            Text(
+                groupName, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                color = bento.textPrimary, modifier = Modifier.weight(1f)
+            )
+        }
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.padding(top = 4.dp)
+        ) {
+            items(swatches) { sw ->
+                Box(
+                    Modifier.size(28.dp).clip(CircleShape)
+                        .background(Color(sw))
+                        .border(
+                            if (sw == current) 2.dp else 0.dp,
+                            bento.textPrimary, CircleShape
+                        )
+                        .clickable { onPick(sw) }
+                )
+            }
+        }
     }
 }

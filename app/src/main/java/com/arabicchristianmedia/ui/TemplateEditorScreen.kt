@@ -2641,7 +2641,7 @@ fun ColorGradeSpectrumModal(
                     val cand = if (candidateOk) (if (hexInput.startsWith("#")) hexInput else "#$hexInput") else currentHex
                     fun fieldHex(field: String, orig: String): String =
                         if (field == previewField) cand else orig
-                    val cardBg = try { Color(android.graphics.Color.parseColor(fieldHex(previewField, tpl.bgColorHex))) } catch (e: Exception) { Color.DarkGray }
+                    val cardBg = try { Color(android.graphics.Color.parseColor(fieldHex("bgColorHex", tpl.bgColorHex))) } catch (e: Exception) { Color.DarkGray }
                     val verseCol = try { Color(android.graphics.Color.parseColor(fieldHex("textColorHex", tpl.textColorHex))) } catch (e: Exception) { Color.White }
                     val citCol = try { Color(android.graphics.Color.parseColor(fieldHex("referenceColorHex", tpl.referenceColorHex))) } catch (e: Exception) { Color.White }
                     val enCol = try { Color(android.graphics.Color.parseColor(fieldHex("secondaryTextColorHex", tpl.secondaryTextColorHex))) } catch (e: Exception) { Color.White }

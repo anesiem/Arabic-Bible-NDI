@@ -60,6 +60,13 @@ val LocalBentoColors = staticCompositionLocalOf {
 }
 
 /**
+ * One-update item 21: the 10 Bible-study group colors, resolved from the
+ * active theme's tokens for the current mode (like every other theme
+ * variable) — the user has full control via the theme editor.
+ */
+val LocalBookGroupColors = staticCompositionLocalOf { emptyMap<String, Color>() }
+
+/**
  * List colors: chapter bands + recents marker + live-row treatments, all
  * resolved from the selected app theme for the current mode. Every list
  * (Library, Sermon, recents sheet, remote page tokens) reads these — never
@@ -176,10 +183,24 @@ fun MyApplicationTheme(
         recentLine = Color(tokens.recents),
         sermonTint = Color(tokens.sermonTint)
     )
+    // One-update item 21: book-group colors from the active theme.
+    val bookGroupColors = mapOf(
+        "pentateuch" to Color(tokens.groupPentateuch),
+        "historical" to Color(tokens.groupHistorical),
+        "poetry" to Color(tokens.groupPoetry),
+        "major_prophets" to Color(tokens.groupMajorProphets),
+        "minor_prophets" to Color(tokens.groupMinorProphets),
+        "gospels" to Color(tokens.groupGospels),
+        "acts" to Color(tokens.groupActs),
+        "pauline" to Color(tokens.groupPauline),
+        "general" to Color(tokens.groupGeneral),
+        "revelation" to Color(tokens.groupRevelation)
+    )
 
     CompositionLocalProvider(
         LocalBentoColors provides bentoColors,
-        LocalListColors provides listColors
+        LocalListColors provides listColors,
+        LocalBookGroupColors provides bookGroupColors
     ) {
         MaterialTheme(
             colorScheme = colorScheme,

@@ -1,21 +1,5 @@
 package com.arabicchristianmedia
 
-/**
- * One-update item 20: tracks whether a text field has focus anywhere in
- * the app. The Activity's keyboard shortcuts never fire while typing.
- * Text fields opt in via Modifier.trackTextInputFocus().
- */
-object TextInputFocusTracker {
-    var isFocused: Boolean = false
-}
-
-/**
- * One-update item 20: attach to text fields so the Activity keyboard
- * shortcuts never fire while the user is typing.
- */
-fun androidx.compose.ui.Modifier.trackTextInputFocus(): androidx.compose.ui.Modifier =
-    this.onFocusChanged { TextInputFocusTracker.isFocused = it.isFocused }
-
 import android.content.Intent
 import android.os.Bundle
 import android.view.KeyEvent
@@ -107,6 +91,22 @@ import com.arabicchristianmedia.ui.theme.MyApplicationTheme
 import com.arabicchristianmedia.model.ColorThemes
 import androidx.compose.ui.focus.onFocusChanged
 
+/**
+ * One-update item 20: tracks whether a text field has focus anywhere in
+ * the app. The Activity's keyboard shortcuts never fire while typing.
+ * Text fields opt in via Modifier.trackTextInputFocus().
+ */
+object TextInputFocusTracker {
+    var isFocused: Boolean = false
+}
+
+/**
+ * One-update item 20: attach to text fields so the Activity keyboard
+ * shortcuts never fire while the user is typing.
+ */
+fun androidx.compose.ui.Modifier.trackTextInputFocus(): androidx.compose.ui.Modifier =
+    this.onFocusChanged { TextInputFocusTracker.isFocused = it.isFocused }
+
 class MainActivity : ComponentActivity() {
 
     private val viewModel: BibleNdiViewModel by viewModels()
@@ -146,10 +146,13 @@ class MainActivity : ComponentActivity() {
      * instead of changing the live verse.
      */
     // One-update item 20: keyboard state bridged from Compose.
+    // These MUST be Compose state: onKeyDown runs outside composition,
+    // and plain fields would never trigger the recomposition that
+    // delivers them to the UI (Ctrl+F / ? key would silently do nothing).
     private var currentTab: Int = 0
-    private var requestTab: Int? = null
-    private var searchFocusNonce: Int = 0
-    private var showShortcutsCard: Boolean = false
+    private var requestTab by mutableStateOf<Int?>(null)
+    private var searchFocusNonce by mutableStateOf(0)
+    private var showShortcutsCard by mutableStateOf(false)
 
     /**
      * One-update item 20: full keyboard map, app-wide. Never fires while
@@ -260,6 +263,8 @@ class MainActivity : ComponentActivity() {
                 LaunchedEffect(requestTab) {
                     requestTab?.let { selectedTab = it; requestTab = null }
                 }
+                // One-update item 20: the Activity keyboard fields are
+                // Compose state now, so they can be used directly.
                 var shortcutsOpen by remember { mutableStateOf(false) }
                 LaunchedEffect(showShortcutsCard) { shortcutsOpen = showShortcutsCard }
                 // Keep the Activity flag in sync when the dialog closes.

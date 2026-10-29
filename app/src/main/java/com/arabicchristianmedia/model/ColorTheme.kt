@@ -41,8 +41,51 @@ data class ColorThemeTokens(
     val recents: Long,
     val warning: Long,
     val liveHighlight: Long,
-    val sermonTint: Long
+    val sermonTint: Long,
+    val groupPentateuch: Long,
+    val groupHistorical: Long,
+    val groupPoetry: Long,
+    val groupMajorProphets: Long,
+    val groupMinorProphets: Long,
+    val groupGospels: Long,
+    val groupActs: Long,
+    val groupPauline: Long,
+    val groupGeneral: Long,
+    val groupRevelation: Long
 )
+
+/**
+ * One-update item 21: book-group color accessors by group id
+ * (pentateuch … revelation), so the theme editor and the picker can read
+ * and write them without reflecting over the token fields.
+ */
+fun ColorThemeTokens.groupColor(groupId: String): Long = when (groupId) {
+    "pentateuch" -> groupPentateuch
+    "historical" -> groupHistorical
+    "poetry" -> groupPoetry
+    "major_prophets" -> groupMajorProphets
+    "minor_prophets" -> groupMinorProphets
+    "gospels" -> groupGospels
+    "acts" -> groupActs
+    "pauline" -> groupPauline
+    "general" -> groupGeneral
+    "revelation" -> groupRevelation
+    else -> 0xFF94A3B8
+}
+
+fun ColorThemeTokens.withGroupColor(groupId: String, argb: Long): ColorThemeTokens = when (groupId) {
+    "pentateuch" -> copy(groupPentateuch = argb)
+    "historical" -> copy(groupHistorical = argb)
+    "poetry" -> copy(groupPoetry = argb)
+    "major_prophets" -> copy(groupMajorProphets = argb)
+    "minor_prophets" -> copy(groupMinorProphets = argb)
+    "gospels" -> copy(groupGospels = argb)
+    "acts" -> copy(groupActs = argb)
+    "pauline" -> copy(groupPauline = argb)
+    "general" -> copy(groupGeneral = argb)
+    "revelation" -> copy(groupRevelation = argb)
+    else -> this
+}
 
 data class ColorTheme(
     val id: String,
@@ -87,7 +130,17 @@ object ColorThemes {
             textPrimary = 0xFFE6E1E5, textSecondary = 0xFFCAC4D0,
             primary = 0xFFD0BCFF, primaryContainer = 0xFF4F378B,
             bandA = 0xFF3B3052, bandB = 0xFF2B3A42, recents = 0xFF0D9488, warning = 0xFFFBBF24,
-            liveHighlight = 0xFF1E293B, sermonTint = 0xFF2B3A42
+            liveHighlight = 0xFF1E293B, sermonTint = 0xFF2B3A42,
+            groupPentateuch = 0xFFF59E0B,
+            groupHistorical = 0xFF38BDF8,
+            groupPoetry = 0xFFA78BFA,
+            groupMajorProphets = 0xFFF472B6,
+            groupMinorProphets = 0xFFFB923C,
+            groupGospels = 0xFF34D399,
+            groupActs = 0xFF22D3EE,
+            groupPauline = 0xFF60A5FA,
+            groupGeneral = 0xFFA3E635,
+            groupRevelation = 0xFFF87171
         ),
         light = ColorThemeTokens(
             bg = 0xFFFEF7FF, card = 0xFFFFFFFF, surfaceContainer = 0xFFF3EDF7,
@@ -95,7 +148,17 @@ object ColorThemes {
             textPrimary = 0xFF1D1B20, textSecondary = 0xFF49454F,
             primary = 0xFF6750A4, primaryContainer = 0xFFEADDFF,
             bandA = 0xFFEAE3F6, bandB = 0xFFDFE9F3, recents = 0xFF0D9488, warning = 0xFFB45309,
-            liveHighlight = 0xFFE0F2FE, sermonTint = 0xFFDFE9F3
+            liveHighlight = 0xFFE0F2FE, sermonTint = 0xFFDFE9F3,
+            groupPentateuch = 0xFFB45309,
+            groupHistorical = 0xFF0284C7,
+            groupPoetry = 0xFF7C3AED,
+            groupMajorProphets = 0xFFDB2777,
+            groupMinorProphets = 0xFFEA580C,
+            groupGospels = 0xFF047857,
+            groupActs = 0xFF0891B2,
+            groupPauline = 0xFF1D4ED8,
+            groupGeneral = 0xFF4D7C0F,
+            groupRevelation = 0xFFDC2626
         )
     )
 
@@ -110,7 +173,17 @@ object ColorThemes {
             textPrimary = 0xFFFFFFFF, textSecondary = 0xFFD6D0C4,
             primary = 0xFFEAB308, primaryContainer = 0xFF5A4A1A,
             bandA = 0xFF3A3226, bandB = 0xFF2E3A2E, recents = 0xFFF59E0B, warning = 0xFFFBBF24,
-            liveHighlight = 0xFF1E293B, sermonTint = 0xFF2E3A2E
+            liveHighlight = 0xFF1E293B, sermonTint = 0xFF2E3A2E,
+            groupPentateuch = 0xFFF59E0B,
+            groupHistorical = 0xFF38BDF8,
+            groupPoetry = 0xFFA78BFA,
+            groupMajorProphets = 0xFFF472B6,
+            groupMinorProphets = 0xFFFB923C,
+            groupGospels = 0xFF34D399,
+            groupActs = 0xFF22D3EE,
+            groupPauline = 0xFF60A5FA,
+            groupGeneral = 0xFFA3E635,
+            groupRevelation = 0xFFF87171
         ),
         light = ColorThemeTokens(
             bg = 0xFFFDF8F0, card = 0xFFFFFFFF, surfaceContainer = 0xFFF5EFE2,
@@ -118,7 +191,17 @@ object ColorThemes {
             textPrimary = 0xFF000000, textSecondary = 0xFF333333,
             primary = 0xFF1E40AF, primaryContainer = 0xFFDCE6F5,
             bandA = 0xFFF5E6C8, bandB = 0xFFDDE8D0, recents = 0xFFB45309, warning = 0xFFB45309,
-            liveHighlight = 0xFFE0F2FE, sermonTint = 0xFFDDE8D0
+            liveHighlight = 0xFFE0F2FE, sermonTint = 0xFFDDE8D0,
+            groupPentateuch = 0xFFB45309,
+            groupHistorical = 0xFF0284C7,
+            groupPoetry = 0xFF7C3AED,
+            groupMajorProphets = 0xFFDB2777,
+            groupMinorProphets = 0xFFEA580C,
+            groupGospels = 0xFF047857,
+            groupActs = 0xFF0891B2,
+            groupPauline = 0xFF1D4ED8,
+            groupGeneral = 0xFF4D7C0F,
+            groupRevelation = 0xFFDC2626
         )
     )
 
@@ -135,7 +218,17 @@ object ColorThemes {
             textPrimary = 0xFFF5F3FF, textSecondary = 0xFFC4B5FD,
             primary = 0xFF7C3AED, primaryContainer = 0xFF4C2E8B,
             bandA = 0xFF2D1B4E, bandB = 0xFF123B3F, recents = 0xFF22D3EE, warning = 0xFFFBBF24,
-            liveHighlight = 0xFF1E293B, sermonTint = 0xFF123B3F
+            liveHighlight = 0xFF1E293B, sermonTint = 0xFF123B3F,
+            groupPentateuch = 0xFFF59E0B,
+            groupHistorical = 0xFF38BDF8,
+            groupPoetry = 0xFFA78BFA,
+            groupMajorProphets = 0xFFF472B6,
+            groupMinorProphets = 0xFFFB923C,
+            groupGospels = 0xFF34D399,
+            groupActs = 0xFF22D3EE,
+            groupPauline = 0xFF60A5FA,
+            groupGeneral = 0xFFA3E635,
+            groupRevelation = 0xFFF87171
         ),
         light = ColorThemeTokens(
             bg = 0xFFF5F3FF, card = 0xFFFFFFFF, surfaceContainer = 0xFFF0EDFB,
@@ -143,7 +236,17 @@ object ColorThemes {
             textPrimary = 0xFF1E1B4B, textSecondary = 0xFF4C4A6B,
             primary = 0xFF7C3AED, primaryContainer = 0xFFE6DFF5,
             bandA = 0xFFEDE9FE, bandB = 0xFFCFFAFE, recents = 0xFF0891B2, warning = 0xFFB45309,
-            liveHighlight = 0xFFE0F2FE, sermonTint = 0xFFCFFAFE
+            liveHighlight = 0xFFE0F2FE, sermonTint = 0xFFCFFAFE,
+            groupPentateuch = 0xFFB45309,
+            groupHistorical = 0xFF0284C7,
+            groupPoetry = 0xFF7C3AED,
+            groupMajorProphets = 0xFFDB2777,
+            groupMinorProphets = 0xFFEA580C,
+            groupGospels = 0xFF047857,
+            groupActs = 0xFF0891B2,
+            groupPauline = 0xFF1D4ED8,
+            groupGeneral = 0xFF4D7C0F,
+            groupRevelation = 0xFFDC2626
         )
     )
 
@@ -158,7 +261,17 @@ object ColorThemes {
             textPrimary = 0xFFECFDF5, textSecondary = 0xFFA7F3D0,
             primary = 0xFF34D399, primaryContainer = 0xFF14532D,
             bandA = 0xFF14352C, bandB = 0xFF3B2A12, recents = 0xFFFBBF24, warning = 0xFFFBBF24,
-            liveHighlight = 0xFF1E293B, sermonTint = 0xFF3B2A12
+            liveHighlight = 0xFF1E293B, sermonTint = 0xFF3B2A12,
+            groupPentateuch = 0xFFF59E0B,
+            groupHistorical = 0xFF38BDF8,
+            groupPoetry = 0xFFA78BFA,
+            groupMajorProphets = 0xFFF472B6,
+            groupMinorProphets = 0xFFFB923C,
+            groupGospels = 0xFF34D399,
+            groupActs = 0xFF22D3EE,
+            groupPauline = 0xFF60A5FA,
+            groupGeneral = 0xFFA3E635,
+            groupRevelation = 0xFFF87171
         ),
         light = ColorThemeTokens(
             bg = 0xFFF0FDF9, card = 0xFFFFFFFF, surfaceContainer = 0xFFEAF9F1,
@@ -166,7 +279,17 @@ object ColorThemes {
             textPrimary = 0xFF0F172A, textSecondary = 0xFF475569,
             primary = 0xFF047857, primaryContainer = 0xFFC9EBD9,
             bandA = 0xFFD1FAE5, bandB = 0xFFFEF3C7, recents = 0xFFB45309, warning = 0xFFB45309,
-            liveHighlight = 0xFFE0F2FE, sermonTint = 0xFFFEF3C7
+            liveHighlight = 0xFFE0F2FE, sermonTint = 0xFFFEF3C7,
+            groupPentateuch = 0xFFB45309,
+            groupHistorical = 0xFF0284C7,
+            groupPoetry = 0xFF7C3AED,
+            groupMajorProphets = 0xFFDB2777,
+            groupMinorProphets = 0xFFEA580C,
+            groupGospels = 0xFF047857,
+            groupActs = 0xFF0891B2,
+            groupPauline = 0xFF1D4ED8,
+            groupGeneral = 0xFF4D7C0F,
+            groupRevelation = 0xFFDC2626
         )
     )
 
@@ -181,7 +304,17 @@ object ColorThemes {
             textPrimary = 0xFFF5F5F4, textSecondary = 0xFFD6D3D1,
             primary = 0xFFC89B6A, primaryContainer = 0xFF5C4626,
             bandA = 0xFF3B332B, bandB = 0xFF2E352E, recents = 0xFFE8A33D, warning = 0xFFFBBF24,
-            liveHighlight = 0xFF1E293B, sermonTint = 0xFF2E352E
+            liveHighlight = 0xFF1E293B, sermonTint = 0xFF2E352E,
+            groupPentateuch = 0xFFF59E0B,
+            groupHistorical = 0xFF38BDF8,
+            groupPoetry = 0xFFA78BFA,
+            groupMajorProphets = 0xFFF472B6,
+            groupMinorProphets = 0xFFFB923C,
+            groupGospels = 0xFF34D399,
+            groupActs = 0xFF22D3EE,
+            groupPauline = 0xFF60A5FA,
+            groupGeneral = 0xFFA3E635,
+            groupRevelation = 0xFFF87171
         ),
         light = ColorThemeTokens(
             bg = 0xFFFDF6E3, card = 0xFFFFFBEB, surfaceContainer = 0xFFF7ECD2,
@@ -189,7 +322,17 @@ object ColorThemes {
             textPrimary = 0xFF292524, textSecondary = 0xFF57534E,
             primary = 0xFF92400E, primaryContainer = 0xFFF0DCB8,
             bandA = 0xFFF5E6C8, bandB = 0xFFE7E5D4, recents = 0xFFB45309, warning = 0xFFB45309,
-            liveHighlight = 0xFFE0F2FE, sermonTint = 0xFFE7E5D4
+            liveHighlight = 0xFFE0F2FE, sermonTint = 0xFFE7E5D4,
+            groupPentateuch = 0xFFB45309,
+            groupHistorical = 0xFF0284C7,
+            groupPoetry = 0xFF7C3AED,
+            groupMajorProphets = 0xFFDB2777,
+            groupMinorProphets = 0xFFEA580C,
+            groupGospels = 0xFF047857,
+            groupActs = 0xFF0891B2,
+            groupPauline = 0xFF1D4ED8,
+            groupGeneral = 0xFF4D7C0F,
+            groupRevelation = 0xFFDC2626
         )
     )
 
@@ -205,7 +348,17 @@ object ColorThemes {
             textPrimary = 0xFFF1F5F9, textSecondary = 0xFF94A3B8,
             primary = 0xFF3B82F6, primaryContainer = 0xFF1E3A5F,
             bandA = 0xFF1E293B, bandB = 0xFF1C2B3A, recents = 0xFFF59E0B, warning = 0xFFFBBF24,
-            liveHighlight = 0xFFFACC15, sermonTint = 0xFF243447
+            liveHighlight = 0xFFFACC15, sermonTint = 0xFF243447,
+            groupPentateuch = 0xFFF59E0B,
+            groupHistorical = 0xFF38BDF8,
+            groupPoetry = 0xFFA78BFA,
+            groupMajorProphets = 0xFFF472B6,
+            groupMinorProphets = 0xFFFB923C,
+            groupGospels = 0xFF34D399,
+            groupActs = 0xFF22D3EE,
+            groupPauline = 0xFF60A5FA,
+            groupGeneral = 0xFFA3E635,
+            groupRevelation = 0xFFF87171
         ),
         light = ColorThemeTokens(
             bg = 0xFFF8FAFC, card = 0xFFFFFFFF, surfaceContainer = 0xFFF1F5F9,
@@ -213,7 +366,17 @@ object ColorThemes {
             textPrimary = 0xFF0F172A, textSecondary = 0xFF475569,
             primary = 0xFF1D4ED8, primaryContainer = 0xFFDBEAFE,
             bandA = 0xFFDBEAFE, bandB = 0xFFFEF3C7, recents = 0xFFB45309, warning = 0xFFB45309,
-            liveHighlight = 0xFFFEF08A, sermonTint = 0xFFE0EAF5
+            liveHighlight = 0xFFFEF08A, sermonTint = 0xFFE0EAF5,
+            groupPentateuch = 0xFFB45309,
+            groupHistorical = 0xFF0284C7,
+            groupPoetry = 0xFF7C3AED,
+            groupMajorProphets = 0xFFDB2777,
+            groupMinorProphets = 0xFFEA580C,
+            groupGospels = 0xFF047857,
+            groupActs = 0xFF0891B2,
+            groupPauline = 0xFF1D4ED8,
+            groupGeneral = 0xFF4D7C0F,
+            groupRevelation = 0xFFDC2626
         )
     )
 
@@ -228,7 +391,17 @@ object ColorThemes {
             textPrimary = 0xFFFFF7ED, textSecondary = 0xFFD6C4A8,
             primary = 0xFFF59E0B, primaryContainer = 0xFF5A3D14,
             bandA = 0xFF33291D, bandB = 0xFF3A2E1E, recents = 0xFFFB923C, warning = 0xFFFBBF24,
-            liveHighlight = 0xFF7C2D12, sermonTint = 0xFF3A2F22
+            liveHighlight = 0xFF7C2D12, sermonTint = 0xFF3A2F22,
+            groupPentateuch = 0xFFF59E0B,
+            groupHistorical = 0xFF38BDF8,
+            groupPoetry = 0xFFA78BFA,
+            groupMajorProphets = 0xFFF472B6,
+            groupMinorProphets = 0xFFFB923C,
+            groupGospels = 0xFF34D399,
+            groupActs = 0xFF22D3EE,
+            groupPauline = 0xFF60A5FA,
+            groupGeneral = 0xFFA3E635,
+            groupRevelation = 0xFFF87171
         ),
         light = ColorThemeTokens(
             bg = 0xFFFDF8F0, card = 0xFFFFFFFF, surfaceContainer = 0xFFFAF3E8,
@@ -236,7 +409,17 @@ object ColorThemes {
             textPrimary = 0xFF292524, textSecondary = 0xFF57534E,
             primary = 0xFFB45309, primaryContainer = 0xFFF5E0C0,
             bandA = 0xFFF5E6C8, bandB = 0xFFEDE0C8, recents = 0xFFB45309, warning = 0xFFB45309,
-            liveHighlight = 0xFFFEF3C7, sermonTint = 0xFFF0E4CE
+            liveHighlight = 0xFFFEF3C7, sermonTint = 0xFFF0E4CE,
+            groupPentateuch = 0xFFB45309,
+            groupHistorical = 0xFF0284C7,
+            groupPoetry = 0xFF7C3AED,
+            groupMajorProphets = 0xFFDB2777,
+            groupMinorProphets = 0xFFEA580C,
+            groupGospels = 0xFF047857,
+            groupActs = 0xFF0891B2,
+            groupPauline = 0xFF1D4ED8,
+            groupGeneral = 0xFF4D7C0F,
+            groupRevelation = 0xFFDC2626
         )
     )
 
@@ -250,7 +433,17 @@ object ColorThemes {
             textPrimary = 0xFFE2E8F0, textSecondary = 0xFF94A3B8,
             primary = 0xFF60A5FA, primaryContainer = 0xFF1E3A8A,
             bandA = 0xFF101A30, bandB = 0xFF0F2033, recents = 0xFF22D3EE, warning = 0xFFFBBF24,
-            liveHighlight = 0xFF1E3A8A, sermonTint = 0xFF14243D
+            liveHighlight = 0xFF1E3A8A, sermonTint = 0xFF14243D,
+            groupPentateuch = 0xFFF59E0B,
+            groupHistorical = 0xFF38BDF8,
+            groupPoetry = 0xFFA78BFA,
+            groupMajorProphets = 0xFFF472B6,
+            groupMinorProphets = 0xFFFB923C,
+            groupGospels = 0xFF34D399,
+            groupActs = 0xFF22D3EE,
+            groupPauline = 0xFF60A5FA,
+            groupGeneral = 0xFFA3E635,
+            groupRevelation = 0xFFF87171
         ),
         light = ColorThemeTokens(
             bg = 0xFFF0F4FA, card = 0xFFFFFFFF, surfaceContainer = 0xFFE8EEF7,
@@ -258,7 +451,17 @@ object ColorThemes {
             textPrimary = 0xFF0F1B2D, textSecondary = 0xFF475569,
             primary = 0xFF1E40AF, primaryContainer = 0xFFDBEAFE,
             bandA = 0xFFDBEAFE, bandB = 0xFFCFFAFE, recents = 0xFF0891B2, warning = 0xFFB45309,
-            liveHighlight = 0xFFFEF08A, sermonTint = 0xFFD9E6F5
+            liveHighlight = 0xFFFEF08A, sermonTint = 0xFFD9E6F5,
+            groupPentateuch = 0xFFB45309,
+            groupHistorical = 0xFF0284C7,
+            groupPoetry = 0xFF7C3AED,
+            groupMajorProphets = 0xFFDB2777,
+            groupMinorProphets = 0xFFEA580C,
+            groupGospels = 0xFF047857,
+            groupActs = 0xFF0891B2,
+            groupPauline = 0xFF1D4ED8,
+            groupGeneral = 0xFF4D7C0F,
+            groupRevelation = 0xFFDC2626
         )
     )
 
@@ -288,6 +491,9 @@ fun ColorTheme.toJson(): JSONObject {
             put("primary", hex(t.primary)); put("primaryCont", hex(t.primaryContainer))
             put("bandA", hex(t.bandA)); put("bandB", hex(t.bandB)); put("recents", hex(t.recents)); put("warning", hex(t.warning))
             put("liveHighlight", hex(t.liveHighlight)); put("sermonTint", hex(t.sermonTint))
+            put("gPent", hex(t.groupPentateuch)); put("gHist", hex(t.groupHistorical)); put("gPoet", hex(t.groupPoetry))
+            put("gMajP", hex(t.groupMajorProphets)); put("gMinP", hex(t.groupMinorProphets)); put("gGosp", hex(t.groupGospels))
+            put("gActs", hex(t.groupActs)); put("gPaul", hex(t.groupPauline)); put("gGen", hex(t.groupGeneral)); put("gRev", hex(t.groupRevelation))
         }
     }
     return JSONObject().apply {
@@ -317,7 +523,17 @@ fun colorThemeFromJson(obj: JSONObject): ColorTheme? {
                 // the old fixed values (dark slate / light ice-blue for
                 // live highlight, bandB for sermon tint).
                 liveHighlight = argb("liveHighlight", if (isDark) "#1E293B" else "#E0F2FE"),
-                sermonTint = argb("sermonTint", if (isDark) "#2B3A42" else "#DFE9F3")
+                sermonTint = argb("sermonTint", if (isDark) "#2B3A42" else "#DFE9F3"),
+                groupPentateuch = argb("gPent", if (isDark) "#F59E0B" else "#B45309"),
+                groupHistorical = argb("gHist", if (isDark) "#38BDF8" else "#0284C7"),
+                groupPoetry = argb("gPoet", if (isDark) "#A78BFA" else "#7C3AED"),
+                groupMajorProphets = argb("gMajP", if (isDark) "#F472B6" else "#DB2777"),
+                groupMinorProphets = argb("gMinP", if (isDark) "#FB923C" else "#EA580C"),
+                groupGospels = argb("gGosp", if (isDark) "#34D399" else "#047857"),
+                groupActs = argb("gActs", if (isDark) "#22D3EE" else "#0891B2"),
+                groupPauline = argb("gPaul", if (isDark) "#60A5FA" else "#1D4ED8"),
+                groupGeneral = argb("gGen", if (isDark) "#A3E635" else "#4D7C0F"),
+                groupRevelation = argb("gRev", if (isDark) "#F87171" else "#DC2626")
             )
         }
         ColorTheme(

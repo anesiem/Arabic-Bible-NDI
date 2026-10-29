@@ -178,6 +178,24 @@ object ApiDocs {
         }
       }
     },
+    "/api/recents": {
+      "get": {
+        "summary": "Session recent verses",
+        "description": "The verses recently shown, newest first, for stage monitors and other LAN consumers. Same shape as the recents the /remote page receives, plus English text.",
+        "responses": {
+          "200": { "description": "Returns {ok:true, count, recents:[{citation, arabic, english, ref, bookId, chapterNum, verseNum}]}." }
+        }
+      }
+    },
+    "/stage": {
+      "get": {
+        "summary": "Stage monitor page",
+        "description": "ProPresenter-style read-only stage monitor (HTML). Dark display-only page: LIVE/OFF AIR pill, sermon progress + clock header, huge Arabic verse (RTL) + yellow citation + English, sermon sidebar with live row highlighted and auto-scroll, recents footer strip. Polls /api/verse, /api/sermons/current and /api/recents every 5s; /events SSE for instant verse updates. No controls — directing stays on /remote.",
+        "responses": {
+          "200": { "description": "Returns the stage monitor HTML page (text/html)." }
+        }
+      }
+    },
     "/api/verse/copy": {
       "get": {
         "summary": "Copy-ready verse text",

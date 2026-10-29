@@ -991,6 +991,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 cleanPath == "/api/verse/copy" -> {
                     serveApiVerseCopy(out, fullPath)
                 }
+                cleanPath == "/api/recents" -> {
+                    serveApiRecents(out)
+                }
                 cleanPath == "/api/verse/card.png" -> {
                     serveVerseCardPng(out, fullPath)
                 }
@@ -1017,6 +1020,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 }
                 cleanPath == "/remote" -> {
                     serveRemotePage(out)
+                }
+                cleanPath == "/stage" -> {
+                    serveStageMonitorPage(out)
                 }
                 cleanPath == "/api/debug" -> {
                     serveApiDebug(out)
@@ -5505,6 +5511,31 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     }
 
     /**
+     * GET /api/recents — session recent verses as JSON (stage monitor,
+     * AI clients, any LAN consumer). Mirrors the recents shape the
+     * remote page already receives (Arabic citation + Arabic text,
+     * English citation as ref, numeric keys for live-row highlight),
+     * plus the English text so API consumers don't need a second call.
+     * Read-only; the list is maintained in memory by setRecentVerses.
+     */
+    private fun serveApiRecents(out: OutputStream) {
+        val sb = StringBuilder()
+        sb.append("{\"ok\":true,\"count\":${recentVersesState.size},\"recents\":[")
+        recentVersesState.forEachIndexed { i, v ->
+            if (i > 0) sb.append(",")
+            sb.append("{\"citation\":\"${jsonEscape(v.getFormattedArabicCitation())}\",")
+            sb.append("\"arabic\":\"${jsonEscape(v.arabicText)}\",")
+            sb.append("\"english\":\"${jsonEscape(v.englishText)}\",")
+            sb.append("\"ref\":\"${jsonEscape(v.getFormattedEnglishCitation())}\",")
+            sb.append("\"bookId\":\"${jsonEscape(v.bookId)}\",")
+            sb.append("\"chapterNum\":${v.chapter},")
+            sb.append("\"verseNum\":${v.verse}}")
+        }
+        sb.append("]}")
+        sendJson(out, 200, sb.toString())
+    }
+
+    /**
      * GET /api/verse/copy — copy-ready verse, separate from /api/verse
      * (which returns live state for overlays) so no existing caller
      * changes shape. With no ?ref= it copies the current live verse.
@@ -6356,6 +6387,178 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
      * it never chooses outputs — the master decides what shows. Fully
      * offline, follows the device's light/dark theme.
      */
+    /**
+     * GET /stage — ProPresenter-style stage monitor page (display only).
+     * Dark, glanceable: LIVE pill, the current verse large, the working
+     * sermon list with the live row highlighted, and the recents strip.
+     * Data comes from /api/verse, /api/sermons/current and /api/recents
+     * (polled), with /events SSE for instant verse updates. No controls:
+     * directing stays on the /remote page.
+     */
+    private fun serveStageMonitorPage(out: OutputStream) {
+        val html = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stage Monitor</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0; background: #0b0e14; color: #e8eaf0;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    height: 100vh; height: 100dvh;
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  header {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 16px; border-bottom: 1px solid #1e2532; flex: none;
+  }
+  #livepill {
+    font-weight: 700; font-size: 13px; letter-spacing: .1em;
+    padding: 6px 14px; border-radius: 999px;
+    background: #2a2f3a; color: #9aa3b5;
+  }
+  #livepill.on { background: #dc2626; color: #fff; }
+  #sprog { color: #8b93a7; font-size: 14px; font-variant-numeric: tabular-nums; }
+  #clock { margin-left: auto; color: #8b93a7; font-size: 14px; font-variant-numeric: tabular-nums; }
+  main { flex: 1; display: flex; min-height: 0; }
+  #verse {
+    flex: 1; min-width: 0; display: flex; flex-direction: column;
+    justify-content: center; padding: 24px 32px;
+  }
+  body.offair #verse { opacity: .45; }
+  #vcit { color: #f5c518; font-size: clamp(18px, 2.4vw, 30px); font-weight: 600; margin-bottom: 14px; }
+  #var { direction: rtl; text-align: right; font-size: clamp(30px, 4.6vw, 72px); line-height: 1.55; }
+  #ven { color: #aab2c5; font-size: clamp(16px, 2vw, 28px); line-height: 1.55; margin-top: 16px; }
+  #sermon {
+    width: min(340px, 30vw); flex: none; overflow-y: auto;
+    border-left: 1px solid #1e2532; padding: 12px;
+  }
+  #sermon h2 {
+    font-size: 12px; color: #8b93a7; text-transform: uppercase;
+    letter-spacing: .08em; margin: 4px 4px 10px; font-weight: 600;
+  }
+  .srow {
+    padding: 9px 10px; border-radius: 8px; margin-bottom: 6px;
+    background: #11161f; border-left: 3px solid transparent;
+  }
+  .srow.cur { background: #1a2233; border-left-color: #f5c518; }
+  .srow .c { color: #f5c518; font-size: 14px; font-weight: 600; }
+  .srow .t {
+    color: #c6ccda; font-size: 13px; direction: rtl; text-align: right;
+    margin-top: 4px; display: -webkit-box; -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .hint { color: #5b6376; font-size: 13px; padding: 8px 4px; }
+  footer {
+    flex: none; border-top: 1px solid #1e2532; padding: 8px 16px;
+    display: flex; gap: 8px; overflow-x: auto; min-height: 20px;
+  }
+  .rchip {
+    white-space: nowrap; background: #141a26; border: 1px solid #232c40;
+    color: #c6ccda; border-radius: 999px; padding: 6px 12px; font-size: 13px;
+  }
+  @media (max-width: 760px) {
+    main { flex-direction: column; }
+    #sermon { width: auto; border-left: 0; border-top: 1px solid #1e2532; max-height: 30vh; }
+    #verse { padding: 16px; }
+  }
+</style>
+</head>
+<body class="offair">
+<header>
+  <span id="livepill">OFF AIR</span>
+  <span id="sprog"></span>
+  <span id="clock"></span>
+</header>
+<main>
+  <section id="verse">
+    <div id="vcit"></div>
+    <div id="var" dir="rtl" lang="ar"></div>
+    <div id="ven" dir="ltr" lang="en"></div>
+  </section>
+  <aside id="sermon"><h2>Sermon</h2><div id="slist"></div></aside>
+</main>
+<footer id="recents"></footer>
+<script>
+  function el(id) { return document.getElementById(id); }
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+  function renderVerse(s) {
+    if (!s) return;
+    var live = !!s.isLive;
+    var pill = el('livepill');
+    pill.textContent = live ? 'LIVE' : 'OFF AIR';
+    pill.className = live ? 'on' : '';
+    document.body.classList.toggle('offair', !live);
+    el('vcit').textContent = s.arabicCitation || '';
+    el('var').textContent = s.arabicText || '';
+    el('ven').textContent = s.englishText || '';
+  }
+  function renderSermon(d) {
+    var box = el('slist');
+    if (!d || !d.ok || !d.entries || !d.entries.length) {
+      box.innerHTML = '<div class="hint">No sermon active</div>';
+      el('sprog').textContent = '';
+      return;
+    }
+    el('sprog').textContent = (d.index + 1) + ' / ' + d.total;
+    var h = '';
+    for (var i = 0; i < d.entries.length; i++) {
+      var e = d.entries[i];
+      h += '<div class="srow' + (i === d.index ? ' cur' : '') + '">'
+        + '<div class="c">' + esc(e.arabicCitation) + '</div>'
+        + '<div class="t">' + esc(e.arabicText) + '</div></div>';
+    }
+    box.innerHTML = h;
+    var cur = box.querySelector('.cur');
+    if (cur) cur.scrollIntoView({ block: 'nearest' });
+  }
+  function renderRecents(d) {
+    var box = el('recents');
+    if (!d || !d.ok || !d.recents || !d.recents.length) { box.innerHTML = ''; return; }
+    var h = '';
+    for (var i = 0; i < d.recents.length; i++) {
+      h += '<span class="rchip">' + esc(d.recents[i].citation) + '</span>';
+    }
+    box.innerHTML = h;
+  }
+  function loadAll() {
+    fetch('/api/verse').then(function (r) { return r.json(); }).then(renderVerse).catch(function () {});
+    fetch('/api/sermons/current').then(function (r) { return r.json(); }).then(renderSermon).catch(function () { renderSermon(null); });
+    fetch('/api/recents').then(function (r) { return r.json(); }).then(renderRecents).catch(function () {});
+  }
+  try {
+    var es = new EventSource('/events');
+    es.onmessage = function (ev) { try { renderVerse(JSON.parse(ev.data)); } catch (e) {} };
+  } catch (e) {}
+  function tick() { el('clock').textContent = new Date().toLocaleTimeString(); }
+  loadAll();
+  tick();
+  setInterval(loadAll, 5000);
+  setInterval(tick, 1000);
+</script>
+</body>
+</html>
+""".trimIndent()
+
+        val bytes = html.toByteArray(Charsets.UTF_8)
+        val writer = PrintWriter(out)
+        writer.print("HTTP/1.1 200 OK\r\n")
+        writer.print("Content-Type: text/html; charset=utf-8\r\n")
+        writer.print("Content-Length: ${bytes.size}\r\n")
+        writer.print("Cache-Control: no-cache\r\n")
+        writer.print("Connection: close\r\n\r\n")
+        writer.flush()
+        out.write(bytes)
+        out.flush()
+    }
+
     private fun serveRemotePage(out: OutputStream) {
         val html = """
 <!DOCTYPE html>

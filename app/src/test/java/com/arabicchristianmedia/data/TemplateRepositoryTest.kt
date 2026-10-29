@@ -176,10 +176,10 @@ class TemplateRepositoryTest {
         // New designs: gradient second color is a real companion —
         // never equal to first, never a dropped-alpha black.
         defaults.filter { it.id !in transparentIds }.forEach { tpl ->
-            if (tpl.useGradient) {
+            if (tpl.gradientEnabled) {
                 assertFalse(
                     "${tpl.id} gradient colors must differ",
-                    tpl.gradientColor1.equals(tpl.gradientColor2, ignoreCase = true)
+                    tpl.bgColorHex.equals(tpl.gradientColorHex2, ignoreCase = true)
                 )
             }
         }

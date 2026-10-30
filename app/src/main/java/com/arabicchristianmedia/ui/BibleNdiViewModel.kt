@@ -27,6 +27,7 @@ import com.arabicchristianmedia.model.CustomFont
 import com.arabicchristianmedia.model.CustomFonts
 import com.arabicchristianmedia.model.LanguageMode
 import com.arabicchristianmedia.model.LowerThirdTemplate
+import com.arabicchristianmedia.model.StreamBackgroundMode
 import com.arabicchristianmedia.model.BackupImportResult
 import com.arabicchristianmedia.model.ReferenceScanner
 import com.arabicchristianmedia.model.SavedSermon
@@ -222,6 +223,22 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
 
     private val _uiState = MutableStateFlow(BibleNdiUiState())
     val uiState: StateFlow<BibleNdiUiState> = _uiState.asStateFlow()
+
+    // Batch-3: Section expand memory — per-tab per-section, remembered while
+    // the app is alive (ViewModel survives tab switches), reset on app close
+    // (ViewModel is cleared when the activity is destroyed). Key format:
+    // "tabId:sectionId" (e.g. "editor-lower:glow", "setup:ndi").
+    private val _sectionExpanded = MutableStateFlow<Map<String, Boolean>>(emptyMap())
+    val sectionExpanded: StateFlow<Map<String, Boolean>> = _sectionExpanded.asStateFlow()
+
+    fun setSectionExpanded(tabId: String, sectionId: String, expanded: Boolean) {
+        val key = "$tabId:$sectionId"
+        _sectionExpanded.value = _sectionExpanded.value + (key to expanded)
+    }
+
+    fun isSectionExpanded(tabId: String, sectionId: String): Boolean? {
+        return _sectionExpanded.value["$tabId:$sectionId"]
+    }
 
     init {
         BibleRepository.initialize(getApplication())
@@ -1067,6 +1084,30 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    // Batch-3: Verse navigation for keyboard arrows (Library tab).
+    // Moves to next/previous verse in displayedVerses, cueing it as activeVerse.
+    fun nextVerse() {
+        val verses = _uiState.value.displayedVerses
+        if (verses.isEmpty()) return
+        val current = _uiState.value.activeVerse
+        val currentIndex = if (current != null) verses.indexOfFirst { it.verse == current.verse } else -1
+        val nextIndex = if (currentIndex == -1) 0 else (currentIndex + 1).coerceAtMost(verses.size - 1)
+        if (nextIndex != currentIndex) {
+            onVerseClicked(verses[nextIndex])
+        }
+    }
+
+    fun prevVerse() {
+        val verses = _uiState.value.displayedVerses
+        if (verses.isEmpty()) return
+        val current = _uiState.value.activeVerse
+        val currentIndex = if (current != null) verses.indexOfFirst { it.verse == current.verse } else verses.size
+        val prevIndex = if (currentIndex <= 0) 0 else currentIndex - 1
+        if (prevIndex != currentIndex) {
+            onVerseClicked(verses[prevIndex])
+        }
+    }
+
     fun setBibleVersion(version: BibleVersion) {
         _uiState.value = _uiState.value.copy(bibleVersion = version)
         // v1.8: sync the three-way language mode with the reader's version picker.
@@ -1289,6 +1330,15 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun toggleLive() {
+        // Batch-3: guard the toggle — with no verse cued, going live is a
+        // no-op (the button's visual state gates on activeVerse != null, so
+        // the toggle must match or the button appears broken).
+        if (_uiState.value.activeVerse == null && !_uiState.value.isLiveOnAir) {
+            _uiState.value = _uiState.value.copy(
+                statusMessage = "Cue a verse first (اختر آية أولاً)"
+            )
+            return
+        }
         val newLive = !_uiState.value.isLiveOnAir
         _uiState.value = _uiState.value.copy(
             isLiveOnAir = newLive,
@@ -2142,20 +2192,44 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             // Defensive nullable getter (per AGENTS.md lesson #2).
             val app = try { getApplication<Application>() } catch (e: Exception) { null } ?: return
             val prefs = app.getSharedPreferences("propresenter_prefs", 0) ?: return
-            if (!prefs.getBoolean("pp_enabled", false)) return
-            val host = prefs.getString("pp_host", "") ?: ""
+            // Batch-3: two independent targets (one per language). Target 1
+            // pushes Arabic, Target 2 pushes English. Each has its own
+            // host/port/enabled prefs (pp2_* for target 2, defaults to target 1).
+            pushToProPresenterTarget(prefs, verse, "", "arabic")
+            if (prefs.getBoolean("pp2_enabled", false)) {
+                pushToProPresenterTarget(prefs, verse, "2", "english")
+            }
+        } catch (e: Exception) {
+            // ProPresenter push is best-effort.
+        }
+    }
+
+    private fun pushToProPresenterTarget(
+        prefs: android.content.SharedPreferences,
+        verse: com.arabicchristianmedia.model.BibleVerse,
+        suffix: String,
+        lang: String
+    ) {
+        try {
+            val enabledKey = if (suffix.isEmpty()) "pp_enabled" else "pp${suffix}_enabled"
+            if (!prefs.getBoolean(enabledKey, false)) return
+            val hostKey = if (suffix.isEmpty()) "pp_host" else "pp${suffix}_host"
+            val host = prefs.getString(hostKey, "") ?: ""
             if (host.isBlank()) return
 
+            val portKey = if (suffix.isEmpty()) "pp_port" else "pp${suffix}_port"
+            val userKey = if (suffix.isEmpty()) "pp_user" else "pp${suffix}_user"
+            val passKey = if (suffix.isEmpty()) "pp_pass" else "pp${suffix}_pass"
             val controller = com.arabicchristianmedia.server.ProPresenterController(
                 host = host,
-                port = prefs.getInt("pp_port", 50001),
-                username = prefs.getString("pp_user", "") ?: "",
+                port = prefs.getInt(portKey, 50001),
+                username = prefs.getString(userKey, "") ?: "",
                 password = com.arabicchristianmedia.server.ProPresenterController
-                    .deobfuscatePassword(prefs.getString("pp_pass", "") ?: "")
+                    .deobfuscatePassword(prefs.getString(passKey, "") ?: "")
             )
-            val format = prefs.getString("pp_format", "both") ?: "both"
-            val target = prefs.getString("pp_target", "stage") ?: "stage"
-            val text = buildProPresenterText(verse, format)
+            val targetKey = if (suffix.isEmpty()) "pp_target" else "pp${suffix}_target"
+            val target = prefs.getString(targetKey, "stage") ?: "stage"
+            val text = buildProPresenterText(verse, lang)
 
             // Run on IO to avoid blocking.
             Thread {
@@ -2164,14 +2238,15 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
                         controller.setStageMessage(text)
                     }
                     if (target == "audience" || target == "both") {
-                        val oldUuid = prefs.getString("pp_msg_uuid", "") ?: ""
+                        val uuidKey = if (suffix.isEmpty()) "pp_msg_uuid" else "pp${suffix}_msg_uuid"
+                        val oldUuid = prefs.getString(uuidKey, "") ?: ""
                         if (oldUuid.isNotEmpty()) {
                             controller.clearAudienceMessage(oldUuid)
                             controller.deleteAudienceMessage(oldUuid)
                         }
                         val uuid = controller.createAudienceMessage("Bible NDI", text)
                         if (uuid != null) {
-                            prefs.edit().putString("pp_msg_uuid", uuid).apply()
+                            prefs.edit().putString(uuidKey, uuid).apply()
                             controller.triggerAudienceMessage(uuid)
                         }
                     }
@@ -2286,9 +2361,15 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         )
         templateRepo.saveWorkingTemplate(working)
         templateRepo.setActiveTemplateId(template.id)
-        templateRepo.setWorkingDirty(false, false)
-        broadcastServer.updateTemplate(working)
-        triggerAllFramesImmediate()
+    }
+
+    // Batch-3: stream background moved from Editor to Setup — updates the Lower template
+    fun setStreamBackgroundMode(mode: StreamBackgroundMode) {
+        val current = _uiState.value.activeTemplate
+        val updated = current.copy(streamBackgroundMode = mode)
+        _uiState.value = _uiState.value.copy(activeTemplate = updated)
+        templateRepo.saveWorkingTemplate(updated)
+        broadcastServer.currentTemplate = updated
     }
 
     /**

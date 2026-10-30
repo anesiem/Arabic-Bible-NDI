@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.Cast
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Keyboard
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
@@ -90,6 +91,10 @@ import com.arabicchristianmedia.ui.theme.LocalBentoColors
 import com.arabicchristianmedia.ui.theme.MyApplicationTheme
 import com.arabicchristianmedia.model.ColorThemes
 import androidx.compose.ui.focus.onFocusChanged
+// Batch-3: HDMI Presentation API.
+import android.hardware.display.DisplayManager
+import android.view.Display
+import com.arabicchristianmedia.ui.VersePresentation
 
 /**
  * One-update item 20: tracks whether a text field has focus anywhere in
@@ -117,6 +122,35 @@ class MainActivity : ComponentActivity() {
      * toolbar item). Both hand the text to the ViewModel's sermon-playlist
      * flow; the list tab opens via the sermonListNonce effect below.
      */
+    // Batch-3: HDMI Presentation — show verse fullscreen on secondary display.
+    private var hdmiPresentation: VersePresentation? = null
+    private val displayListener = object : DisplayManager.DisplayListener {
+        override fun onDisplayAdded(displayId: Int) { updateHdmiPresentation() }
+        override fun onDisplayRemoved(displayId: Int) { updateHdmiPresentation() }
+        override fun onDisplayChanged(displayId: Int) { updateHdmiPresentation() }
+    }
+
+    private fun setupHdmiPresentation() {
+        val dm = getSystemService(DisplayManager::class.java) ?: return
+        dm.registerDisplayListener(displayListener, null)
+        updateHdmiPresentation()
+    }
+
+    private fun updateHdmiPresentation() {
+        val dm = getSystemService(DisplayManager::class.java) ?: return
+        val secondary = dm.getDisplays(DisplayManager.DISPLAY_CATEGORY_PRESENTATION)
+            .firstOrNull { it.displayId != Display.DEFAULT_DISPLAY }
+        if (secondary != null) {
+            if (hdmiPresentation == null) {
+                hdmiPresentation = VersePresentation(this, secondary, viewModel)
+                hdmiPresentation?.show()
+            }
+        } else {
+            hdmiPresentation?.dismiss()
+            hdmiPresentation = null
+        }
+    }
+
     private fun handleShareIntent(intent: Intent?) {
         val text = when (intent?.action) {
             Intent.ACTION_SEND -> intent.getStringExtra(Intent.EXTRA_TEXT)
@@ -239,9 +273,14 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         handleShareIntent(intent)
+        // Batch-3: HDMI auto-display — show verse on secondary display when connected.
+        setupHdmiPresentation()
 
         setContent {
             val uiState by viewModel.uiState.collectAsState()
+            // Batch-3: Section expand memory (per-tab per-section, ViewModel-backed
+            // so it survives tab switches; cleared on app close with the ViewModel).
+            val sectionExpanded by viewModel.sectionExpanded.collectAsState()
 
             LaunchedEffect(uiState.isKeepScreenOn) {
                 if (uiState.isKeepScreenOn) {
@@ -276,6 +315,9 @@ class MainActivity : ComponentActivity() {
                 // when already on Library — BibleReaderScreen closes
                 // search / recents sheet / chapter picker on the bump.
                 var libraryTabTapNonce by remember { mutableIntStateOf(0) }
+                // Batch-3: gear in the top bar (Library tab only) bumps this
+                // to open the "إعدادات العرض" display-settings dialog.
+                var displaySettingsNonce by remember { mutableIntStateOf(0) }
                 // v2.0: a successful share (sermonListNonce bump) opens the
                 // sermon list tab so the operator lands on the verses.
                 LaunchedEffect(uiState.sermonListNonce) {
@@ -366,14 +408,7 @@ class MainActivity : ComponentActivity() {
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis
                                         )
-                                        Text(
-                                            text = "SVD Arabic (الكتاب المقدس)",
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Normal,
-                                            color = bento.textSecondary,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
+                                        // Batch-3: removed "SVD Arabic (الكتاب المقدس)" subtitle from all tabs.
                                     }
                                 }
 
@@ -438,42 +473,35 @@ class MainActivity : ComponentActivity() {
                                 IconButton(onClick = { shortcutsOpen = true }) {
                                     Icon(Icons.Filled.Keyboard, "اختصارات لوحة المفاتيح (Keyboard shortcuts)", tint = bento.textSecondary)
                                 }
-                                // One-update item 12: a PURE live indicator —
-                                // red LIVE when a verse is live on ANY output
-                                // (HTTP or NDI), grey OFF AIR when not live.
-                                // Never hard-coded "NDI".
-                                val pillIsLive = uiState.isLiveOnAir && uiState.activeVerse != null
-                                Surface(
-                                    shape = RoundedCornerShape(20.dp),
-                                    color = if (pillIsLive) Color(0xFFFFDAD6) else bento.surfaceContainer,
+                                // Batch-3: display-settings gear beside the
+                                // keyboard icon — Library tab only. Opens the
+                                // "إعدادات العرض" dialog (universal font size).
+                                if (selectedTab == 0) {
+                                    IconButton(onClick = { displaySettingsNonce++ }) {
+                                        Icon(Icons.Filled.Settings, "إعدادات العرض (Display settings)", tint = bento.textSecondary)
+                                    }
+                                }
+                                // Batch-3: ON AIR button replaces the LIVE pill (redundant).
+                                // Red when live, grey when off. Toggles via ViewModel.
+                                val onAirIsLive = uiState.isLiveOnAir && uiState.activeVerse != null
+                                androidx.compose.material3.Button(
+                                    onClick = { viewModel.toggleLive() },
+                                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                                        containerColor = if (onAirIsLive) bento.liveRed else bento.surfaceContainer,
+                                        contentColor = if (onAirIsLive) Color.White else bento.textSecondary
+                                    ),
                                     border = androidx.compose.foundation.BorderStroke(
                                         1.dp,
-                                        if (pillIsLive) bento.liveRed else bento.border
+                                        if (onAirIsLive) bento.liveRed else bento.border
                                     ),
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(20.dp))
-                                        .clickable { selectedTab = 2 }
+                                    shape = RoundedCornerShape(20.dp),
+                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 8.dp)
                                 ) {
-                                    // Item 10: padding moved INSIDE the pill so the
-                                    // text/dot have breathing room from the edge.
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
-                                    ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(10.dp)
-                                                .clip(CircleShape)
-                                                .background(if (pillIsLive) bento.liveRedBright else bento.textSecondary)
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text(
-                                            text = if (pillIsLive) "LIVE" else "OFF AIR",
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = if (pillIsLive) bento.liveRed else bento.textSecondary
-                                        )
-                                    }
+                                    Text(
+                                        text = if (onAirIsLive) "ON AIR" else "OFF AIR",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
                                 }
                             }
                         }
@@ -594,14 +622,17 @@ class MainActivity : ComponentActivity() {
                                 onOpenRecentVerse = { viewModel.openRecentVerseInReader(it) },
                                 onClearRecents = { viewModel.clearRecents() },
                                 onSendRecentsToSermon = { merge -> viewModel.sendRecentsToSermon(merge) },
-                                onToggleLive = { viewModel.toggleLive() },
                                 onIncreaseFontSize = { viewModel.increaseFontSize() },
                                 onDecreaseFontSize = { viewModel.decreaseFontSize() },
                                 onSetAppThemeMode = { viewModel.setAppThemeMode(it) },
                                 closeOverlaysNonce = libraryTabTapNonce,
+                                displaySettingsNonce = displaySettingsNonce,
                                 onRemoveRecent = { viewModel.removeRecentVerse(it) },
                                 onRestoreRecent = { verse, index -> viewModel.restoreRecentVerse(verse, index) },
-                                onSetRecentsFontSize = { viewModel.setRecentsFontSize(it) }
+                                onSetRecentsFontSize = { viewModel.setRecentsFontSize(it) },
+                                // Batch-3: keyboard arrow verse navigation.
+                                onNextVerse = { viewModel.nextVerse() },
+                                onPrevVerse = { viewModel.prevVerse() }
                             )
                             1 -> TemplateEditorScreen(
                                 currentTemplate = uiState.activeTemplate,
@@ -648,7 +679,11 @@ class MainActivity : ComponentActivity() {
                                 topBarDesignButtonVisible = topBarWide,
                                 onExportWorkingTemplate = { isFull -> viewModel.exportWorkingTemplateJson(isFull) },
                                 onRenameTemplate = { id, name, isFull -> viewModel.renameTemplate(id, name, isFull) },
-                                onRestoreFactoryTemplates = { viewModel.restoreFactoryTemplates() }
+                                onRestoreFactoryTemplates = { viewModel.restoreFactoryTemplates() },
+                                // Batch-3: per-tab per-section expand memory (ViewModel-backed).
+                                sectionExpandedMap = sectionExpanded,
+                                onSetSectionExpanded = { tabId, sectionId, expanded -> viewModel.setSectionExpanded(tabId, sectionId, expanded) },
+                                onStreamBackgroundChange = { viewModel.setStreamBackgroundMode(it) }
                             )
                             2 -> BroadcastControlScreen(
                                 uiState = uiState,
@@ -678,7 +713,11 @@ class MainActivity : ComponentActivity() {
                                 onSelectTheme = { viewModel.selectTheme(it) },
                                 onSaveNewTheme = { viewModel.saveNewCustomTheme(it) },
                                 onUpdateTheme = { viewModel.updateCustomTheme(it) },
-                                onDeleteTheme = { viewModel.deleteCustomTheme(it) }
+                                onDeleteTheme = { viewModel.deleteCustomTheme(it) },
+                                // Batch-3: per-tab per-section expand memory (ViewModel-backed).
+                                sectionExpandedMap = sectionExpanded,
+                                onSetSectionExpanded = { tabId, sectionId, expanded -> viewModel.setSectionExpanded(tabId, sectionId, expanded) },
+                                onStreamBackgroundChange = { viewModel.setStreamBackgroundMode(it) }
                             )
                             3 -> SermonListScreen(
                                 uiState = uiState,

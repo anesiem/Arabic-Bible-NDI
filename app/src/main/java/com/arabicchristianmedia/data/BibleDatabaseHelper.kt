@@ -17,7 +17,7 @@ class BibleDatabaseHelper(private val context: Context) {
          * Bump when the bundled database assets in assets/bible change: stale on-device
          * copies are recopied on the next launch.
          */
-        const val DATA_VERSION = 6 // N2: removed the single stray ")" at the end of ASV John 18:40 (proven by running paren balance: the only negative-balance verse in either English DB; all other unbalanced rows are legitimate cross-verse pairs) — bump REQUIRED so upgraded installs recopy. Prev v5: search-only searchWord column (matching-only normalized text; word untouched).
+        const val DATA_VERSION = 7 // N3: split merged tashkeelWord at Exo 35:35 (contained 36:1 with "(36:1)" marker); 36:1 tashkeelWord now has the vocalized text — bump REQUIRED so upgraded installs recopy. Prev v6: removed stray ")" at ASV John 18:40. Prev v5: search-only searchWord column.
         private const val PREFS = "bible_db_prefs"
     }
 

@@ -24,7 +24,9 @@ object ReferenceScanner {
      * "Jos5:11,2Ki23:21" parsed as Joshua 5:[11,2] and lost 2 Kings 23:21.
      * The space-separated case (", 2 John") is handled below, in scan(),
      * by checking whether a book name follows the digit. */
-    private val VERSE_REF = Regex("""(\d+)\s*:\s*(\d+)(?:\s*-\s*(\d+)|(\s*(?:[,،]\s*\d+(?![A-Za-z\u0600-\u06FF]))+))?""")
+    private val VERSE_REF = Regex("""(\d+)\s*:\s*(\d+)(?:\s*-\s*(\d+)|(\s*(?:[,،]\s*\d+(?:\s*-\s*\d+)?(?![A-Za-z\u0600-\u06FF]))+))?""")
+    // Batch-3: the list part now allows ranges per item (was: \d+ only),
+    // so "41:38، 39، 41-43" captures 38, 39, AND 41-43 (was dropping -43).
 
     /** Bare chapter number right at the start of the window (" 23 ...").
      * Only spaces/punctuation may precede the digits — NEVER letters: a

@@ -296,6 +296,10 @@ data class LowerThirdTemplate(
     val useArabicPunctuation: Boolean = true,
     val useSystemFontForBrackets: Boolean = true,
     val alignment: BroadcastTextAlignment = BroadcastTextAlignment.RIGHT,
+    // Batch-3: per-language citation alignment (independent from verse text
+    // alignment). Both default RIGHT.
+    val citationAlignmentArabic: BroadcastTextAlignment = BroadcastTextAlignment.RIGHT,
+    val citationAlignmentEnglish: BroadcastTextAlignment = BroadcastTextAlignment.RIGHT,
     val positionBottomPercent: Int = 8,
     val horizontalMarginPercent: Int = 5,
     val cornerRadiusDp: Int = 12,

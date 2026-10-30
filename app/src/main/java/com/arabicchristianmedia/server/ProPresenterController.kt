@@ -128,10 +128,12 @@ class ProPresenterController(
         // Per the official OpenAPI spec (API 1.0), POST /v1/messages requires:
         // id{uuid,name,index}, message, theme{uuid,name,index}, visible_on_network, is_active.
         // The id uuid/index are ignored (auto-assigned); theme must resolve on his machine.
+        // Batch-3: tokens:[] is REQUIRED in practice (spec says optional, but
+        // the API rejects without it).
         val body = "{\"id\":{\"uuid\":\"\",\"name\":" + jsonString(name) + ",\"index\":0}" +
             ",\"message\":" + jsonString(text) +
             ",\"theme\":{\"uuid\":\"\",\"name\":\"Default\",\"index\":0}" +
-            ",\"visible_on_network\":false,\"is_active\":false}"
+            ",\"visible_on_network\":false,\"is_active\":false,\"tokens\":[]}"
         val resp = request("POST", "/v1/messages", body)
         if (!resp.ok) return null
         return Regex("\"uuid\"\\s*:\\s*\"([^\"]+)\"")

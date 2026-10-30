@@ -2097,6 +2097,18 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         englishText.style.fontStyle = data.secondaryVerseIsItalic ? 'italic' : 'normal';
         englishCitation.style.fontWeight = data.secondaryReferenceIsBold ? 'bold' : 'normal';
         englishCitation.style.fontStyle = data.secondaryReferenceIsItalic ? 'italic' : 'normal';
+        const spacing = data.showBilinguald fonts get a
+        // quoted stack. The citation never had a family (inherited the
+        // Arabic stack) - it takes the same secondary stack now.
+        const secFam = data.secondaryFontFamily;
+        const secFontStack = (!secFam || secFam === 'System' || secFam === 'system-ui')
+          ? 'system-ui, sans-serif' : "'" + secFam + "', serif";
+        englishText.style.fontFamily = secFontStack;
+        englishCitation.style.fontFamily = secFontStack;
+        englishText.style.fontWeight = data.secondaryVerseIsBold ? 'bold' : 'normal';
+        englishText.style.fontStyle = data.secondaryVerseIsItalic ? 'italic' : 'normal';
+        englishCitation.style.fontWeight = data.secondaryReferenceIsBold ? 'bold' : 'normal';
+        englishCitation.style.fontStyle = data.secondaryReferenceIsItalic ? 'italic' : 'normal';
         const spacing = data.showBilingualSpacing ? (data.bilingualSpacing || 20) : 0;
         englishSection.style.marginTop = (spacing * getStageScale()) + 'px';
       }
@@ -2133,7 +2145,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
         citationRow.style.display = 'flex';
         citationRow.style.width = '100%';
-        citationRow.style.justifyContent = align === 'CENTER' ? 'center' : 'flex-start';
+        // Batch-3: per-language citation alignment (default RIGHT).
+        var citeAlignAr = data.citationAlignmentArabic || 'RIGHT';
+        citationRow.style.justifyContent = citeAlignAr === 'CENTER' ? 'center' : (citeAlignAr === 'LEFT' ? 'flex-start' : 'flex-end');
 
         verseText.style.width = '100%';
         verseText.style.textAlign = alignCss;
@@ -2218,9 +2232,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       citationRow.style.fontWeight = data.referenceIsBold ? 'bold' : 'normal';
       citationRow.style.fontStyle = data.referenceIsItalic ? 'italic' : 'normal';
       verseText.style.fontSize = scaledPx(data.verseFontSize || 26);
-      // One-update item 7: Arabic line-spacing multiplier (default 1.5 =
-      // old rendering exactly).
-      verseText.style.lineHeight = ((1.25 + 3 / (data.verseFontSize || 26)) * ((data.lineSpacingArabic || 1.5) / 1.5)).toFixed(3);
+      // Batch-3 (#13a): align with NDI formula (1.25 * spacing/1.5) — was:
+      // (1.25 + 3/fontSize) * (spacing/1.5), which made HTTP line breaks
+      // differ from NDI, causing NDI to render larger.
+      verseText.style.lineHeight = (1.25 * ((data.lineSpacingArabic || 1.5) / 1.5)).toFixed(3);
       citationRow.style.fontSize = scaledPx(data.referenceFontSize || 18);
       // v1.9: reset the span too — the auto-fit loop shrinks citationText directly,
       // so without this each applyData compounds the shrink.
@@ -2488,12 +2503,19 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       cardBox.style.animationDuration = '';
 
       // 100% transparent toggle behaves like the transparent style (mirrors the NDI canvas).
-      // Phase-2 (3b): true fullscreen draws no card chrome at all (NDI
-      // parity) — skip the card paint entirely; the tail strip below
-      // leaves the card cleared, so a live color change never repaints
-      // the card under fullBleed.
+      // Batch-3: true fullscreen keeps the background color (bgColorHex at
+      // bgOpacity) but skips all chrome (border/shadow/radius/glow) — was:
+      // skipped the card paint entirely, losing the background.
       if (fullBleed) {
         cardFillOverlay.style.display = 'none';
+        if (!data.isPureTransparentBackground) {
+          cardBox.style.backgroundColor = 'rgba(' + r + ',' + g + ',' + b + ',' + (a1own * opacity) + ')';
+        } else {
+          cardBox.style.backgroundColor = 'transparent';
+        }
+        cardBox.style.border = 'none';
+        cardBox.style.boxShadow = 'none';
+        cardBox.style.borderRadius = '0';
       } else if (data.isPureTransparentBackground) { // v1.9: toggle is the single authority (was: style check overrode it)
         cardBox.style.backgroundColor = 'transparent';
         cardBox.style.backdropFilter = 'none';
@@ -2578,8 +2600,14 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       // transparent in the first place.
       // Phase-2 (3b): true fullscreen shows no card fill overlay either —
       // the tail strip below keeps it hidden, so don't copy a fill onto it.
-      var isCustomVideoActive = !fullBleed && (data.animatedBackground === 'custom_video' && !!data.customVideoId);
-      if (isCustomVideoActive) {
+      // Batch-3: the overlay must show for ALL animated backgrounds (preset
+      // animations like golden_rays use the same video layer and would
+      // otherwise render ABOVE the card color; NDI draws card color over
+      // the animation). was: custom_video only.
+      var isAnimBgActive = !fullBleed && data.animatedBackground && data.animatedBackground !== 'none';
+      var isCustomVideoActive = isAnimBgActive && (data.animatedBackground === 'custom_video' && !!data.customVideoId);
+      var showCardFillOverlay = isAnimBgActive;
+      if (showCardFillOverlay) {
         cardFillOverlay.style.background = cardBox.style.background || '';
         cardFillOverlay.style.backgroundColor = cardBox.style.backgroundColor || '';
         cardFillOverlay.style.backgroundSize = cardBox.style.backgroundSize || '';
@@ -2759,6 +2787,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         playOnceActive ? playOnceVerseKeyJs : ''].join('|');
       if (animKey !== activeAnimKey) {
       animBgLayer.className = 'animated-bg-layer';
+      // Batch-3: reset inline opacity when clearing the layer — switching
+      // from an animation to 'none' left the old opacity (e.g. 0.65) on the
+      // element, keeping an empty layer visible over the card.
+      animBgLayer.style.opacity = '0';
       customVideoBg.style.display = 'none';
       stopVideoFade(); // v1.9.2: the video branch restarts it below if still fade-mode
       // v1.9.1: don't tear the particle field down on every apply — it was
@@ -3611,11 +3643,16 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 if (tpl.secondaryVerseIsItalic) textSkewX = -0.25f
             }
             
-            // v1.9: English citation on its own line below the verse (was appended
-            // inline). Matches the HTTP overlay's separate english-citation div.
+            // v1.9: English verse text alignment (from tpl.alignment).
             val secAlignment = when (tpl.alignment) {
                 BroadcastTextAlignment.CENTER -> Layout.Alignment.ALIGN_CENTER
                 else -> Layout.Alignment.ALIGN_NORMAL // LTR English: NORMAL = left
+            }
+            // Batch-3: English citation uses its own alignment (default RIGHT).
+            val secCiteAlignment = when (tpl.citationAlignmentEnglish) {
+                BroadcastTextAlignment.CENTER -> Layout.Alignment.ALIGN_CENTER
+                BroadcastTextAlignment.LEFT -> Layout.Alignment.ALIGN_NORMAL // LTR: NORMAL = left
+                else -> Layout.Alignment.ALIGN_OPPOSITE // RIGHT: OPPOSITE = right in LTR
             }
 
             secondaryLayout = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -3651,14 +3688,14 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 }
                 secondaryCitationLayout = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                     StaticLayout.Builder.obtain(secCitationText, 0, secCitationText.length, secCitationPaint, contentWidth)
-                        .setAlignment(secAlignment)
+                        .setAlignment(secCiteAlignment)
                         .setLineSpacing(4f * scale * fitRatio, 1.15f * (tpl.lineSpacingEnglish / 1.5f))
                         .setIncludePad(true)
                         .setBreakStrategy(Layout.BREAK_STRATEGY_SIMPLE)
                         .build()
                 } else {
                     @Suppress("DEPRECATION")
-                    StaticLayout(secCitationText, secCitationPaint, contentWidth, secAlignment, 1.15f * (tpl.lineSpacingEnglish / 1.5f), 4f * scale * fitRatio, true)
+                    StaticLayout(secCitationText, secCitationPaint, contentWidth, secCiteAlignment, 1.15f * (tpl.lineSpacingEnglish / 1.5f), 4f * scale * fitRatio, true)
                 }
             }
         }
@@ -4470,7 +4507,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
             // v1.7: no forced centering — Full Show obeys the user's alignment
             // exactly like Lower Third and every other surface.
-            when (tpl.alignment) {
+            // Batch-3: Arabic citation uses its own alignment (default RIGHT).
+            when (tpl.citationAlignmentArabic) {
                     BroadcastTextAlignment.CENTER -> {
                         // v1.9.2 (#7): centered in the box (== frame center
                         // whenever the box spans the frame, as Lower's does).
@@ -4492,7 +4530,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             }
         } else {
             // v1.7: no forced centering here either.
-            when (tpl.alignment) {
+            // Batch-3: Arabic citation uses its own alignment (default RIGHT).
+            when (tpl.citationAlignmentArabic) {
                 BroadcastTextAlignment.CENTER -> {
                     refPaint.textAlign = Paint.Align.CENTER
                     canvas.drawText(citation, (boxLeft + boxRight) / 2f, citationY, refPaint)
@@ -5038,6 +5077,17 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             socket.soTimeout = 0 // Infinite timeout for live streaming
             socket.tcpNoDelay = true
 
+            // Batch-3: ?bg= parameter overrides the stream background for this viewer
+            val bgOverride = parseQueryParams(fullPath)["bg"]?.let { bgParam ->
+                when (bgParam.lowercase()) {
+                    "green" -> StreamBackgroundMode.CHROMA_GREEN
+                    "black" -> StreamBackgroundMode.PURE_BLACK
+                    "white" -> StreamBackgroundMode.TRANSPARENT_ALPHA
+                    "purple", "dark", "studio" -> StreamBackgroundMode.DARK_STUDIO
+                    else -> null
+                }
+            }
+
             val useJpeg = !fullPath.contains("format=png")
             val boundary = "mjpeg_frame"
             val mime = if (useJpeg) "image/jpeg" else "image/png"
@@ -5053,7 +5103,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
             // Continuous active frame loop (~25 FPS smooth broadcast)
             while (isRunning && !socket.isClosed && !socket.isOutputShutdown) {
-                val ok = pushFrameToStream(out, boundary, useJpeg)
+                val ok = pushFrameToStream(out, boundary, useJpeg, bgOverride)
                 if (!ok) break
                 Thread.sleep(40) // ~25 FPS
             }
@@ -5065,13 +5115,15 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         }
     }
 
-    private fun pushFrameToStream(out: OutputStream, boundary: String, useJpeg: Boolean): Boolean {
+    private fun pushFrameToStream(out: OutputStream, boundary: String, useJpeg: Boolean, bgOverride: StreamBackgroundMode? = null): Boolean {
         return try {
+            // Batch-3: ?bg= overrides the stream background for this viewer only
+            val tplOverride = bgOverride?.let { currentTemplate.copy(streamBackgroundMode = it) }
             // JPEG path already allocates a fresh bitmap (isForStream=true bypasses the
             // shared cache). PNG path uses an owned render so recycle() can never hit
             // the live NDI cache bitmaps. Either way, recycle() is safe here.
             val bitmap = if (useJpeg) {
-                renderCurrentFrame(1920, 1080, isForStream = true)
+                renderCurrentFrame(1920, 1080, isForStream = true, overrideTemplate = tplOverride)
             } else {
                 renderFrameOwned(1920, 1080, isForStream = false)
             }
@@ -6088,6 +6140,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             o.put("useArabicPunctuation", t.useArabicPunctuation)
             o.put("useSystemFontForBrackets", t.useSystemFontForBrackets)
             o.put("alignment", t.alignment.name)
+            o.put("citationAlignmentArabic", t.citationAlignmentArabic.name)
+            o.put("citationAlignmentEnglish", t.citationAlignmentEnglish.name)
             o.put("positionBottomPercent", t.positionBottomPercent)
             o.put("horizontalMarginPercent", t.horizontalMarginPercent)
             o.put("cornerRadiusDp", t.cornerRadiusDp)
@@ -6955,6 +7009,16 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
        in dark mode). They now sit AFTER the base rules, below. */
   }
   header { padding: 16px 20px 8px; font-size: 20px; font-weight: 700; display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;  flex-wrap: wrap; }
+  /* Batch-3: new top bar layout */
+  #topBar { align-items: center; }
+  #topBar button { background: none; border: 1px solid; border-radius: 10px; font-size: 20px; width: 44px; height: 44px; cursor: pointer; }
+  #topRef { flex: 1; text-align: center; font-size: 16px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #infoPopup { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 100; display: flex; align-items: center; justify-content: center; }
+  #infoPopup[hidden] { display: none; }
+  #infoPopup .card { max-width: 320px; text-align: center; }
+  #controlBar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  #controlBar select, #controlBar input { flex: 0 1 auto; }
+  #controlBar #ref { flex: 1 1 120px; min-width: 100px; }
   /* The live reference rides in the header as a slim pill \u2014 information
      only, zero extra layout space. */
   .livepill { display: inline-flex; align-items: center; gap: 8px; max-width: 55%; flex: none;
@@ -7090,7 +7154,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     #recentsToggle { display: block; order: 3; }
     #recentCard { order: 4; display: none; }
     .status { order: 5; }
-    body.recents-open #recentCard { display: block; position: fixed; left: 8px; right: 8px; bottom: 8px; max-height: 75vh; z-index: 50; overflow-y: auto; }
+    body.recents-open #recentCard { display: block; position: fixed; left: 8px; right: 8px; top: 5vh; bottom: 8px; max-height: 90vh; z-index: 50; overflow-y: auto; }
     body.recents-open #recentCard .vlist { max-height: 60vh; }
     /* One-update item 19: when the recents sheet is open on narrow
        screens, lock body scroll and keep one scroll container with
@@ -7207,32 +7271,37 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 </style>
 </head>
 <body>
-<header>
-  <div>📖 Bible Remote
-    <div class="sub">Arabic Bible NDI — remote device: tap a verse to show it</div>
-  </div>
+<header id="topBar">
+  <button id="infoBtn" aria-label="About" onclick="toggleInfoPopup()">&#9432;</button>
+  <div id="topRef" dir="auto">—</div>
+  <button id="kbdBtn" aria-label="Keyboard shortcuts" onclick="toggleKbdOverlay(true)">&#9000;</button>
+  <button id="gearTop" aria-label="Settings" onclick="togglePanel()">&#9881;</button>
 </header>
+<div id="infoPopup" hidden>
+  <div class="card">
+    <p>Tap a verse to show it on the output.</p>
+    <button class="btn" onclick="toggleInfoPopup()">Close</button>
+  </div>
+</div>
 <main>
   <!-- Item 13: one control line — book + chapter + version + reference
        + live citation + ON AIR. It wraps gracefully on narrow screens.
        The ref hint line is gone: the placeholder already carries the
        examples (John 3:16 / يوحنا 3:16 / Jn 3:16). -->
-  <div class="card" id="controlBar">
+  <div class="card" id="controlBar" dir="rtl">
+    <button class="onair off" id="onAirBtn" onclick="toggleOnAir()">OFF AIR</button>
     <select id="bookSel" aria-label="Book"><option value="">Loading books…</option></select>
     <select id="chSel" aria-label="Chapter"></select>
-    <select id="langSel" aria-label="Language"><option value="ar">العربية</option><option value="en">English</option></select>
     <input id="ref" type="text" inputmode="text" autocomplete="off"
            placeholder="John 3:16  •  يوحنا 3:16  •  Jn 3:16"
            enterkeyhint="go" aria-label="Quick reference">
     <button class="btn" id="goBtn" onclick="triggerRef()">▶</button>
-    <span class="livepill" id="livePill"><span class="dot"></span><span class="ref" id="liveRef" dir="auto">—</span></span>
-    <button class="onair off" id="onAirBtn" onclick="toggleOnAir()">OFF AIR</button>
-    <button id="clearBtn" onclick="clearVerse()">Clear</button>
-    <button id="prevBtn" onclick="sermonStep('prev')">◀ Prev</button>
-    <button id="nextBtn" onclick="sermonStep('next')">Next ▶</button>
+    <span style="flex:1"></span>
+    <button id="recentsBtn" onclick="toggleRecents()" aria-label="Recents">&#128341;</button>
+    <button id="prevChBtn" onclick="stepChapter(-1)" aria-label="Previous chapter">&#9664;</button>
+    <button id="nextChBtn" onclick="stepChapter(1)" aria-label="Next chapter">&#9654;</button>
   </div>
-  <div class="hint" id="kbdHint">⌨ <b>?</b> shortcuts · <b>/</b> reference · <b>Enter</b> go · <b>↑↓</b> select · <b>O</b> on-air · <b>C</b> clear · <b>R</b> recents · <b>←→</b> sermon</div>
-  <button id="recentsToggle" onclick="toggleRecents()">🕐 Recents <span id="recentsCount"></span></button>
+  <!-- Batch-3: shortcuts line removed (now behind keyboard icon); recents moved to control bar -->
   <div id="kbdOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:100;align-items:center;justify-content:center;" onclick="if(event.target===this)toggleKbdOverlay(false)">
     <div class="card" style="max-width:420px;max-height:80vh;overflow-y:auto;">
       <label>⌨ Keyboard shortcuts</label>
@@ -7256,13 +7325,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     <div id="recentList" class="vlist"></div>
   </div>
   <div class="card" id="browseCard">
-    <label for="bookSel">Browse the Bible — اختر سفراً</label>
-    <div id="currentVerseLine" class="hint">الآية الحالية: —</div>
     <div class="vlist" id="vList"></div>
   </div>
   <div class="status" id="status"></div>
 </main>
-<button id="gear" aria-label="Remote layout settings">&#9881;</button>
+<!-- Batch-3: gear moved to top bar (gearTop) -->
 <div id="panel" hidden>
   <h3>Remote layout</h3>
   <label>Verse text <select id="p-textsize">
@@ -7283,6 +7350,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     <option value="light">Light</option>
     <option value="dark">Dark</option>
   </select></label>
+  <label>Language <select id="p-lang">
+    <option value="ar">العربية</option>
+    <option value="en">English</option>
+  </select></label>
   <div class="prow">
     <button data-preset="default">Default</button>
     <button data-preset="director">Director</button>
@@ -7299,7 +7370,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
   var bookSel = document.getElementById('bookSel');
   var chSel = document.getElementById('chSel');
-  var langSel = document.getElementById('langSel');
+  var langSel = document.getElementById('p-lang'); // Batch-3: moved to gear panel
   // Round 2 (#9): the browser shows ONE version - Arabic by default,
   // English on request - for the book list AND the verse rows. The old
   // composite "Arabic - English" labels also bidi-split numbered books
@@ -7309,6 +7380,20 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   if (browseLang !== 'en') browseLang = 'ar';
   langSel.value = browseLang;
   var vList = document.getElementById('vList');
+  // Batch-3: swipe left/right on verse list for chapter navigation
+  (function() {
+    var startX = 0, startY = 0;
+    vList.addEventListener('touchstart', function(e) {
+      startX = e.touches[0].clientX; startY = e.touches[0].clientY;
+    }, {passive: true});
+    vList.addEventListener('touchend', function(e) {
+      var dx = e.changedTouches[0].clientX - startX;
+      var dy = e.changedTouches[0].clientY - startY;
+      if (Math.abs(dx) > 80 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+        stepChapter(dx < 0 ? 1 : -1);
+      }
+    }, {passive: true});
+  })();
   var refInput = document.getElementById('ref');
   refInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') triggerRef(); });
   refInput.addEventListener('focus', function() { refInput.select(); });
@@ -7334,6 +7419,18 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     if (!isNaN(c)) loadChapter(c);
   });
 
+  function stepChapter(dir) {
+    if (curBookIdx < 0 || !books[curBookIdx]) return;
+    var maxCh = books[curBookIdx].chapters || 1;
+    var nc = curChapter + dir;
+    if (nc < 1) nc = 1;
+    if (nc > maxCh) nc = maxCh;
+    if (nc !== curChapter) loadChapter(nc);
+  }
+  function toggleInfoPopup() {
+    var p = document.getElementById('infoPopup');
+    p.hidden = !p.hidden;
+  }
   function setStatus(msg, cls) {
     var el = document.getElementById('status');
     el.textContent = msg;
@@ -7643,17 +7740,17 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       live.chapter = j.chapterNum || 0;
       live.verse = j.verseNum || 0;
       var cit = j.arabicCitation || j.englishCitation || '';
-      var pill = document.getElementById('livePill');
+      // Batch-3: livePill removed; topRef shows the live reference.
       // Item 19: a live verse with no NDI sender rendering it is not
-      // "on screen" for OBS/vMix — say so on the pill (HTTP overlays
+      // "on screen" for OBS/vMix — say so in the ref (HTTP overlays
       // still show it).
       var ndiOff = live.onAir && cit && j.ndiActive === false;
-      document.getElementById('liveRef').textContent =
-        cit ? (live.onAir ? (ndiOff ? cit + ' (NDI off)' : cit) : 'Off air — ' + cit) : 'Off air';
-      var curLine = document.getElementById('currentVerseLine');
-      if (curLine) { curLine.textContent = cit ? ('الآية الحالية: ' + cit) : 'الآية الحالية: —'; }
-      pill.className = 'livepill' + (live.onAir && cit ? ' on' : '');
-      pill.title = ndiOff ? cit + ' — NDI senders off; HTTP overlays still show this verse' : (cit || '');
+      var topRefEl = document.getElementById('topRef');
+      if (topRefEl) {
+        topRefEl.textContent =
+          cit ? (live.onAir ? (ndiOff ? cit + ' (NDI off)' : cit) : 'Off air — ' + cit) : 'Off air';
+        topRefEl.title = ndiOff ? cit + ' — NDI senders off; HTTP overlays still show this verse' : (cit || '');
+      }
       // Theme bands + recents + chrome: mirror the app's selected theme
       // into the list/chrome variables (dark/light by the page's color
       // scheme; re-applied every poll). Live rows now follow the app
@@ -7693,8 +7790,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       // Item 19: poll failures were swallowed, so the pill and button
       // froze on the last-known state while the tablet was gone.
       pollFailed = true;
-      document.getElementById('liveRef').textContent = 'Disconnected — reconnecting…';
-      document.getElementById('livePill').className = 'livepill disconnected';
+      document.getElementById('topRef').textContent = 'Disconnected — reconnecting…';
+      /* Batch-3: livePill removed; disconnected state shown via topRef */
+      var tr = document.getElementById('topRef');
+      if (tr) tr.textContent = 'Disconnected';
       setStatus('⚠ Disconnected from tablet — retrying…', 'err');
     });
   }
@@ -7822,10 +7921,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     var s = q.toString();
     history.replaceState(null, '', s ? '/remote?' + s : '/remote');
   }
-  document.getElementById('gear').onclick = function () {
+  function togglePanel() {
     var p = document.getElementById('panel');
     p.hidden = !p.hidden;
-  };
+  }
   (function () {
     var ctrls = document.querySelectorAll('#panel select');
     for (var i = 0; i < ctrls.length; i++) {

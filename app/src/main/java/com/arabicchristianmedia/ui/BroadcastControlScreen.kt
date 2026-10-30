@@ -111,7 +111,9 @@ import com.arabicchristianmedia.server.NdiNativeSender
 import com.arabicchristianmedia.server.NdiSourceSpec
 import com.arabicchristianmedia.server.NetworkInterfaceInfo
 import com.arabicchristianmedia.model.ColorTheme
-import com.arabicchristianmedia.model.ColorThemes
+import com.arabicchristianmedia.model.StreamBackgroundMode
+import com.arabicchristianmedia.model.ColorTheme
+import com.arabicchristianmedia.model.StreamBackgroundModes
 import com.arabicchristianmedia.ui.theme.*
 
 @Composable
@@ -141,6 +143,10 @@ fun BroadcastControlScreen(
     onSaveNewTheme: (ColorTheme) -> Unit = {},
     onUpdateTheme: (ColorTheme) -> Unit = {},
     onDeleteTheme: (String) -> Unit = {},
+    // Batch-3: per-tab per-section expand memory (ViewModel-backed map).
+    sectionExpandedMap: Map<String, Boolean> = emptyMap(),
+    onSetSectionExpanded: (String, String, Boolean) -> Unit = { _, _, _ -> },
+    onStreamBackgroundChange: (StreamBackgroundMode) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -800,6 +806,86 @@ fun BroadcastControlScreen(
                 }
             }
         }
+        // Batch-3: stream background dots (moved from Editor) — controls /stream bg only, no name label
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            StreamBackgroundMode.entries.forEach { mode ->
+                val isSelected = uiState.activeTemplate.streamBackgroundMode == mode
+                val dotColor = try { Color(android.graphics.Color.parseColor(mode.colorHex)) } catch (e: Exception) { Color.Gray }
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(androidx.compose.foundation.shape.CircleShape)
+                        .background(dotColor)
+                        .border(
+                            width = if (isSelected) 3.dp else 1.dp,
+                            color = if (isSelected) bento.green else bento.border,
+                            shape = androidx.compose.foundation.shape.CircleShape
+                        )
+                        .clickable { onStreamBackgroundChange(mode) }
+                )
+            }
+        }
+    }
+
+    // Batch-3: URL Reference — all URLs with parameters, at the bottom of Setup
+    val urlReferenceBlock: @Composable () -> Unit = {
+        SetupSection(
+            title = "مرجع الروابط (URL Reference)",
+            sectionId = "url-reference",
+            sectionExpandedMap = sectionExpandedMap,
+            onSetSectionExpanded = onSetSectionExpanded,
+            summary = "All URLs + parameters"
+        ) {
+            val refs = listOf(
+                "/lower?lang=ar|en" to "Lower Third overlay — lang forces Arabic or English, no param = template language",
+                "/full?lang=ar|en" to "Full Show overlay — same lang parameter",
+                "/remote?lang=ar|en" to "Remote control page — same lang parameter",
+                "/stage?lang=ar|en" to "Stage monitor — same lang parameter",
+                "/stream?bg=green|black|white|purple" to "MJPEG video stream — bg overrides the Setup background for this viewer",
+                "/stream?format=png" to "PNG frame instead of MJPEG",
+                "/events" to "Server-Sent Events — live verse/state updates",
+                "/api/verse?show=1" to "Current verse JSON (show=1 for Full Show template)",
+                "/api/trigger?ref=John+3:16" to "Show a verse — ref= free text, or book=&chapter=&verse=, target=lower|show|both",
+                "/api/onair" to "Toggle ON AIR state",
+                "/api/clear" to "Clear the current verse",
+                "/api/books?lang=ar|en" to "Book list JSON",
+                "/api/chapter?book=jhn&chapter=14&lang=ar" to "Chapter verses JSON",
+                "/api/recents" to "Recent verses JSON",
+                "/api/sermons" to "Sermon list — POST to create, GET to list",
+                "/api/sermons/current/next" to "Next sermon verse",
+                "/api/sermons/current/prev" to "Previous sermon verse",
+                "/api/preflight" to "Pre-flight check JSON — NDI/HTTP/server status",
+                "/api/debug" to "Debug dump — full template + state (for verification)",
+                "/api/status" to "Server status JSON"
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                refs.forEach { (url, desc) ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = url,
+                            fontSize = 10.sp,
+                            fontFamily = FontFamily.Monospace,
+                            color = bento.green,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Text(
+                            text = desc,
+                            fontSize = 10.sp,
+                            color = bento.textSecondary,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+            }
+        }
     }
 
     val allUrlsBlock: @Composable () -> Unit = {
@@ -822,6 +908,9 @@ fun BroadcastControlScreen(
     val lowerBlock: @Composable () -> Unit = {
         SetupSection(
             title = "الثلث السفلي (Lower Third)",
+            sectionId = "ndi-lower",
+            sectionExpandedMap = sectionExpandedMap,
+            onSetSectionExpanded = onSetSectionExpanded,
             summary = "Lower " + loSpec.width + "×" + loSpec.height + "@" + loSpec.fps
         ) {
             // Item 20: the restart is immediate only when this feed
@@ -869,6 +958,9 @@ fun BroadcastControlScreen(
     val fullBlock: @Composable () -> Unit = {
         SetupSection(
             title = "العرض الكامل (Full Show)",
+            sectionId = "ndi-full",
+            sectionExpandedMap = sectionExpandedMap,
+            onSetSectionExpanded = onSetSectionExpanded,
             summary = "Full " + fuSpec.width + "×" + fuSpec.height + "@" + fuSpec.fps
         ) {
             // Item 20: the restart is immediate only when this feed
@@ -916,6 +1008,9 @@ fun BroadcastControlScreen(
     val customBlock: @Composable () -> Unit = {
         SetupSection(
             title = "التخصيص (Customizations)",
+            sectionId = "custom",
+            sectionExpandedMap = sectionExpandedMap,
+            onSetSectionExpanded = onSetSectionExpanded,
             summary = selectedTheme.name
         ) {
             Surface(
@@ -1017,6 +1112,9 @@ fun BroadcastControlScreen(
     val obsBlock: @Composable () -> Unit = {
         SetupSection(
             title = "الربط مع OBS Studio (OBS Guide)",
+            sectionId = "obs",
+            sectionExpandedMap = sectionExpandedMap,
+            onSetSectionExpanded = onSetSectionExpanded,
             summary = "Browser Source · 1920×1080"
         ) {
                                 // How-to OBS Guide Banner
@@ -1100,6 +1198,9 @@ fun BroadcastControlScreen(
     val vmixBlock: @Composable () -> Unit = {
         SetupSection(
             title = "الربط مع vMix (vMix Guide)",
+            sectionId = "vmix",
+            sectionExpandedMap = sectionExpandedMap,
+            onSetSectionExpanded = onSetSectionExpanded,
             summary = "Web Browser input · SetText push"
         ) {
             Column {
@@ -1158,6 +1259,9 @@ fun BroadcastControlScreen(
     val propresenterBlock: @Composable () -> Unit = {
         SetupSection(
             title = "الربط مع ProPresenter",
+            sectionId = "propresenter",
+            sectionExpandedMap = sectionExpandedMap,
+            onSetSectionExpanded = onSetSectionExpanded,
             summary = "Stage message push · PUT /v1/stage/message"
         ) {
         ProPresenterSettingsCard(
@@ -1171,6 +1275,9 @@ fun BroadcastControlScreen(
     val networkBlock: @Composable () -> Unit = {
         SetupSection(
             title = "الشبكة (Network)",
+            sectionId = "network",
+            sectionExpandedMap = sectionExpandedMap,
+            onSetSectionExpanded = onSetSectionExpanded,
             summary = netSummary,
             seedExpanded = netWarning,
             seedKey = netWarning
@@ -1400,7 +1507,7 @@ fun BroadcastControlScreen(
                                             TextField(
                                                 value = nameText,
                                                 onValueChange = { nameText = it },
-                                                label = { Text("اسم الجهاز على الشبكة (Device name)") },
+                                                label = { Row { Text("اسم الجهاز على الشبكة") ; Text(" (Device name)") } },
                                                 singleLine = true,
                                                 modifier = Modifier.fillMaxWidth()
                                             )
@@ -1449,6 +1556,9 @@ fun BroadcastControlScreen(
     val diagnosticsBlock: @Composable () -> Unit = {
         SetupSection(
             title = "تشخيص NDI (NDI Diagnostics)",
+            sectionId = "diagnostics",
+            sectionExpandedMap = sectionExpandedMap,
+            onSetSectionExpanded = onSetSectionExpanded,
             summary = "أخطاء NDI: " + uiState.ndiErrorEvents.size + " · متصل الآن: " + uiState.sseConnectedNow,
             controlledExpanded = uiState.showAdvancedNdi,
             onToggleControlled = onToggleAdvancedNdi
@@ -1623,6 +1733,7 @@ fun BroadcastControlScreen(
                 urlsCardBlock()
                 mjpegBlock()
                 allUrlsBlock()
+                urlReferenceBlock()
                 networkBlock()
                 obsBlock()
                 vmixBlock()
@@ -1704,11 +1815,28 @@ private fun SetupSection(
     seedKey: Any? = null,
     controlledExpanded: Boolean? = null,
     onToggleControlled: (() -> Unit)? = null,
+    // Batch-3: per-tab per-section expand memory. When sectionId is provided,
+    // the expanded state comes from the ViewModel-backed map (survives tab
+    // switches); otherwise falls back to local remember (legacy behavior).
+    sectionId: String? = null,
+    sectionExpandedMap: Map<String, Boolean> = emptyMap(),
+    onSetSectionExpanded: (String, String, Boolean) -> Unit = { _, _, _ -> },
+    onStreamBackgroundChange: (StreamBackgroundMode) -> Unit = {},
     content: @Composable () -> Unit
 ) {
     val bento = LocalBentoColors.current
     var internalExpanded by remember(seedKey) { mutableStateOf(seedExpanded) }
-    val expanded = controlledExpanded ?: internalExpanded
+    // Batch-3: ViewModel-backed state takes precedence when sectionId is set.
+    // Key format: "setup:<sectionId>". Fresh launch = empty map = seedExpanded.
+    val vmExpanded = if (sectionId != null) sectionExpandedMap["setup:$sectionId"] else null
+    val expanded = controlledExpanded ?: vmExpanded ?: internalExpanded
+    fun setExpanded(value: Boolean) {
+        if (sectionId != null) {
+            onSetSectionExpanded("setup", sectionId, value)
+        } else {
+            internalExpanded = value
+        }
+    }
     Surface(
         shape = RoundedCornerShape(24.dp),
         color = bento.card,
@@ -1718,7 +1846,7 @@ private fun SetupSection(
         Column(modifier = Modifier.padding(14.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth().clickable {
-                    if (onToggleControlled != null) onToggleControlled() else internalExpanded = !internalExpanded
+                    if (onToggleControlled != null) onToggleControlled() else setExpanded(!expanded)
                 },
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -1846,7 +1974,8 @@ private fun NdiSourceSettingsRow(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                Text("حركة الفيديو (Video Motion)", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = tint)
+                Text("حركة الفيديو", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = tint)
+                Text(" (Video Motion)", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = tint)
                 InfoPopupButton("حركة الفيديو (Video Motion)", "إعادة رسم الفيديو المتحرك باستمرار (بحد أقصى 30 إطار/ثا). يتحكم بالفيديو فقط — حركة لون البطاقة (التدرج) تعمل مستقلة عنه، حتى لو أُطفئ هذا المفتاح.")
             }
             Switch(
@@ -1992,7 +2121,7 @@ private fun QrCodeDialog(
         },
         confirmButton = {
             androidx.compose.material3.TextButton(onClick = onDismiss) {
-                androidx.compose.material3.Text("إغلاق (Close)")
+                Row { androidx.compose.material3.Text("إغلاق") ; androidx.compose.material3.Text(" (Close)") }
             }
         }
     )

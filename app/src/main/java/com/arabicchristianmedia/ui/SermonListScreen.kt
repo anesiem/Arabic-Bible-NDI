@@ -1,5 +1,6 @@
 package com.arabicchristianmedia.ui
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -21,6 +22,7 @@ import androidx.compose.foundation.lazy.stickyHeader
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Info
@@ -41,11 +43,15 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -61,12 +67,12 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.launch
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -86,10 +92,8 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.arabicchristianmedia.data.ArabicTextFormatter
-import com.arabicchristianmedia.data.BibleRepository
 import com.arabicchristianmedia.model.SavedSermon
 import com.arabicchristianmedia.model.SermonEntry
-import com.arabicchristianmedia.model.Testament
 import com.arabicchristianmedia.ui.theme.LocalBentoColors
 import com.arabicchristianmedia.ui.theme.LocalListColors
 import com.arabicchristianmedia.ui.theme.VerseRowSpec
@@ -101,25 +105,25 @@ import java.util.Locale
  * v1.9.1 sermon list (rework of the v2.0 playlist):
  * - Sharing STAGES verses; tapping a row puts it on air and silently syncs
  *   the reader to it. Nothing airs automatically.
- * - Batch-3 redesign: rows are colored by CHAPTER (the band flips whenever
- *   the chapter changes, in every grouping mode) so the operator can see
- *   where one passage ends and the next begins; the live row gets the red
- *   live treatment + LIVE badge + beacon border.
- * - Grouping control [Original|By Book|OT/NT] at the top: Original shows
- *   compact reference rows (tap = go live) in the user's manual order;
- *   By Book / OT-NT show expanded verse cards under sticky, collapsible
- *   group headers, sorted by Bible book order, then chapter, then verse.
- * - Scroll position and the live verse survive grouping switches; a
- *   "jump to live" button appears when the live verse is off-screen.
+ * - Rows are colored by CHAPTER bands (band flips when book/chapter
+ *   changes); the live row gets the navy + yellow live treatment + LIVE
+ *   badge so the operator can see where one area ends and the next begins.
+ * - Grouping control [الأصل | حسب السفر | OT/NT] at the top: Original is
+ *   compact reference rows in manual order (always preserved underneath);
+ *   By Book / OT/NT show expanded cards under sticky, collapsible headers
+ *   sorted by Bible book order → chapter → verse.
  * - The list persists across restarts; the header is ONE slim icon row
- *   (info / save / open / clear / share) so the verse list keeps all its
- *   screen space — hints live behind the ⓘ icon, every other action lives
- *   in dialogs, a modal sheet, or a swipe.
- * - Swipe a row to reveal the trash icon; a full swipe removes the verse.
+ *   (save / open / clear / share / info) so the verse list keeps all its
+ *   screen space — every other action lives in dialogs, a modal sheet,
+ *   or a swipe.
+ * - Swipe a row to reveal the trash icon; a full swipe removes the verse
+ *   (the live row can never be swiped away).
  * - The book icon at the end of a row opens the verse in the Library tab
  *   WITHOUT putting it on air.
+ * - Position memory: switching grouping modes auto-scrolls to the live
+ *   verse; a jump-to-live FAB appears when the live verse is off-screen.
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun SermonListScreen(
     uiState: BibleNdiUiState,
@@ -166,12 +170,12 @@ fun SermonListScreen(
     var showClearConfirm by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
-    // Batch-3: grouping mode + collapsed group headers (replaces the old
-    // share-group collapsible headers, which were redundant).
-    var groupMode by remember { mutableStateOf(SermonGroupMode.ORIGINAL) }
+    // Batch-3 sermon redesign: grouping mode (0=Original, 1=By Book, 2=OT/NT),
+    // collapsed sticky headers, info dialog, and list state for position memory.
+    var groupingMode by remember { mutableIntStateOf(0) }
     var collapsedHeaders by remember { mutableStateOf(setOf<String>()) }
-    var showHintsDialog by remember { mutableStateOf(false) }
-    val sermonListState = rememberLazyListState()
+    var showInfoDialog by remember { mutableStateOf(false) }
+    val listState = rememberLazyListState()
     // Item 14 (#23): share as plain text.
     val context = LocalContext.current
 
@@ -200,9 +204,8 @@ fun SermonListScreen(
                 }
         ) {
             Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-            // Slim header: name + count on the left, icon-only actions on the
-            // right (info / save / open / clear / share). Batch-3: the hint
-            // line moved behind the ⓘ icon to save screen space.
+            // Slim header: name + verse count on the left, icon-only actions.
+            // Batch-3: subtitle is the count only; hints moved behind ⓘ.
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
@@ -223,10 +226,10 @@ fun SermonListScreen(
                         color = bento.textSecondary
                     )
                 }
-                IconButton(onClick = { showHintsDialog = true }) {
+                IconButton(onClick = { showInfoDialog = true }) {
                     Icon(
                         imageVector = Icons.Filled.Info,
-                        contentDescription = "معلومات (Hints)",
+                        contentDescription = "تلميحات (Hints)",
                         tint = bento.textSecondary
                     )
                 }
@@ -278,16 +281,35 @@ fun SermonListScreen(
                 }
             }
 
-            // Batch-3: grouping control — compact segmented [Original|By Book|OT/NT].
-            if (playlist.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(8.dp))
-                SermonGroupSegmented(
-                    selected = groupMode,
-                    onSelect = { groupMode = it }
-                )
-            }
-
             Spacer(modifier = Modifier.height(12.dp))
+
+            // Batch-3: compact grouping control — one tap, no mistakes.
+            // Original keeps the manual order underneath at all times.
+            if (playlist.isNotEmpty()) {
+                SingleChoiceSegmentedButtonRow(
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    val options = listOf("الأصل", "حسب السفر", "OT/NT")
+                    options.forEachIndexed { index, label ->
+                        SegmentedButton(
+                            selected = groupingMode == index,
+                            onClick = { groupingMode = index },
+                            shape = SegmentedButtonDefaults.itemShape(
+                                index = index,
+                                count = options.size
+                            ),
+                            label = {
+                                Text(
+                                    text = label,
+                                    fontSize = 13.sp,
+                                    fontWeight = if (groupingMode == index) FontWeight.Bold else FontWeight.Normal
+                                )
+                            }
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+            }
 
             if (playlist.isEmpty()) {
                 Column(
@@ -311,35 +333,58 @@ fun SermonListScreen(
                     )
                 }
             } else {
-                // Batch-3: sections per grouping mode. Original = one
-                // header-less section in the user's manual order (compact
-                // rows). By Book / OT-NT = sticky, collapsible group
-                // headers with expanded cards sorted by Bible book order.
+                // Batch-3: flat display list for the active grouping mode.
+                // Headers are sticky + collapsible; chapter bands are
+                // computed on the verse sequence in final display order.
                 val bookOrder = remember {
-                    BibleRepository.allBooks.mapIndexed { i, b -> b.id.lowercase() to i }.toMap()
+                    com.arabicchristianmedia.model.BibleBookGroups.ALL.flatMap { it.bookIds }
                 }
-                val sections = remember(playlist, groupMode) {
-                    buildSermonSections(playlist, groupMode, bookOrder)
+                val otBookIds = remember {
+                    com.arabicchristianmedia.model.BibleBookGroups.ALL.take(5)
+                        .flatMap { it.bookIds }.toSet()
                 }
-                // Flat item list (headers + verses, in LazyColumn order) so
-                // a flat index maps 1:1 to LazyColumn item indices.
-                val flatItems = remember(sections) {
-                    sections.flatMap { s -> listOfNotNull(s.header) + s.verses }
+                val displayItems = remember(playlist, groupingMode, collapsedHeaders) {
+                    buildSermonDisplayItems(playlist, groupingMode, collapsedHeaders, bookOrder, otBookIds)
                 }
-                val liveVerseId = uiState.activeVerse?.id
-                val isLiveOnAir = uiState.isLiveOnAir
-                // Batch-3: position memory — switching grouping modes keeps
-                // the live verse in view instead of jumping to the top.
-                LaunchedEffect(groupMode) {
-                    val idx = flatItems.indexOfFirst {
-                        it is SermonDisplayItem.Verse && isLiveOnAir && it.entry.verse.id == liveVerseId
+                // Share-group-local move constraints (ViewModel contract):
+                // position of each entry inside its own share-group.
+                val groupPositions = remember(playlist) {
+                    val map = mutableMapOf<String, Pair<Int, Int>>()
+                    playlist.groupBy { it.groupId }.values.forEach { group ->
+                        group.forEachIndexed { i, e -> map[e.key] = i to group.size }
                     }
-                    if (idx >= 0) sermonListState.scrollToItem(idx)
+                    map
                 }
-                // Shared remove-with-undo.
-                val removeWithUndo: (SermonEntry) -> Unit = { v ->
-                    val globalIndex = playlist.indexOf(v)
-                    onRemove(v)
+                val liveEntryId = uiState.activeVerse?.id
+                val liveIsOnAir = uiState.isLiveOnAir
+                // Position memory: switching grouping modes auto-scrolls
+                // to the live verse so the operator never loses it.
+                LaunchedEffect(groupingMode) {
+                    if (liveEntryId != null && liveIsOnAir) {
+                        val idx = displayItems.indexOfFirst {
+                            it is SermonDisplayItem.Verse && it.entry.verse.id == liveEntryId
+                        }
+                        if (idx >= 0) listState.scrollToItem(idx)
+                    }
+                }
+                // Jump-to-live FAB: only when the live verse is off-screen.
+                val liveIndex = remember(displayItems, liveEntryId, liveIsOnAir) {
+                    if (liveEntryId != null && liveIsOnAir) {
+                        displayItems.indexOfFirst {
+                            it is SermonDisplayItem.Verse && it.entry.verse.id == liveEntryId
+                        }
+                    } else -1
+                }
+                val liveOffScreen by remember {
+                    derivedStateOf {
+                        liveIndex >= 0 &&
+                            listState.layoutInfo.visibleItemsInfo.none { it.index == liveIndex }
+                    }
+                }
+                // Shared remove-with-undo for both row styles.
+                val handleRemove: (SermonEntry, Int) -> Unit = { entry, globalIndex ->
+                    val removed = entry to globalIndex
+                    onRemove(entry)
                     scope.launch {
                         val result = snackbarHostState.showSnackbar(
                             message = "تم حذف الآية من القائمة",
@@ -347,104 +392,111 @@ fun SermonListScreen(
                             duration = SnackbarDuration.Long
                         )
                         if (result == SnackbarResult.ActionPerformed) {
-                            onRestoreVerse(v, globalIndex)
+                            onRestoreVerse(removed.first, removed.second)
                         }
-                    }
-                }
-                // Batch-3: jump-to-live visibility.
-                val liveFlatIndex = flatItems.indexOfFirst {
-                    it is SermonDisplayItem.Verse && it.entry.verse.id == liveVerseId
-                }
-                val showJumpToLive by remember(liveFlatIndex, isLiveOnAir) {
-                    derivedStateOf {
-                        isLiveOnAir && liveFlatIndex >= 0 &&
-                            sermonListState.layoutInfo.visibleItemsInfo.none { it.index == liveFlatIndex }
                     }
                 }
                 Box(modifier = Modifier.fillMaxSize()) {
                     LazyColumn(
-                        state = sermonListState,
+                        state = listState,
                         verticalArrangement = Arrangement.spacedBy(VerseRowSpec.RowSpacing),
                         modifier = Modifier.fillMaxSize()
                     ) {
-                        sections.forEach { section ->
-                            val header = section.header
-                            if (header != null) {
-                                stickyHeader(key = header.key) {
-                                    SermonGroupHeader(
-                                        header = header,
-                                        collapsed = header.key in collapsedHeaders,
-                                        onToggle = {
-                                            collapsedHeaders =
-                                                if (header.key in collapsedHeaders)
-                                                    collapsedHeaders - header.key
-                                                else collapsedHeaders + header.key
+                        displayItems.forEach { item ->
+                            when (item) {
+                                is SermonDisplayItem.Header -> {
+                                    stickyHeader(key = "hdr-${item.id}") {
+                                        val isCollapsed = item.id in collapsedHeaders
+                                        Surface(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .clickable {
+                                                    collapsedHeaders = if (isCollapsed)
+                                                        collapsedHeaders - item.id
+                                                    else collapsedHeaders + item.id
+                                                },
+                                            color = bento.surfaceVariant.copy(alpha = 0.5f),
+                                            shape = RoundedCornerShape(8.dp)
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Icon(
+                                                    if (isCollapsed) Icons.Filled.ChevronRight else Icons.Filled.ExpandMore,
+                                                    contentDescription = null,
+                                                    tint = bento.textSecondary,
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                                Spacer(Modifier.width(4.dp))
+                                                Text(
+                                                    text = "${item.title} (${item.count})",
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = bento.textPrimary,
+                                                    modifier = Modifier.weight(1f)
+                                                )
+                                            }
                                         }
-                                    )
+                                    }
                                 }
-                            }
-                            if (header == null || header.key !in collapsedHeaders) {
-                                items(
-                                    section.verses,
-                                    key = { it.entry.key }
-                                ) { vi ->
-                                    val v = vi.entry
-                                    val globalIndex = vi.globalIndex
-                                    val isLiveRow = isLiveOnAir && v.verse.id == liveVerseId
-                                    if (groupMode == SermonGroupMode.ORIGINAL) {
-                                        // Compact reference row; moves stay
-                                        // inside the verse's share-group.
-                                        val mates = playlist.filter { it.groupId == v.groupId }
-                                        val localIdx = mates.indexOf(v)
-                                        SermonCompactRow(
-                                            entry = v,
-                                            index = globalIndex,
-                                            isLive = isLiveRow,
-                                            bandA = vi.bandA,
-                                            shadeColorA = listColors.bandA,
-                                            shadeColorB = listColors.bandB,
-                                            onTap = { onShowVerse(v) },
-                                            onOpenInReader = { onOpenInReader(v) },
-                                            onRemove = { removeWithUndo(v) },
-                                            canMoveUp = localIdx > 0,
-                                            canMoveDown = localIdx >= 0 && localIdx < mates.size - 1,
-                                            onMoveUp = { onMoveUp(v) },
-                                            onMoveDown = { onMoveDown(v) }
-                                        )
-                                    } else {
-                                        SermonRow(
-                                            entry = v,
-                                            index = globalIndex,
-                                            isLive = isLiveRow,
-                                            isRecent = v.verse.id in recentVerseIds,
-                                            onTap = { onShowVerse(v) },
-                                            onOpenInReader = { onOpenInReader(v) },
-                                            onRemove = { removeWithUndo(v) },
-                                            shadeColorA = listColors.bandA,
-                                            shadeColorB = listColors.bandB,
-                                            bandA = vi.bandA
-                                        )
+                                is SermonDisplayItem.Verse -> {
+                                    val entry = item.entry
+                                    val globalIndex = playlist.indexOf(entry)
+                                    val isLive = liveEntryId == entry.verse.id && liveIsOnAir
+                                    val isRecent = entry.verse.id in recentVerseIds
+                                    val (posInGroup, groupSize) =
+                                        groupPositions[entry.key] ?: (0 to 1)
+                                    item(key = "verse-${entry.groupId}-${entry.verse.id}") {
+                                        if (groupingMode == 0) {
+                                            // Original: compact reference rows only.
+                                            SermonCompactRow(
+                                                entry = entry,
+                                                index = globalIndex,
+                                                isLive = isLive,
+                                                bandA = item.bandA,
+                                                isRecent = isRecent,
+                                                onTap = { onShowVerse(entry) },
+                                                onRemove = { handleRemove(entry, globalIndex) },
+                                                canMoveUp = posInGroup > 0,
+                                                canMoveDown = posInGroup < groupSize - 1,
+                                                onMoveUp = { onMoveUp(entry) },
+                                                onMoveDown = { onMoveDown(entry) }
+                                            )
+                                        } else {
+                                            SermonRow(
+                                                entry = entry,
+                                                index = globalIndex,
+                                                isLive = isLive,
+                                                bandA = item.bandA,
+                                                isRecent = isRecent,
+                                                onTap = { onShowVerse(entry) },
+                                                onOpenInReader = { onOpenInReader(entry) },
+                                                onRemove = { handleRemove(entry, globalIndex) },
+                                                canMoveUp = posInGroup > 0,
+                                                canMoveDown = posInGroup < groupSize - 1,
+                                                onMoveUp = { onMoveUp(entry) },
+                                                onMoveDown = { onMoveDown(entry) }
+                                            )
+                                        }
                                     }
                                 }
                             }
                         }
                     }
-                    // Batch-3: jump-to-live button (appears when the live
-                    // verse is off-screen).
-                    if (showJumpToLive) {
-                        androidx.compose.material3.FloatingActionButton(
-                            onClick = {
-                                scope.launch { sermonListState.animateScrollToItem(liveFlatIndex) }
-                            },
+                    if (liveOffScreen) {
+                        FloatingActionButton(
+                            onClick = { scope.launch { listState.scrollToItem(liveIndex) } },
+                            containerColor = listColors.sermonLiveYellow,
+                            contentColor = listColors.sermonLiveNavy,
                             modifier = Modifier
                                 .align(Alignment.BottomEnd)
-                                .padding(16.dp),
-                            containerColor = listColors.sermonLiveYellow,
-                            contentColor = listColors.sermonLiveNavy
+                                .padding(16.dp)
                         ) {
                             Icon(
-                                imageVector = Icons.Filled.KeyboardArrowUp,
-                                contentDescription = "العودة إلى الآية الحية (Jump to live verse)"
+                                Icons.Filled.ArrowUpward,
+                                contentDescription = "العودة للآية المباشرة (Jump to live)"
                             )
                         }
                     }
@@ -455,6 +507,31 @@ fun SermonListScreen(
             hostState = snackbarHostState,
             modifier = Modifier.align(Alignment.BottomCenter)
         )
+        }
+
+        // ── Batch-3: hints dialog (tap-to-broadcast, swipe-to-delete,
+        // move chevrons, grouping explainer) ──────────────────────────
+        if (showInfoDialog) {
+            AlertDialog(
+                onDismissRequest = { showInfoDialog = false },
+                title = { Text("تلميحات قائمة الخدمة") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("• اضغط أي آية لبثّها مباشرة.", fontSize = 13.sp, color = bento.textPrimary)
+                        Text("• اسحب الآية لليسار لحذفها (مع تراجع).", fontSize = 13.sp, color = bento.textPrimary)
+                        Text("• أسهم ⌃ ⌄ تنقل الآية داخل مجموعتها.", fontSize = 13.sp, color = bento.textPrimary)
+                        Text(
+                            "• «الأصل» يعرض ترتيبك اليدوي صفوفاً مضغوطة. «حسب السفر» و«OT/NT» يجمّعان الآيات تحت عناوين لاصقة قابلة للطي مرتبة بسفر/إصحاح/آية — والتبديل بينها لا يمس ترتيبك الأصلي.",
+                            fontSize = 13.sp,
+                            color = bento.textPrimary
+                        )
+                        Text("• لون الصف يتبدل مع تغيّر الإصحاح لتعرف أنك انتقلت لمنطقة جديدة.", fontSize = 13.sp, color = bento.textPrimary)
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showInfoDialog = false }) { Text("فهمت") }
+                }
+            )
         }
 
         // ── Save dialog ─────────────────────────────────────────────────
@@ -504,29 +581,6 @@ fun SermonListScreen(
                 },
                 dismissButton = {
                     TextButton(onClick = { showClearConfirm = false }) { Text("إلغاء") }
-                }
-            )
-        }
-
-        // ── Batch-3: hints dialog (behind the ⓘ icon) ───────────────────
-        if (showHintsDialog) {
-            AlertDialog(
-                onDismissRequest = { showHintsDialog = false },
-                title = { Text("تلميحات (Hints)") },
-                text = {
-                    Text(
-                        text = "• اضغط أي آية لبثّها مباشرة.\n" +
-                            "• اسحب الآية لحذفها (يمكن التراجع).\n" +
-                            "• أسهم ↑↓ تنقل الآية داخل مجموعتها.\n" +
-                            "• أيقونة الكتاب تفتح الآية في المكتبة دون بثّ.\n" +
-                            "• «الأصل» يعرض ترتيبك اليدوي بصفوف مدمجة.\n" +
-                            "• «حسب السفر» و«OT / NT» يعرضان بطاقات موسّعة مرتبة.",
-                        fontSize = 13.sp,
-                        color = bento.textPrimary
-                    )
-                },
-                confirmButton = {
-                    TextButton(onClick = { showHintsDialog = false }) { Text("حسناً") }
                 }
             )
         }
@@ -688,6 +742,8 @@ fun SermonListScreen(
 @OptIn(ExperimentalMaterial3Api::class)
 // R1: the sermon live colors moved to the token file (ui/theme/Color.kt)
 // — same values, now defined once for every list.
+// Batch-3: bandA replaces the old share-group shade logic — the band
+// flips when (book, chapter) changes, computed in display order.
 
 @Composable
 private fun SermonRow(
@@ -697,18 +753,14 @@ private fun SermonRow(
     onTap: () -> Unit,
     onOpenInReader: () -> Unit,
     onRemove: () -> Unit,
-    shadeColorA: Color,
-    shadeColorB: Color,
+    bandA: Boolean = true,
     isRecent: Boolean = false,
     // Follow-up Phase 4 (item 7): explicit move up/down (no drag-drop
     // library in the project). Defaults keep previews working.
     canMoveUp: Boolean = false,
     canMoveDown: Boolean = false,
     onMoveUp: () -> Unit = {},
-    onMoveDown: () -> Unit = {},
-    // Batch-3: chapter-alternating band (replaces the old share-group
-    // shade). True = band A, false = band B.
-    bandA: Boolean = true
+    onMoveDown: () -> Unit = {}
 ) {
     val bento = LocalBentoColors.current
     val listColors = LocalListColors.current
@@ -750,12 +802,12 @@ private fun SermonRow(
             colors = CardDefaults.cardColors(
                 containerColor = when {
                     isLive -> listColors.sermonLiveNavy
-                    bandA -> shadeColorA
-                    else -> shadeColorB
+                    bandA -> listColors.bandA
+                    else -> listColors.bandB
                 }
             ),
             border = androidx.compose.foundation.BorderStroke(
-                // Batch-3: live beacon — thicker yellow border on the live row.
+                // Batch-3: the live beacon is a 3dp yellow border.
                 if (isLive) 3.dp else if (isRecent) 2.dp else 1.dp,
                 if (isLive) listColors.sermonLiveYellow else if (isRecent) listColors.recents else bento.border
             ),
@@ -868,228 +920,10 @@ private fun SermonRow(
     }
 }
 
-// ── Batch-3 sermon redesign: grouping model ─────────────────────────────
-
-/** Grouping modes for the sermon list. */
-private enum class SermonGroupMode { ORIGINAL, BY_BOOK, OT_NT }
-
-/** One row in the sermon LazyColumn: a sticky group header or a verse. */
-private sealed interface SermonDisplayItem {
-    data class Header(val key: String, val title: String, val count: Int) : SermonDisplayItem
-    data class Verse(
-        val entry: SermonEntry,
-        /** Chapter-alternating band: true = band A, false = band B. */
-        val bandA: Boolean,
-        /** Index in the original playlist (stable numbering + restore). */
-        val globalIndex: Int
-    ) : SermonDisplayItem
-}
-
-/** A header with the verses under it (header null = Original mode). */
-private data class SermonSection(
-    val header: SermonDisplayItem.Header?,
-    val verses: List<SermonDisplayItem.Verse>
-)
-
 /**
- * Batch-3: chapter-alternating bands. Walks [entries] in display order;
- * the band flips whenever (bookId, chapter) changes, so the operator can
- * see where one passage ends and the next begins — in every grouping mode.
- */
-private fun chapterBands(entries: List<SermonEntry>): List<Boolean> {
-    val bands = ArrayList<Boolean>(entries.size)
-    var bandA = true
-    var lastKey: String? = null
-    for (e in entries) {
-        val key = "${e.verse.bookId.lowercase()}:${e.verse.chapter}"
-        if (lastKey != null && key != lastKey) bandA = !bandA
-        lastKey = key
-        bands.add(bandA)
-    }
-    return bands
-}
-
-private fun makeTestamentSection(
-    title: String,
-    key: String,
-    entries: List<SermonEntry>,
-    playlist: List<SermonEntry>
-): SermonSection {
-    val bands = chapterBands(entries)
-    return SermonSection(
-        header = SermonDisplayItem.Header(key = "testament:$key", title = title, count = entries.size),
-        verses = entries.mapIndexed { i, e ->
-            SermonDisplayItem.Verse(e, bands[i], playlist.indexOf(e))
-        }
-    )
-}
-
-/**
- * Batch-3: builds the display sections for [mode].
- * - ORIGINAL: single header-less section, user's manual order.
- * - BY_BOOK: one section per book, sorted by Bible book order, then
- *   chapter, then verse; sticky, collapsible headers.
- * - OT_NT: two sections (Old / New Testament), same inner sort.
- */
-private fun buildSermonSections(
-    playlist: List<SermonEntry>,
-    mode: SermonGroupMode,
-    bookOrder: Map<String, Int>
-): List<SermonSection> {
-    val byBookThenRef = compareBy<SermonEntry>(
-        { bookOrder[it.verse.bookId.lowercase()] ?: Int.MAX_VALUE },
-        { it.verse.chapter },
-        { it.verse.verse }
-    )
-    return when (mode) {
-        SermonGroupMode.ORIGINAL -> {
-            val bands = chapterBands(playlist)
-            listOf(
-                SermonSection(
-                    header = null,
-                    verses = playlist.mapIndexed { i, e ->
-                        SermonDisplayItem.Verse(e, bands[i], i)
-                    }
-                )
-            )
-        }
-        SermonGroupMode.BY_BOOK -> {
-            val sorted = playlist.sortedWith(byBookThenRef)
-            val sections = mutableListOf<SermonSection>()
-            var currentBookId: String? = null
-            var current = mutableListOf<SermonEntry>()
-            fun flush() {
-                if (current.isEmpty()) return
-                val first = current.first()
-                val book = BibleRepository.getBookById(first.verse.bookId)
-                val bands = chapterBands(current)
-                sections.add(
-                    SermonSection(
-                        header = SermonDisplayItem.Header(
-                            key = "book:${first.verse.bookId.lowercase()}",
-                            title = book?.arabicName ?: first.verse.bookArabicName,
-                            count = current.size
-                        ),
-                        verses = current.mapIndexed { i, e ->
-                            SermonDisplayItem.Verse(e, bands[i], playlist.indexOf(e))
-                        }
-                    )
-                )
-                current = mutableListOf()
-            }
-            for (e in sorted) {
-                val bid = e.verse.bookId.lowercase()
-                if (currentBookId != null && bid != currentBookId) flush()
-                currentBookId = bid
-                current.add(e)
-            }
-            flush()
-            sections
-        }
-        SermonGroupMode.OT_NT -> {
-            val ot = mutableListOf<SermonEntry>()
-            val nt = mutableListOf<SermonEntry>()
-            for (e in playlist) {
-                if (BibleRepository.getBookById(e.verse.bookId)?.testament == Testament.OLD_TESTAMENT) ot.add(e)
-                else nt.add(e)
-            }
-            listOf(
-                makeTestamentSection("العهد القديم (Old Testament)", "ot", ot.sortedWith(byBookThenRef), playlist),
-                makeTestamentSection("العهد الجديد (New Testament)", "nt", nt.sortedWith(byBookThenRef), playlist)
-            ).filter { it.verses.isNotEmpty() }
-        }
-    }
-}
-
-/**
- * Batch-3: compact grouping segmented control [Original|By Book|OT/NT].
- */
-@Composable
-private fun SermonGroupSegmented(
-    selected: SermonGroupMode,
-    onSelect: (SermonGroupMode) -> Unit
-) {
-    val bento = LocalBentoColors.current
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(bento.surfaceVariant)
-            .padding(4.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        for (mode in SermonGroupMode.values()) {
-            val isSel = mode == selected
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(if (isSel) bento.primary else Color.Transparent)
-                    .clickable { onSelect(mode) }
-                    .padding(vertical = 8.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = when (mode) {
-                        SermonGroupMode.ORIGINAL -> "الأصل"
-                        SermonGroupMode.BY_BOOK -> "حسب السفر"
-                        SermonGroupMode.OT_NT -> "OT / NT"
-                    },
-                    fontSize = 13.sp,
-                    fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal,
-                    color = if (isSel) Color.White else bento.textSecondary,
-                    maxLines = 1
-                )
-            }
-        }
-    }
-}
-
-/**
- * Batch-3: sticky, collapsible group header (book name or testament).
- */
-@Composable
-private fun SermonGroupHeader(
-    header: SermonDisplayItem.Header,
-    collapsed: Boolean,
-    onToggle: () -> Unit
-) {
-    val bento = LocalBentoColors.current
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .clickable(onClick = onToggle),
-        // Solid (not translucent): sticky headers scroll content underneath.
-        color = bento.surfaceVariant,
-        shape = RoundedCornerShape(8.dp)
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                if (collapsed) Icons.Filled.ChevronRight else Icons.Filled.ExpandMore,
-                contentDescription = if (collapsed) "توسيع (Expand)" else "طي (Collapse)",
-                tint = bento.textSecondary,
-                modifier = Modifier.size(18.dp)
-            )
-            Spacer(Modifier.width(4.dp))
-            Text(
-                text = "${header.title} (${header.count})",
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold,
-                color = bento.textPrimary,
-                modifier = Modifier.weight(1f)
-            )
-        }
-    }
-}
-
-/**
- * Batch-3: compact reference row for Original mode — number badge +
- * citation only (no verse text, no expand). Tap = go live. Slim move
- * chevrons keep the v1.9.1 share-group-local reorder.
+ * Batch-3: Original mode — a compact reference row (number badge +
+ * citation only, no verse text, no expand). Tap = go live. Slim
+ * move chevrons kept; swipe-to-delete kept (the live row is protected).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -1097,19 +931,18 @@ private fun SermonCompactRow(
     entry: SermonEntry,
     index: Int,
     isLive: Boolean,
-    bandA: Boolean,
-    shadeColorA: Color,
-    shadeColorB: Color,
     onTap: () -> Unit,
-    onOpenInReader: () -> Unit,
     onRemove: () -> Unit,
-    canMoveUp: Boolean,
-    canMoveDown: Boolean,
-    onMoveUp: () -> Unit,
-    onMoveDown: () -> Unit
+    bandA: Boolean = true,
+    isRecent: Boolean = false,
+    canMoveUp: Boolean = false,
+    canMoveDown: Boolean = false,
+    onMoveUp: () -> Unit = {},
+    onMoveDown: () -> Unit = {}
 ) {
     val bento = LocalBentoColors.current
     val listColors = LocalListColors.current
+    val verse = entry.verse
     val dismissState = rememberSwipeToDismissBoxState(
         confirmValueChange = { value ->
             if (value == SwipeToDismissBoxValue.EndToStart) {
@@ -1123,13 +956,10 @@ private fun SermonCompactRow(
     SwipeToDismissBox(
         state = dismissState,
         enableDismissFromStartToEnd = false,
-        // The live row cannot be swiped away at all: removing it would
-        // delete it from the list while it keeps broadcasting.
         enableDismissFromEndToStart = !isLive,
         backgroundContent = {
             Box(
-                modifier = Modifier
-                    .fillMaxSize()
+                modifier = Modifier.fillMaxSize()
                     .clip(RoundedCornerShape(12.dp))
                     .background(MaterialTheme.colorScheme.errorContainer),
                 contentAlignment = Alignment.CenterEnd
@@ -1146,41 +976,40 @@ private fun SermonCompactRow(
         Card(
             shape = RoundedCornerShape(12.dp),
             colors = CardDefaults.cardColors(
-                containerColor = if (isLive) listColors.sermonLiveNavy
-                                 else if (bandA) shadeColorA else shadeColorB
+                containerColor = when {
+                    isLive -> listColors.sermonLiveNavy
+                    bandA -> listColors.bandA
+                    else -> listColors.bandB
+                }
             ),
             border = androidx.compose.foundation.BorderStroke(
-                // Batch-3: live beacon — thicker yellow border on the live row.
-                if (isLive) 3.dp else 1.dp,
-                if (isLive) listColors.sermonLiveYellow else bento.border
+                if (isLive) 3.dp else if (isRecent) 2.dp else 1.dp,
+                if (isLive) listColors.sermonLiveYellow else if (isRecent) listColors.recents else bento.border
             ),
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { onTap() }
+            modifier = Modifier.fillMaxWidth().clickable { onTap() }
         ) {
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Surface(
                     shape = RoundedCornerShape(8.dp),
-                    color = if (isLive) listColors.sermonLiveYellow else bento.primaryContainer
+                    color = if (isLive) listColors.sermonLiveYellow
+                            else bento.primaryContainer
                 ) {
                     Text(
                         text = ArabicTextFormatter.toEasternArabicDigits(index + 1),
-                        fontSize = 14.sp,
+                        fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
                         color = if (isLive) listColors.sermonLiveNavy else bento.primary,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
                     )
                 }
-                Spacer(Modifier.width(10.dp))
+                Spacer(modifier = Modifier.width(10.dp))
                 Text(
-                    text = entry.verse.getFormattedArabicCitation(true),
+                    text = verse.getFormattedArabicCitation(true),
                     fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold,
+                    fontWeight = FontWeight.Bold,
                     color = if (isLive) listColors.sermonLivePaleYellow else bento.textPrimary,
                     modifier = Modifier.weight(1f),
                     maxLines = 1,
@@ -1192,16 +1021,15 @@ private fun SermonCompactRow(
                         color = listColors.sermonLiveYellow
                     ) {
                         Text(
-                            text = "على الهواء • LIVE",
+                            text = "LIVE",
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
                             color = listColors.sermonLiveNavy,
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                         )
                     }
-                    Spacer(Modifier.width(6.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
                 }
-                // Slim move chevrons (share-group-local reorder).
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     IconButton(
                         onClick = onMoveUp,
@@ -1230,18 +1058,93 @@ private fun SermonCompactRow(
                         )
                     }
                 }
-                IconButton(
-                    onClick = onOpenInReader,
-                    modifier = Modifier.size(32.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.MenuBook,
-                        contentDescription = "فتح في المكتبة (Open in Library)",
-                        tint = if (isLive) listColors.sermonLivePaleYellow else bento.primary,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
             }
+        }
+    }
+}
+
+/**
+ * Batch-3: flat display list for the sermon LazyColumn. Headers render
+ * as stickyHeader; verses carry their chapter band (flips whenever
+ * book/chapter changes, computed in final display order, all modes).
+ */
+private sealed interface SermonDisplayItem {
+    data class Header(val id: String, val title: String, val count: Int) : SermonDisplayItem
+    data class Verse(val entry: SermonEntry, val bandA: Boolean) : SermonDisplayItem
+}
+
+private fun buildSermonDisplayItems(
+    playlist: List<SermonEntry>,
+    groupingMode: Int,
+    collapsedHeaders: Set<String>,
+    bookOrder: List<String>,
+    otBookIds: Set<String>
+): List<SermonDisplayItem> {
+    if (playlist.isEmpty()) return emptyList()
+    // Bands flip when (book, chapter) changes — computed on the verse
+    // sequence in final display order, in ALL modes.
+    fun bandsOf(ordered: List<SermonEntry>): List<Boolean> =
+        com.arabicchristianmedia.model.BibleBookGroups
+            .chapterBands(ordered.map { it.verse })
+
+    val orderIndex = bookOrder.withIndex().associate { it.value to it.index }
+    fun sortBiblical(list: List<SermonEntry>): List<SermonEntry> =
+        list.sortedWith(
+            compareBy(
+                { orderIndex[it.verse.bookId] ?: Int.MAX_VALUE },
+                { it.verse.chapter },
+                { it.verse.verse }
+            )
+        )
+
+    return when (groupingMode) {
+        // By Book: expanded cards under sticky, collapsible book headers.
+        1 -> {
+            val sorted = sortBiblical(playlist)
+            val bands = bandsOf(sorted)
+            val items = mutableListOf<SermonDisplayItem>()
+            var i = 0
+            while (i < sorted.size) {
+                val bookId = sorted[i].verse.bookId
+                val headerId = "book-$bookId"
+                var j = i
+                while (j < sorted.size && sorted[j].verse.bookId == bookId) j++
+                items += SermonDisplayItem.Header(
+                    headerId,
+                    sorted[i].verse.bookArabicName,
+                    j - i
+                )
+                if (headerId !in collapsedHeaders) {
+                    for (k in i until j) items += SermonDisplayItem.Verse(sorted[k], bands[k])
+                }
+                i = j
+            }
+            items
+        }
+        // OT/NT: two sticky collapsible groups, same inner sort.
+        2 -> {
+            val sorted = sortBiblical(playlist)
+            val bands = bandsOf(sorted)
+            val items = mutableListOf<SermonDisplayItem>()
+            var i = 0
+            while (i < sorted.size) {
+                val isOt = sorted[i].verse.bookId in otBookIds
+                val headerId = if (isOt) "testament-ot" else "testament-nt"
+                val title = if (isOt) "العهد القديم" else "العهد الجديد"
+                var j = i
+                while (j < sorted.size && (sorted[j].verse.bookId in otBookIds) == isOt) j++
+                items += SermonDisplayItem.Header(headerId, title, j - i)
+                if (headerId !in collapsedHeaders) {
+                    for (k in i until j) items += SermonDisplayItem.Verse(sorted[k], bands[k])
+                }
+                i = j
+            }
+            items
+        }
+        // Original: manual order, compact rows, no headers.
+        else -> {
+            val bands = bandsOf(playlist)
+            playlist.mapIndexed { i, e -> SermonDisplayItem.Verse(e, bands[i]) }
         }
     }
 }

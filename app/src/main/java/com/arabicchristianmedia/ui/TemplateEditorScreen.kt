@@ -18,7 +18,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -343,18 +342,22 @@ fun TemplateEditorScreen(
     // IV Glow. Frame (box geometry, judged against the preview) stays
     // first, as in the stage, and is not a layer.
     val rightColumnKeys = listOf("frame", "language", "transition", "arabic", "english", "textshadow", "emblem", "card", "motion", "glow")
-    // Batch-3: per-tab per-section expand memory. The ViewModel-backed map
-    // survives tab switches (Lower<->Full and main tabs); keys are
-    // "editor-lower:<section>" / "editor-full:<section>" so each tab's
-    // sections expand independently. Fresh app launch = empty map = all collapsed.
-    // Anchor jumps expand their section via setSectionExpanded below.
-    val tabKey = if (editorTab == 0) "editor-lower" else "editor-full"
+    // Items 1 + 12: expanded state for the collapsible sections, hoisted
+    // here so it survives editor-tab switches (the old remember(syncKey)
+    // re-seeded on every template change) and so anchor jumps can expand
+    // a section before scrolling to it. First view still uses each
+    // section's initiallyExpanded; manual toggles stick after that.
     val collapsibleSectionIds = setOf("frame", "arabic", "language", "english", "card", "motion", "transition", "emblem", "textshadow", "glow")
+    // Batch-3: per-tab per-section expand memory — the map lives in the
+    // ViewModel (survives tab switches, cleared on app close = all
+    // collapsed on fresh launch). Per-tab keys keep Lower's "glow"
+    // independent from Full's "glow".
+    val editorTabKey = if (editorTab == 0) "editor-lower" else "editor-full"
     fun setSectionExpanded(sectionId: String, value: Boolean) {
-        onSetSectionExpanded(tabKey, sectionId, value)
+        onSetSectionExpanded(editorTabKey, sectionId, value)
     }
     fun isSectionExpanded(sectionId: String, default: Boolean): Boolean {
-        return sectionExpandedMap["$tabKey:$sectionId"] ?: default
+        return sectionExpandedMap["$editorTabKey:$sectionId"] ?: default
     }
     fun jumpToAnchor(id: String) {
         // Jumping to a section (or its sub-group) first expands it, then
@@ -394,9 +397,6 @@ fun TemplateEditorScreen(
     // the wide layout can place each piece (title in the left column,
     // tabs + style bar full-width, chips in MainActivity's top bar)
     // while the compact layout keeps the original stacked header.
-    // 2026-10-30 (batch-3): design menu button moved here (was in
-    // stageBlock) so the style name chip sits in the top bar beside
-    // the title on both tabs and both layouts.
     // 2026-10-28 design menu button: ALWAYS visible (not only when
     // dirty) — its label IS the design name, prefixed with Modified
     // only when the working copy differs from the saved design, and
@@ -416,44 +416,37 @@ fun TemplateEditorScreen(
             }
         }
     }
+
     val editorTitleBlock: @Composable () -> Unit = {
-        // 2026-10-30 (batch-3): top bar rework — title + style chip +
-        // single info icon + refresh, all in one row. The style chip
-        // moved up from stageBlock; the two info icons (Template Editor
-        // popup + tips-reopen) merged into one.
-        // Item 4: title smaller (20sp -> 16sp); its description moved behind
-        // the (i) beside the title — that popup keeps ONLY the description.
-        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        // Item 4: title smaller (20sp -> 16sp).
+        // Batch-3: one top row — [Template Editor] [Style Chip] [ⓘ] [↻].
+        // The style chip moved up from the stage; the TWO info icons
+        // (title popup + tips-reopen) are merged into ONE ⓘ whose dialog
+        // also offers to restore the How-it-works tips when hidden.
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Text("Template Editor", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
             designMenuButtonBlock()
-            // Single info icon: Template Editor info popup. When the
-            // How-it-works tips are hidden, the dialog also offers to
-            // reopen them (replaces the second info icon).
-            var showTopInfo by remember { mutableStateOf(false) }
-            IconButton(onClick = { showTopInfo = true }, modifier = Modifier.size(32.dp)) {
+            var showTitleInfo by remember { mutableStateOf(false) }
+            IconButton(onClick = { showTitleInfo = true }, modifier = Modifier.size(32.dp)) {
                 Icon(Icons.Default.Info, "Template Editor", tint = bento.primary, modifier = Modifier.size(18.dp))
             }
-            if (showTopInfo) {
+            if (showTitleInfo) {
                 AlertDialog(
-                    onDismissRequest = { showTopInfo = false },
+                    onDismissRequest = { showTitleInfo = false },
                     title = { Text("Template Editor") },
-                    text = {
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("تخصيص كامل وشامل لطبقات البث والعرض المباشر", fontSize = 13.sp, color = bento.textPrimary)
-                            if (!showHowItWorks) {
-                                TextButton(onClick = {
-                                    showTopInfo = false
-                                    tipsPrefs.edit().putBoolean("show_how_it_works", true).apply()
-                                    tipsPrefs.edit().putBoolean("how_it_works_expanded", true).apply()
-                                    onShowHowItWorksChange(true)
-                                    howItWorksExpanded = true
-                                }) {
-                                    Text("عرض تلميحات الاستخدام (How it works)")
-                                }
-                            }
+                    text = { Text("تخصيص كامل وشامل لطبقات البث والعرض المباشر") },
+                    confirmButton = { TextButton(onClick = { showTitleInfo = false }) { Text("تم") } },
+                    dismissButton = {
+                        if (!showHowItWorks) {
+                            TextButton(onClick = {
+                                tipsPrefs.edit().putBoolean("show_how_it_works", true).apply()
+                                tipsPrefs.edit().putBoolean("how_it_works_expanded", true).apply()
+                                onShowHowItWorksChange(true)
+                                howItWorksExpanded = true
+                                showTitleInfo = false
+                            }) { Text("إظهار تلميحات الاستخدام") }
                         }
-                    },
-                    confirmButton = { TextButton(onClick = { showTopInfo = false }) { Text("تم") } }
+                    }
                 )
             }
             IconButton(onClick = { onResetDefaults(editorTab == 1) }, modifier = Modifier.size(32.dp)) {
@@ -511,9 +504,8 @@ fun TemplateEditorScreen(
         }
     }
     val headerBlock: @Composable () -> Unit = {
-        // 2026-10-30 (batch-3): the title block now IS the full top bar
-        // (title + style chip + single info + refresh). The old outer
-        // row with its duplicate info/refresh buttons is gone.
+        // Batch-3: the header IS the title block now — [Template Editor]
+        // [Style Chip] [ⓘ] [↻] in one row, no duplicate buttons.
         editorTitleBlock()
 
         Spacer(Modifier.height(12.dp))
@@ -794,12 +786,11 @@ fun TemplateEditorScreen(
 
     val stageBlock: @Composable () -> Unit = {
         // 4. Style Selector (per-tab collection; highlight = selected style id, NOT the working template id)
-        // 2026-10-30 (batch-3): the design button (style name chip) moved
-        // to the top bar beside the title — no longer in the stage row.
-        // 2026-10-28: the design button + style help, then the cards.
-        // No separate Import button — Import lives in the design menu.
+        // Batch-3: the design chip moved to the title block — the stage
+        // keeps only the style help. No separate Import button — Import
+        // lives in the design menu.
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            InfoPopupButton("اختر النمط (Select Style)", "اضغط على زر التصميم للحفظ / التصدير / الاستيراد / الحذف • اضغط مطولاً على أي نمط لنفس الخيارات • التعديل بدون حفظ يمسح التمييز")
+            InfoPopupButton("اختر النمط (Select Style)", "اضغط على زر التصميم بالأعلى للحفظ / التصدير / الاستيراد / الحذف • اضغط مطولاً على أي نمط لنفس الخيارات • التعديل بدون حفظ يمسح التمييز")
         }
         styleCardsRow()
 
@@ -933,17 +924,7 @@ CollapsibleSection(
                     // One-update item 7: per-language line spacing.
                     SliderWithLabel("تباعد أسطر العربي (Arabic line spacing)", editingTemplate.lineSpacingArabic, 1f..3f) { onUpdate(editingTemplate.copy(lineSpacingArabic = it)) }
                     // Follow-up: verse-citation gap (was a hardcoded 16dp in the renderers).
-                    // Batch-3: extended to 0-72dp.
-                    SliderWithLabel("المسافة بين الآية والشاهد (Verse-Citation Gap · Arabic)", editingTemplate.verseCitationGapArabicDp, 0f..72f) { onUpdate(editingTemplate.copy(verseCitationGapArabicDp = it)) }
-                    // Batch-3: per-language citation alignment.
-                    Text("محاذاة الشاهد العربي (Arabic Citation Alignment)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
-                    Spacer(Modifier.height(4.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        BroadcastTextAlignment.entries.forEach { align ->
-                            FilterChip(selected = editingTemplate.citationAlignmentArabic == align, onClick = { onUpdate(editingTemplate.copy(citationAlignmentArabic = align)) }, label = { Text(align.displayName, fontSize = 10.sp) })
-                        }
-                    }
-                    Spacer(Modifier.height(8.dp))
+                    SliderWithLabel("المسافة بين الآية والشاهد (Verse-Citation Gap · Arabic)", editingTemplate.verseCitationGapArabicDp, 0f..48f) { onUpdate(editingTemplate.copy(verseCitationGapArabicDp = it)) }
                     FeatureToggleRow("علامات الترقيم العربية (Use Arabic punctuation ، ؛ ؟)", editingTemplate.useArabicPunctuation) { onUpdate(editingTemplate.copy(useArabicPunctuation = it)) }
                     FeatureToggleRow("الأرقام العربية المشرقية (Eastern Arabic numerals ١٢٣)", editingTemplate.useEasternArabicNumerals) { onUpdate(editingTemplate.copy(useEasternArabicNumerals = it)) }
                     FeatureToggleRow("تصحيح الأقواس بخط النظام (Use system font for brackets ( ) [ ] { })", editingTemplate.useSystemFontForBrackets) { onUpdate(editingTemplate.copy(useSystemFontForBrackets = it)) }
@@ -1066,20 +1047,9 @@ CollapsibleSection(
                         // One-update item 7: per-language line spacing.
                         SliderWithLabel("تباعد أسطر الإنجليزي (English line spacing)", editingTemplate.lineSpacingEnglish, 1f..3f) { onUpdate(editingTemplate.copy(lineSpacingEnglish = it)) }
                         // Follow-up: verse-citation gap (was a hardcoded 4px in the renderers).
-                        // Batch-3: extended to 0-72dp.
-                        SliderWithLabel("المسافة بين الآية والشاهد (Verse-Citation Gap · English)", editingTemplate.verseCitationGapEnglishDp, 0f..72f) { onUpdate(editingTemplate.copy(verseCitationGapEnglishDp = it)) }
-                        // Batch-3: per-language citation alignment.
-                        Text("محاذاة الشاهد الإنجليزي (English Citation Alignment)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
-                        Spacer(Modifier.height(4.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            BroadcastTextAlignment.entries.forEach { align ->
-                                FilterChip(selected = editingTemplate.citationAlignmentEnglish == align, onClick = { onUpdate(editingTemplate.copy(citationAlignmentEnglish = align)) }, label = { Text(align.displayName, fontSize = 10.sp) })
-                            }
-                        }
-                        Spacer(Modifier.height(8.dp))
+                        SliderWithLabel("المسافة بين الآية والشاهد (Verse-Citation Gap · English)", editingTemplate.verseCitationGapEnglishDp, 0f..48f) { onUpdate(editingTemplate.copy(verseCitationGapEnglishDp = it)) }
 
-                        // Batch-3: bilingual spacing extended to 0-200dp.
-                        SliderWithLabel("المسافة الفاصلة بين اللغتين", editingTemplate.bilingualSpacing.toFloat(), 0f..200f) { onUpdate(editingTemplate.copy(bilingualSpacing = it.toInt())) }
+                        SliderWithLabel("المسافة الفاصلة بين اللغتين", editingTemplate.bilingualSpacing.toFloat(), 0f..150f) { onUpdate(editingTemplate.copy(bilingualSpacing = it.toInt())) }
                         FeatureToggleRow("إظهار المسافة بين اللغتين (Show spacing)", editingTemplate.showBilingualSpacing) { onUpdate(editingTemplate.copy(showBilingualSpacing = it)) }
                     }
     }
@@ -1392,7 +1362,23 @@ CollapsibleSection(
                         }
                     }
 
-                    // Batch-3: stream background moved to Setup tab (controls /stream only)                }
+                    Row(modifier = anchorModifier("bg-stream"), verticalAlignment = Alignment.CenterVertically) {
+                        Text("خلفية البث (Stream Background)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary, modifier = Modifier.weight(1f))
+                        InfoPopupButton("خلفية البث (Stream Background)", if (editorTab == 0) "تؤثر فقط في بث MJPEG ‏(/stream) حول تصميم الثلث السفلي — لا تؤثر في NDI ولا في صفحات /lower و/full." else "تُضبط خلفية البث من تبويب الثلث السفلي (Lower Third) — فبث MJPEG ‏(/stream) يعرض دائماً تصميم الثلث السفلي.")
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    if (editorTab == 0) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            StreamBackgroundMode.entries.forEach { mode ->
+                                FilterChip(
+                                    selected = editingTemplate.streamBackgroundMode == mode,
+                                    onClick = { onUpdate(editingTemplate.copy(streamBackgroundMode = mode)) },
+                                    label = { Text(mode.displayNameAr, fontSize = 10.sp) }
+                                )
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))                }
     }
 
     val transitionSectionBlock: @Composable () -> Unit = {
@@ -1536,14 +1522,12 @@ CollapsibleSection(
                     onExpandedChange = { setSectionExpanded("glow", it) },
                     summary = "Glow " + (if (editingTemplate.cardGlowEnabled) "on" else "off")
                 ) {
-                    // Batch-3: glow controls show for Full Show too (was gated
-                    // on !isFullScreen, hiding the controls while the effect
-                    // could still be active).
-                    FeatureToggleRow("توهج الكارت (Card Glow)", editingTemplate.cardGlowEnabled, modifier = anchorModifier("shadow-glow")) { onUpdate(editingTemplate.copy(cardGlowEnabled = it)) }
-                    if (editingTemplate.cardGlowEnabled) {
-                        ColorGradePickerRow("لون توهج الكارت (Card Glow Color)", editingTemplate.cardGlowColorHex, { onUpdate(editingTemplate.copy(cardGlowColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor, previewTemplate = editingTemplate, previewField = "cardGlowColorHex")
-                    }
-                }
+                    if (!editingTemplate.isFullScreen) {
+                        FeatureToggleRow("توهج الكارت (Card Glow)", editingTemplate.cardGlowEnabled, modifier = anchorModifier("shadow-glow")) { onUpdate(editingTemplate.copy(cardGlowEnabled = it)) }
+                        if (editingTemplate.cardGlowEnabled) {
+                            ColorGradePickerRow("لون توهج الكارت (Card Glow Color)", editingTemplate.cardGlowColorHex, { onUpdate(editingTemplate.copy(cardGlowColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor, previewTemplate = editingTemplate, previewField = "cardGlowColorHex")
+                        }
+                    }                }
     }
 
     val sheetBlock: @Composable () -> Unit = {
@@ -1635,16 +1619,22 @@ CollapsibleSection(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     anchorSections.forEach { (sectionId, section) ->
-                        // 2026-10-30 (batch-3): chips show the section name,
-                        // not just the numeral. "I — تنسيق الخط العربي
-                        // (Verse Text · Arabic)" -> "I — Verse Text · Arabic".
-                        val shortLabel = section.first.let { full ->
-                            if (" — " in full) {
-                                val numeral = full.substringBefore(" — ")
-                                val english = full.substringAfter("(", "").substringBefore(")")
-                                if (english.isNotEmpty()) "$numeral — $english" else numeral
+                        // Batch-3: descriptive Jump-to labels — the layer
+                        // sections show "I — Verse Text · Arabic" etc.
+                        // instead of bare numerals; Frame/Language/
+                        // Transition keep their Arabic names.
+                        val shortLabel = run {
+                            val full = section.first
+                            val layerSections = setOf(
+                                "arabic", "english", "textshadow",
+                                "emblem", "card", "motion", "glow"
+                            )
+                            if (sectionId in layerSections && full.contains(" (")) {
+                                val numeral = full.substringBefore(" —")
+                                val english = full.substringAfter(" (").substringBefore(")")
+                                "$numeral — $english"
                             } else {
-                                full.substringBefore(" (")
+                                full.substringBefore(" (").substringBefore(" —")
                             }
                         }
                         FilterChip(
@@ -3143,10 +3133,8 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
             }
 
             Surface(
-                // Batch-3: use RectangleShape at radius 0 — RoundedCornerShape(0.dp)
-                // still renders a faint rounding; 0 must be a sharp square.
                 // v1.9.2 (#7): the corner radius applies to Full Show too.
-                shape = if (template.cornerRadiusDp <= 0f) RectangleShape else RoundedCornerShape((template.cornerRadiusDp * stageUnit).dp),
+                shape = RoundedCornerShape((template.cornerRadiusDp * stageUnit).dp),
                 color = cardBg,
                 border = if (template.showAccentBorder) BorderStroke(1.5.dp, try { Color(android.graphics.Color.parseColor(template.accentColorHex)) } catch (e: Exception) { Color.Yellow }) else null,
                 shadowElevation = if (template.cardGlowEnabled && cardHasVisibleEdge && hasVisibleCard) 12.dp else 0.dp,

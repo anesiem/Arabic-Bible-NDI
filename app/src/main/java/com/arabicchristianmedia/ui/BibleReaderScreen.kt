@@ -54,12 +54,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
-// Batch-3: keyboard arrow intercept for verse navigation.
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import androidx.compose.ui.tooling.preview.Preview
@@ -76,6 +70,11 @@ import com.arabicchristianmedia.model.BibleVerse
 import com.arabicchristianmedia.model.BibleVersion
 import com.arabicchristianmedia.model.Testament
 import com.arabicchristianmedia.ui.theme.*
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import kotlin.math.abs
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -88,6 +87,10 @@ fun BibleReaderScreen(
     onSelectChapter: (Int) -> Unit,
     onNextChapter: () -> Unit = {},
     onPrevChapter: () -> Unit = {},
+    // Batch-3: keyboard left/right arrows navigate verses (RTL: left =
+    // next, right = previous, matching the chapter arrows).
+    onNextVerse: () -> Unit = {},
+    onPrevVerse: () -> Unit = {},
     onSelectVersion: (BibleVersion) -> Unit,
     onSearchChanged: (String) -> Unit,
     onClearSearch: () -> Unit,
@@ -101,15 +104,15 @@ fun BibleReaderScreen(
     searchFocusNonce: Int = 0,
     onOpenRecentVerse: (BibleVerse) -> Unit = {},
     onClearRecents: () -> Unit = {},
+    // Batch-3: display-settings nonce from MainActivity's top-bar gear —
+    // opens the existing "إعدادات العرض" dialog without duplicating it.
+    displaySettingsNonce: Int = 0,
     onIncreaseFontSize: () -> Unit = {},
     onDecreaseFontSize: () -> Unit = {},
     onSetAppThemeMode: (AppThemeMode) -> Unit = {},
     // 2026-10-28: Library-tap nonce from MainActivity — every bump
     // closes search, recents sheet and chapter picker by themselves.
     closeOverlaysNonce: Int = 0,
-    // Batch-3: Display-settings nonce from MainActivity top bar gear —
-    // every bump opens the "إعدادات العرض" dialog.
-    displaySettingsNonce: Int = 0,
     // 2026-10-28: recents swipe-to-delete (sermon pattern, with Undo).
     onRemoveRecent: (BibleVerse) -> Unit = {},
     onRestoreRecent: (BibleVerse, Int) -> Unit = { _, _ -> },
@@ -117,9 +120,6 @@ fun BibleReaderScreen(
     onSetRecentsFontSize: (Int?) -> Unit = {},
     // Item 12: Send recents to sermon — merge=true adds to top, false replaces.
     onSendRecentsToSermon: (Boolean) -> Unit = {},
-    // Batch-3: keyboard arrow verse navigation (intercepted before focus system).
-    onNextVerse: () -> Unit = {},
-    onPrevVerse: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var showSearchBar by remember { mutableStateOf(false) }
@@ -134,6 +134,10 @@ fun BibleReaderScreen(
         }
     }
     var displayMenuExpanded by remember { mutableStateOf(false) }
+    // Batch-3: top-bar gear nonce opens the display settings dialog.
+    LaunchedEffect(displaySettingsNonce) {
+        if (displaySettingsNonce > 0) displayMenuExpanded = true
+    }
     var scripturePickerExpanded by remember { mutableStateOf(false) }
     // Batch item 3: pending picker chapter jump (target chapter); the
     // effect below scrolls to verse 1 once that chapter's list arrives.
@@ -144,11 +148,6 @@ fun BibleReaderScreen(
     val bento = LocalBentoColors.current
     val listColors = LocalListColors.current
     val lazyListState = rememberLazyListState()
-
-    // Batch-3: scroll to top on chapter change (swipe or tap).
-    LaunchedEffect(uiState.selectedChapter, uiState.selectedBook.id) {
-        lazyListState.scrollToItem(0)
-    }
 
     // Auto-scroll to active verse
     LaunchedEffect(uiState.activeVerse, uiState.displayedVerses) {
@@ -184,14 +183,6 @@ fun BibleReaderScreen(
         }
     }
 
-    // Batch-3: MainActivity top-bar gear bumps this to open the
-    // "إعدادات العرض" display-settings dialog.
-    LaunchedEffect(displaySettingsNonce) {
-        if (displaySettingsNonce > 0) {
-            displayMenuExpanded = true
-        }
-    }
-
     // Batch item 3: a picker chapter tap opens that chapter from verse 1.
     // The active-verse effect above would otherwise jump to the live
     // verse or keep the old offset. Pending until the tapped chapter's
@@ -210,19 +201,18 @@ fun BibleReaderScreen(
         modifier = modifier
             .fillMaxSize()
             .background(bento.bg)
-            // Batch-3: intercept physical left/right arrows for verse navigation
-            // BEFORE the focus system moves focus through the bottom tabs.
-            // RTL convention (matches chapter arrows): LEFT = next, RIGHT = previous.
+            .padding(12.dp)
+            // Batch-3: keyboard arrows navigate verses (intercepted BEFORE
+            // the focus system can move through the bottom tabs). RTL:
+            // LEFT = next verse, RIGHT = previous verse.
             .onPreviewKeyEvent { event ->
-                if (event.type == KeyEventType.KeyDown) {
-                    when (event.key) {
-                        Key.DirectionLeft -> { onNextVerse(); true }
-                        Key.DirectionRight -> { onPrevVerse(); true }
-                        else -> false
-                    }
-                } else false
-            }
-            .padding(12.dp),
+                if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                when (event.key) {
+                    Key.DirectionLeft -> { onNextVerse(); true }
+                    Key.DirectionRight -> { onPrevVerse(); true }
+                    else -> false
+                }
+            },
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         // 1. Scripture Browser Card
@@ -402,13 +392,42 @@ fun BibleReaderScreen(
 
 
                         // Chapters Grid
-                        // Batch-3: stepper row removed (was: "- N + /M"); grid only.
-                        // One-update item 21: chapter number grid (tap = jump).
+                        // One-update item 21: chapter number field beside
+                        // the +/- steppers, then the number grid (tap = jump).
+                        var chapterField by remember(uiState.selectedBook.id, uiState.selectedChapter) {
+                            mutableStateOf(uiState.selectedChapter.toString())
+                        }
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                        ) {
+                            Text("الفصل:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
+                            Button(onClick = onPrevChapter, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)) { Text("−") }
+                            OutlinedTextField(
+                                value = chapterField,
+                                onValueChange = { v -> if (v.all { it.isDigit() } && v.length <= 3) chapterField = v },
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+                                keyboardActions = KeyboardActions(onDone = {
+                                    val n = chapterField.toIntOrNull()
+                                    if (n != null) {
+                                        pickerJumpChapter = n.coerceIn(1, uiState.selectedBook.totalChapters)
+                                        onSelectChapter(pickerJumpChapter!!)
+                                    }
+                                }),
+                                modifier = Modifier.width(76.dp).trackTextInputFocus(),
+                                textStyle = LocalTextStyle.current.copy(textAlign = TextAlign.Center, fontSize = 13.sp)
+                            )
+                            Button(onClick = onNextChapter, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)) { Text("+") }
+                            Text(
+                                "/ ${uiState.selectedBook.totalChapters}",
+                                fontSize = 12.sp, color = bento.textSecondary
+                            )
+                        }
                         Box(modifier = Modifier.heightIn(min = 120.dp, max = 220.dp)) {
                             LazyVerticalGrid(
-                                // Batch-3: smaller circles (fit number + padding) to save
-                                // space for long chapters like Psalms (150).
-                                columns = GridCells.Adaptive(minSize = 40.dp),
+                                columns = GridCells.Adaptive(minSize = 52.dp),
                                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                                 verticalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
@@ -471,6 +490,11 @@ fun BibleReaderScreen(
                     }
 
                     Spacer(modifier = Modifier.weight(1f))
+                    // Batch-3: the ON AIR button and the display-settings
+                    // gear moved to MainActivity's top bar (ON AIR replaces
+                    // the LIVE pill; the gear sits beside the keyboard
+                    // icon on the Library tab). This row keeps chapter
+                    // navigation + search + recents only.
                 }
 
                 if (showSearchBar) {
@@ -529,43 +553,24 @@ fun BibleReaderScreen(
                         val recentsBodySize = recentsBodySp.sp
                         val recentsCitationSize = (recentsBodySp * 11 / 14).coerceAtLeast(9).sp
                         var recentsFontDialog by remember { mutableStateOf(false) }
+                        // Batch-3: send-to-sermon dialog state (hoisted for
+                        // the restructured header row below).
+                        var showSendDialog by remember { mutableStateOf(false) }
                         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
                         Column(modifier = Modifier.fillMaxWidth().fillMaxHeight(0.75f).padding(horizontal = 16.dp, vertical = 8.dp)) {
+                            // Batch-3: RTL header — RIGHT: gear + share icon,
+                            // CENTER: title, LEFT: clear (destructive, far
+                            // from the primary actions).
                             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                // Batch-3: RIGHT side (RTL start) — gear + sermon-share.
+                                // One-update item 3: per-section font gear.
                                 IconButton(onClick = { recentsFontDialog = true }) {
                                     Icon(Icons.Filled.Settings, "حجم خط الآيات الأخيرة", tint = bento.textSecondary)
                                 }
-                                // Item 12: Send recents to sermon.
                                 if (uiState.recentVerses.isNotEmpty()) {
-                                    var showSendDialog by remember { mutableStateOf(false) }
                                     IconButton(onClick = { showSendDialog = true }) {
                                         Icon(Icons.Filled.Share, "إرسال للعظة (To Sermon)", tint = bento.textSecondary)
                                     }
-                                    if (showSendDialog) {
-                                        AlertDialog(
-                                            onDismissRequest = { showSendDialog = false },
-                                            title = { Text("إرسال الآيات الأخيرة للعظة") },
-                                            text = { Text("القائمة الحالية تحتوي على آيات. هل تستبدلها بالآيات الأخيرة، أم تدمجها في أعلى القائمة الحالية؟") },
-                                            confirmButton = {
-                                                TextButton(onClick = {
-                                                    onSendRecentsToSermon(false)
-                                                    showSendDialog = false
-                                                }) { Text("استبدال (Replace)") }
-                                            },
-                                            dismissButton = {
-                                                Row {
-                                                    TextButton(onClick = {
-                                                        onSendRecentsToSermon(true)
-                                                        showSendDialog = false
-                                                    }) { Text("دمج (Merge)") }
-                                                    TextButton(onClick = { showSendDialog = false }) { Text("إلغاء") }
-                                                }
-                                            }
-                                        )
-                                    }
                                 }
-                                // Batch-3: CENTER — title.
                                 Text(
                                     text = "الآيات الأخيرة",
                                     fontSize = 16.sp,
@@ -574,8 +579,6 @@ fun BibleReaderScreen(
                                     modifier = Modifier.weight(1f),
                                     textAlign = TextAlign.Center
                                 )
-                                // Batch-3: LEFT side (RTL end) — clear (destructive,
-                                // far from primary actions).
                                 // Item 10: user reset for the persisted recents
                                 // (stays open so the empty state confirms it).
                                 if (uiState.recentVerses.isNotEmpty()) {
@@ -583,6 +586,29 @@ fun BibleReaderScreen(
                                         Text("مسح (Clear)", fontSize = 12.sp)
                                     }
                                 }
+                            }
+                            // Item 12: Send recents to sermon.
+                            if (showSendDialog) {
+                                AlertDialog(
+                                    onDismissRequest = { showSendDialog = false },
+                                    title = { Text("إرسال الآيات الأخيرة للعظة") },
+                                    text = { Text("القائمة الحالية تحتوي على آيات. هل تستبدلها بالآيات الأخيرة، أم تدمجها في أعلى القائمة الحالية؟") },
+                                    confirmButton = {
+                                        TextButton(onClick = {
+                                            onSendRecentsToSermon(false)
+                                            showSendDialog = false
+                                        }) { Text("استبدال (Replace)") }
+                                    },
+                                    dismissButton = {
+                                        Row {
+                                            TextButton(onClick = {
+                                                onSendRecentsToSermon(true)
+                                                showSendDialog = false
+                                            }) { Text("دمج (Merge)") }
+                                            TextButton(onClick = { showSendDialog = false }) { Text("إلغاء") }
+                                        }
+                                    }
+                                )
                             }
                             Spacer(modifier = Modifier.height(8.dp))
                             if (uiState.recentVerses.isEmpty()) {

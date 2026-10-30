@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
@@ -34,7 +35,6 @@ import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.Cast
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Keyboard
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
@@ -46,6 +46,8 @@ import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.automirrored.outlined.PlaylistPlay
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -91,10 +93,6 @@ import com.arabicchristianmedia.ui.theme.LocalBentoColors
 import com.arabicchristianmedia.ui.theme.MyApplicationTheme
 import com.arabicchristianmedia.model.ColorThemes
 import androidx.compose.ui.focus.onFocusChanged
-// Batch-3: HDMI Presentation API.
-import android.hardware.display.DisplayManager
-import android.view.Display
-import com.arabicchristianmedia.ui.VersePresentation
 
 /**
  * One-update item 20: tracks whether a text field has focus anywhere in
@@ -122,35 +120,6 @@ class MainActivity : ComponentActivity() {
      * toolbar item). Both hand the text to the ViewModel's sermon-playlist
      * flow; the list tab opens via the sermonListNonce effect below.
      */
-    // Batch-3: HDMI Presentation — show verse fullscreen on secondary display.
-    private var hdmiPresentation: VersePresentation? = null
-    private val displayListener = object : DisplayManager.DisplayListener {
-        override fun onDisplayAdded(displayId: Int) { updateHdmiPresentation() }
-        override fun onDisplayRemoved(displayId: Int) { updateHdmiPresentation() }
-        override fun onDisplayChanged(displayId: Int) { updateHdmiPresentation() }
-    }
-
-    private fun setupHdmiPresentation() {
-        val dm = getSystemService(DisplayManager::class.java) ?: return
-        dm.registerDisplayListener(displayListener, null)
-        updateHdmiPresentation()
-    }
-
-    private fun updateHdmiPresentation() {
-        val dm = getSystemService(DisplayManager::class.java) ?: return
-        val secondary = dm.getDisplays(DisplayManager.DISPLAY_CATEGORY_PRESENTATION)
-            .firstOrNull { it.displayId != Display.DEFAULT_DISPLAY }
-        if (secondary != null) {
-            if (hdmiPresentation == null) {
-                hdmiPresentation = VersePresentation(this, secondary, viewModel)
-                hdmiPresentation?.show()
-            }
-        } else {
-            hdmiPresentation?.dismiss()
-            hdmiPresentation = null
-        }
-    }
-
     private fun handleShareIntent(intent: Intent?) {
         val text = when (intent?.action) {
             Intent.ACTION_SEND -> intent.getStringExtra(Intent.EXTRA_TEXT)
@@ -273,14 +242,11 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         handleShareIntent(intent)
-        // Batch-3: HDMI auto-display — show verse on secondary display when connected.
-        setupHdmiPresentation()
 
         setContent {
             val uiState by viewModel.uiState.collectAsState()
-            // Batch-3: Section expand memory (per-tab per-section, ViewModel-backed
-            // so it survives tab switches; cleared on app close with the ViewModel).
-            val sectionExpanded by viewModel.sectionExpanded.collectAsState()
+            // Batch-3: per-tab per-section expand memory (ViewModel-backed).
+            val sectionExpandedMap by viewModel.sectionExpanded.collectAsState()
 
             LaunchedEffect(uiState.isKeepScreenOn) {
                 if (uiState.isKeepScreenOn) {
@@ -315,8 +281,9 @@ class MainActivity : ComponentActivity() {
                 // when already on Library — BibleReaderScreen closes
                 // search / recents sheet / chapter picker on the bump.
                 var libraryTabTapNonce by remember { mutableIntStateOf(0) }
-                // Batch-3: gear in the top bar (Library tab only) bumps this
-                // to open the "إعدادات العرض" display-settings dialog.
+                // Batch-3: display-settings nonce — the top-bar gear (Library
+                // tab only) bumps this; BibleReaderScreen opens its existing
+                // "إعدادات العرض" dialog on the bump.
                 var displaySettingsNonce by remember { mutableIntStateOf(0) }
                 // v2.0: a successful share (sermonListNonce bump) opens the
                 // sermon list tab so the operator lands on the verses.
@@ -408,7 +375,14 @@ class MainActivity : ComponentActivity() {
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis
                                         )
-                                        // Batch-3: removed "SVD Arabic (الكتاب المقدس)" subtitle from all tabs.
+                                        Text(
+                                            text = "SVD Arabic (الكتاب المقدس)",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Normal,
+                                            color = bento.textSecondary,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
                                     }
                                 }
 
@@ -473,34 +447,31 @@ class MainActivity : ComponentActivity() {
                                 IconButton(onClick = { shortcutsOpen = true }) {
                                     Icon(Icons.Filled.Keyboard, "اختصارات لوحة المفاتيح (Keyboard shortcuts)", tint = bento.textSecondary)
                                 }
-                                // Batch-3: display-settings gear beside the
-                                // keyboard icon — Library tab only. Opens the
-                                // "إعدادات العرض" dialog (universal font size).
+                                // Batch-3: display-settings gear — Library tab
+                                // only, beside the keyboard icon. Bumps the
+                                // nonce; BibleReaderScreen opens its dialog.
                                 if (selectedTab == 0) {
                                     IconButton(onClick = { displaySettingsNonce++ }) {
                                         Icon(Icons.Filled.Settings, "إعدادات العرض (Display settings)", tint = bento.textSecondary)
                                     }
                                 }
-                                // Batch-3: ON AIR button replaces the LIVE pill (redundant).
-                                // Red when live, grey when off. Toggles via ViewModel.
-                                val onAirIsLive = uiState.isLiveOnAir && uiState.activeVerse != null
-                                androidx.compose.material3.Button(
+                                // Batch-3: the display-only LIVE pill is gone
+                                // (redundant). The ON AIR button IS the live
+                                // indicator AND the toggle — red when a verse
+                                // is live on any output, grey when off.
+                                val topBarIsOnAir = uiState.isLiveOnAir && uiState.activeVerse != null
+                                Button(
                                     onClick = { viewModel.toggleLive() },
-                                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                                        containerColor = if (onAirIsLive) bento.liveRed else bento.surfaceContainer,
-                                        contentColor = if (onAirIsLive) Color.White else bento.textSecondary
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (topBarIsOnAir) bento.liveRed else Color(0xFF6B7280),
+                                        contentColor = Color.White
                                     ),
-                                    border = androidx.compose.foundation.BorderStroke(
-                                        1.dp,
-                                        if (onAirIsLive) bento.liveRed else bento.border
-                                    ),
-                                    shape = RoundedCornerShape(20.dp),
-                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 8.dp)
+                                    shape = RoundedCornerShape(10.dp),
+                                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
                                 ) {
                                     Text(
-                                        text = if (onAirIsLive) "ON AIR" else "OFF AIR",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold
+                                        if (topBarIsOnAir) "ON AIR" else "OFF AIR",
+                                        fontSize = 12.sp, fontWeight = FontWeight.Bold
                                     )
                                 }
                             }
@@ -612,6 +583,9 @@ class MainActivity : ComponentActivity() {
                                 onSelectChapter = { viewModel.selectChapter(it) },
                                 onNextChapter = { viewModel.nextChapter() },
                                 onPrevChapter = { viewModel.prevChapter() },
+                                // Batch-3: keyboard arrows in Library navigate verses.
+                                onNextVerse = { viewModel.nextVerse() },
+                                onPrevVerse = { viewModel.prevVerse() },
                                 onSelectVersion = { viewModel.setBibleVersion(it) },
                                 onSearchChanged = { viewModel.onSearchQueryChanged(it) },
                                 onClearSearch = { viewModel.clearSearch() },
@@ -622,17 +596,14 @@ class MainActivity : ComponentActivity() {
                                 onOpenRecentVerse = { viewModel.openRecentVerseInReader(it) },
                                 onClearRecents = { viewModel.clearRecents() },
                                 onSendRecentsToSermon = { merge -> viewModel.sendRecentsToSermon(merge) },
+                                displaySettingsNonce = displaySettingsNonce,
                                 onIncreaseFontSize = { viewModel.increaseFontSize() },
                                 onDecreaseFontSize = { viewModel.decreaseFontSize() },
                                 onSetAppThemeMode = { viewModel.setAppThemeMode(it) },
                                 closeOverlaysNonce = libraryTabTapNonce,
-                                displaySettingsNonce = displaySettingsNonce,
                                 onRemoveRecent = { viewModel.removeRecentVerse(it) },
                                 onRestoreRecent = { verse, index -> viewModel.restoreRecentVerse(verse, index) },
-                                onSetRecentsFontSize = { viewModel.setRecentsFontSize(it) },
-                                // Batch-3: keyboard arrow verse navigation.
-                                onNextVerse = { viewModel.nextVerse() },
-                                onPrevVerse = { viewModel.prevVerse() }
+                                onSetRecentsFontSize = { viewModel.setRecentsFontSize(it) }
                             )
                             1 -> TemplateEditorScreen(
                                 currentTemplate = uiState.activeTemplate,
@@ -680,10 +651,8 @@ class MainActivity : ComponentActivity() {
                                 onExportWorkingTemplate = { isFull -> viewModel.exportWorkingTemplateJson(isFull) },
                                 onRenameTemplate = { id, name, isFull -> viewModel.renameTemplate(id, name, isFull) },
                                 onRestoreFactoryTemplates = { viewModel.restoreFactoryTemplates() },
-                                // Batch-3: per-tab per-section expand memory (ViewModel-backed).
-                                sectionExpandedMap = sectionExpanded,
-                                onSetSectionExpanded = { tabId, sectionId, expanded -> viewModel.setSectionExpanded(tabId, sectionId, expanded) },
-                                onStreamBackgroundChange = { viewModel.setStreamBackgroundMode(it) }
+                                sectionExpandedMap = sectionExpandedMap,
+                                onSetSectionExpanded = { tabId, sectionId, expanded -> viewModel.setSectionExpanded(tabId, sectionId, expanded) }
                             )
                             2 -> BroadcastControlScreen(
                                 uiState = uiState,
@@ -714,10 +683,9 @@ class MainActivity : ComponentActivity() {
                                 onSaveNewTheme = { viewModel.saveNewCustomTheme(it) },
                                 onUpdateTheme = { viewModel.updateCustomTheme(it) },
                                 onDeleteTheme = { viewModel.deleteCustomTheme(it) },
-                                // Batch-3: per-tab per-section expand memory (ViewModel-backed).
-                                sectionExpandedMap = sectionExpanded,
-                                onSetSectionExpanded = { tabId, sectionId, expanded -> viewModel.setSectionExpanded(tabId, sectionId, expanded) },
-                                onStreamBackgroundChange = { viewModel.setStreamBackgroundMode(it) }
+                                onStreamBackgroundChange = { viewModel.setStreamBackgroundMode(it) },
+                                sectionExpandedMap = sectionExpandedMap,
+                                onSetSectionExpanded = { tabId, sectionId, expanded -> viewModel.setSectionExpanded(tabId, sectionId, expanded) }
                             )
                             3 -> SermonListScreen(
                                 uiState = uiState,

@@ -111,9 +111,7 @@ import com.arabicchristianmedia.server.NdiNativeSender
 import com.arabicchristianmedia.server.NdiSourceSpec
 import com.arabicchristianmedia.server.NetworkInterfaceInfo
 import com.arabicchristianmedia.model.ColorTheme
-import com.arabicchristianmedia.model.StreamBackgroundMode
-import com.arabicchristianmedia.model.ColorTheme
-import com.arabicchristianmedia.model.StreamBackgroundModes
+import com.arabicchristianmedia.model.ColorThemes
 import com.arabicchristianmedia.ui.theme.*
 
 @Composable
@@ -143,10 +141,12 @@ fun BroadcastControlScreen(
     onSaveNewTheme: (ColorTheme) -> Unit = {},
     onUpdateTheme: (ColorTheme) -> Unit = {},
     onDeleteTheme: (String) -> Unit = {},
+    // Batch-3: /stream background dots (moved from Editor) — controls the
+    // MJPEG /stream background only.
+    onStreamBackgroundChange: (com.arabicchristianmedia.model.StreamBackgroundMode) -> Unit = {},
     // Batch-3: per-tab per-section expand memory (ViewModel-backed map).
     sectionExpandedMap: Map<String, Boolean> = emptyMap(),
     onSetSectionExpanded: (String, String, Boolean) -> Unit = { _, _, _ -> },
-    onStreamBackgroundChange: (StreamBackgroundMode) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -372,6 +372,7 @@ fun BroadcastControlScreen(
                 }
             }
         }
+
     }
 
     val overlayBlock: @Composable () -> Unit = {
@@ -806,84 +807,38 @@ fun BroadcastControlScreen(
                 }
             }
         }
-        // Batch-3: stream background dots (moved from Editor) — controls /stream bg only, no name label
+        // Batch-3: /stream background — 4 color dots moved from the Editor.
+        // Controls the MJPEG /stream background ONLY (no name label).
         Spacer(modifier = Modifier.height(8.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            StreamBackgroundMode.entries.forEach { mode ->
-                val isSelected = uiState.activeTemplate.streamBackgroundMode == mode
-                val dotColor = try { Color(android.graphics.Color.parseColor(mode.colorHex)) } catch (e: Exception) { Color.Gray }
-                Box(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(androidx.compose.foundation.shape.CircleShape)
-                        .background(dotColor)
-                        .border(
-                            width = if (isSelected) 3.dp else 1.dp,
-                            color = if (isSelected) bento.green else bento.border,
-                            shape = androidx.compose.foundation.shape.CircleShape
-                        )
-                        .clickable { onStreamBackgroundChange(mode) }
-                )
-            }
-        }
-    }
-
-    // Batch-3: URL Reference — all URLs with parameters, at the bottom of Setup
-    val urlReferenceBlock: @Composable () -> Unit = {
-        SetupSection(
-            title = "مرجع الروابط (URL Reference)",
-            sectionId = "url-reference",
-            sectionExpandedMap = sectionExpandedMap,
-            onSetSectionExpanded = onSetSectionExpanded,
-            summary = "All URLs + parameters"
-        ) {
-            val refs = listOf(
-                "/lower?lang=ar|en" to "Lower Third overlay — lang forces Arabic or English, no param = template language",
-                "/full?lang=ar|en" to "Full Show overlay — same lang parameter",
-                "/remote?lang=ar|en" to "Remote control page — same lang parameter",
-                "/stage?lang=ar|en" to "Stage monitor — same lang parameter",
-                "/stream?bg=green|black|white|purple" to "MJPEG video stream — bg overrides the Setup background for this viewer",
-                "/stream?format=png" to "PNG frame instead of MJPEG",
-                "/events" to "Server-Sent Events — live verse/state updates",
-                "/api/verse?show=1" to "Current verse JSON (show=1 for Full Show template)",
-                "/api/trigger?ref=John+3:16" to "Show a verse — ref= free text, or book=&chapter=&verse=, target=lower|show|both",
-                "/api/onair" to "Toggle ON AIR state",
-                "/api/clear" to "Clear the current verse",
-                "/api/books?lang=ar|en" to "Book list JSON",
-                "/api/chapter?book=jhn&chapter=14&lang=ar" to "Chapter verses JSON",
-                "/api/recents" to "Recent verses JSON",
-                "/api/sermons" to "Sermon list — POST to create, GET to list",
-                "/api/sermons/current/next" to "Next sermon verse",
-                "/api/sermons/current/prev" to "Previous sermon verse",
-                "/api/preflight" to "Pre-flight check JSON — NDI/HTTP/server status",
-                "/api/debug" to "Debug dump — full template + state (for verification)",
-                "/api/status" to "Server status JSON"
+            val streamModes = listOf(
+                com.arabicchristianmedia.model.StreamBackgroundMode.TRANSPARENT_ALPHA,
+                com.arabicchristianmedia.model.StreamBackgroundMode.CHROMA_GREEN,
+                com.arabicchristianmedia.model.StreamBackgroundMode.PURE_BLACK,
+                com.arabicchristianmedia.model.StreamBackgroundMode.DARK_STUDIO
             )
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                refs.forEach { (url, desc) ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            text = url,
-                            fontSize = 10.sp,
-                            fontFamily = FontFamily.Monospace,
-                            color = bento.green,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Text(
-                            text = desc,
-                            fontSize = 10.sp,
-                            color = bento.textSecondary,
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-                }
+            val currentStreamMode = uiState.activeTemplate.streamBackgroundMode
+            streamModes.forEach { mode ->
+                val dotColor = try {
+                    Color(android.graphics.Color.parseColor(mode.colorHex))
+                } catch (e: Exception) { bento.textSecondary }
+                val dotSelected = currentStreamMode == mode
+                Surface(
+                    shape = androidx.compose.foundation.shape.CircleShape,
+                    color = dotColor,
+                    border = androidx.compose.foundation.BorderStroke(
+                        if (dotSelected) 3.dp else 1.dp,
+                        if (dotSelected) bento.primary else bento.border
+                    ),
+                    modifier = Modifier
+                        .size(if (dotSelected) 36.dp else 32.dp)
+                        .clip(androidx.compose.foundation.shape.CircleShape)
+                        .clickable { onStreamBackgroundChange(mode) }
+                ) {}
             }
         }
     }
@@ -903,6 +858,60 @@ fun BroadcastControlScreen(
                 Toast.makeText(context, "تم نسخ: $label", Toast.LENGTH_SHORT).show()
             }
         )
+    }
+
+    // Batch-3: URL Reference — all pages, APIs and their parameters,
+    // at the bottom of Setup after All URLs.
+    val urlReferenceBlock: @Composable () -> Unit = {
+        SetupSection(
+            title = "مرجع الروابط (URL Reference)",
+            sectionId = "url-reference",
+            sectionExpandedMap = sectionExpandedMap,
+            onSetSectionExpanded = onSetSectionExpanded,
+            summary = "كل الصفحات والـ APIs مع الباراميترات"
+        ) {
+            val base = if (uiState.serverUrl.isNotBlank()) uiState.serverUrl.removeSuffix("/lower") else "http://<IP>:${uiState.serverPort}"
+            val urls = listOf(
+                "/lower" to "?lang=ar|en — صفحة الطبقة السفلى (Lower Third overlay)",
+                "/full" to "?lang=ar|en — صفحة العرض الكامل (Full Show)",
+                "/remote" to "?lang=ar|en — صفحة التحكم عن بعد (Remote control)",
+                "/stage" to "?lang=ar|en — صفحة المسرح (Stage display)",
+                "/stream" to "?bg=green|black|white|purple — بث MJPEG (خلفية مخصصة للعرض)",
+                "/api/trigger" to "?ref=John+3:16 أو ?book=&chapter=&verse= &target=lower|show|both — بث آية",
+                "/api/onair" to "تبديل البث المباشر (ON AIR toggle)",
+                "/api/clear" to "مسح البث (Clear broadcast)",
+                "/api/verse" to "?show=1 — الآية الحالية (Current verse)",
+                "/api/books" to "قائمة الأسفار (Books list)",
+                "/api/chapter" to "?book=jhn&chapter=14 — آيات الإصحاح (Chapter verses)",
+                "/api/recents" to "الآيات الأخيرة (Recent verses)",
+                "/api/sermons" to "قائمة الخدمة (Sermon list)",
+                "/api/sermons/current" to "الآية الحالية في العظة (Current sermon verse)",
+                "/api/sermons/next" to "الآية التالية (Next)",
+                "/api/sermons/prev" to "الآية السابقة (Previous)",
+                "/api/preflight" to "فحص ما قبل البث (Preflight check)",
+                "/api/debug" to "معلومات التشخيص (Debug info)",
+                "/api/status" to "حالة الخادم (Server status)",
+                "/events" to "أحداث SSE المباشرة (Live SSE events)"
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                urls.forEach { (path, desc) ->
+                    Column {
+                        Text(
+                            text = base + path,
+                            fontSize = 11.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold,
+                            color = bento.green
+                        )
+                        Text(
+                            text = desc,
+                            fontSize = 10.sp,
+                            color = bento.textSecondary
+                        )
+                    }
+                }
+            }
+        }
     }
 
     val lowerBlock: @Composable () -> Unit = {
@@ -1507,7 +1516,7 @@ fun BroadcastControlScreen(
                                             TextField(
                                                 value = nameText,
                                                 onValueChange = { nameText = it },
-                                                label = { Row { Text("اسم الجهاز على الشبكة") ; Text(" (Device name)") } },
+                                                label = { Text("اسم الجهاز على الشبكة (Device name)") },
                                                 singleLine = true,
                                                 modifier = Modifier.fillMaxWidth()
                                             )
@@ -1700,6 +1709,7 @@ fun BroadcastControlScreen(
                                 urlsCardBlock()
                                 mjpegBlock()
                                 allUrlsBlock()
+                                urlReferenceBlock()
                                 networkBlock()
                                 obsBlock()
                                 vmixBlock()
@@ -1815,27 +1825,24 @@ private fun SetupSection(
     seedKey: Any? = null,
     controlledExpanded: Boolean? = null,
     onToggleControlled: (() -> Unit)? = null,
-    // Batch-3: per-tab per-section expand memory. When sectionId is provided,
-    // the expanded state comes from the ViewModel-backed map (survives tab
-    // switches); otherwise falls back to local remember (legacy behavior).
+    // Batch-3: per-section expand memory (ViewModel-backed). When
+    // sectionId is set, expansion is read from / written to the shared
+    // map under the key "setup:<sectionId>" — survives tab switches,
+    // cleared on app close (all collapsed on fresh launch).
     sectionId: String? = null,
     sectionExpandedMap: Map<String, Boolean> = emptyMap(),
     onSetSectionExpanded: (String, String, Boolean) -> Unit = { _, _, _ -> },
-    onStreamBackgroundChange: (StreamBackgroundMode) -> Unit = {},
     content: @Composable () -> Unit
 ) {
     val bento = LocalBentoColors.current
+    val vmKey = sectionId?.let { "setup:$it" }
+    val vmExpanded = vmKey?.let { sectionExpandedMap[it] }
     var internalExpanded by remember(seedKey) { mutableStateOf(seedExpanded) }
-    // Batch-3: ViewModel-backed state takes precedence when sectionId is set.
-    // Key format: "setup:<sectionId>". Fresh launch = empty map = seedExpanded.
-    val vmExpanded = if (sectionId != null) sectionExpandedMap["setup:$sectionId"] else null
     val expanded = controlledExpanded ?: vmExpanded ?: internalExpanded
-    fun setExpanded(value: Boolean) {
-        if (sectionId != null) {
-            onSetSectionExpanded("setup", sectionId, value)
-        } else {
-            internalExpanded = value
-        }
+    fun toggleExpanded() {
+        if (onToggleControlled != null) onToggleControlled()
+        else if (sectionId != null) onSetSectionExpanded("setup", sectionId, !(vmExpanded ?: seedExpanded))
+        else internalExpanded = !internalExpanded
     }
     Surface(
         shape = RoundedCornerShape(24.dp),
@@ -1845,9 +1852,7 @@ private fun SetupSection(
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
             Row(
-                modifier = Modifier.fillMaxWidth().clickable {
-                    if (onToggleControlled != null) onToggleControlled() else setExpanded(!expanded)
-                },
+                modifier = Modifier.fillMaxWidth().clickable { toggleExpanded() },
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
@@ -1974,8 +1979,7 @@ private fun NdiSourceSettingsRow(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                Text("حركة الفيديو", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = tint)
-                Text(" (Video Motion)", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = tint)
+                Text("حركة الفيديو (Video Motion)", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = tint)
                 InfoPopupButton("حركة الفيديو (Video Motion)", "إعادة رسم الفيديو المتحرك باستمرار (بحد أقصى 30 إطار/ثا). يتحكم بالفيديو فقط — حركة لون البطاقة (التدرج) تعمل مستقلة عنه، حتى لو أُطفئ هذا المفتاح.")
             }
             Switch(
@@ -2121,7 +2125,7 @@ private fun QrCodeDialog(
         },
         confirmButton = {
             androidx.compose.material3.TextButton(onClick = onDismiss) {
-                Row { androidx.compose.material3.Text("إغلاق") ; androidx.compose.material3.Text(" (Close)") }
+                androidx.compose.material3.Text("إغلاق (Close)")
             }
         }
     )

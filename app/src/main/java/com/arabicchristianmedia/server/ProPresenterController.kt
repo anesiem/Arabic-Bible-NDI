@@ -154,12 +154,14 @@ class ProPresenterController(
     }
 
     /**
-     * Test the connection with a lightweight GET on /version.
+     * Test the connection with a lightweight GET on /v1/version (fall back to /version).
      * @return (success, message) pair for the Setup status line.
      */
     fun testConnection(): Pair<Boolean, String> {
         if (host.isBlank()) return false to "ProPresenter host not set"
-        val resp = request("GET", "/version")
+        // Try /v1/version first (v1 API), fall back to /version (unversioned status endpoint)
+        var resp = request("GET", "/v1/version")
+        if (!resp.ok) resp = request("GET", "/version")
         return if (resp.ok) true to "ProPresenter responded (${resp.msg})"
         else false to "ProPresenter answered ${resp.msg} (check host/port; enable Network in ProPresenter Settings)"
     }

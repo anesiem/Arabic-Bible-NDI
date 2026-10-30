@@ -22,6 +22,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
@@ -121,7 +123,13 @@ fun SermonListScreen(
     // end) falls through to normal scrolling instead of swallowing
     // the key. Defaults are no-ops so previews do not need them.
     onNextSermon: () -> Boolean = { false },
-    onPrevSermon: () -> Boolean = { false }
+    onPrevSermon: () -> Boolean = { false },
+    // Follow-up Phase 4 (item 7): no drag-drop library in the project
+    // (compose-foundation drag gestures only, no reorderable), so verse
+    // reordering is explicit move-up/move-down. The ViewModel constrains
+    // moves inside the verse's own share-group.
+    onMoveUp: (SermonEntry) -> Unit = {},
+    onMoveDown: (SermonEntry) -> Unit = {}
 ) {
     val bento = LocalBentoColors.current
     val listColors = LocalListColors.current
@@ -343,7 +351,13 @@ fun SermonListScreen(
                                         }
                                     },
                                     shadeColorA = listColors.bandA,
-                                    shadeColorB = listColors.bandB
+                                    shadeColorB = listColors.bandB,
+                                    // Follow-up Phase 4 (item 7): group-local
+                                    // index — moves stay inside the group.
+                                    canMoveUp = index > 0,
+                                    canMoveDown = index < entries.size - 1,
+                                    onMoveUp = { onMoveUp(entry) },
+                                    onMoveDown = { onMoveDown(entry) }
                                 )
                             }
                         }
@@ -576,7 +590,13 @@ private fun SermonRow(
     onRemove: () -> Unit,
     shadeColorA: Color,
     shadeColorB: Color,
-    isRecent: Boolean = false
+    isRecent: Boolean = false,
+    // Follow-up Phase 4 (item 7): explicit move up/down (no drag-drop
+    // library in the project). Defaults keep previews working.
+    canMoveUp: Boolean = false,
+    canMoveDown: Boolean = false,
+    onMoveUp: () -> Unit = {},
+    onMoveDown: () -> Unit = {}
 ) {
     val bento = LocalBentoColors.current
     val listColors = LocalListColors.current
@@ -684,6 +704,40 @@ private fun SermonRow(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.fillMaxWidth()
                     )
+                }
+                // Follow-up Phase 4 (item 7): slim up/down move column (24dp
+                // buttons, minimal width so the verse list keeps its space).
+                // Edge rows show a dimmed disabled chevron.
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(start = 4.dp)
+                ) {
+                    IconButton(
+                        onClick = onMoveUp,
+                        enabled = canMoveUp,
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.KeyboardArrowUp,
+                            contentDescription = "نقل لأعلى (Move up)",
+                            tint = if (canMoveUp) (if (isLive) listColors.sermonLivePaleYellow else bento.primary)
+                                   else bento.textSecondary.copy(alpha = 0.35f),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    IconButton(
+                        onClick = onMoveDown,
+                        enabled = canMoveDown,
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.KeyboardArrowDown,
+                            contentDescription = "نقل لأسفل (Move down)",
+                            tint = if (canMoveDown) (if (isLive) listColors.sermonLivePaleYellow else bento.primary)
+                                   else bento.textSecondary.copy(alpha = 0.35f),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                 }
                 IconButton(
                     onClick = onOpenInReader,

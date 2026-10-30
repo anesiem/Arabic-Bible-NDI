@@ -250,6 +250,7 @@ fun TemplateEditorScreen(
                     isImportingVideo = false
                     val current = currentEditingTemplate.value
                     if (id != null) {
+                        RecentVideosStore.add(context, id)
                         onUpdate(current.copy(customVideoId = id, customVideoUrl = "", animatedBackground = AnimatedBackgroundType.CUSTOM_VIDEO))
                     }
                 }
@@ -631,6 +632,10 @@ fun TemplateEditorScreen(
                     // Edit Box toggle above the preview.
                     SliderWithLabel("ارتفاع صندوق النص (Text Box Height %)", editingTemplate.boxHeightPercent.toFloat(), 10f..100f) { onUpdate(editingTemplate.copy(boxHeightPercent = it.toInt())) }
                     SliderWithLabel("انحناء زوايا البطاقة (Corner Radius)", editingTemplate.cornerRadiusDp.toFloat(), 0f..60f) { onUpdate(editingTemplate.copy(cornerRadiusDp = it.toInt())) }
+                    // Follow-up: true fullscreen bypasses the card/box on the
+                    // Full feed (edge-to-edge verse, no card chrome). Shown for
+                    // both feeds; only meaningful on Full.
+                    FeatureToggleRow("ملء الشاشة الحقيقي (True Fullscreen · Full feed)", editingTemplate.trueFullscreen) { onUpdate(editingTemplate.copy(trueFullscreen = it)) }
                     Spacer(Modifier.height(8.dp))
 
                     // v1.9: Card padding — breathing room between the card edge
@@ -898,6 +903,8 @@ CollapsibleSection(
                     }
                     // One-update item 7: per-language line spacing.
                     SliderWithLabel("تباعد أسطر العربي (Arabic line spacing)", editingTemplate.lineSpacingArabic, 1f..3f) { onUpdate(editingTemplate.copy(lineSpacingArabic = it)) }
+                    // Follow-up: verse-citation gap (was a hardcoded 16dp in the renderers).
+                    SliderWithLabel("المسافة بين الآية والشاهد (Verse-Citation Gap · Arabic)", editingTemplate.verseCitationGapArabicDp, 0f..48f) { onUpdate(editingTemplate.copy(verseCitationGapArabicDp = it)) }
                     FeatureToggleRow("علامات الترقيم العربية (Use Arabic punctuation ، ؛ ؟)", editingTemplate.useArabicPunctuation) { onUpdate(editingTemplate.copy(useArabicPunctuation = it)) }
                     FeatureToggleRow("الأرقام العربية المشرقية (Eastern Arabic numerals ١٢٣)", editingTemplate.useEasternArabicNumerals) { onUpdate(editingTemplate.copy(useEasternArabicNumerals = it)) }
                     FeatureToggleRow("تصحيح الأقواس بخط النظام (Use system font for brackets ( ) [ ] { })", editingTemplate.useSystemFontForBrackets) { onUpdate(editingTemplate.copy(useSystemFontForBrackets = it)) }
@@ -1019,6 +1026,8 @@ CollapsibleSection(
                         SliderWithLabel("حجم النص الإنجليزي", editingTemplate.secondaryVerseFontSize.toFloat(), 8f..120f) { onUpdate(editingTemplate.copy(secondaryVerseFontSize = it.toInt())) }
                         // One-update item 7: per-language line spacing.
                         SliderWithLabel("تباعد أسطر الإنجليزي (English line spacing)", editingTemplate.lineSpacingEnglish, 1f..3f) { onUpdate(editingTemplate.copy(lineSpacingEnglish = it)) }
+                        // Follow-up: verse-citation gap (was a hardcoded 4px in the renderers).
+                        SliderWithLabel("المسافة بين الآية والشاهد (Verse-Citation Gap · English)", editingTemplate.verseCitationGapEnglishDp, 0f..48f) { onUpdate(editingTemplate.copy(verseCitationGapEnglishDp = it)) }
 
                         SliderWithLabel("المسافة الفاصلة بين اللغتين", editingTemplate.bilingualSpacing.toFloat(), 0f..150f) { onUpdate(editingTemplate.copy(bilingualSpacing = it.toInt())) }
                         FeatureToggleRow("إظهار المسافة بين اللغتين (Show spacing)", editingTemplate.showBilingualSpacing) { onUpdate(editingTemplate.copy(showBilingualSpacing = it)) }
@@ -1146,6 +1155,9 @@ CollapsibleSection(
                     FeatureToggleRow("طفو (Float)", editingTemplate.boxFloatEnabled) { onUpdate(editingTemplate.copy(boxFloatEnabled = it)) }
                     FeatureToggleRow("تمايل (Sway)", editingTemplate.boxSwayEnabled) { onUpdate(editingTemplate.copy(boxSwayEnabled = it)) }
                     FeatureToggleRow("نبض التوهج (Glow Pulse)", editingTemplate.boxGlowPulseEnabled) { onUpdate(editingTemplate.copy(boxGlowPulseEnabled = it)) }
+                    // Follow-up: when OFF, the continuous box motion plays once
+                    // per verse then holds still (was always looping).
+                    FeatureToggleRow("تكرار حركة الصندوق (Box Loop Continuous)", editingTemplate.boxLoopContinuous) { onUpdate(editingTemplate.copy(boxLoopContinuous = it)) }
                     if (editingTemplate.boxZoomEnabled || editingTemplate.boxFloatEnabled || editingTemplate.boxSwayEnabled || editingTemplate.boxGlowPulseEnabled) {
                         SliderWithLabel("سرعة مؤثرات الصندوق (Box effects speed)", editingTemplate.boxMotionSpeed, 0f..3f) { onUpdate(editingTemplate.copy(boxMotionSpeed = it)) }
                     }
@@ -1250,6 +1262,15 @@ CollapsibleSection(
                             Spacer(Modifier.width(6.dp))
                             Text(if (isImportingVideo) "جاري الاستيراد..." else "اختيار ملف فيديو مخصص (MP4)", fontSize = 12.sp)
                         }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        // Follow-up Phase 4 (item 6): recent videos row.
+                        RecentVideosRow(
+                            context = context,
+                            selectedVideoId = editingTemplate.customVideoId,
+                            onSelect = { id ->
+                                onUpdate(editingTemplate.copy(customVideoId = id, customVideoUrl = "", animatedBackground = AnimatedBackgroundType.CUSTOM_VIDEO))
+                            }
+                        )
                         Spacer(modifier = Modifier.height(4.dp))
                     }
                     if (editingTemplate.animatedBackground != AnimatedBackgroundType.NONE) {

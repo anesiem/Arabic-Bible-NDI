@@ -1750,6 +1750,25 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         persistSermonWorking()
     }
 
+    /** Follow-up Phase 4 (item 7): move a sermon verse up (direction = -1)
+     * or down (direction = +1). Moves stay INSIDE the verse's own group —
+     * a verse never crosses into another share-group, so the group color
+     * bands and shades stay consistent. Returns true when the list changed. */
+    fun moveSermonEntry(entry: SermonEntry, direction: Int): Boolean {
+        val current = _uiState.value.sermonPlaylist.toMutableList()
+        val index = current.indexOfFirst {
+            it.verse.id == entry.verse.id && it.groupId == entry.groupId
+        }
+        if (index < 0) return false
+        val target = index + direction
+        if (target < 0 || target >= current.size) return false
+        if (current[target].groupId != entry.groupId) return false
+        current[target] = current[index].also { current[index] = current[target] }
+        _uiState.value = _uiState.value.copy(sermonPlaylist = current)
+        persistSermonWorking()
+        return true
+    }
+
     /** v1.9.1: empty the working list (also clears its persisted copy and detaches it from any saved sermon). */
     fun clearSermonPlaylist() {
         _uiState.value = _uiState.value.copy(
@@ -2210,12 +2229,41 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         verse: com.arabicchristianmedia.model.BibleVerse,
         format: String
     ): String {
-        val arCit = verse.getFormattedArabicCitation()
+        val arCit = toArabicIndicNumerals(verse.getFormattedArabicCitation())
         val enCit = verse.getFormattedEnglishCitation()
         return when (format) {
             "arabic" -> "$arCit\n${verse.arabicText}"
             "english" -> "$enCit\n${verse.englishText}"
             else -> "$arCit\n${verse.arabicText}\n$enCit\n${verse.englishText}"
+        }
+    }
+
+    /**
+     * Convert Latin digits (0-9) to Arabic-Indic digits (٠-٩).
+     * Used for Arabic verse citations pushed to ProPresenter.
+     * Digit sequences are wrapped in LRI/PDI isolates to prevent RTL
+     * reordering (e.g. ٣:١٦ showing as ١٦:٣). Arabic text is untouched.
+     */
+    private fun toArabicIndicNumerals(text: String): String {
+        val arabicDigits = charArrayOf('٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩')
+        return buildString {
+            var inDigits = false
+            for (c in text) {
+                if (c in '0'..'9' || c == ':') {
+                    if (!inDigits) {
+                        append('\u2066') // LRI: start LTR isolate
+                        inDigits = true
+                    }
+                    append(if (c in '0'..'9') arabicDigits[c - '0'] else c)
+                } else {
+                    if (inDigits) {
+                        append('\u2069') // PDI: end isolate
+                        inDigits = false
+                    }
+                    append(c)
+                }
+            }
+            if (inDigits) append('\u2069')
         }
     }
 

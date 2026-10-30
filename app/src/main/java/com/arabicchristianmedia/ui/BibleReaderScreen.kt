@@ -282,13 +282,14 @@ fun BibleReaderScreen(
                         }
                         Spacer(Modifier.height(8.dp))
 
-                        // One-update item 21: grouped COLOR GRID picker — replaces
+                        // One-update item 21: the grouped color grid picker replaced
                         // the OT/NT tabs + long scrolling book list. 10
-                        // Bible-study groups, each with a color-coded header
-                        // (theme dark/light variants); books as short chips
-                        // in 3 columns, سفر/إنجيل/رسالة prefix stripped for
-                        // display only (citations keep the full names).
-                        // Recent-books row on top.
+                        // Bible-study groups; books as short chips with
+                        // سفر/إنجيل/رسالة prefix stripped for display only
+                        // (citations keep the full names).
+                        // Follow-up item 5: category titles removed — one
+                        // centered wrapping flow; group colors survive as
+                        // chip background tints (theme variables).
                         // J15: the picker font scales book names and chapter
                         // numbers, not only verses (18 -> 13sp, 30 -> 21sp).
                         // Item 18: recents removed (saves space).
@@ -304,93 +305,61 @@ fun BibleReaderScreen(
                             AppThemeMode.LIGHT -> false
                             AppThemeMode.DARK -> true
                         }
-                        if (bookQuery.isNotEmpty()) {
-                            // Item 18: search respects OT/NT filter.
-                            val matches = remember(bookQuery, otNtFilter) {
-                                BibleRepository.allBooks.filter { book ->
-                                    (otNtFilter == null || book.testament == otNtFilter) &&
-                                    (book.arabicName.contains(bookQuery) ||
-                                        book.englishName.contains(bookQuery, ignoreCase = true))
+                        // Follow-up item 5: single CENTERED wrapping flow of
+                        // all 66 books — category titles removed. The 10
+                        // Bible-study group colors survive as chip background
+                        // tints (theme variables via BookGroupColors, dark/
+                        // light aware). The OT/NT filter applies live to the
+                        // whole grid; search narrows the same grid (tap the
+                        // OT/NT chip again to clear the filter).
+                        val bookIdToGroupId = remember {
+                            buildMap<String, String> {
+                                BibleBookGroups.ALL.forEach { group ->
+                                    group.bookIds.forEach { id -> put(id, group.id) }
                                 }
                             }
-                            if (matches.isEmpty()) {
-                                Text(
-                                    "لا نتائج مطابقة.",
-                                    fontSize = 12.sp, color = bento.textSecondary,
-                                    modifier = Modifier.padding(vertical = 8.dp)
-                                )
-                            } else {
-                                @OptIn(ExperimentalLayoutApi::class)
-                                FlowRow(
-                                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    matches.forEach { book ->
-                                        FilterChip(
-                                            selected = book.id == uiState.selectedBook.id,
-                                            onClick = {
-                                                pickerJumpChapter = 1
-                                                onSelectBook(book, 1)
-                                            },
-                                            label = {
-                                                Text(
-                                                    BibleBookGroups.shortDisplayName(book.arabicName),
-                                                    fontSize = bookLabelSize, maxLines = 1
-                                                )
-                                            }
-                                        )
-                                    }
-                                }
+                        }
+                        val pickerBooks = remember(bookQuery, otNtFilter) {
+                            BibleRepository.allBooks.filter { book ->
+                                (otNtFilter == null || book.testament == otNtFilter) &&
+                                        (bookQuery.isEmpty() ||
+                                                book.arabicName.contains(bookQuery) ||
+                                                book.englishName.contains(bookQuery, ignoreCase = true))
                             }
+                        }
+                        if (pickerBooks.isEmpty()) {
+                            Text(
+                                "لا نتائج مطابقة.",
+                                fontSize = 12.sp, color = bento.textSecondary,
+                                modifier = Modifier.padding(vertical = 8.dp)
+                            )
                         } else {
-                            // Grouped color grid: 10 sections, 3-column chips.
-                            BibleBookGroups.ALL.forEach { group ->
-                                val groupColor = BookGroupColors.color(group.id, isDarkMode)
-                                val groupBooks = remember(group) {
-                                    group.bookIds.mapNotNull { id -> BibleRepository.allBooks.find { it.id == id } }
-                                }
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 4.dp)
-                                ) {
-                                    Box(
-                                        modifier = Modifier.size(10.dp).clip(CircleShape).background(groupColor)
+                            @OptIn(ExperimentalLayoutApi::class)
+                            FlowRow(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                pickerBooks.forEach { book ->
+                                    val groupColor = BookGroupColors.color(
+                                        bookIdToGroupId[book.id] ?: "", isDarkMode
                                     )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        group.arabicName,
-                                        fontSize = 12.sp, fontWeight = FontWeight.Bold,
-                                        color = groupColor, maxLines = 1,
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                    Text(
-                                        "${groupBooks.size}",
-                                        fontSize = 11.sp, color = bento.textSecondary
-                                    )
-                                }
-                                @OptIn(ExperimentalLayoutApi::class)
-                                FlowRow(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    groupBooks.forEach { book ->
-                                        FilterChip(
-                                            selected = book.id == uiState.selectedBook.id,
-                                            onClick = {
-                                                pickerJumpChapter = 1
-                                                onSelectBook(book, 1)
-                                            },
-                                            label = {
-                                                Text(
-                                                    BibleBookGroups.shortDisplayName(book.arabicName),
-                                                    fontSize = bookLabelSize, maxLines = 1
-                                                )
-                                            },
-                                            modifier = Modifier.weight(1f, fill = false)
+                                    FilterChip(
+                                        selected = book.id == uiState.selectedBook.id,
+                                        onClick = {
+                                            pickerJumpChapter = 1
+                                            onSelectBook(book, 1)
+                                        },
+                                        label = {
+                                            Text(
+                                                BibleBookGroups.shortDisplayName(book.arabicName),
+                                                fontSize = bookLabelSize, maxLines = 1
+                                            )
+                                        },
+                                        colors = FilterChipDefaults.filterChipColors(
+                                            containerColor = groupColor.copy(alpha = 0.16f)
                                         )
-                                    }
+                                    )
                                 }
                             }
                         }

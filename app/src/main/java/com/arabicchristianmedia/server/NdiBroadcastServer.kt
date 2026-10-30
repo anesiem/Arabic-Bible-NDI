@@ -335,6 +335,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
     /** Records a dropped overlay connection (no-op if it wasn't tracked). */
     private fun noteSseDrop(writer: PrintWriter, isShow: Boolean, via: String, reason: String) {
+        // Phase-2 SSE rework: drop the freshness entry too — dead clients
+        // must not linger in sseLastWrite and inflate the preflight stale
+        // count for the rest of the server session.
+        sseLastWrite.remove(writer)
         val info = sseConnInfo.remove(writer) ?: return
         val now = System.currentTimeMillis()
         val lived = now - info[0]
@@ -405,6 +409,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                                 writer.flush()
                             }
                             if (writer.checkError()) { dead.add(writer to isShow); deadWhy[writer] = "viewer-left" }
+                            else {
+                                // Phase-2 SSE rework: the keepalive is a successful
+                                // write — record it so the preflight stale-client
+                                // check (>25s) doesn't flag healthy idle clients
+                                // during long quiet stretches between verse changes.
+                                sseLastWrite[writer] = System.currentTimeMillis()
+                            }
                         } catch (e: Exception) {
                             dead.add(writer to isShow); deadWhy[writer] = "exception:${e.javaClass.simpleName}"
                         }
@@ -444,6 +455,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         }
         sseClients.clear()
         sseConnInfo.clear()
+        sseLastWrite.clear() // Phase-2 SSE rework: freshness tracking ends with the clients.
         // v1.7: release video decoders (recreated lazily on next start).
         synchronized(videoRenderers) {
             videoRenderers.values.forEach { try { it.release() } catch (e: Exception) {} }
@@ -1027,6 +1039,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 cleanPath == "/api/debug" -> {
                     serveApiDebug(out)
                 }
+                // Follow-up Phase 4 (item 8): pre-flight health for the
+                // /debug page's "Pre-flight" section.
+                cleanPath == "/api/preflight" -> {
+                    serveApiPreflight(out)
+                }
                 cleanPath == "/api/openapi.json" -> {
                     serveOpenApiSpec(out)
                 }
@@ -1092,6 +1109,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
         sseClients.add(Pair(writer, isShow))
         sseConnInfo[writer] = longArrayOf(System.currentTimeMillis(), 1)
+        // Phase-2 SSE rework: seed the last-write clock at connect (the
+        // full initial state was just written above) so the preflight
+        // stale check measures from connect, not from the first broadcast.
+        sseLastWrite[writer] = System.currentTimeMillis()
         sseConnectTotal++
         journalSse("${System.currentTimeMillis()} CONNECT ${if (isShow) "full" else "lower"} ${socket.remoteSocketAddress}")
     }
@@ -1315,6 +1336,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             put("gradientSpeed", tpl.gradientSpeed)
             put("autoFitMinCitationSp", tpl.autoFitMinCitationSp)
             put("autoFitRatioLock", tpl.autoFitRatioLock)
+            // Follow-up: verse-citation gap, box loop mode, true fullscreen.
+            put("verseCitationGapArabicDp", tpl.verseCitationGapArabicDp.toDouble())
+            put("verseCitationGapEnglishDp", tpl.verseCitationGapEnglishDp.toDouble())
+            put("boxLoopContinuous", tpl.boxLoopContinuous)
+            put("trueFullscreen", tpl.trueFullscreen)
         }
         val built = root.toString()
         statStateBuild.record((System.nanoTime() - buildT0) / 1_000_000.0)
@@ -1931,13 +1957,18 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
       const isFull = data.isFullScreen || $forceFullScreen;
 
+      // Follow-up: true fullscreen bypasses the card/box on the Full feed
+      // (edge-to-edge verse, no card chrome) — NDI parity.
+      const fullBleed = isFull && data.trueFullscreen === true;
+
       // v1.9: per-side card padding (design dp at 1920, same basis as the NDI
       // renderer) — replaces the old hardcoded paddings.
       function padPx(dp) { return (dp * getStageScale()) + 'px'; }
-      const padT = padPx(data.cardPaddingTopDp ?? 32);
-      const padB = padPx(data.cardPaddingBottomDp ?? 32);
-      const padL = padPx(data.cardPaddingLeftDp ?? 36);
-      const padR = padPx(data.cardPaddingRightDp ?? 36);
+      // Follow-up: true fullscreen ignores the card padding (edge-to-edge).
+      const padT = fullBleed ? '0px' : padPx(data.cardPaddingTopDp ?? 32);
+      const padB = fullBleed ? '0px' : padPx(data.cardPaddingBottomDp ?? 32);
+      const padL = fullBleed ? '0px' : padPx(data.cardPaddingLeftDp ?? 36);
+      const padR = fullBleed ? '0px' : padPx(data.cardPaddingRightDp ?? 36);
 
       // v1.8: viewport-relative font sizing — the style's font sizes are
       // designed for a 1920-wide canvas (like NDI); scale to the actual
@@ -2049,6 +2080,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         englishText.style.lineHeight = ((1.15 + 2 / (data.secondaryVerseFontSize || 18)) * ((data.lineSpacingEnglish || 1.5) / 1.5)).toFixed(3);
         englishCitation.style.fontSize = scaledPx(data.secondaryReferenceFontSize || 14);
         englishCitation.style.lineHeight = ((1.15 + 2 / (data.secondaryReferenceFontSize || 14)) * ((data.lineSpacingEnglish || 1.5) / 1.5)).toFixed(3);
+        // Follow-up: English verse-citation gap from the style (?? keeps a
+        // 0 value working; was a 4px CSS margin).
+        englishCitation.style.marginTop = ((data.verseCitationGapEnglishDp ?? 12) * getStageScale()) + 'px';
         // Round 2 (#5): 'System' is not a CSS family - assigning it raw
         // made the browser fall back to its default SERIF while NDI drew
         // the system sans. Map it to the sans stack; named fonts get a
@@ -2073,8 +2107,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // as Lower (and as NDI): horizontal margin, bottom position, and
         // box height come from the style; the stage bottom-anchors it.
         container.style.marginBottom = (data.positionBottomPercent ?? 6) + 'vh';
-        container.style.marginLeft = (data.horizontalMarginPercent ?? 6) + 'vw';
-        container.style.marginRight = (data.horizontalMarginPercent ?? 6) + 'vw';
+        // Follow-up: true fullscreen ignores the box's horizontal margins
+        // (edge-to-edge); the bottom position still places the text block.
+        container.style.marginLeft = fullBleed ? '0' : (data.horizontalMarginPercent ?? 6) + 'vw';
+        container.style.marginRight = fullBleed ? '0' : (data.horizontalMarginPercent ?? 6) + 'vw';
         container.style.width = '';
         // v1.9.2 (#7): clamped like the renderers — box top stays in frame.
         container.style.height = Math.min(data.boxHeightPercent || 100, 100 - (data.positionBottomPercent ?? 0)) + '%';
@@ -2190,6 +2226,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       // so without this each applyData compounds the shrink.
       citationText.style.fontSize = scaledPx(data.referenceFontSize || 18);
 
+      // Follow-up: verse-citation gap from the style (?? keeps a 0 value
+      // working; the badge's own 8px CSS margin is zeroed so the value is
+      // exact on both feeds, like the NDI renderer).
+      citationRow.style.marginBottom = '0';
+      verseText.style.marginTop = ((data.verseCitationGapArabicDp ?? 12) * getStageScale()) + 'px';
+
       // v1.9.1: auto-fit as a callable unit (was a tail block of applyData).
       // It runs AFTER the used fonts are ready (see finishApply), so sizes
       // are computed with the real font metrics — measuring with fallback
@@ -2227,7 +2269,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         const effBoxPct = Math.min(isFull ? (data.boxHeightPercent ?? 100) : (data.boxHeightPercent ?? 45), 100 - (data.positionBottomPercent ?? 0));
         const maxContentH = isFull
           ? (stage.clientHeight * (effBoxPct / 100) - padTopPx - padBotPx)
-          : (stage.clientHeight * (effBoxPct / 100) - padTopPx - padBotPx - 16 * ss);
+          // Follow-up: the trailing term is the verse-citation gap
+          // (was a hardcoded 16*ss), matching the NDI budget.
+          : (stage.clientHeight * (effBoxPct / 100) - padTopPx - padBotPx - ((data.verseCitationGapArabicDp ?? 12) * ss));
         function applyRatio(r, citeR) {
           verseText.style.fontSize = (baseVerse * r) + 'px';
           citationText.style.fontSize = (baseCite * (citeR !== undefined ? citeR : r)) + 'px';
@@ -2444,7 +2488,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       cardBox.style.animationDuration = '';
 
       // 100% transparent toggle behaves like the transparent style (mirrors the NDI canvas).
-      if (data.isPureTransparentBackground) { // v1.9: toggle is the single authority (was: style check overrode it)
+      // Phase-2 (3b): true fullscreen draws no card chrome at all (NDI
+      // parity) — skip the card paint entirely; the tail strip below
+      // leaves the card cleared, so a live color change never repaints
+      // the card under fullBleed.
+      if (fullBleed) {
+        cardFillOverlay.style.display = 'none';
+      } else if (data.isPureTransparentBackground) { // v1.9: toggle is the single authority (was: style check overrode it)
         cardBox.style.backgroundColor = 'transparent';
         cardBox.style.backdropFilter = 'none';
         cardBox.style.webkitBackdropFilter = 'none';
@@ -2482,7 +2532,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
           // Pulse itself is not removed, and no separate Zoom effect
           // is added here (that is a separate proposal, pending).
           // (No class, no animationDuration — timer below owns it.)
-        } else if (gAnim === 'rotate' && gSpeed > 0) {
+        } else if (gAnim === 'rotate' && gSpeed > 0 && !fullBleed) {
           // CSS cannot animate a gradient angle on its own, so a
           // 50ms timer turns it (NDI turns it natively at the same
           // 30 deg/s at speed 1). Cleared at the top of this section
@@ -2526,7 +2576,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       // as before. Pure (opacity 0) still hides the fill: the copied
       // background is at opacity 0, and the pure branch above wrote
       // transparent in the first place.
-      var isCustomVideoActive = (data.animatedBackground === 'custom_video' && !!data.customVideoId);
+      // Phase-2 (3b): true fullscreen shows no card fill overlay either —
+      // the tail strip below keeps it hidden, so don't copy a fill onto it.
+      var isCustomVideoActive = !fullBleed && (data.animatedBackground === 'custom_video' && !!data.customVideoId);
       if (isCustomVideoActive) {
         cardFillOverlay.style.background = cardBox.style.background || '';
         cardFillOverlay.style.backgroundColor = cardBox.style.backgroundColor || '';
@@ -2559,6 +2611,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         if (!data.gradientEnabled) return;
         var anim = data.gradientAnimation || 'none';
         if (anim === 'none') return;
+        // Follow-up: true fullscreen draws no card background at all — the
+        // timer below must not repaint one after the tail strip.
+        if (fullBleed) return;
         var spd = (data.gradientSpeed !== undefined) ? parseFloat(data.gradientSpeed) : 1;
         if (!(spd > 0)) return;
         var target = isCustomVideoActive ? cardFillOverlay : cardBox;
@@ -2633,7 +2688,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       // scale) and is untouched by this timer.
       (function() {
         var zoomOn = !!data.boxZoomEnabled, floatOn = !!data.boxFloatEnabled,
-            swayOn = !!data.boxSwayEnabled, glowOn = !!data.boxGlowPulseEnabled;
+            // Follow-up: true fullscreen draws no card glow (NDI parity).
+            swayOn = !!data.boxSwayEnabled, glowOn = !!data.boxGlowPulseEnabled && !fullBleed;
         if (!zoomOn && !floatOn && !swayOn && !glowOn) { cardBox.style.transform = ''; return; }
         var spd = (data.boxMotionSpeed !== undefined) ? parseFloat(data.boxMotionSpeed) : 1;
         var verseEnd = (transType === 'CUT' || transType === 'NONE') ? 0 : transDur;
@@ -2648,6 +2704,15 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
           var elapsed = Date.now() - start;
           if (elapsed <= transEnd) { cardBox.style.transform = ''; return; }
           var after = (elapsed - transEnd) / 1000;
+          // Follow-up: boxLoopContinuous=false plays the motion once per
+          // verse, then holds neutral (phase 2*PI == phase 0 for sin/cos).
+          // The timer restarts on every apply (new verse), re-arming it.
+          if (data.boxLoopContinuous === false && spd > 0 && after >= 1 / spd) {
+            clearInterval(window.__boxMotionTimer); window.__boxMotionTimer = null;
+            cardBox.style.transform = '';
+            if (shadowRgb !== null) cardBox.style.boxShadow = baseShadow;
+            return;
+          }
           var f = Math.min(1, (elapsed - transEnd) / 600);
           var ramp = f * f * (3 - 2 * f);
           var phase = 2 * Math.PI * spd * after;
@@ -2981,6 +3046,22 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       // v1.9.1: fit + reveal happen through the font gate (finishApply),
       // defined in section 5. The old tail block (immediate fit with
       // fallback metrics + rAF reveal) is gone.
+      // Follow-up: true fullscreen — strip the card chrome so the verse
+      // renders edge-to-edge on the frame (NDI parity): no background,
+      // border, radius, glow, or fill-over-video. The background timers
+      // are gated above, so nothing repaints the card after this.
+      if (fullBleed) {
+        cardBox.style.background = 'none';
+        cardBox.style.backgroundColor = 'transparent';
+        cardBox.style.border = 'none';
+        cardBox.style.borderRadius = '0';
+        cardBox.style.boxShadow = 'none';
+        cardBox.style.backdropFilter = 'none';
+        cardBox.style.webkitBackdropFilter = 'none';
+        cardBox.classList.remove('bg-flow');
+        cardBox.classList.remove('bg-breath');
+        cardFillOverlay.style.display = 'none';
+      }
       lastStyleKey = styleKey;
       finishApply();
     }
@@ -3381,8 +3462,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         ) ?: return null
         var r = 1f
         if (tpl.autoFitText) {
-            val padT = tpl.cardPaddingTopDp * scale
-            val padB = tpl.cardPaddingBottomDp * scale
+            // Follow-up: true fullscreen ignores card padding (edge-to-edge).
+            val fullBleed = tpl.trueFullscreen && isFull
+            val padT = if (fullBleed) 0f else tpl.cardPaddingTopDp * scale
+            val padB = if (fullBleed) 0f else tpl.cardPaddingBottomDp * scale
             // v1.9.2 (#7): the fit budget is the DRAWN box height — the
             // slider height clamped so the box top stays in the frame
             // (height + bottom <= 100%), exactly as drawFrameInto clamps.
@@ -3390,8 +3473,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             val maxContentH = if (tpl.isFullScreen) {
                 frameHeight * effBoxPct / 100f - padT - padB
             } else {
-                // Lower third must not swallow the screen.
-                frameHeight * effBoxPct / 100f - padT - padB - 16f * scale
+                // Lower third must not swallow the screen. The trailing
+                // term is the verse-citation gap (was hardcoded 16dp).
+                frameHeight * effBoxPct / 100f - padT - padB - tpl.verseCitationGapArabicDp * scale
             }
             r = capRatio
             if (layouts.contentH > maxContentH && maxContentH > 0) {
@@ -3491,10 +3575,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         } else null
 
         // v2.0: budget the citation at its TRUE drawn footprint — baseline at
-        // startY + textSize*0.9, primary text starts 16*scale below that. The
-        // old fixed 44*scale*fitRatio underestimated it, shifting everything
-        // below (Arabic, English) down and eating the bottom padding.
-        val citationHeight = (tpl.referenceFontSize * 2f * scale * fitRatio * citationBoost) * 0.9f + 16f * scale
+        // startY + textSize*0.9, primary text starts the verse-citation gap
+        // below that. The old fixed 44*scale*fitRatio underestimated it,
+        // shifting everything below (Arabic, English) down and eating the
+        // bottom padding.
+        // Follow-up: the gap is the style's verseCitationGapArabicDp
+        // (was a hardcoded 16*scale).
+        val citationHeight = (tpl.referenceFontSize * 2f * scale * fitRatio * citationBoost) * 0.9f + tpl.verseCitationGapArabicDp * scale
 
         // Calculate bilingual secondary text if needed
         var secondaryLayout: StaticLayout? = null
@@ -3583,7 +3670,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         val primary = staticLayout ?: secondaryLayout ?: return null
         val bilingualSecondary = if (staticLayout != null) secondaryLayout else null
         val secondaryCitation = if (staticLayout != null) secondaryCitationLayout else null
-        val secCitHeight = (secondaryCitation?.height ?: 0) + (4f * scale * fitRatio)
+        // Follow-up: the English verse-citation gap is the style's
+        // verseCitationGapEnglishDp (was a hardcoded 4*scale*fitRatio).
+        val secCitHeight = (secondaryCitation?.height ?: 0) + tpl.verseCitationGapEnglishDp * scale
         val secHeight = if (bilingualSecondary != null) bilingualSecondary.height + secCitHeight + bilSpacing else 0f
         val contentH = primary.height + citationHeight + secHeight
         return FittedTextLayouts(primary, bilingualSecondary, secondaryCitation, secHeight, citationHeight, contentH)
@@ -3790,9 +3879,14 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         val shadowDx = (cos(shadowAngleRad) * tpl.textShadowOffsetDp * scale).toFloat()
         val shadowDy = (sin(shadowAngleRad) * tpl.textShadowOffsetDp * scale).toFloat()
         val shadowBlur = tpl.textShadowBlurDp * scale
+        // Follow-up (trueFullscreen): on the Full feed the verse renders
+        // edge-to-edge — no horizontal margins, no card padding, no card
+        // chrome (fill/glow/border), no box transitions. The text block
+        // still honors positionBottomPercent/boxHeightPercent.
+        val fullBleed = tpl.trueFullscreen && isFull
         // Item 8: 0% padding respected — the coerceAtLeast minimums used to
         // force a margin even when the user set 0%. Now 0 means 0.
-        val marginH = width * (tpl.horizontalMarginPercent / 100f)
+        val marginH = if (fullBleed) 0f else width * (tpl.horizontalMarginPercent / 100f)
         val marginB = height * (tpl.positionBottomPercent / 100f)
         val boxWidth = width - (2 * marginH)
 
@@ -3810,10 +3904,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                        else activeVerse.getFormattedEnglishCitation()
 
         // v1.9: per-side card padding from the style (was hardcoded 36/32).
-        val padL = tpl.cardPaddingLeftDp * scale
-        val padR = tpl.cardPaddingRightDp * scale
-        val padT = tpl.cardPaddingTopDp * scale
-        val padB = tpl.cardPaddingBottomDp * scale
+        // Follow-up: true fullscreen ignores the padding (edge-to-edge).
+        val padL = if (fullBleed) 0f else tpl.cardPaddingLeftDp * scale
+        val padR = if (fullBleed) 0f else tpl.cardPaddingRightDp * scale
+        val padT = if (fullBleed) 0f else tpl.cardPaddingTopDp * scale
+        val padB = if (fullBleed) 0f else tpl.cardPaddingBottomDp * scale
         val contentWidth = (boxWidth - padL - padR).toInt().coerceAtLeast(200)
 
         // Audit fix (perf): the fitted layouts (incl. the auto-fit search)
@@ -3869,7 +3964,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // borrow the live frame and must not double-transform.
         var boxSaveCount = -1
         var boxFadeLayer = -1
-        val boxChangeActive = !isTransitionSnapshot && !textOnly && isBoxTransitionActiveFor(isFull)
+        // Follow-up (trueFullscreen): no box transitions — the card is bypassed.
+        val boxChangeActive = !isTransitionSnapshot && !textOnly && !fullBleed && isBoxTransitionActiveFor(isFull)
         val boxP = if (boxChangeActive) boxProgressFor(isFull) else 1f
         val boxVerseDurMs = if (tpl.transition == TransitionType.CUT || tpl.transition == TransitionType.NONE) 0L else tpl.transitionDurationMs.toLong()
         val boxBoxDurMs = if (tpl.boxTransition == TransitionType.CUT || tpl.boxTransition == TransitionType.NONE) 0L else tpl.boxTransitionDurationMs.toLong()
@@ -3878,7 +3974,17 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         val boxElapsedMs = if (boxLiveStartMs > 0L) SystemClock.elapsedRealtime() - boxLiveStartMs else Long.MAX_VALUE / 2
         val boxEffectsOn = tpl.boxZoomEnabled || tpl.boxFloatEnabled || tpl.boxSwayEnabled || tpl.boxGlowPulseEnabled
         val boxRamp = if (boxEffectsOn) com.arabicchristianmedia.model.BoxMotion.ramp(boxElapsedMs, boxTransEndMs) else 0f
-        val boxPhase = com.arabicchristianmedia.model.BoxMotion.phase(tpl.boxMotionSpeed, maxOf(0L, boxElapsedMs - boxTransEndMs) / 1000f)
+        // Follow-up (boxLoopContinuous): false plays the box motion once per
+        // verse, then holds neutral — the phase freezes at one full cycle
+        // (2*PI), where sin=0 and cos=1 make every effect neutral. The
+        // phase clock restarts on each verse change / go-live, so the
+        // single play re-arms per verse.
+        val boxMotionSec = maxOf(0L, boxElapsedMs - boxTransEndMs) / 1000f
+        val boxPhase = if (tpl.boxLoopContinuous || tpl.boxMotionSpeed <= 0f) {
+            com.arabicchristianmedia.model.BoxMotion.phase(tpl.boxMotionSpeed, boxMotionSec)
+        } else {
+            com.arabicchristianmedia.model.BoxMotion.phase(tpl.boxMotionSpeed, minOf(boxMotionSec, 1f / tpl.boxMotionSpeed))
+        }
         val boxZoomScale = if (tpl.boxZoomEnabled) com.arabicchristianmedia.model.BoxMotion.zoomScale(boxPhase, boxRamp) else 1f
         val boxFloatY = if (tpl.boxFloatEnabled) com.arabicchristianmedia.model.BoxMotion.floatDp(boxPhase, boxRamp) * scale else 0f
         val boxSwayX = if (tpl.boxSwayEnabled) com.arabicchristianmedia.model.BoxMotion.swayDp(boxPhase, boxRamp) * scale else 0f
@@ -3929,7 +4035,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // OUTSIDE the card rect: only the shadow survives, the card's own
         // fill (drawn after) covers the interior exactly. Drawn first,
         // behind video/card, under the visible-card rule (not !pure).
-        if (!textOnly && !tpl.isPureTransparentBackground && tpl.cardGlowEnabled && cardHasVisibleEdge) {
+        // Follow-up (trueFullscreen): no card glow — the card is bypassed.
+        if (!textOnly && !fullBleed && !tpl.isPureTransparentBackground && tpl.cardGlowEnabled && cardHasVisibleEdge) {
             val (shadowDyCss, shadowBlurCss, shadowAlphaF) = when (tpl.style) {
                 TemplateStyle.CLASSIC_BANNER -> Triple(12f, 36f, 0.6f)
                 TemplateStyle.ROYAL_LITURGICAL -> Triple(10f, 40f, 0.7f)
@@ -4030,7 +4137,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             val bgAlpha = (tpl.bgOpacity * 255).toInt().coerceIn(0, 255)
             val baseBgCol = try { Color.parseColor(tpl.bgColorHex) } catch (e: Exception) { Color.DKGRAY }
 
-            if (tpl.gradientEnabled) {
+            if (tpl.gradientEnabled && !fullBleed) {
                 // Design-gradient card (2026-10-28 batch): two colors at
                 // the user's angle, at bgOpacity, on BOTH renderers.
                 // It draws OVER a custom video (video is the bottom
@@ -4202,7 +4309,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                     val particleAlpha = (tpl.animatedBackgroundOpacity * 255).toInt().coerceIn(25, 255)
                     drawParticleField(canvas, boxLeft, boxTop, boxRight, boxBottom, radius, pClock, scale, pColor, particleAlpha)
                 }
-            } else {
+            } else if (!fullBleed) {
+                // Follow-up (trueFullscreen): no card fill — the card is bypassed.
                 paint.color = Color.argb(bgAlpha, Color.red(baseBgCol), Color.green(baseBgCol), Color.blue(baseBgCol))
                 canvas.drawRoundRect(rect, radius, radius, paint)
             }
@@ -4251,7 +4359,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // v2.0: Accent border for ALL background types (video, animated, plain).
         // Was drawn only inside the animated-background branch, so plain and
         // video styles never showed a border on NDI.
-        if (!textOnly && !tpl.isPureTransparentBackground && tpl.showAccentBorder) {
+        // Follow-up (trueFullscreen): no border — the card is bypassed.
+        if (!textOnly && !fullBleed && !tpl.isPureTransparentBackground && tpl.showAccentBorder) {
             val accCol = try { Color.parseColor(tpl.accentColorHex) } catch (e: Exception) { Color.YELLOW }
             paint.color = accCol
             paint.strokeWidth = 6f * scale
@@ -4415,7 +4524,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         }
 
         // Draw Multi-line Verse Text wrapped smoothly
-        val textY = citationY + (16f * scale)
+        // Follow-up: the verse starts the style's verse-citation gap below
+        // the citation baseline (was a hardcoded 16*scale).
+        val textY = citationY + tpl.verseCitationGapArabicDp * scale
         canvas.save()
         canvas.translate(translateX, textY)
         primaryLayout.draw(canvas)
@@ -4432,8 +4543,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             // v1.9: English citation on its own line below the verse (matches HTTP).
             val secCitation = layouts.secondaryCitation
             if (secCitation != null) {
-                // v1.9: gap matches the layout budget (4*scale*fitRatio).
-                val citY = secY + bilingualSecondary.height + (4f * scale * fitRatio)
+                // Follow-up: gap is the style's verseCitationGapEnglishDp
+                // (was a hardcoded 4*scale*fitRatio, matching the layout budget).
+                val citY = secY + bilingualSecondary.height + tpl.verseCitationGapEnglishDp * scale
                 canvas.save()
                 canvas.translate(translateX, citY)
                 secCitation.draw(canvas)
@@ -5536,6 +5648,29 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     }
 
     /**
+     * Follow-up Phase 4 (item 8): GET /api/preflight — runs getPreflightHealth()
+     * for the /debug page's "Pre-flight" section. Returns ready (service can
+     * start), the per-check verdict lines, SSE client count, and stale count.
+     */
+    private fun serveApiPreflight(out: OutputStream) {
+        val (ready, verdicts, stale) = getPreflightHealth()
+        val sb = StringBuilder()
+        sb.append("{")
+        sb.append("\"ok\":true,")
+        sb.append("\"ready\":$ready,")
+        sb.append("\"sseClients\":${sseClients.size},")
+        sb.append("\"staleClients\":$stale,")
+        sb.append("\"verdicts\":[")
+        verdicts.forEachIndexed { i, v ->
+            if (i > 0) sb.append(",")
+            sb.append("\"${jsonEscape(v)}\"")
+        }
+        sb.append("]")
+        sb.append("}")
+        sendJson(out, 200, sb.toString())
+    }
+
+    /**
      * GET /api/verse/copy — copy-ready verse, separate from /api/verse
      * (which returns live state for overlays) so no existing caller
      * changes shape. With no ?ref= it copies the current live verse.
@@ -5999,6 +6134,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             o.put("gradientSpeed", t.gradientSpeed)
             o.put("autoFitMinCitationSp", t.autoFitMinCitationSp)
             o.put("autoFitRatioLock", t.autoFitRatioLock)
+            // Follow-up: verse-citation gap, box loop mode, true fullscreen.
+            o.put("verseCitationGapArabicDp", t.verseCitationGapArabicDp.toDouble())
+            o.put("verseCitationGapEnglishDp", t.verseCitationGapEnglishDp.toDouble())
+            o.put("boxLoopContinuous", t.boxLoopContinuous)
+            o.put("trueFullscreen", t.trueFullscreen)
             return o.toString()
         }
         val up = if (serverStartTimeMs == 0L) 0 else System.currentTimeMillis() - serverStartTimeMs
@@ -6153,6 +6293,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   <button onclick="copyReport()">📋 Copy report</button>
 </div>
 
+<h2>Pre-flight</h2>
+<div class="row">
+  <button onclick="runPreflight()">✈ Run Pre-flight Check</button>
+</div>
+<div class="sub">Runs the tablet's pre-flight health check: HTTP server status, verse loaded, SSE client count, stale clients.</div>
+<div class="out" id="preflightOut">Not run yet.</div>
+
 <h2>Server &amp; device</h2>
 <div id="serverSec">Loading…</div>
 
@@ -6186,6 +6333,20 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   var lastDebug = null;
   var testLog = '';
   function esc(t) { return String(t == null ? '' : t).replace(/&/g, '&amp;').replace(/</g, '&lt;'); }
+  // Follow-up Phase 4 (item 8): pre-flight health check for /debug —
+  // calls the tablet's getPreflightHealth() via /api/preflight.
+  function runPreflight() {
+    var box = document.getElementById('preflightOut');
+    box.textContent = 'Running…';
+    fetch('/api/preflight').then(function(r) { return r.json(); }).then(function(j) {
+      if (!j.ok) { box.textContent = 'Error: ' + (j.error || 'unknown'); return; }
+      var lines = [];
+      lines.push('Ready for service: ' + (j.ready ? 'YES ✓' : 'NO ✗'));
+      lines.push('SSE clients: ' + j.sseClients + ' · stale clients: ' + j.staleClients);
+      for (var i = 0; i < j.verdicts.length; i++) lines.push(j.verdicts[i]);
+      box.textContent = lines.join('\n');
+    }).catch(function(e) { box.textContent = 'Error: ' + e; });
+  }
   function table(pairs) {
     var h = '<table>';
     for (var i = 0; i < pairs.length; i++) h += '<tr><td class="k">' + esc(pairs[i][0]) + '</td><td>' + esc(pairs[i][1]) + '</td></tr>';
@@ -6386,6 +6547,15 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
      * an ON AIR button mirroring the master, exactly like a native remote:
      * it never chooses outputs — the master decides what shows. Fully
      * offline, follows the device's light/dark theme.
+     *
+     * Follow-up Phase 5 (item 10): /stage-style layout controls — a gear
+     * panel persisted to localStorage ('remoteLayout'), also encodable in
+     * the URL (QR-shareable):
+     *   textsize=sm|md|lg   verse text size
+     *   recents=shown|hidden   the recents card + phone sheet toggle
+     *   hints=shown|hidden     the keyboard-hints line
+     *   theme=auto|light|dark  force light/dark regardless of the device
+     *   preset=default|director|compact
      */
     /**
      * GET /stage — ProPresenter-style stage monitor page (display only).
@@ -6938,6 +7108,102 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   .va { font-size: 17px; line-height: 1.8; }
   .ve { font-size: 13px; opacity: 0.75; margin-top: 2px; line-height: 1.5; }
   .vcit { font-weight: 800; font-size: 15px; }
+  /* Follow-up Phase 4 (item 4): English book/chapter header line above the
+     Arabic citation in each recents row — book + chapter at a glance. */
+  .vcit-en { font-weight: 700; font-size: 13px; opacity: 0.75; direction: ltr; text-align: left; margin-bottom: 2px; }
+  /* Follow-up Phase 5 (item 10): /stage-style gear panel on /remote —
+     same pattern (fixed gear, panel, presets, copy-link). Layout params
+     persist to localStorage and are QR-encodable in the URL. */
+  #gear {
+    position: fixed; top: 10px; right: 12px; z-index: 60;
+    background: var(--chrome-card, #ffffff); color: inherit;
+    border: 1px solid var(--chrome-border, #cbd5e1);
+    border-radius: 8px; font-size: 16px; padding: 4px 9px; cursor: pointer;
+  }
+  #panel {
+    position: fixed; top: 48px; right: 12px; z-index: 60;
+    background: var(--chrome-card, #ffffff);
+    border: 1px solid var(--chrome-border, #cbd5e1); border-radius: 10px;
+    padding: 14px; width: 248px; color: inherit;
+  }
+  #panel[hidden] { display: none; }
+  #panel h3 { margin: 0 0 10px; font-size: 14px; }
+  #panel label {
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 8px; font-size: 13px; font-weight: 400; opacity: 1;
+    margin-bottom: 8px;
+  }
+  #panel select {
+    background: var(--chrome-input-bg, #f8fafc); color: inherit;
+    border: 1px solid var(--chrome-border, #cbd5e1);
+    border-radius: 6px; padding: 4px 6px; font-size: 13px;
+    width: auto; max-width: 132px;
+  }
+  #panel .prow { display: flex; gap: 6px; margin: 10px 0; }
+  #panel .prow button {
+    flex: 1; cursor: pointer; padding: 6px 8px; font-size: 13px;
+    border-radius: 6px; background: transparent;
+    border: 1px solid var(--chrome-border, #cbd5e1); color: inherit;
+  }
+  #copylink {
+    width: 100%; padding: 6px 8px; font-size: 13px; border-radius: 6px;
+    background: var(--chrome-primary, #3b82f6);
+    color: var(--chrome-onprimary, #ffffff); border: none; cursor: pointer;
+  }
+  /* textsize param */
+  body.remote-text-sm .va { font-size: 14px; }
+  body.remote-text-sm .ve { font-size: 11px; }
+  body.remote-text-sm .vcit { font-size: 13px; }
+  body.remote-text-sm .vcit-en { font-size: 11px; }
+  body.remote-text-lg .va { font-size: 22px; }
+  body.remote-text-lg .ve { font-size: 16px; }
+  body.remote-text-lg .vcit { font-size: 18px; }
+  body.remote-text-lg .vcit-en { font-size: 15px; }
+  /* recents / hints visibility params */
+  body.hide-recents #recentCard, body.hide-recents #recentsToggle { display: none; }
+  body.hide-hints #kbdHint { display: none; }
+  /* theme param: the tablet writes its --chrome-* tokens to :root every
+     3 s poll; these body-level declarations win for the body subtree, so
+     a forced theme survives the poll. The livepill rules mirror the
+     dark media block below for the same reason. */
+  body.force-light {
+    color-scheme: light;
+    background: var(--chrome-bg, #f1f5f9); color: var(--chrome-text, #0f172a);
+    --chrome-bg: #f1f5f9; --chrome-card: #ffffff; --chrome-text: #0f172a;
+    --chrome-textsec: #64748b; --chrome-border: #e2e8f0;
+    --chrome-input-bg: #f8fafc; --chrome-primary: #0f172a; --chrome-onprimary: #ffffff;
+    --band-a: #EAE3F6; --band-b: #DFE9F3; --recents: #0D9488;
+    --live-bg: #1B3A5C; --live-yellow: #F5D76E; --live-text: #FFFFFF;
+  }
+  body.force-light .card { background: var(--chrome-card); border-color: var(--chrome-border); }
+  body.force-light input, body.force-light select { background: var(--chrome-input-bg); border-color: var(--chrome-border); color: var(--chrome-text); }
+  body.force-light .hint { color: var(--chrome-textsec); }
+  body.force-light .chips button { border-color: var(--chrome-border); color: var(--chrome-textsec); }
+  body.force-light .chips button.active { background: var(--chrome-primary); color: var(--chrome-onprimary); border-color: transparent; }
+  body.force-light .vrow { border-color: var(--chrome-border); }
+  body.force-light .livepill { color: #111827; }
+  body.force-light .livepill.on { background: rgba(220,38,38,0.18); border-color: rgba(220,38,38,0.65); color: #7f1d1d; }
+  body.force-light .livepill.disconnected { background: rgba(245,158,11,0.18); border-color: rgba(245,158,11,0.65); color: #92400e; }
+  body.force-dark {
+    color-scheme: dark;
+    background: var(--chrome-bg, #0f172a); color: var(--chrome-text, #f1f5f9);
+    --chrome-bg: #0f172a; --chrome-card: #1e293b; --chrome-text: #f1f5f9;
+    --chrome-textsec: #94a3b8; --chrome-border: #334155;
+    --chrome-input-bg: #0f172a; --chrome-primary: #f1f5f9; --chrome-onprimary: #0f172a;
+    --band-a: #3B3052; --band-b: #2B3A42; --recents: #0D9488;
+    --live-bg: #1B3A5C; --live-yellow: #F5D76E; --live-text: #FFFFFF;
+  }
+  body.force-dark .card { background: var(--chrome-card); border-color: var(--chrome-border); }
+  body.force-dark input, body.force-dark select { background: var(--chrome-input-bg); border-color: var(--chrome-border); color: var(--chrome-text); }
+  body.force-dark .hint { color: var(--chrome-textsec); }
+  body.force-dark .chips button { border-color: var(--chrome-border); color: var(--chrome-textsec); }
+  body.force-dark .chips button.active { background: var(--chrome-primary); color: var(--chrome-onprimary); border-color: transparent; }
+  body.force-dark .vrow { border-color: var(--chrome-border); }
+  body.force-dark .vrow.band-a { background: var(--band-a); }
+  body.force-dark .vrow.band-b { background: var(--band-b); }
+  body.force-dark .livepill { color: #f1f5f9; }
+  body.force-dark .livepill.on { background: rgba(220,38,38,0.22); border-color: rgba(220,38,38,0.7); color: #fecaca; }
+  body.force-dark .livepill.disconnected { background: rgba(245,158,11,0.22); border-color: rgba(245,158,11,0.7); color: #fde68a; }
 </style>
 </head>
 <body>
@@ -6996,6 +7262,34 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   </div>
   <div class="status" id="status"></div>
 </main>
+<button id="gear" aria-label="Remote layout settings">&#9881;</button>
+<div id="panel" hidden>
+  <h3>Remote layout</h3>
+  <label>Verse text <select id="p-textsize">
+    <option value="sm">Small</option>
+    <option value="md">Medium</option>
+    <option value="lg">Large</option>
+  </select></label>
+  <label>Recents <select id="p-recents">
+    <option value="shown">Shown</option>
+    <option value="hidden">Hidden</option>
+  </select></label>
+  <label>Hints <select id="p-hints">
+    <option value="shown">Shown</option>
+    <option value="hidden">Hidden</option>
+  </select></label>
+  <label>Theme <select id="p-theme">
+    <option value="auto">Auto</option>
+    <option value="light">Light</option>
+    <option value="dark">Dark</option>
+  </select></label>
+  <div class="prow">
+    <button data-preset="default">Default</button>
+    <button data-preset="director">Director</button>
+    <button data-preset="compact">Compact</button>
+  </div>
+  <button id="copylink">Copy link with layout</button>
+</div>
 <script>
   var books = [];
   var numLabels = null; // v1.9.2 (#5): server-formatted Eastern Arabic chapter labels (Arabic mode)
@@ -7298,6 +7592,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       prevKey = key;
       var liveCls = (live.bookId === r.bookId && live.chapter === r.chapterNum && live.verse === r.verseNum) ? ' live' : '';
       html += '<div class="vrow band-' + (bandA ? 'a' : 'b') + liveCls + '" data-i="' + i + '"><div style="flex:1;min-width:0">' +
+        // Follow-up Phase 4 (item 4): English ref (already "Book Chapter:Verse"
+        // in /api/recents) above the Arabic citation — book + chapter at a glance.
+        '<div class="vcit-en" dir="ltr">' + escapeHtml(r.ref || '') + '</div>' +
         '<div class="vcit" dir="rtl" lang="ar">' + escapeHtml(r.citation) + '</div>' +
         '<div class="va" dir="rtl" lang="ar">' + escapeHtml(r.arabic) + '</div>' +
         '</div></div>';
@@ -7362,7 +7659,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       // scheme; re-applied every poll). Live rows now follow the app
       // sermon-live navy + yellow via tokens below, not green.
       if (j.bandDarkA) {
-        var darkMode = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+      // Follow-up Phase 5 (item 10): the layout panel can force a theme —
+      // the tablet's theme tokens follow the forced theme, not the OS.
+      var darkMode = remoteDark();
         document.documentElement.style.setProperty('--band-a', darkMode ? j.bandDarkA : j.bandLightA);
         document.documentElement.style.setProperty('--band-b', darkMode ? j.bandDarkB : j.bandLightB);
         document.documentElement.style.setProperty('--recents', darkMode ? (j.recentsDark || '#0D9488') : (j.recentsLight || '#0D9488'));
@@ -7462,8 +7761,103 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     if (handled) e.preventDefault();
   });
 
+  // Follow-up Phase 5 (item 10): /stage-style layout controls on /remote —
+  // same pattern (gear button, panel, presets, copy-link, localStorage).
+  // Params are also QR-encodable, so a pre-laid-out remote can be shared:
+  //   textsize=sm|md|lg   verse text size
+  //   recents=shown|hidden   the recents card + the phone sheet toggle
+  //   hints=shown|hidden     the keyboard-hints line
+  //   theme=auto|light|dark  force light/dark regardless of the device
+  //   preset=default|director|compact
+  var DEF = { textsize: 'md', recents: 'shown', hints: 'shown', theme: 'auto' };
+  var PRESETS = {
+    default: { textsize: 'md', recents: 'shown', hints: 'shown', theme: 'auto' },
+    director: { textsize: 'lg', recents: 'hidden', hints: 'hidden', theme: 'dark' },
+    compact: { textsize: 'sm', recents: 'shown', hints: 'hidden', theme: 'auto' }
+  };
+  function readLayout() {
+    var q = new URLSearchParams(location.search);
+    var stored = {};
+    try { stored = JSON.parse(localStorage.getItem('remoteLayout') || '{}'); } catch (e) {}
+    var out = {};
+    for (var k in DEF) { out[k] = q.get(k) || stored[k] || DEF[k]; }
+    var pr = q.get('preset');
+    if (pr && PRESETS[pr]) { var p = PRESETS[pr]; for (var k2 in p) { out[k2] = p[k2]; } }
+    // Sanitize hand-written URLs back to known values.
+    if (out.textsize !== 'sm' && out.textsize !== 'md' && out.textsize !== 'lg') out.textsize = 'md';
+    if (out.recents !== 'shown' && out.recents !== 'hidden') out.recents = 'shown';
+    if (out.hints !== 'shown' && out.hints !== 'hidden') out.hints = 'shown';
+    if (out.theme !== 'auto' && out.theme !== 'light' && out.theme !== 'dark') out.theme = 'auto';
+    return out;
+  }
+  var L = readLayout();
+  // The tablet's per-poll theme tokens (--band-*, --chrome-*) follow this,
+  // not just matchMedia, so a forced theme survives the 3 s poll.
+  function remoteDark() {
+    if (L.theme === 'light') return false;
+    if (L.theme === 'dark') return true;
+    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  }
+  function applyLayout() {
+    var b = document.body;
+    b.classList.toggle('remote-text-sm', L.textsize === 'sm');
+    b.classList.toggle('remote-text-lg', L.textsize === 'lg');
+    b.classList.toggle('hide-recents', L.recents === 'hidden');
+    b.classList.toggle('hide-hints', L.hints === 'hidden');
+    b.classList.toggle('force-light', L.theme === 'light');
+    b.classList.toggle('force-dark', L.theme === 'dark');
+    var m = document.querySelector('meta[name="color-scheme"]');
+    if (m) m.setAttribute('content', L.theme === 'auto' ? 'light dark' : L.theme);
+    syncPanel();
+    try { localStorage.setItem('remoteLayout', JSON.stringify(L)); } catch (e) {}
+    pollNow(); // re-apply the tablet's theme tokens under the new theme
+  }
+  function syncPanel() {
+    var map = { textsize: 'p-textsize', recents: 'p-recents', hints: 'p-hints', theme: 'p-theme' };
+    for (var k in map) { var c = document.getElementById(map[k]); if (c) { c.value = L[k]; } }
+  }
+  function pushUrl() {
+    var q = new URLSearchParams();
+    for (var k in DEF) { if (L[k] !== DEF[k]) { q.set(k, L[k]); } }
+    var s = q.toString();
+    history.replaceState(null, '', s ? '/remote?' + s : '/remote');
+  }
+  document.getElementById('gear').onclick = function () {
+    var p = document.getElementById('panel');
+    p.hidden = !p.hidden;
+  };
+  (function () {
+    var ctrls = document.querySelectorAll('#panel select');
+    for (var i = 0; i < ctrls.length; i++) {
+      ctrls[i].addEventListener('change', function () {
+        var key = this.id.replace('p-', '');
+        L[key] = this.value;
+        applyLayout();
+        pushUrl();
+      });
+    }
+    var pbs = document.querySelectorAll('#panel [data-preset]');
+    for (var j = 0; j < pbs.length; j++) {
+      pbs[j].addEventListener('click', function () {
+        var p = PRESETS[this.getAttribute('data-preset')];
+        for (var k in p) { L[k] = p[k]; }
+        applyLayout();
+        pushUrl();
+      });
+    }
+  })();
+  document.getElementById('copylink').onclick = function () {
+    pushUrl();
+    var done = function () {
+      document.getElementById('copylink').textContent = 'Copied';
+      setTimeout(function () { document.getElementById('copylink').textContent = 'Copy link with layout'; }, 1500);
+    };
+    if (navigator.clipboard) { navigator.clipboard.writeText(location.href).then(done, done); }
+    else { done(); }
+  };
+
   loadBooks();
-  pollNow();
+  applyLayout();
   setInterval(pollNow, 3000);
 </script>
 </body>

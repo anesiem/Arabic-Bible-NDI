@@ -1898,6 +1898,9 @@ private fun NdiDropdown(
  * Item 22: QR code dialog for a Setup URL. Generates the QR with ZXing,
  * displays it with the label. The URL uses the tablet IP (or custom
  * domain if the user configured one).
+ * Follow-up Phase 5 (item 9): the app icon is drawn centered over the
+ * QR (~22% of the code size) on a white rounded square, keeping the
+ * code scannable.
  */
 @Composable
 private fun QrCodeDialog(
@@ -1905,6 +1908,7 @@ private fun QrCodeDialog(
     label: String,
     onDismiss: () -> Unit
 ) {
+    val context = LocalContext.current
     val qrBitmap = remember(url) {
         try {
             val writer = com.google.zxing.qrcode.QRCodeWriter()
@@ -1917,7 +1921,45 @@ private fun QrCodeDialog(
                     bitmap.setPixel(x, y, if (bitMatrix[x, y]) android.graphics.Color.BLACK else android.graphics.Color.WHITE)
                 }
             }
-            bitmap
+            // Follow-up Phase 5 (item 9): overlay the app icon in the
+            // center (~22% of the QR size) on a white rounded square, so
+            // the code stays scannable. Falls back to the bare QR when
+            // the icon cannot be loaded.
+            val iconBitmap = try {
+                val drawable = context.packageManager.getApplicationIcon(context.applicationInfo)
+                val w = drawable.intrinsicWidth.coerceAtLeast(1)
+                val h = drawable.intrinsicHeight.coerceAtLeast(1)
+                val bmp = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888)
+                val c = android.graphics.Canvas(bmp)
+                drawable.setBounds(0, 0, c.width, c.height)
+                drawable.draw(c)
+                bmp
+            } catch (e: Exception) {
+                null
+            }
+            if (iconBitmap != null) {
+                val out = bitmap.copy(android.graphics.Bitmap.Config.ARGB_8888, true)
+                val canvas = android.graphics.Canvas(out)
+                val iconSize = (width * 0.22f).toInt()
+                val pad = (iconSize * 0.18f).toInt()
+                val bgSize = iconSize + pad * 2
+                val left = (width - bgSize) / 2f
+                val top = (height - bgSize) / 2f
+                val bgPaint = android.graphics.Paint().apply {
+                    color = android.graphics.Color.WHITE
+                    isAntiAlias = true
+                }
+                canvas.drawRoundRect(left, top, left + bgSize, top + bgSize, pad.toFloat(), pad.toFloat(), bgPaint)
+                val dst = android.graphics.RectF(left + pad, top + pad, left + pad + iconSize, top + pad + iconSize)
+                val paint = android.graphics.Paint().apply {
+                    isAntiAlias = true
+                    isFilterBitmap = true
+                }
+                canvas.drawBitmap(iconBitmap, null, dst, paint)
+                out
+            } else {
+                bitmap
+            }
         } catch (e: Exception) {
             null
         }

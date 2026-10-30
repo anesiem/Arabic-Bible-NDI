@@ -692,7 +692,11 @@ class MainActivity : ComponentActivity() {
                                 onRenameSaved = { id, name -> viewModel.renameSavedSermon(id, name) },
                                 onDeleteSaved = { viewModel.deleteSavedSermon(it) },
                                 onNextSermon = { viewModel.stepSermon(+1).entry != null },
-                                onPrevSermon = { viewModel.stepSermon(-1).entry != null }
+                                onPrevSermon = { viewModel.stepSermon(-1).entry != null },
+                                // Follow-up Phase 4 (item 7): move up/down
+                                // reordering (stays inside the share-group).
+                                onMoveUp = { viewModel.moveSermonEntry(it, -1) },
+                                onMoveDown = { viewModel.moveSermonEntry(it, +1) }
                             )
                         }
                     }

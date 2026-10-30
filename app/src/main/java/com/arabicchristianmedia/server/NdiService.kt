@@ -76,6 +76,18 @@ class NdiService : Service() {
 
         /** Starts (or re-affirms) the foreground broadcast service. Idempotent. */
         fun start(context: Context) {
+            // Guard: if the user flagged NDI OFF (both feeds disabled in prefs),
+            // do not set the broadcast-active flag and do not start the service.
+            // The app remembers the last status across restarts.
+            val ndiPrefs = try {
+                context.getSharedPreferences("bible_ndi_source_specs", Context.MODE_PRIVATE)
+            } catch (e: Exception) { null }
+            val lowerOn = ndiPrefs?.getBoolean("Bible-NDI-Lower_enabled", true) ?: true
+            val fullOn = ndiPrefs?.getBoolean("Bible-NDI-Full_enabled", true) ?: true
+            if (!lowerOn && !fullOn) {
+                // NDI was flagged OFF — do not resurrect.
+                return
+            }
             setBroadcastActive(context, true)
             ensureServer(context)
             val intent = Intent(context, NdiService::class.java).setAction(ACTION_START)

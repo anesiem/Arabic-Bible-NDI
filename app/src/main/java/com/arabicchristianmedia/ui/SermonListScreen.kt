@@ -999,8 +999,11 @@ private fun SermonCompactRow(
             ),
             modifier = Modifier.fillMaxWidth().clickable { onTap() }
         ) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)
+            ) {
             Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Surface(
@@ -1069,6 +1072,17 @@ private fun SermonCompactRow(
                         )
                     }
                 }
+            }
+            // Verse text below the citation row.
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = verse.arabicText,
+                fontSize = 13.sp,
+                color = if (isLive) listColors.sermonLivePaleYellow.copy(alpha = 0.9f) else bento.textSecondary,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+                lineHeight = 18.sp
+            )
             }
         }
     }

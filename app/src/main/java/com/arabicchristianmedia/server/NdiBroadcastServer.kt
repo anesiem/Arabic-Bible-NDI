@@ -1339,6 +1339,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             // Follow-up: verse-citation gap, box loop mode, true fullscreen.
             put("verseCitationGapArabicDp", tpl.verseCitationGapArabicDp.toDouble())
             put("verseCitationGapEnglishDp", tpl.verseCitationGapEnglishDp.toDouble())
+            put("lineSpacingArabic", tpl.lineSpacingArabic.toDouble())
+            put("lineSpacingEnglish", tpl.lineSpacingEnglish.toDouble())
+            put("citationAlignmentArabic", tpl.citationAlignmentArabic.name)
+            put("citationAlignmentEnglish", tpl.citationAlignmentEnglish.name)
             put("boxLoopContinuous", tpl.boxLoopContinuous)
             put("trueFullscreen", tpl.trueFullscreen)
         }

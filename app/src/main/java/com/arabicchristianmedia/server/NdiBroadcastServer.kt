@@ -790,6 +790,35 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         }
     }
 
+    /**
+     * 1.9.3: Broadcast verseSelected event for remote page auto-sync.
+     * Sent when user selects a verse on tablet (Library tap, Recents tap).
+     * Remote page updates its Bible library dropdowns and scrolls to verse.
+     */
+    fun broadcastVerseSelected(bookId: String, chapter: Int, verse: Int) {
+        scope.launch(Dispatchers.IO) {
+            val payload = "{\"bookId\":\"$bookId\",\"chapter\":$chapter,\"verse\":$verse}"
+            val eventData = "event: verseSelected\ndata: $payload\n\n"
+            val deadClients = mutableListOf<Pair<PrintWriter, Boolean>>()
+            for (pair in sseClients) {
+                val (writer, _) = pair
+                try {
+                    synchronized(writer) {
+                        writer.print(eventData)
+                        writer.flush()
+                    }
+                    if (writer.checkError()) deadClients.add(pair)
+                } catch (e: Exception) {
+                    deadClients.add(pair)
+                }
+            }
+            if (deadClients.isNotEmpty()) {
+                val deadWriters = deadClients.map { it.first }.toSet()
+                sseClients.removeAll { deadWriters.contains(it.first) }
+            }
+        }
+    }
+
     fun setLiveState(live: Boolean) {
         val wasLive = isLive
         isLive = live
@@ -7266,6 +7295,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 <header id="topBar">
   <button id="infoBtn" aria-label="About" onclick="toggleInfoPopup()">&#9432;</button>
   <div id="topRef" dir="auto">—</div>
+  <button id="syncBtn" aria-label="Toggle auto-sync" onclick="toggleSync()" style="font-size:18px;" title="Auto-sync with tablet">&#128279;</button>
   <button id="kbdBtn" aria-label="Keyboard shortcuts" onclick="toggleKbdOverlay(true)">&#9000;</button>
   <button id="gearTop" aria-label="Settings" onclick="togglePanel()">&#9881;</button>
 </header>
@@ -7410,6 +7440,51 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     var c = parseInt(chSel.value, 10);
     if (!isNaN(c)) loadChapter(c);
   });
+
+  // 1.9.3: Per-device auto-sync toggle (localStorage) + SSE verseSelected listener.
+  // When ON (default), tablet verse selections auto-update this page's Bible library.
+  var syncEnabled = localStorage.getItem('bibleSync') !== 'off';
+  function updateSyncBtn() {
+    var btn = document.getElementById('syncBtn');
+    if (btn) {
+      btn.style.opacity = syncEnabled ? '1' : '0.4';
+      btn.title = syncEnabled ? 'Auto-sync ON (tap to disable)' : 'Auto-sync OFF (tap to enable)';
+    }
+  }
+  function toggleSync() {
+    syncEnabled = !syncEnabled;
+    localStorage.setItem('bibleSync', syncEnabled ? 'on' : 'off');
+    updateSyncBtn();
+  }
+  updateSyncBtn();
+  // SSE listener for verseSelected events from tablet.
+  try {
+    var syncEs = new EventSource('/events');
+    syncEs.addEventListener('verseSelected', function(e) {
+      if (!syncEnabled) return;
+      try {
+        var d = JSON.parse(e.data);
+        // Find book index by bookId, update dropdowns, load chapter, scroll to verse.
+        var bookIdx = -1;
+        for (var i = 0; i < books.length; i++) {
+          if (books[i].id === d.bookId) { bookIdx = i; break; }
+        }
+        if (bookIdx >= 0) {
+          curBookIdx = bookIdx;
+          bookSel.value = String(bookIdx);
+          fillChapters(books[bookIdx]);
+          chSel.value = String(d.chapter);
+          loadChapter(d.chapter, function() {
+            // Scroll to the verse after chapter loads.
+            setTimeout(function() {
+              var verseEl = document.querySelector('[data-verse="' + d.verse + '"]');
+              if (verseEl) verseEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }, 300);
+          });
+        }
+      } catch (err) {}
+    });
+  } catch (e) {}
 
   function stepChapter(dir) {
     if (curBookIdx < 0 || !books[curBookIdx]) return;

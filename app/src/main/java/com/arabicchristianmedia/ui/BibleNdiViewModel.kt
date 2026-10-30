@@ -139,6 +139,8 @@ data class BibleNdiUiState(
     val sermonPlaylist: List<SermonEntry> = emptyList(),
     // Undo: true when there's a deleted entry to restore.
     val canUndoDelete: Boolean = false,
+    // 1.9.3: HDMI background override — when true, the 4-color selection applies to both Lower and Full Show.
+    val hdmiBackgroundOverride: Boolean = false,
     // v2.0: bumped on every successful share so MainActivity opens the list tab.
     val sermonListNonce: Long = 0,
     // v1.9.1: named saved sermons + which one the working list belongs to.
@@ -1225,6 +1227,8 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             else _uiState.value.recentVerses
         )
         broadcastServer.setRecentVerses(_uiState.value.recentVerses)
+        // 1.9.3: Broadcast verseSelected for remote page auto-sync
+        broadcastServer.broadcastVerseSelected(displayVerse.bookId, displayVerse.chapter, displayVerse.verse)
         persistRecentState()
     }
 
@@ -2398,6 +2402,28 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         _uiState.value = _uiState.value.copy(activeTemplate = updated)
         templateRepo.saveWorkingTemplate(updated)
         broadcastServer.currentTemplate = updated
+        // 1.9.3: If override is ON, apply the color to the Full Show template too.
+        if (_uiState.value.hdmiBackgroundOverride) {
+            val showCurrent = _uiState.value.activeShowTemplate
+            val showUpdated = showCurrent.copy(streamBackgroundMode = mode)
+            _uiState.value = _uiState.value.copy(activeShowTemplate = showUpdated)
+            templateRepo.saveWorkingShowTemplate(showUpdated)
+            broadcastServer.currentShowTemplate = showUpdated
+        }
+    }
+
+    /**
+     * 1.9.3: Toggle for HDMI background override.
+     * When ON: the 4-color selection applies to both Lower and Full Show displays.
+     * When OFF (default): each display uses its own template's background.
+     */
+    fun setHdmiBackgroundOverride(override: Boolean) {
+        _uiState.value = _uiState.value.copy(hdmiBackgroundOverride = override)
+        // Persist the preference
+        try {
+            getApplication<Application>().getSharedPreferences("bible_ndi_prefs", 0)
+                .edit().putBoolean("hdmi_background_override", override).apply()
+        } catch (e: Exception) {}
     }
 
     /**

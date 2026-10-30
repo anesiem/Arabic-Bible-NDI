@@ -144,6 +144,10 @@ fun BroadcastControlScreen(
     // Batch-3: /stream background dots (moved from Editor) — controls the
     // MJPEG /stream background only.
     onStreamBackgroundChange: (com.arabicchristianmedia.model.StreamBackgroundMode) -> Unit = {},
+    // 1.9.3: Launch Full Show full-screen (VersePresentation).
+    onLaunchFullscreenShow: () -> Unit = {},
+    // 1.9.3: HDMI background override toggle.
+    onHdmiBackgroundOverrideChange: (Boolean) -> Unit = {},
     // Batch-3: per-tab per-section expand memory (ViewModel-backed map).
     sectionExpandedMap: Map<String, Boolean> = emptyMap(),
     onSetSectionExpanded: (String, String, Boolean) -> Unit = { _, _, _ -> },
@@ -435,6 +439,89 @@ fun BroadcastControlScreen(
                 ) {
                     Text("عرض سفلي بملء الشاشة", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.onPrimary)
                 }
+            }
+            // 1.9.3: Full Show full-screen button (uses Full Show template via VersePresentation)
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = "عرض كلي بملء الشاشة",
+                    fontSize = 12.sp,
+                    color = bento.textSecondary,
+                    modifier = Modifier.weight(1f)
+                )
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = bento.primary,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(16.dp))
+                        .clickable(onClick = onLaunchFullscreenShow)
+                        .padding(horizontal = 14.dp, vertical = 8.dp)
+                        .testTag("fullscreen_show_button")
+                ) {
+                    Text("عرض كلي بملء الشاشة", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.onPrimary)
+                }
+            }
+            // 1.9.3: 4 color dots moved here from old location. Controls HDMI/full-screen background.
+            Spacer(modifier = Modifier.height(12.dp))
+            Text(
+                text = "لون خلفية العرض",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                color = bento.textPrimary
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                val streamModes = listOf(
+                    com.arabicchristianmedia.model.StreamBackgroundMode.TRANSPARENT_ALPHA,
+                    com.arabicchristianmedia.model.StreamBackgroundMode.CHROMA_GREEN,
+                    com.arabicchristianmedia.model.StreamBackgroundMode.PURE_BLACK,
+                    com.arabicchristianmedia.model.StreamBackgroundMode.DARK_STUDIO
+                )
+                val currentStreamMode = uiState.activeTemplate.streamBackgroundMode
+                streamModes.forEach { mode ->
+                    val dotColor = try {
+                        Color(android.graphics.Color.parseColor(mode.colorHex))
+                    } catch (e: Exception) { bento.textSecondary }
+                    val dotSelected = currentStreamMode == mode
+                    Surface(
+                        shape = androidx.compose.foundation.shape.CircleShape,
+                        color = dotColor,
+                        border = androidx.compose.foundation.BorderStroke(
+                            if (dotSelected) 3.dp else 1.dp,
+                            if (dotSelected) bento.primary else bento.border
+                        ),
+                        modifier = Modifier
+                            .size(if (dotSelected) 36.dp else 32.dp)
+                            .clip(androidx.compose.foundation.shape.CircleShape)
+                            .clickable { onStreamBackgroundChange(mode) }
+                    ) {}
+                }
+            }
+            // 1.9.3: Override toggle — when ON, color applies to both Lower and Full Show.
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = "تطبيق اللون على العرضين",
+                    fontSize = 12.sp,
+                    color = bento.textSecondary,
+                    modifier = Modifier.weight(1f)
+                )
+                androidx.compose.material3.Switch(
+                    checked = uiState.hdmiBackgroundOverride,
+                    onCheckedChange = { onHdmiBackgroundOverrideChange(it) }
+                )
             }
         }
     }
@@ -807,40 +894,8 @@ fun BroadcastControlScreen(
                 }
             }
         }
-        // Batch-3: /stream background — 4 color dots moved from the Editor.
-        // Controls the MJPEG /stream background ONLY (no name label).
-        Spacer(modifier = Modifier.height(8.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            val streamModes = listOf(
-                com.arabicchristianmedia.model.StreamBackgroundMode.TRANSPARENT_ALPHA,
-                com.arabicchristianmedia.model.StreamBackgroundMode.CHROMA_GREEN,
-                com.arabicchristianmedia.model.StreamBackgroundMode.PURE_BLACK,
-                com.arabicchristianmedia.model.StreamBackgroundMode.DARK_STUDIO
-            )
-            val currentStreamMode = uiState.activeTemplate.streamBackgroundMode
-            streamModes.forEach { mode ->
-                val dotColor = try {
-                    Color(android.graphics.Color.parseColor(mode.colorHex))
-                } catch (e: Exception) { bento.textSecondary }
-                val dotSelected = currentStreamMode == mode
-                Surface(
-                    shape = androidx.compose.foundation.shape.CircleShape,
-                    color = dotColor,
-                    border = androidx.compose.foundation.BorderStroke(
-                        if (dotSelected) 3.dp else 1.dp,
-                        if (dotSelected) bento.primary else bento.border
-                    ),
-                    modifier = Modifier
-                        .size(if (dotSelected) 36.dp else 32.dp)
-                        .clip(androidx.compose.foundation.shape.CircleShape)
-                        .clickable { onStreamBackgroundChange(mode) }
-                ) {}
-            }
-        }
+        // 1.9.3: 4 color dots MOVED to HDMI section (see hdmiCardBlock).
+        // The MJPEG /stream background is now controlled from there.
     }
 
     val allUrlsBlock: @Composable () -> Unit = {

@@ -310,11 +310,39 @@ fun SermonListScreen(
                                 count = options.size
                             ),
                             label = {
-                                Text(
-                                    text = label,
-                                    fontSize = 13.sp,
-                                    fontWeight = if (groupingMode == index) FontWeight.Bold else FontWeight.Normal
-                                )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                                ) {
+                                    Text(
+                                        text = label,
+                                        fontSize = 13.sp,
+                                        fontWeight = if (groupingMode == index) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                    // 1.9.3: Collapse/expand all arrow (modes 1 and 2 only)
+                                    if (index == 1 || index == 2) {
+                                        val allHeaderIds = remember(playlist, index, bookOrder, otBookIds) {
+                                            getAllHeaderIdsForMode(playlist, index, bookOrder, otBookIds)
+                                        }
+                                        val allCollapsed = allHeaderIds.isNotEmpty() && allHeaderIds.all { it in collapsedHeaders }
+                                        IconButton(
+                                            onClick = {
+                                                collapsedHeaders = if (allCollapsed) {
+                                                    collapsedHeaders - allHeaderIds
+                                                } else {
+                                                    collapsedHeaders + allHeaderIds
+                                                }
+                                            },
+                                            modifier = Modifier.size(20.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = if (allCollapsed) Icons.Filled.KeyboardArrowDown else Icons.Filled.KeyboardArrowUp,
+                                                contentDescription = if (allCollapsed) "Expand all" else "Collapse all",
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    }
+                                }
                             }
                         )
                     }
@@ -1096,6 +1124,30 @@ private fun SermonCompactRow(
 private sealed interface SermonDisplayItem {
     data class Header(val id: String, val title: String, val count: Int) : SermonDisplayItem
     data class Verse(val entry: SermonEntry, val bandA: Boolean) : SermonDisplayItem
+}
+
+/**
+ * 1.9.3: Get all header IDs for a grouping mode (for collapse/expand all).
+ * Mode 1 (By Book): "book-$bookId" for each unique book.
+ * Mode 2 (OT/NT): "testament-ot" and "testament-nt" (only those present).
+ */
+private fun getAllHeaderIdsForMode(
+    playlist: List<SermonEntry>,
+    groupingMode: Int,
+    bookOrder: List<String>,
+    otBookIds: Set<String>
+): Set<String> {
+    if (playlist.isEmpty()) return emptySet()
+    return when (groupingMode) {
+        1 -> playlist.map { "book-${it.verse.bookId}" }.toSet()
+        2 -> {
+            val ids = mutableSetOf<String>()
+            if (playlist.any { it.verse.bookId in otBookIds }) ids += "testament-ot"
+            if (playlist.any { it.verse.bookId !in otBookIds }) ids += "testament-nt"
+            ids
+        }
+        else -> emptySet()
+    }
 }
 
 private fun buildSermonDisplayItems(

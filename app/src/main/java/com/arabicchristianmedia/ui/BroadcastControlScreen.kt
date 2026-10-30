@@ -2636,12 +2636,13 @@ private fun ProPresenterSettingsCard(
         modifier = Modifier.padding(vertical = 8.dp),
         color = borderColor
     )
-    androidx.compose.foundation.clickable { pp2Expanded = !pp2Expanded }
-        .let { mod ->
-            androidx.compose.foundation.layout.Row(
-                modifier = mod.fillMaxWidth().padding(vertical = 4.dp),
-                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
-            ) {
+    androidx.compose.foundation.layout.Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+            .clickable { pp2Expanded = !pp2Expanded },
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+    ) {
                 androidx.compose.material3.Checkbox(
                     checked = pp2Enabled,
                     onCheckedChange = { pp2Enabled = it; save2() }
@@ -2685,7 +2686,6 @@ private fun ProPresenterSettingsCard(
                 }
             }
         }
-    }
 }
 
 @Composable

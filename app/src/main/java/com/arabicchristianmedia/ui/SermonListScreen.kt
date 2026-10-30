@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.lazy.stickyHeader
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
@@ -405,7 +404,7 @@ fun SermonListScreen(
                         displayItems.forEach { item ->
                             when (item) {
                                 is SermonDisplayItem.Header -> {
-                                    stickyHeader(key = "hdr-${item.id}") {
+                                    item(key = "hdr-${item.id}") {
                                         val isCollapsed = item.id in collapsedHeaders
                                         Surface(
                                             modifier = Modifier

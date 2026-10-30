@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Batch-2 item 25: Allow cleartext HTTP for LAN services.
+  ProPresenter (port 50001), vMix, and the app's own HTTP server all use
+  plain HTTP on the local network. Android 9+ blocks cleartext by default.
+  This config permits it — the app is LAN-only by design, no internet use.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

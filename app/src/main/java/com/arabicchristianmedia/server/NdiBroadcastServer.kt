@@ -2101,7 +2101,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         englishText.style.fontStyle = data.secondaryVerseIsItalic ? 'italic' : 'normal';
         englishCitation.style.fontWeight = data.secondaryReferenceIsBold ? 'bold' : 'normal';
         englishCitation.style.fontStyle = data.secondaryReferenceIsItalic ? 'italic' : 'normal';
-        const spacing = data.showBilinguald fonts get a
+        const spacing = data.showBilingualSpacing ? (data.bilingualSpacing || 20) : 0;
         // quoted stack. The citation never had a family (inherited the
         // Arabic stack) - it takes the same secondary stack now.
         const secFam = data.secondaryFontFamily;

@@ -23,6 +23,9 @@ import com.arabicchristianmedia.ui.BibleNdiViewModel
  * secondary display (HDMI) via the Android Presentation API.
  * The main screen keeps the Library controls; the external display
  * shows only the verse.
+ *
+ * Batch-4: Uses the Full Show template (not plain text) with the
+ * selected stream background color.
  */
 class VersePresentation(
     context: Context,
@@ -36,17 +39,29 @@ class VersePresentation(
             setContent {
                 val uiState by viewModel.uiState.collectAsState()
                 val verse = uiState.activeVerse
+                val template = uiState.activeShowTemplate
+                // Batch-4: background from template's streamBackgroundMode
+                val bgColor = try {
+                    Color(android.graphics.Color.parseColor(template.streamBackgroundMode.colorHex))
+                } catch (e: Exception) {
+                    Color.Black
+                }
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(Color.Black),
+                        .background(bgColor),
                     contentAlignment = Alignment.Center
                 ) {
                     if (verse != null && uiState.isLiveOnAir) {
                         Text(
                             text = verse.arabicText,
-                            color = Color.White,
-                            fontSize = 48.sp,
+                            // Batch-4: use template's text color and font size
+                            color = try {
+                                Color(android.graphics.Color.parseColor(template.textColorHex))
+                            } catch (e: Exception) {
+                                Color.White
+                            },
+                            fontSize = template.verseFontSize.sp,
                             textAlign = TextAlign.Center
                         )
                     }

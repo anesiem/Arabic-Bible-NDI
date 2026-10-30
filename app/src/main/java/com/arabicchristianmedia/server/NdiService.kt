@@ -76,6 +76,7 @@ class NdiService : Service() {
 
         /** Starts (or re-affirms) the foreground broadcast service. Idempotent. */
         fun start(context: Context) {
+            setBroadcastActive(context, true)
             ensureServer(context)
             val intent = Intent(context, NdiService::class.java).setAction(ACTION_START)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

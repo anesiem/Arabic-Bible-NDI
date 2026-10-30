@@ -535,18 +535,9 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun startNdiFeeds() {
-        // Item 18: the protocol switch gates all NDI starts. While it is
-        // OFF, Start must not resurrect senders (nor start the service
-        // as a side effect) — it only explains why nothing started.
-        if (!_uiState.value.isNdiProtocolEnabled) {
-            _uiState.value = _uiState.value.copy(
-                statusMessage = "بث NDI متوقف — فعّل بروتوكول NDI من الإعدادات لبدء المصادر"
-            )
-            return
-        }
-        // Batch-4: Master START is a true "all on" — it enables both feeds.
-        // (Individual toggles remain for per-feed control.)
+        // Master START is a true "all on" — it enables the protocol and both feeds.
         _uiState.value = _uiState.value.copy(
+            isNdiProtocolEnabled = true,
             ndiLowerEnabled = true,
             ndiFullShowEnabled = true
         )
@@ -560,7 +551,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         // if it is down (idempotent when already up).
         NdiService.start(getApplication())
         syncNativeSources()
-        triggerAllFrames()
+        triggerAllFramesImmediate()
         // v1.9: keep the foreground notification's feed list truthful.
         NdiService.refreshNotification(getApplication())
         val s = _uiState.value
@@ -953,7 +944,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
     }
 
     private fun persistNdiEnabled(feedKey: String, enabled: Boolean) {
-        getNdiPrefs()?.edit()?.putBoolean("${feedKey}_enabled", enabled)?.apply()
+        getNdiPrefs()?.edit()?.putBoolean("${feedKey}_enabled", enabled)?.commit()
     }
 
     fun toggleNdiSource(source: String) {
@@ -972,8 +963,11 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         // the selection — syncing would restart senders, including the
         // untouched feed, since sync starts every enabled feed.
         if (s.isNdiProtocolEnabled) {
+            if (s.ndiLowerEnabled || s.ndiFullShowEnabled) {
+                NdiService.start(getApplication())
+            }
             syncNativeSources()
-            triggerAllFrames()
+            triggerAllFramesImmediate()
             // v1.9: keep the foreground notification's feed list truthful.
             NdiService.refreshNotification(getApplication())
         }
@@ -2358,6 +2352,9 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         )
         templateRepo.saveWorkingTemplate(working)
         templateRepo.setActiveTemplateId(template.id)
+        templateRepo.setWorkingDirty(false, false)
+        broadcastServer.updateTemplate(working)
+        nativeSender.triggerFrameImmediate(NdiNativeSender.FEED_LOWER, false)
     }
 
     // Batch-3: stream background moved from Editor to Setup — updates the Lower template

@@ -2660,7 +2660,6 @@ private fun ProPresenterSettingsCard(
                     color = textSecondary
                 )
             }
-        }
     if (pp2Expanded) {
         androidx.compose.foundation.layout.Column(
             modifier = Modifier.fillMaxWidth().padding(start = 8.dp),
@@ -2686,6 +2685,7 @@ private fun ProPresenterSettingsCard(
                 }
             }
         }
+    }
 }
 
 @Composable

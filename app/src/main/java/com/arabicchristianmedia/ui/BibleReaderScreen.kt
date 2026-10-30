@@ -392,39 +392,8 @@ fun BibleReaderScreen(
 
 
                         // Chapters Grid
-                        // One-update item 21: chapter number field beside
-                        // the +/- steppers, then the number grid (tap = jump).
-                        var chapterField by remember(uiState.selectedBook.id, uiState.selectedChapter) {
-                            mutableStateOf(uiState.selectedChapter.toString())
-                        }
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
-                        ) {
-                            Text("الفصل:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
-                            Button(onClick = onPrevChapter, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)) { Text("−") }
-                            OutlinedTextField(
-                                value = chapterField,
-                                onValueChange = { v -> if (v.all { it.isDigit() } && v.length <= 3) chapterField = v },
-                                singleLine = true,
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
-                                keyboardActions = KeyboardActions(onDone = {
-                                    val n = chapterField.toIntOrNull()
-                                    if (n != null) {
-                                        pickerJumpChapter = n.coerceIn(1, uiState.selectedBook.totalChapters)
-                                        onSelectChapter(pickerJumpChapter!!)
-                                    }
-                                }),
-                                modifier = Modifier.width(76.dp).trackTextInputFocus(),
-                                textStyle = LocalTextStyle.current.copy(textAlign = TextAlign.Center, fontSize = 13.sp)
-                            )
-                            Button(onClick = onNextChapter, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)) { Text("+") }
-                            Text(
-                                "/ ${uiState.selectedBook.totalChapters}",
-                                fontSize = 12.sp, color = bento.textSecondary
-                            )
-                        }
+                        // Chapter number grid (tap = jump). The +/- stepper
+                        // row was removed in batch-3 — tap a circle directly.
                         Box(modifier = Modifier.heightIn(min = 120.dp, max = 220.dp)) {
                             LazyVerticalGrid(
                                 columns = GridCells.Adaptive(minSize = 52.dp),

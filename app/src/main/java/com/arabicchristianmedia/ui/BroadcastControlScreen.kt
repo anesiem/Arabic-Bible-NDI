@@ -2614,6 +2614,78 @@ private fun ProPresenterSettingsCard(
             }
         )
     }
+
+    // Batch-3: Target 2 (English) — independent ProPresenter target.
+    // Target 1 pushes Arabic; Target 2 pushes English when enabled.
+    var pp2Enabled by remember { mutableStateOf(prefs.getBoolean("pp2_enabled", false)) }
+    var pp2Host by remember { mutableStateOf(prefs.getString("pp2_host", "") ?: "") }
+    var pp2Port by remember { mutableStateOf(prefs.getInt("pp2_port", 50001).toString()) }
+    var pp2Target by remember { mutableStateOf(prefs.getString("pp2_target", "stage") ?: "stage") }
+    var pp2Expanded by remember { mutableStateOf(false) }
+
+    fun save2() {
+        prefs.edit()
+            .putBoolean("pp2_enabled", pp2Enabled)
+            .putString("pp2_host", pp2Host.trim())
+            .putInt("pp2_port", pp2Port.toIntOrNull() ?: 50001)
+            .putString("pp2_target", pp2Target)
+            .apply()
+    }
+
+    androidx.compose.material3.HorizontalDivider(
+        modifier = Modifier.padding(vertical = 8.dp),
+        color = borderColor
+    )
+    androidx.compose.foundation.clickable { pp2Expanded = !pp2Expanded }
+        .let { mod ->
+            androidx.compose.foundation.layout.Row(
+                modifier = mod.fillMaxWidth().padding(vertical = 4.dp),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+            ) {
+                androidx.compose.material3.Checkbox(
+                    checked = pp2Enabled,
+                    onCheckedChange = { pp2Enabled = it; save2() }
+                )
+                Text(
+                    "Target 2 — English (optional)",
+                    fontSize = 14.sp,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                    color = textPrimary,
+                    modifier = Modifier.weight(1f).padding(start = 8.dp)
+                )
+                Text(
+                    if (pp2Expanded) "▲" else "▼",
+                    fontSize = 12.sp,
+                    color = textSecondary
+                )
+            }
+        }
+    if (pp2Expanded) {
+        androidx.compose.foundation.layout.Column(
+            modifier = Modifier.fillMaxWidth().padding(start = 8.dp),
+            verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                "Pushes the English verse to a second ProPresenter (or the same one). Leave disabled to use Target 1 only.",
+                fontSize = 12.sp,
+                color = textSecondary
+            )
+            VMixTextField("Target 2 IP or hostname", pp2Host, { pp2Host = it; save2() }, textPrimary, textSecondary)
+            VMixTextField("Target 2 API port (default 50001)", pp2Port, { pp2Port = it; save2() }, textPrimary, textSecondary)
+            Text("Target 2 push target", fontSize = 13.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = textPrimary)
+            androidx.compose.foundation.layout.Row(
+                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)
+            ) {
+                listOf("stage" to "Stage", "audience" to "Audience", "both" to "Both").forEach { (value, label) ->
+                    androidx.compose.material3.FilterChip(
+                        selected = pp2Target == value,
+                        onClick = { pp2Target = value; save2() },
+                        label = { Text(label, fontSize = 12.sp) }
+                    )
+                }
+            }
+        }
+    }
 }
 
 @Composable

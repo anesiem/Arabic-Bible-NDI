@@ -92,6 +92,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.text.TextStyle
@@ -1151,6 +1154,20 @@ fun BroadcastControlScreen(
         )
         }
     }
+    // Batch-2 item 25: ProPresenter stage-message push settings (LAN-only).
+    val propresenterBlock: @Composable () -> Unit = {
+        SetupSection(
+            title = "الربط مع ProPresenter",
+            summary = "Stage message push · PUT /v1/stage/message"
+        ) {
+        ProPresenterSettingsCard(
+            cardColor = bento.card,
+            borderColor = bento.border,
+            textPrimary = bento.textPrimary,
+            textSecondary = bento.textSecondary
+        )
+        }
+    }
     val networkBlock: @Composable () -> Unit = {
         SetupSection(
             title = "الشبكة (Network)",
@@ -1576,6 +1593,7 @@ fun BroadcastControlScreen(
                                 networkBlock()
                                 obsBlock()
                                 vmixBlock()
+                                propresenterBlock()
                             }
                         }
                         item("custom") { Box(setupAnchorModifier("custom")) { customBlock() } }
@@ -1608,6 +1626,7 @@ fun BroadcastControlScreen(
                 networkBlock()
                 obsBlock()
                 vmixBlock()
+                propresenterBlock()
                 customBlock()
         // App version footer: confirms which build is installed on this tablet.
         Text(
@@ -2182,6 +2201,243 @@ private fun VMixSettingsCard(
                 }
             }
         }
+    }
+}
+
+/**
+ * Batch-2 item 25: ProPresenter stage-message push settings (LAN-only).
+ * Configures host/port/auth for pushing the live verse into ProPresenter's
+ * stage message via PUT /v1/stage/message. Mirrors VMixSettingsCard.
+ * Password is stored obfuscated (never plaintext) per his principle.
+ */
+@Composable
+private fun ProPresenterSettingsCard(
+    cardColor: Color,
+    borderColor: Color,
+    textPrimary: Color,
+    textSecondary: Color
+) {
+    val bento = LocalBentoColors.current
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val prefs = remember {
+        context.getSharedPreferences("propresenter_prefs", Context.MODE_PRIVATE)
+    }
+    val pp = com.arabicchristianmedia.server.ProPresenterController
+
+    var enabled by remember { mutableStateOf(prefs.getBoolean("pp_enabled", false)) }
+    var host by remember { mutableStateOf(prefs.getString("pp_host", "") ?: "") }
+    var port by remember { mutableStateOf(prefs.getInt("pp_port", 50001).toString()) }
+    var username by remember { mutableStateOf(prefs.getString("pp_user", "") ?: "") }
+    var password by remember {
+        mutableStateOf(pp.deobfuscatePassword(prefs.getString("pp_pass", "") ?: ""))
+    }
+    var format by remember { mutableStateOf(prefs.getString("pp_format", "both") ?: "both") }
+    var target by remember { mutableStateOf(prefs.getString("pp_target", "stage") ?: "stage") }
+    var testResult by remember { mutableStateOf<String?>(null) }
+    var isTesting by remember { mutableStateOf(false) }
+    var isScanning by remember { mutableStateOf(false) }
+    var scanResults by remember { mutableStateOf<List<String>?>(null) }
+
+    fun save() {
+        prefs.edit()
+            .putBoolean("pp_enabled", enabled)
+            .putString("pp_host", host.trim())
+            .putInt("pp_port", port.toIntOrNull() ?: 50001)
+            .putString("pp_user", username.trim())
+            .putString("pp_pass", pp.obfuscatePassword(password))
+            .putString("pp_format", format)
+            .putString("pp_target", target)
+            .apply()
+    }
+
+    fun controller(): com.arabicchristianmedia.server.ProPresenterController {
+        return com.arabicchristianmedia.server.ProPresenterController(
+            host = host.trim(),
+            port = port.toIntOrNull() ?: 50001,
+            username = username.trim(),
+            password = password
+        )
+    }
+
+    fun runTest() {
+        isTesting = true
+        testResult = null
+        Thread {
+            try {
+                val (ok, msg) = controller().testConnection()
+                testResult = if (ok) "✓ $msg" else "✗ $msg"
+            } catch (e: Exception) {
+                testResult = "✗ Error: ${e.message}"
+            } finally {
+                isTesting = false
+            }
+        }.start()
+    }
+
+    fun runScan() {
+        isScanning = true
+        scanResults = null
+        Thread {
+            try {
+                val prefix = pp.localSubnetPrefix(context)
+                if (prefix == null) {
+                    scanResults = emptyList()
+                } else {
+                    scanResults = pp.scanForProPresenter(
+                        subnetPrefix = prefix,
+                        port = port.toIntOrNull() ?: 50001,
+                        username = username.trim(),
+                        password = password
+                    )
+                }
+            } catch (e: Exception) {
+                scanResults = emptyList()
+            } finally {
+                isScanning = false
+            }
+        }.start()
+    }
+
+    Surface(
+        shape = RoundedCornerShape(20.dp),
+        color = cardColor,
+        border = BorderStroke(1.dp, borderColor),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "ProPresenter Stage Push (LAN)",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = textPrimary
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("مفعّل", fontSize = 12.sp, color = textSecondary)
+                    Spacer(Modifier.width(8.dp))
+                    androidx.compose.material3.Switch(
+                        checked = enabled,
+                        onCheckedChange = {
+                            enabled = it
+                            save()
+                        }
+                    )
+                }
+            }
+
+            Text(
+                "Push the live verse to ProPresenter's stage message (PUT /v1/stage/message). Clears automatically when the verse goes off air.",
+                fontSize = 11.sp,
+                color = textSecondary
+            )
+
+            if (enabled) {
+                VMixTextField("ProPresenter IP or hostname (e.g. 192.168.50.20)", host, { host = it; save() }, textPrimary, textSecondary)
+                VMixTextField("API port (default 50001 — see ProPresenter → Settings → Network)", port, { port = it; save() }, textPrimary, textSecondary)
+                VMixTextField("Username (only if your setup needs auth — v21 API normally needs none)", username, { username = it; save() }, textPrimary, textSecondary)
+
+                Column {
+                    Text("Password (stored obfuscated, never plaintext — usually unnecessary)", fontSize = 11.sp, color = textSecondary, modifier = Modifier.padding(bottom = 4.dp))
+                    androidx.compose.material3.OutlinedTextField(
+                        value = password,
+                        onValueChange = { password = it; save() },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, color = textPrimary),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+
+                Text("Push target:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = textPrimary)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("stage" to "Stage screen", "audience" to "Audience output", "both" to "Both").forEach { (value, label) ->
+                        androidx.compose.material3.FilterChip(
+                            selected = target == value,
+                            onClick = { target = value; save() },
+                            label = { Text(label, fontSize = 12.sp) }
+                        )
+                    }
+                }
+
+                Text("Verse text format:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = textPrimary)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("both" to "Arabic + English", "arabic" to "Arabic", "english" to "English").forEach { (value, label) ->
+                        androidx.compose.material3.FilterChip(
+                            selected = format == value,
+                            onClick = { format = value; save() },
+                            label = { Text(label, fontSize = 12.sp) }
+                        )
+                    }
+                }
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    androidx.compose.material3.OutlinedButton(
+                        onClick = { runScan() },
+                        enabled = !isScanning,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(if (isScanning) "Scanning…" else "Find on network")
+                    }
+                    androidx.compose.material3.Button(
+                        onClick = { runTest() },
+                        enabled = !isTesting && host.isNotBlank(),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(if (isTesting) "Testing…" else "Test Connection")
+                    }
+                }
+
+                testResult?.let {
+                    Text(
+                        it,
+                        fontSize = 12.sp,
+                        color = if (it.startsWith("✓")) bento.green else bento.liveRed,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+
+                if (isScanning) {
+                    Text("Probing the local network for ProPresenter…", fontSize = 12.sp, color = textSecondary)
+                }
+            }
+        }
+    }
+
+    // Discovery results dialog.
+    val results = scanResults
+    if (results != null && !isScanning) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { scanResults = null },
+            title = { Text("ProPresenter found", fontSize = 15.sp, fontWeight = FontWeight.Bold) },
+            text = {
+                Column {
+                    if (results.isEmpty()) {
+                        Text(
+                            "No ProPresenter API answered on this network (port ${port.toIntOrNull() ?: 50001}). Check the port in ProPresenter → Settings → Network, or enter the IP manually.",
+                            fontSize = 13.sp
+                        )
+                    } else {
+                        Text("Tap an address to use it:", fontSize = 13.sp, modifier = Modifier.padding(bottom = 8.dp))
+                        results.forEach { ip ->
+                            androidx.compose.material3.TextButton(
+                                onClick = { host = ip; save(); scanResults = null },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(ip, fontSize = 14.sp, modifier = Modifier.fillMaxWidth())
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = { scanResults = null }) { Text("Close") }
+            }
+        )
     }
 }
 

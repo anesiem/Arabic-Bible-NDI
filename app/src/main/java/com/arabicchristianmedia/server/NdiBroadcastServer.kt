@@ -6395,6 +6395,22 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
      * (polled), with /events SSE for instant verse updates. No controls:
      * directing stays on the /remote page.
      */
+    /**
+     * GET /stage — ProPresenter-style stage monitor page (display only).
+     * Dark, glanceable: LIVE pill, the current verse large, the working
+     * sermon list with the live row highlighted, and the recents strip.
+     * Data comes from /api/verse, /api/sermons/current and /api/recents
+     * (polled), with /events SSE for instant verse updates. No controls:
+     * directing stays on the /remote page.
+     *
+     * Layout is fully controllable per device via URL parameters (also
+     * QR-encodable) plus an on-page gear panel persisted to localStorage:
+     *   sermon=side|context|hidden   (context = prev/current/next only)
+     *   sermonside=left|right
+     *   recents=bar|hidden  recentscount=N
+     *   verse=full|compact  lang=ar|en|both  theme=dark|light
+     *   preset=director|stage|minimal
+     */
     private fun serveStageMonitorPage(out: OutputStream) {
         val html = """
 <!DOCTYPE html>
@@ -6433,10 +6449,17 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   #vcit { color: #f5c518; font-size: clamp(18px, 2.4vw, 30px); font-weight: 600; margin-bottom: 14px; }
   #var { direction: rtl; text-align: right; font-size: clamp(30px, 4.6vw, 72px); line-height: 1.55; }
   #ven { color: #aab2c5; font-size: clamp(16px, 2vw, 28px); line-height: 1.55; margin-top: 16px; }
+  body.compact-verse #var { font-size: clamp(22px, 3vw, 44px); }
+  body.compact-verse #ven { font-size: clamp(14px, 1.6vw, 20px); }
+  body.compact-verse #vcit { font-size: clamp(15px, 1.8vw, 22px); }
+  body.lang-ar #ven { display: none; }
+  body.lang-en #var { display: none; }
   #sermon {
     width: min(340px, 30vw); flex: none; overflow-y: auto;
     border-left: 1px solid #1e2532; padding: 12px;
   }
+  body.sermon-left #sermon { order: -1; border-left: 0; border-right: 1px solid #1e2532; }
+  body.hide-sermon #sermon { display: none; }
   #sermon h2 {
     font-size: 12px; color: #8b93a7; text-transform: uppercase;
     letter-spacing: .08em; margin: 4px 4px 10px; font-weight: 600;
@@ -6457,13 +6480,56 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     flex: none; border-top: 1px solid #1e2532; padding: 8px 16px;
     display: flex; gap: 8px; overflow-x: auto; min-height: 20px;
   }
+  body.hide-recents #recents { display: none; }
   .rchip {
     white-space: nowrap; background: #141a26; border: 1px solid #232c40;
     color: #c6ccda; border-radius: 999px; padding: 6px 12px; font-size: 13px;
   }
+  #gear {
+    position: fixed; top: 10px; right: 12px; z-index: 20;
+    background: rgba(20,26,38,.8); color: #c6ccda; border: 1px solid #232c40;
+    border-radius: 8px; font-size: 16px; padding: 4px 9px; cursor: pointer;
+  }
+  #panel {
+    position: fixed; top: 48px; right: 12px; z-index: 20;
+    background: #11161f; border: 1px solid #232c40; border-radius: 10px;
+    padding: 14px; width: 248px; color: #e8eaf0;
+  }
+  #panel[hidden] { display: none; }
+  #panel h3 { margin: 0 0 10px; font-size: 14px; }
+  #panel label {
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 8px; font-size: 13px; margin-bottom: 8px; color: #aab2c5;
+  }
+  #panel select, #panel input {
+    background: #0b0e14; color: #e8eaf0; border: 1px solid #232c40;
+    border-radius: 6px; padding: 4px 6px; font-size: 13px; max-width: 132px;
+  }
+  #panel .prow { display: flex; gap: 6px; margin: 10px 0; }
+  #panel .prow button { flex: 1; cursor: pointer; }
+  #panel button {
+    background: #1a2233; color: #e8eaf0; border: 1px solid #2b3852;
+    border-radius: 6px; padding: 6px 8px; font-size: 13px; cursor: pointer;
+  }
+  #copylink { width: 100%; }
+  body.light { background: #f1f5f9; color: #0f172a; }
+  body.light header { border-color: #e2e8f0; }
+  body.light footer { border-color: #e2e8f0; }
+  body.light #sermon { border-color: #e2e8f0; }
+  body.light .srow { background: #ffffff; }
+  body.light .srow.cur { background: #e3ecfd; }
+  body.light .srow .t { color: #334155; }
+  body.light .rchip { background: #ffffff; border-color: #cbd5e1; color: #334155; }
+  body.light #ven { color: #475569; }
+  body.light #sprog, body.light #clock, body.light .hint { color: #64748b; }
+  body.light #panel { background: #ffffff; border-color: #cbd5e1; color: #0f172a; }
+  body.light #panel label { color: #475569; }
+  body.light #panel select, body.light #panel input { background: #f8fafc; color: #0f172a; border-color: #cbd5e1; }
+  body.light #panel button { background: #e8eefc; color: #0f172a; border-color: #cbd5e1; }
   @media (max-width: 760px) {
     main { flex-direction: column; }
     #sermon { width: auto; border-left: 0; border-top: 1px solid #1e2532; max-height: 30vh; }
+    body.sermon-left #sermon { border-right: 0; }
     #verse { padding: 16px; }
   }
 </style>
@@ -6483,24 +6549,106 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   <aside id="sermon"><h2>Sermon</h2><div id="slist"></div></aside>
 </main>
 <footer id="recents"></footer>
+<button id="gear" aria-label="Layout settings">&#9881;</button>
+<div id="panel" hidden>
+  <h3>Stage layout</h3>
+  <label>Sermon <select id="p-sermon">
+    <option value="side">List at side</option>
+    <option value="context">Prev / current / next</option>
+    <option value="hidden">Hidden</option>
+  </select></label>
+  <label>Sermon side <select id="p-sermonside">
+    <option value="right">Right</option>
+    <option value="left">Left</option>
+  </select></label>
+  <label>Recents <select id="p-recents">
+    <option value="bar">Strip</option>
+    <option value="hidden">Hidden</option>
+  </select></label>
+  <label>Recents count <input id="p-recentscount" type="number" min="1" max="20" step="1"></label>
+  <label>Verse size <select id="p-verse">
+    <option value="full">Full</option>
+    <option value="compact">Compact</option>
+  </select></label>
+  <label>Language <select id="p-lang">
+    <option value="both">Arabic + English</option>
+    <option value="ar">Arabic</option>
+    <option value="en">English</option>
+  </select></label>
+  <label>Theme <select id="p-theme">
+    <option value="dark">Dark</option>
+    <option value="light">Light</option>
+  </select></label>
+  <div class="prow">
+    <button data-preset="director">Director</button>
+    <button data-preset="stage">Stage</button>
+    <button data-preset="minimal">Minimal</button>
+  </div>
+  <button id="copylink">Copy link with layout</button>
+</div>
 <script>
   function el(id) { return document.getElementById(id); }
   function esc(s) {
     return String(s == null ? '' : s)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
+  var DEF = { sermon: 'side', sermonside: 'right', recents: 'bar', recentscount: '10', verse: 'full', lang: 'both', theme: 'dark' };
+  var PRESETS = {
+    director: { sermon: 'side', sermonside: 'right', recents: 'bar', recentscount: '10', verse: 'full', lang: 'both', theme: 'dark' },
+    stage: { sermon: 'context', sermonside: 'right', recents: 'hidden', recentscount: '10', verse: 'full', lang: 'ar', theme: 'dark' },
+    minimal: { sermon: 'hidden', sermonside: 'right', recents: 'hidden', recentscount: '10', verse: 'full', lang: 'both', theme: 'dark' }
+  };
+  function readLayout() {
+    var q = new URLSearchParams(location.search);
+    var stored = {};
+    try { stored = JSON.parse(localStorage.getItem('stageLayout') || '{}'); } catch (e) {}
+    var out = {};
+    for (var k in DEF) { out[k] = q.get(k) || stored[k] || DEF[k]; }
+    var pr = q.get('preset');
+    if (pr && PRESETS[pr]) { var p = PRESETS[pr]; for (var k2 in p) { out[k2] = p[k2]; } }
+    return out;
+  }
+  var L = readLayout();
+  var lastSermon = null;
+  var lastRecents = null;
+  function applyLayout() {
+    var b = document.body;
+    b.classList.toggle('hide-sermon', L.sermon === 'hidden');
+    b.classList.toggle('sermon-context', L.sermon === 'context');
+    b.classList.toggle('sermon-left', L.sermonside === 'left');
+    b.classList.toggle('hide-recents', L.recents === 'hidden');
+    b.classList.toggle('compact-verse', L.verse === 'compact');
+    b.classList.toggle('light', L.theme === 'light');
+    b.classList.toggle('lang-ar', L.lang === 'ar');
+    b.classList.toggle('lang-en', L.lang === 'en');
+    renderSermon(lastSermon);
+    renderRecents(lastRecents);
+    syncPanel();
+    try { localStorage.setItem('stageLayout', JSON.stringify(L)); } catch (e) {}
+  }
+  function syncPanel() {
+    var map = { sermon: 'p-sermon', sermonside: 'p-sermonside', recents: 'p-recents', recentscount: 'p-recentscount', verse: 'p-verse', lang: 'p-lang', theme: 'p-theme' };
+    for (var k in map) { var c = el(map[k]); if (c) { c.value = L[k]; } }
+  }
+  function pushUrl() {
+    var q = new URLSearchParams();
+    for (var k in DEF) { if (L[k] !== DEF[k]) { q.set(k, L[k]); } }
+    var s = q.toString();
+    history.replaceState(null, '', s ? '/stage?' + s : '/stage');
+  }
   function renderVerse(s) {
-    if (!s) return;
+    if (!s) { return; }
     var live = !!s.isLive;
     var pill = el('livepill');
     pill.textContent = live ? 'LIVE' : 'OFF AIR';
     pill.className = live ? 'on' : '';
     document.body.classList.toggle('offair', !live);
-    el('vcit').textContent = s.arabicCitation || '';
+    el('vcit').textContent = (L.lang === 'en') ? (s.englishCitation || '') : (s.arabicCitation || '');
     el('var').textContent = s.arabicText || '';
     el('ven').textContent = s.englishText || '';
   }
   function renderSermon(d) {
+    lastSermon = d;
     var box = el('slist');
     if (!d || !d.ok || !d.entries || !d.entries.length) {
       box.innerHTML = '<div class="hint">No sermon active</div>';
@@ -6508,8 +6656,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       return;
     }
     el('sprog').textContent = (d.index + 1) + ' / ' + d.total;
+    var lo = 0, hi = d.entries.length;
+    if (L.sermon === 'context') { lo = Math.max(0, d.index - 1); hi = Math.min(d.entries.length, d.index + 2); }
     var h = '';
-    for (var i = 0; i < d.entries.length; i++) {
+    for (var i = lo; i < hi; i++) {
       var e = d.entries[i];
       h += '<div class="srow' + (i === d.index ? ' cur' : '') + '">'
         + '<div class="c">' + esc(e.arabicCitation) + '</div>'
@@ -6517,13 +6667,16 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     }
     box.innerHTML = h;
     var cur = box.querySelector('.cur');
-    if (cur) cur.scrollIntoView({ block: 'nearest' });
+    if (cur) { cur.scrollIntoView({ block: 'nearest' }); }
   }
   function renderRecents(d) {
+    lastRecents = d;
     var box = el('recents');
+    var n = parseInt(L.recentscount, 10) || 10;
     if (!d || !d.ok || !d.recents || !d.recents.length) { box.innerHTML = ''; return; }
     var h = '';
-    for (var i = 0; i < d.recents.length; i++) {
+    var m = Math.min(n, d.recents.length);
+    for (var i = 0; i < m; i++) {
       h += '<span class="rchip">' + esc(d.recents[i].citation) + '</span>';
     }
     box.innerHTML = h;
@@ -6533,11 +6686,42 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     fetch('/api/sermons/current').then(function (r) { return r.json(); }).then(renderSermon).catch(function () { renderSermon(null); });
     fetch('/api/recents').then(function (r) { return r.json(); }).then(renderRecents).catch(function () {});
   }
+  el('gear').onclick = function () { var p = el('panel'); p.hidden = !p.hidden; };
+  (function () {
+    var ctrls = document.querySelectorAll('#panel select, #panel input');
+    for (var i = 0; i < ctrls.length; i++) {
+      ctrls[i].addEventListener('change', function () {
+        var key = this.id.replace('p-', '');
+        L[key] = this.value;
+        applyLayout();
+        pushUrl();
+      });
+    }
+    var pbs = document.querySelectorAll('#panel [data-preset]');
+    for (var j = 0; j < pbs.length; j++) {
+      pbs[j].addEventListener('click', function () {
+        var p = PRESETS[this.getAttribute('data-preset')];
+        for (var k in p) { L[k] = p[k]; }
+        applyLayout();
+        pushUrl();
+      });
+    }
+  })();
+  el('copylink').onclick = function () {
+    pushUrl();
+    var done = function () {
+      el('copylink').textContent = 'Copied';
+      setTimeout(function () { el('copylink').textContent = 'Copy link with layout'; }, 1500);
+    };
+    if (navigator.clipboard) { navigator.clipboard.writeText(location.href).then(done, done); }
+    else { done(); }
+  };
   try {
     var es = new EventSource('/events');
     es.onmessage = function (ev) { try { renderVerse(JSON.parse(ev.data)); } catch (e) {} };
   } catch (e) {}
   function tick() { el('clock').textContent = new Date().toLocaleTimeString(); }
+  applyLayout();
   loadAll();
   tick();
   setInterval(loadAll, 5000);

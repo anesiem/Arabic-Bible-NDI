@@ -1251,6 +1251,10 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         // what goes on screen, so it is what vMix gets.
         pushToVMix(displayVerse)
 
+        // Item 25: same trigger pushes to ProPresenter stage message
+        // (if enabled in Setup; self-gates like vMix).
+        pushToProPresenter(displayVerse)
+
         // Item 27: Library tap is a trigger source of its own.
         broadcastServer.setLastTrigger("library", displayVerse.getFormattedArabicCitation())
     }
@@ -1306,6 +1310,8 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         )
         broadcastServer.setLiveState(on)
         triggerAllFrames()
+        // Item 25: verse off air clears ProPresenter's stage message too.
+        if (!on) clearProPresenter()
     }
 
     fun clearBroadcast() {
@@ -1315,6 +1321,8 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         )
         broadcastServer.setLiveState(false)
         triggerAllFrames()
+        // Item 25: clear the ProPresenter stage message as well.
+        clearProPresenter()
     }
 
     /**
@@ -1361,6 +1369,9 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
 
             // vMix SetText push (if enabled).
             pushToVMix(verse)
+
+            // Item 25: ProPresenter stage-message push (if enabled).
+            pushToProPresenter(verse)
 
             // Item 27: record the trigger (source declared by caller).
             broadcastServer.setLastTrigger(source, verse.getFormattedArabicCitation())
@@ -2093,6 +2104,118 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             }.start()
         } catch (e: Exception) {
             // vMix push is best-effort.
+        }
+    }
+
+    /**
+     * Batch-2 item 25: push the triggered verse to ProPresenter (if enabled
+     * in Setup). Mirrors pushToVMix: self-gates on pp_enabled, runs on a
+     * background thread, and never fails the trigger — a ProPresenter
+     * outage must not affect the service.
+     *
+     * Targets (pp_target pref): "stage" = stage message only (default),
+     * "audience" = main-output message only, "both" = each. The audience
+     * message is created fresh per verse (UUID stored in prefs) and the
+     * previous one is cleared+deleted, so nothing accumulates.
+     */
+    private fun pushToProPresenter(verse: com.arabicchristianmedia.model.BibleVerse) {
+        try {
+            // Defensive nullable getter (per AGENTS.md lesson #2).
+            val app = try { getApplication<Application>() } catch (e: Exception) { null } ?: return
+            val prefs = app.getSharedPreferences("propresenter_prefs", 0) ?: return
+            if (!prefs.getBoolean("pp_enabled", false)) return
+            val host = prefs.getString("pp_host", "") ?: ""
+            if (host.isBlank()) return
+
+            val controller = com.arabicchristianmedia.server.ProPresenterController(
+                host = host,
+                port = prefs.getInt("pp_port", 50001),
+                username = prefs.getString("pp_user", "") ?: "",
+                password = com.arabicchristianmedia.server.ProPresenterController
+                    .deobfuscatePassword(prefs.getString("pp_pass", "") ?: "")
+            )
+            val format = prefs.getString("pp_format", "both") ?: "both"
+            val target = prefs.getString("pp_target", "stage") ?: "stage"
+            val text = buildProPresenterText(verse, format)
+
+            // Run on IO to avoid blocking.
+            Thread {
+                try {
+                    if (target == "stage" || target == "both") {
+                        controller.setStageMessage(text)
+                    }
+                    if (target == "audience" || target == "both") {
+                        val oldUuid = prefs.getString("pp_msg_uuid", "") ?: ""
+                        if (oldUuid.isNotEmpty()) {
+                            controller.clearAudienceMessage(oldUuid)
+                            controller.deleteAudienceMessage(oldUuid)
+                        }
+                        val uuid = controller.createAudienceMessage("Bible NDI", text)
+                        if (uuid != null) {
+                            prefs.edit().putString("pp_msg_uuid", uuid).apply()
+                            controller.triggerAudienceMessage(uuid)
+                        }
+                    }
+                } catch (e: Exception) {
+                    // Best-effort; log but don't fail the trigger.
+                }
+            }.start()
+        } catch (e: Exception) {
+            // ProPresenter push is best-effort.
+        }
+    }
+
+    /**
+     * Batch-2 item 25: clear ProPresenter when the verse goes off air.
+     * Stage message is hidden; the audience message is cleared and
+     * deleted. Best-effort like the push.
+     */
+    private fun clearProPresenter() {
+        try {
+            val app = try { getApplication<Application>() } catch (e: Exception) { null } ?: return
+            val prefs = app.getSharedPreferences("propresenter_prefs", 0) ?: return
+            if (!prefs.getBoolean("pp_enabled", false)) return
+            val host = prefs.getString("pp_host", "") ?: ""
+            if (host.isBlank()) return
+
+            val controller = com.arabicchristianmedia.server.ProPresenterController(
+                host = host,
+                port = prefs.getInt("pp_port", 50001),
+                username = prefs.getString("pp_user", "") ?: "",
+                password = com.arabicchristianmedia.server.ProPresenterController
+                    .deobfuscatePassword(prefs.getString("pp_pass", "") ?: "")
+            )
+            val target = prefs.getString("pp_target", "stage") ?: "stage"
+            Thread {
+                try {
+                    if (target == "stage" || target == "both") {
+                        controller.clearStageMessage()
+                    }
+                    if (target == "audience" || target == "both") {
+                        val uuid = prefs.getString("pp_msg_uuid", "") ?: ""
+                        if (uuid.isNotEmpty()) {
+                            controller.clearAudienceMessage(uuid)
+                            controller.deleteAudienceMessage(uuid)
+                            prefs.edit().remove("pp_msg_uuid").apply()
+                        }
+                    }
+                } catch (e: Exception) {
+                }
+            }.start()
+        } catch (e: Exception) {
+        }
+    }
+
+    private fun buildProPresenterText(
+        verse: com.arabicchristianmedia.model.BibleVerse,
+        format: String
+    ): String {
+        val arCit = verse.getFormattedArabicCitation()
+        val enCit = verse.getFormattedEnglishCitation()
+        return when (format) {
+            "arabic" -> "$arCit\n${verse.arabicText}"
+            "english" -> "$enCit\n${verse.englishText}"
+            else -> "$arCit\n${verse.arabicText}\n$enCit\n${verse.englishText}"
         }
     }
 

@@ -283,6 +283,8 @@ fun BibleReaderScreen(
                         // Font size moved to gear at bottom. Recents removed.
                         var otNtFilter by remember { mutableStateOf<Testament?>(null) }
                         var bookSearch by remember { mutableStateOf("") }
+                        // Batch-4: search is an icon button, not a full-width field.
+                        var searchExpanded by remember { mutableStateOf(false) }
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
@@ -298,12 +300,25 @@ fun BibleReaderScreen(
                                 onClick = { otNtFilter = if (otNtFilter == Testament.NEW_TESTAMENT) null else Testament.NEW_TESTAMENT },
                                 label = { Text("NT", fontSize = 12.sp) }
                             )
+                            // Batch-4: search icon button instead of full-width field.
+                            IconButton(onClick = { searchExpanded = !searchExpanded }) {
+                                Icon(Icons.Default.Search, "بحث (Search)", tint = bento.textPrimary)
+                            }
+                        }
+                        // Batch-4: expandable search field below the OT/NT row.
+                        if (searchExpanded) {
+                            Spacer(Modifier.height(8.dp))
                             OutlinedTextField(
                                 value = bookSearch,
                                 onValueChange = { bookSearch = it },
                                 placeholder = { Text("ابحث…", fontSize = 12.sp) },
                                 singleLine = true,
-                                modifier = Modifier.weight(1f).trackTextInputFocus(),
+                                modifier = Modifier.fillMaxWidth().trackTextInputFocus(),
+                                trailingIcon = {
+                                    IconButton(onClick = { searchExpanded = false; bookSearch = "" }) {
+                                        Icon(Icons.Default.Close, "إغلاق", tint = bento.textSecondary)
+                                    }
+                                }
                             )
                         }
                         Spacer(Modifier.height(8.dp))

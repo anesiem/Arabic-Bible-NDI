@@ -10,6 +10,8 @@ import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -412,7 +414,12 @@ fun TemplateEditorScreen(
             val designName = templates.firstOrNull { it.id == highlightedId }?.name ?: editingTemplate.name
             val designLabel = if (tabIsDirty) "معدّل · $designName" else designName
             Surface(shape = RoundedCornerShape(10.dp), color = bento.primaryContainer, onClick = { onShowModifiedMenuChange(true) }) {
-                Text(designLabel, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.onPrimaryContainer, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
+                // Batch-4: ☰ icon indicates this is a menu button, not just a label.
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)) {
+                    Text(designLabel, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.onPrimaryContainer, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Icon(Icons.Filled.Menu, contentDescription = "قائمة (Menu)", tint = bento.onPrimaryContainer, modifier = Modifier.size(14.dp))
+                }
             }
         }
     }
@@ -1368,7 +1375,10 @@ CollapsibleSection(
                     }
                     Spacer(Modifier.height(4.dp))
                     if (editorTab == 0) {
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        // Batch-4: FlowRow instead of vertical Column — chips sit
+                        // side-by-side in one band, not stacked vertically.
+                        @OptIn(ExperimentalLayoutApi::class)
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             StreamBackgroundMode.entries.forEach { mode ->
                                 FilterChip(
                                     selected = editingTemplate.streamBackgroundMode == mode,
@@ -1517,8 +1527,9 @@ CollapsibleSection(
 CollapsibleSection(
                     modifier = anchorModifier("glow"),
                     title = "IV — التوهج (Glow)",
-                    initiallyExpanded = editingTemplate.cardGlowEnabled,
-                    expanded = isSectionExpanded("glow", editingTemplate.cardGlowEnabled),
+                    // Batch-4: Glow never auto-expands — only manual tap or anchor.
+                    initiallyExpanded = false,
+                    expanded = isSectionExpanded("glow", false),
                     onExpandedChange = { setSectionExpanded("glow", it) },
                     summary = "Glow " + (if (editingTemplate.cardGlowEnabled) "on" else "off")
                 ) {
@@ -1645,7 +1656,11 @@ CollapsibleSection(
                     }
                 }
                 if (anchorsExpanded) {
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    // Batch-4: max height + independent scroll for small screens.
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                        modifier = Modifier.heightIn(max = 300.dp).verticalScroll(rememberScrollState())
+                    ) {
                         anchorSections.forEach { (sectionId, section) ->
                             Row(
                                 modifier = Modifier.fillMaxWidth()

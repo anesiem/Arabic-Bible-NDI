@@ -269,7 +269,7 @@ fun BroadcastControlScreen(
                             ) {
                                 Icon(Icons.Default.Stop, contentDescription = null, tint = bento.liveRed, modifier = Modifier.size(14.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("إيقاف المصادر", fontSize = 11.sp, color = bento.liveRed, fontWeight = FontWeight.Bold)
+                                Text("إيقاف الكل", fontSize = 11.sp, color = bento.liveRed, fontWeight = FontWeight.Bold)
                             }
                         }
                     } else {
@@ -287,7 +287,7 @@ fun BroadcastControlScreen(
                             ) {
                                 Icon(Icons.Default.PlayArrow, contentDescription = null, tint = bento.onPrimary, modifier = Modifier.size(14.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("تشغيل المصادر", fontSize = 11.sp, color = bento.onPrimary, fontWeight = FontWeight.Bold)
+                                Text("تشغيل الكل", fontSize = 11.sp, color = bento.onPrimary, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -304,7 +304,7 @@ fun BroadcastControlScreen(
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         SplitLabel(
-                            parts = listOf("بث بروتوكول ", "NDI", " (Full NDI)"),
+                            parts = listOf("بث بروتوكول ", "NDI"),
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
                             color = bento.textPrimary
@@ -1736,9 +1736,10 @@ fun BroadcastControlScreen(
                 SetupSectionHeader("البث (Broadcast)")
                 broadcastStatusBlock()
                 overlayBlock()
-                diagnosticsBlock()
+                // Batch-4: Diagnostics after Lower/Full, not before.
                 lowerBlock()
                 fullBlock()
+                diagnosticsBlock()
                 SetupSectionHeader("الروابط (URLs)")
                 urlsCardBlock()
                 mjpegBlock()

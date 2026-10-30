@@ -33,6 +33,7 @@ import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.Cast
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.LiveTv
@@ -423,14 +424,16 @@ class MainActivity : ComponentActivity() {
                                             }
                                             val dirty = if (editorTab == 0) uiState.lowerWorkingDirty else uiState.showWorkingDirty
                                             Surface(shape = RoundedCornerShape(10.dp), color = bento.primaryContainer, onClick = { editorShowModifiedMenu = true }) {
-                                                Text(if (dirty) "معدّل · $designName" else designName, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.onPrimaryContainer, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
+                                                // Batch-4: ☰ icon indicates this is a menu button, not just a label.
+                                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)) {
+                                                    Text(if (dirty) "معدّل · $designName" else designName, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.onPrimaryContainer, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                                                    Spacer(modifier = Modifier.width(4.dp))
+                                                    Icon(Icons.Filled.Menu, contentDescription = "قائمة (Menu)", tint = bento.onPrimaryContainer, modifier = Modifier.size(14.dp))
+                                                }
                                             }
                                         }
-                                        // Batch item 5: style help, moved up from
-                                        // the removed row. A dialog — the info
-                                        // shows fully and plainly, never as a
-                                        // collapsed section.
-                                        InfoPopupButton("اختر النمط (Select Style)", "اضغط مطولاً على أي نمط للتصدير / التحديث بالاستيراد / الحذف • التعديل بدون حفظ يمسح التمييز")
+                                        // Batch-4: Removed redundant ⓘ beside style chip
+                                        // (the Editor header has the title info).
                                         if (!editorTipsVisible) {
                                             IconButton(onClick = {
                                                 context.getSharedPreferences("editor_ui_prefs", android.content.Context.MODE_PRIVATE).edit().putBoolean("show_how_it_works", true).apply()

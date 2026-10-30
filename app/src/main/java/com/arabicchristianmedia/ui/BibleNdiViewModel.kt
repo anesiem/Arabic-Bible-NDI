@@ -544,18 +544,14 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             )
             return
         }
-        // Preserve the user's per-feed selection instead of forcing both
-        // ON: Start re-syncs whatever is enabled. Only when NOTHING is
-        // enabled does Start enable both, so the button always starts
-        // something.
-        if (!_uiState.value.ndiLowerEnabled && !_uiState.value.ndiFullShowEnabled) {
-            _uiState.value = _uiState.value.copy(
-                ndiLowerEnabled = true,
-                ndiFullShowEnabled = true
-            )
-            persistNdiEnabled(NdiNativeSender.FEED_LOWER, true)
-            persistNdiEnabled(NdiNativeSender.FEED_FULL, true)
-        }
+        // Batch-4: Master START is a true "all on" — it enables both feeds.
+        // (Individual toggles remain for per-feed control.)
+        _uiState.value = _uiState.value.copy(
+            ndiLowerEnabled = true,
+            ndiFullShowEnabled = true
+        )
+        persistNdiEnabled(NdiNativeSender.FEED_LOWER, true)
+        persistNdiEnabled(NdiNativeSender.FEED_FULL, true)
         // The service must be properly (re)started FIRST: after a
         // notification-Stop, broadcast_active is false, and a bare
         // refreshNotification would make the service stopSelf() and kill
@@ -578,19 +574,20 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun stopNdiFeeds() {
-        // Preserve the per-feed selection: Stop stops the senders, it
-        // does not rewrite the enabled flags — a later Start restores
-        // exactly the previous selection. What Stop DOES clear is the
-        // auto-resume flag, so an OS kill after a user Stop no longer
-        // brings the broadcast back: Stop is a real stop, not a pause
-        // that the next process death undoes.
+        // Batch-4: Master STOP is a true "all off" — it clears the per-feed
+        // enabled flags so the switches reflect reality (not just the sender
+        // state). A later Start re-enables both.
         nativeSender.stopAll()
         NdiService.clearBroadcastActive(getApplication())
+        persistNdiEnabled(NdiNativeSender.FEED_LOWER, false)
+        persistNdiEnabled(NdiNativeSender.FEED_FULL, false)
         // One-update item 12: never leave stale live state — if the HTTP
         // server is not running either, no output carries the verse, so
         // the verse is off air (the pill is a pure live indicator).
         val httpRunning = _uiState.value.isServerRunning
         _uiState.value = _uiState.value.copy(
+            ndiLowerEnabled = false,
+            ndiFullShowEnabled = false,
             isNativeNdiActive = false,
             isNativeShowActive = false,
             isLiveOnAir = if (httpRunning) _uiState.value.isLiveOnAir else false,

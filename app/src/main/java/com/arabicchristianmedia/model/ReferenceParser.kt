@@ -57,18 +57,31 @@ object ReferenceParser {
         // v1.9.1: verse-list form — "John 3:16, 18" -> verses [16, 18] of
         // chapter 3, in written order (duplicates dropped). The separator
         // is the Western "," or the Arabic "،".
-        val listMatch = Regex("""(\d+)\s*:\s*(\d+)((?:\s*[,،]\s*\d+)+)\s*$""").find(normalized)
+        // v1.9.2.5: list items can be ranges — "41:38، 39، 41-43" ->
+        // [38, 39, 41, 42, 43].
+        val listMatch = Regex("""(\d+)\s*:\s*(\d+)((?:\s*[,،]\s*\d+(?:\s*-\s*\d+)?)+)\s*$""").find(normalized)
         if (listMatch != null) {
             val chapter = listMatch.groupValues[1].toIntOrNull() ?: return null
             val first = listMatch.groupValues[2].toIntOrNull() ?: return null
-            val rest = Regex("""\d+""").findAll(listMatch.groupValues[3]).map { it.value.toInt() }.toList()
-            val verses = (listOf(first) + rest).distinct()
-            if (chapter < 1 || verses.any { it < 1 }) return null
+            // Parse each list item, expanding ranges like "41-43" -> [41,42,43].
+            val verses = mutableListOf(first)
+            val itemRegex = Regex("""[,،]\s*(\d+)(?:\s*-\s*(\d+))?""")
+            for (m in itemRegex.findAll(listMatch.groupValues[3])) {
+                val start = m.groupValues[1].toIntOrNull() ?: continue
+                val end = m.groupValues[2].toIntOrNull()
+                if (end != null && end >= start) {
+                    verses.addAll((start..end).toList())
+                } else {
+                    verses.add(start)
+                }
+            }
+            val distinctVerses = verses.distinct()
+            if (chapter < 1 || distinctVerses.any { it < 1 }) return null
             val bookPart = normalized.substring(0, listMatch.range.first).trim()
             if (bookPart.isEmpty()) return null
             val book = findBook(bookPart, books) ?: return null
             if (chapter > book.totalChapters) return null
-            return ParsedReference(book, chapter, verses.first(), verseList = verses)
+            return ParsedReference(book, chapter, distinctVerses.first(), verseList = distinctVerses)
         }
 
         // Split into book part and chapter:verse part.

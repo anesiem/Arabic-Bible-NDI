@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FolderOpen
@@ -223,6 +224,17 @@ fun SermonListScreen(
                                else "${playlist.size} آية",
                         fontSize = 12.sp,
                         color = bento.textSecondary
+                    )
+                }
+                // Undo delete button — restores the last deleted entry to its exact position.
+                IconButton(
+                    onClick = { viewModel.undoLastDelete() },
+                    enabled = uiState.canUndoDelete
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.Undo,
+                        contentDescription = "تراجع (Undo)",
+                        tint = if (uiState.canUndoDelete) bento.textPrimary else bento.textSecondary.copy(alpha = 0.3f)
                     )
                 }
                 IconButton(onClick = { showInfoDialog = true }) {

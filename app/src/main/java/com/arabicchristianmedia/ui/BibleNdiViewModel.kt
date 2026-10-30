@@ -137,6 +137,8 @@ data class BibleNdiUiState(
     // grouping), the list persists across restarts, and named sermons can
     // be saved/opened (see SermonStore).
     val sermonPlaylist: List<SermonEntry> = emptyList(),
+    // Undo: true when there's a deleted entry to restore.
+    val canUndoDelete: Boolean = false,
     // v2.0: bumped on every successful share so MainActivity opens the list tab.
     val sermonListNonce: Long = 0,
     // v1.9.1: named saved sermons + which one the working list belongs to.
@@ -223,6 +225,11 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
 
     private val _uiState = MutableStateFlow(BibleNdiUiState())
     val uiState: StateFlow<BibleNdiUiState> = _uiState.asStateFlow()
+
+    // Undo stack for sermon deletions: stores (entry, originalIndex).
+    // Only the most recent delete is undoable (single-level undo).
+    private var lastDeletedEntry: SermonEntry? = null
+    private var lastDeletedIndex: Int = -1
 
     // Batch-3: Section expand memory — per-tab per-section, remembered while
     // the app is alive (ViewModel survives tab switches), reset on app close
@@ -1778,12 +1785,33 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
      * live row; removing a live entry through here still does NOT take
      * the verse off air. */
     fun removeSermonEntry(entry: SermonEntry) {
+        // Save to undo stack before deleting (single-level undo).
+        val current = _uiState.value.sermonPlaylist
+        val index = current.indexOfFirst {
+            it.verse.id == entry.verse.id && it.groupId == entry.groupId
+        }
+        if (index >= 0) {
+            lastDeletedEntry = entry
+            lastDeletedIndex = index
+        }
         _uiState.value = _uiState.value.copy(
-            sermonPlaylist = _uiState.value.sermonPlaylist.filterNot {
+            sermonPlaylist = current.filterNot {
                 it.verse.id == entry.verse.id && it.groupId == entry.groupId
-            }
+            },
+            canUndoDelete = index >= 0
         )
         persistSermonWorking()
+    }
+
+    /** Undo the last sermon entry deletion — restores to exact position. */
+    fun undoLastDelete() {
+        val entry = lastDeletedEntry ?: return
+        val index = lastDeletedIndex
+        if (index < 0) return
+        restoreSermonEntry(entry, index)
+        lastDeletedEntry = null
+        lastDeletedIndex = -1
+        _uiState.value = _uiState.value.copy(canUndoDelete = false)
     }
 
     /** Item 11: undo a swipe-remove — reinsert the exact removed entry

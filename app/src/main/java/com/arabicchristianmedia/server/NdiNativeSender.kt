@@ -451,6 +451,8 @@ class NdiNativeSender {
      * state until the send-loop poll catches up.
      */
     fun triggerFrameImmediate(feedKey: String, isFullScreen: Boolean) {
+        // Debug: trace immediate trigger calls to diagnose timing issues.
+        android.util.Log.d("NdiNativeSender", "triggerFrameImmediate: $feedKey (isFullScreen=$isFullScreen)")
         synchronized(triggerJobs) {
             triggerJobs[feedKey]?.cancel()
             scope.launch { sendOneFrame(feedKey, isFullScreen) }
@@ -458,7 +460,13 @@ class NdiNativeSender {
     }
 
     private suspend fun sendOneFrame(feedKey: String, isFullScreen: Boolean) {
-        val session = synchronized(activeSenders) { activeSenders[feedKey] } ?: return
+        val session = synchronized(activeSenders) { activeSenders[feedKey] }
+        if (session == null) {
+            // Debug: log when trigger fires but no active sender session exists.
+            // This explains "NDI does nothing" reports — the feed wasn't started.
+            android.util.Log.d("NdiNativeSender", "sendOneFrame: no active session for $feedKey (isFullScreen=$isFullScreen), skipping")
+            return
+        }
         try {
             // In motion mode render a fresh frame (current animation phase +
             // the new verse); in static mode reuse the cached bitmap.

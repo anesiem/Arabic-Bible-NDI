@@ -944,7 +944,13 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
     }
 
     private fun persistNdiEnabled(feedKey: String, enabled: Boolean) {
+        // Debug: measure commit() blocking time on main thread to assess ANR risk.
+        val startMs = android.os.SystemClock.elapsedRealtime()
         getNdiPrefs()?.edit()?.putBoolean("${feedKey}_enabled", enabled)?.commit()
+        val tookMs = android.os.SystemClock.elapsedRealtime() - startMs
+        if (tookMs > 16) {
+            android.util.Log.w("BibleNdiVM", "persistNdiEnabled($feedKey=$enabled) blocked UI for ${tookMs}ms")
+        }
     }
 
     fun toggleNdiSource(source: String) {

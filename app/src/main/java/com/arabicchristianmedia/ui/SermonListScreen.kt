@@ -148,7 +148,9 @@ fun SermonListScreen(
     // reordering is explicit move-up/move-down. The ViewModel constrains
     // moves inside the verse's own share-group.
     onMoveUp: (SermonEntry) -> Unit = {},
-    onMoveDown: (SermonEntry) -> Unit = {}
+    onMoveDown: (SermonEntry) -> Unit = {},
+    // 1.9.3: Undo last delete callback.
+    onUndo: () -> Unit = {}
 ) {
     val bento = LocalBentoColors.current
     val listColors = LocalListColors.current
@@ -176,6 +178,14 @@ fun SermonListScreen(
     var collapsedHeaders by remember { mutableStateOf(setOf<String>()) }
     var showInfoDialog by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
+    // 1.9.3: bookOrder and otBookIds needed for collapse/expand all arrows (moved up from below).
+    val bookOrder = remember {
+        com.arabicchristianmedia.model.BibleBookGroups.ALL.flatMap { it.bookIds }
+    }
+    val otBookIds = remember {
+        com.arabicchristianmedia.model.BibleBookGroups.ALL.take(5)
+            .flatMap { it.bookIds }.toSet()
+    }
     // Item 14 (#23): share as plain text.
     val context = LocalContext.current
 
@@ -228,7 +238,7 @@ fun SermonListScreen(
                 }
                 // Undo delete button — restores the last deleted entry to its exact position.
                 IconButton(
-                    onClick = { viewModel.undoLastDelete() },
+                    onClick = { onUndo() },
                     enabled = uiState.canUndoDelete
                 ) {
                     Icon(
@@ -375,13 +385,7 @@ fun SermonListScreen(
                 // Batch-3: flat display list for the active grouping mode.
                 // Headers are sticky + collapsible; chapter bands are
                 // computed on the verse sequence in final display order.
-                val bookOrder = remember {
-                    com.arabicchristianmedia.model.BibleBookGroups.ALL.flatMap { it.bookIds }
-                }
-                val otBookIds = remember {
-                    com.arabicchristianmedia.model.BibleBookGroups.ALL.take(5)
-                        .flatMap { it.bookIds }.toSet()
-                }
+                // (bookOrder and otBookIds are defined at the top for the 1.9.3 collapse/expand arrows.)
                 val displayItems = remember(playlist, groupingMode, collapsedHeaders) {
                     buildSermonDisplayItems(playlist, groupingMode, collapsedHeaders, bookOrder, otBookIds)
                 }

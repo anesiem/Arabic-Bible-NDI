@@ -2407,7 +2407,6 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             val showCurrent = _uiState.value.activeShowTemplate
             val showUpdated = showCurrent.copy(streamBackgroundMode = mode)
             _uiState.value = _uiState.value.copy(activeShowTemplate = showUpdated)
-            templateRepo.saveWorkingShowTemplate(showUpdated)
             broadcastServer.currentShowTemplate = showUpdated
         }
     }

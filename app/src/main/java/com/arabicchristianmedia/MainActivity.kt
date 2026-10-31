@@ -712,7 +712,9 @@ class MainActivity : ComponentActivity() {
                                 // Follow-up Phase 4 (item 7): move up/down
                                 // reordering (stays inside the share-group).
                                 onMoveUp = { viewModel.moveSermonEntry(it, -1) },
-                                onMoveDown = { viewModel.moveSermonEntry(it, +1) }
+                                onMoveDown = { viewModel.moveSermonEntry(it, +1) },
+                                // 1.9.3: Undo last delete.
+                                onUndo = { viewModel.undoLastDelete() }
                             )
                         }
                     }

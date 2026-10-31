@@ -2041,7 +2041,7 @@ class TemplateRepository(context: Context) {
             val obj = JSONObject(json)
             if (obj.optString("name", "").trim().isEmpty()) return null
             // Sanity: a real style carries several known keys.
-            val knownKeys = listOf("fontFamily", "bgColorHex", "textColorHex", "verseFontSize", "style", "showCrossEmblem", "emblem", "autoFitMinVerseSp", "autoFitMaxVerseSp", "boxHeightPercent", "isFullScreen", "id", "useSystemFontForBrackets", "gradientColorHex2", "gradientAngleDeg", "gradientAnimation", "autoFitMinCitationSp", "autoFitRatioLock", "clearMode", "lineSpacingArabic", "lineSpacingEnglish", "autoFitFrozenRatio", "verseCitationGapArabicDp", "verseCitationGapEnglishDp", "boxLoopContinuous", "trueFullscreen", "citationAlignmentArabic", "citationAlignmentEnglish")
+            val knownKeys = listOf("fontFamily", "bgColorHex", "textColorHex", "verseFontSize", "style", "showCrossEmblem", "emblem", "autoFitMinVerseSp", "autoFitMaxVerseSp", "boxHeightPercent", "isFullScreen", "id", "useSystemFontForBrackets", "gradientColorHex2", "gradientAngleDeg", "gradientAnimation", "autoFitMinCitationSp", "autoFitRatioLock", "clearMode", "lineSpacingArabic", "lineSpacingEnglish", "autoFitFrozenRatio", "verseCitationGapArabicDp", "verseCitationGapEnglishDp", "boxLoopContinuous", "trueFullscreen", "citationAlignmentArabic", "citationAlignmentEnglish", "verseAlignmentEnglish")
             if (knownKeys.none { obj.has(it) }) return null
             fromJson(obj)
         } catch (e: Exception) {
@@ -2083,6 +2083,7 @@ class TemplateRepository(context: Context) {
             put("alignment", t.alignment.name)
             put("citationAlignmentArabic", t.citationAlignmentArabic.name)
             put("citationAlignmentEnglish", t.citationAlignmentEnglish.name)
+            put("verseAlignmentEnglish", t.verseAlignmentEnglish.name)
             put("positionBottomPercent", t.positionBottomPercent)
             put("horizontalMarginPercent", t.horizontalMarginPercent)
             put("cornerRadiusDp", t.cornerRadiusDp)
@@ -2199,6 +2200,7 @@ class TemplateRepository(context: Context) {
             alignment = try { BroadcastTextAlignment.valueOf(obj.optString("alignment")) } catch (e: Exception) { BroadcastTextAlignment.RIGHT },
             citationAlignmentArabic = try { BroadcastTextAlignment.valueOf(obj.optString("citationAlignmentArabic", "RIGHT")) } catch (e: Exception) { BroadcastTextAlignment.RIGHT },
             citationAlignmentEnglish = try { BroadcastTextAlignment.valueOf(obj.optString("citationAlignmentEnglish", "RIGHT")) } catch (e: Exception) { BroadcastTextAlignment.RIGHT },
+            verseAlignmentEnglish = try { BroadcastTextAlignment.valueOf(obj.optString("verseAlignmentEnglish", "LEFT")) } catch (e: Exception) { BroadcastTextAlignment.LEFT },
             positionBottomPercent = obj.optInt("positionBottomPercent", 6),
             horizontalMarginPercent = obj.optInt("horizontalMarginPercent", 6),
             cornerRadiusDp = obj.optInt("cornerRadiusDp", 16),

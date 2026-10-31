@@ -186,6 +186,9 @@ object ReferenceParser {
             sb.append(when (c) {
                 in '٠'..'٩' -> ('0' + (c - '٠'))
                 in '۰'..'۹' -> ('0' + (c - '۰')) // Extended Arabic-Indic
+                // 1.9.4: normalize en-dash/em-dash to hyphen for ranges.
+                // Bible apps often use – (U+2013) in "41–43".
+                '–', '—', '−' -> '-'
                 else -> c
             })
         }

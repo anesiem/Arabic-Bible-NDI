@@ -230,8 +230,8 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
 
     // Undo stack for sermon deletions: stores (entry, originalIndex).
     // Only the most recent delete is undoable (single-level undo).
-    private var lastDeletedEntry: SermonEntry? = null
-    private var lastDeletedIndex: Int = -1
+    // 1.9.4: multi-level undo stack (was single lastDeletedEntry/Index).
+    private val deletedEntryStack = ArrayDeque<Pair<SermonEntry, Int>>()
 
     // Batch-3: Section expand memory — per-tab per-section, remembered while
     // the app is alive (ViewModel survives tab switches), reset on app close
@@ -1795,27 +1795,26 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             it.verse.id == entry.verse.id && it.groupId == entry.groupId
         }
         if (index >= 0) {
-            lastDeletedEntry = entry
-            lastDeletedIndex = index
+            deletedEntryStack.addLast(entry to index)
+            // Cap the stack at 20 to bound memory.
+            if (deletedEntryStack.size > 20) deletedEntryStack.removeFirst()
         }
         _uiState.value = _uiState.value.copy(
             sermonPlaylist = current.filterNot {
                 it.verse.id == entry.verse.id && it.groupId == entry.groupId
             },
-            canUndoDelete = index >= 0
+            canUndoDelete = deletedEntryStack.isNotEmpty()
         )
         persistSermonWorking()
     }
 
-    /** Undo the last sermon entry deletion — restores to exact position. */
+    /** Undo the last sermon entry deletion — restores to exact position.
+     * 1.9.4: multi-level (pops the stack). */
     fun undoLastDelete() {
-        val entry = lastDeletedEntry ?: return
-        val index = lastDeletedIndex
+        val (entry, index) = deletedEntryStack.removeLastOrNull() ?: return
         if (index < 0) return
         restoreSermonEntry(entry, index)
-        lastDeletedEntry = null
-        lastDeletedIndex = -1
-        _uiState.value = _uiState.value.copy(canUndoDelete = false)
+        _uiState.value = _uiState.value.copy(canUndoDelete = deletedEntryStack.isNotEmpty())
     }
 
     /** Item 11: undo a swipe-remove — reinsert the exact removed entry

@@ -300,6 +300,10 @@ data class LowerThirdTemplate(
     // alignment). Both default RIGHT.
     val citationAlignmentArabic: BroadcastTextAlignment = BroadcastTextAlignment.RIGHT,
     val citationAlignmentEnglish: BroadcastTextAlignment = BroadcastTextAlignment.RIGHT,
+    // 1.9.4: per-language verse alignment. `alignment` is the Arabic verse
+    // alignment (kept for backward compat); English defaults to LEFT
+    // (natural for LTR).
+    val verseAlignmentEnglish: BroadcastTextAlignment = BroadcastTextAlignment.LEFT,
     val positionBottomPercent: Int = 8,
     val horizontalMarginPercent: Int = 5,
     val cornerRadiusDp: Int = 12,

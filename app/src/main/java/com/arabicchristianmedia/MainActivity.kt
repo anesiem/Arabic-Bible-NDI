@@ -172,7 +172,7 @@ class MainActivity : ComponentActivity() {
             ctrl && keyCode == KeyEvent.KEYCODE_F -> {
                 requestTab = 0; searchFocusNonce++; true
             }
-            // Ctrl+1..4: switch tabs (Library, Editor, Broadcast, Sermon).
+            // Ctrl+1..4: switch tabs (Library, Editor, Sermon, Setup).
             ctrl && keyCode in KeyEvent.KEYCODE_1..KeyEvent.KEYCODE_4 -> {
                 requestTab = keyCode - KeyEvent.KEYCODE_1; true
             }
@@ -537,27 +537,7 @@ class MainActivity : ComponentActivity() {
                                     onClick = { selectedTab = 2 },
                                     icon = {
                                         Icon(
-                                            imageVector = if (selectedTab == 2) Icons.Filled.Settings else Icons.Outlined.Settings,
-                                            contentDescription = "NDI & Broadcast Settings"
-                                        )
-                                    },
-                                    label = { Text("الإعدادات (Setup)", fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
-                                    colors = NavigationBarItemDefaults.colors(
-                                        selectedIconColor = bento.onPrimaryContainer,
-                                        selectedTextColor = bento.primary,
-                                        indicatorColor = bento.primaryContainer,
-                                        unselectedIconColor = bento.textSecondary,
-                                        unselectedTextColor = bento.textSecondary
-                                    ),
-                                    modifier = Modifier.testTag("tab_broadcast")
-                                )
-
-                                NavigationBarItem(
-                                    selected = selectedTab == 3,
-                                    onClick = { selectedTab = 3 },
-                                    icon = {
-                                        Icon(
-                                            imageVector = if (selectedTab == 3) Icons.AutoMirrored.Filled.PlaylistPlay else Icons.AutoMirrored.Outlined.PlaylistPlay,
+                                            imageVector = if (selectedTab == 2) Icons.AutoMirrored.Filled.PlaylistPlay else Icons.AutoMirrored.Outlined.PlaylistPlay,
                                             contentDescription = "Sermon list (verses shared from notes)"
                                         )
                                     },
@@ -570,6 +550,26 @@ class MainActivity : ComponentActivity() {
                                         unselectedTextColor = bento.textSecondary
                                     ),
                                     modifier = Modifier.testTag("tab_sermon")
+                                )
+
+                                NavigationBarItem(
+                                    selected = selectedTab == 3,
+                                    onClick = { selectedTab = 3 },
+                                    icon = {
+                                        Icon(
+                                            imageVector = if (selectedTab == 3) Icons.Filled.Settings else Icons.Outlined.Settings,
+                                            contentDescription = "NDI & Broadcast Settings"
+                                        )
+                                    },
+                                    label = { Text("الإعدادات (Setup)", fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
+                                    colors = NavigationBarItemDefaults.colors(
+                                        selectedIconColor = bento.onPrimaryContainer,
+                                        selectedTextColor = bento.primary,
+                                        indicatorColor = bento.primaryContainer,
+                                        unselectedIconColor = bento.textSecondary,
+                                        unselectedTextColor = bento.textSecondary
+                                    ),
+                                    modifier = Modifier.testTag("tab_broadcast")
                                 )
                             }
                         }
@@ -657,7 +657,7 @@ class MainActivity : ComponentActivity() {
                                 sectionExpandedMap = sectionExpandedMap,
                                 onSetSectionExpanded = { tabId, sectionId, expanded -> viewModel.setSectionExpanded(tabId, sectionId, expanded) }
                             )
-                            2 -> BroadcastControlScreen(
+                            3 -> BroadcastControlScreen(
                                 uiState = uiState,
                                 onStartServer = { viewModel.startNdiFeeds() },
                                 onStopServer = { viewModel.stopNdiFeeds() },
@@ -696,7 +696,7 @@ class MainActivity : ComponentActivity() {
                                 sectionExpandedMap = sectionExpandedMap,
                                 onSetSectionExpanded = { tabId, sectionId, expanded -> viewModel.setSectionExpanded(tabId, sectionId, expanded) }
                             )
-                            3 -> SermonListScreen(
+                            2 -> SermonListScreen(
                                 uiState = uiState,
                                 onShowVerse = { viewModel.showSermonVerse(it) },
                                 onOpenInReader = { viewModel.openSermonVerseInReader(it) },

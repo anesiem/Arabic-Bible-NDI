@@ -441,17 +441,17 @@ fun BroadcastControlScreen(
                 }
             }
             // 1.9.3: Full Show full-screen button (uses Full Show template via VersePresentation)
+            // 1.9.4: fixed overlap — use Column with proper spacing instead of
+            // compressed Row with weight.
             Spacer(modifier = Modifier.height(8.dp))
-            Row(
+            Column(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Text(
                     text = "عرض كلي بملء الشاشة",
                     fontSize = 12.sp,
-                    color = bento.textSecondary,
-                    modifier = Modifier.weight(1f)
+                    color = bento.textSecondary
                 )
                 Surface(
                     shape = RoundedCornerShape(16.dp),
@@ -506,17 +506,16 @@ fun BroadcastControlScreen(
                 }
             }
             // 1.9.3: Override toggle — when ON, color applies to both Lower and Full Show.
+            // 1.9.4: fixed overlap — Column layout with proper spacing.
             Spacer(modifier = Modifier.height(8.dp))
-            Row(
+            Column(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Text(
                     text = "تطبيق اللون على العرضين",
                     fontSize = 12.sp,
-                    color = bento.textSecondary,
-                    modifier = Modifier.weight(1f)
+                    color = bento.textSecondary
                 )
                 androidx.compose.material3.Switch(
                     checked = uiState.hdmiBackgroundOverride,

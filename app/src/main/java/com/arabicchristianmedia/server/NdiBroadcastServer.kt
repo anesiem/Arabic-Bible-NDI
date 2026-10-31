@@ -1372,6 +1372,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             put("lineSpacingEnglish", tpl.lineSpacingEnglish.toDouble())
             put("citationAlignmentArabic", tpl.citationAlignmentArabic.name)
             put("citationAlignmentEnglish", tpl.citationAlignmentEnglish.name)
+            put("verseAlignmentEnglish", tpl.verseAlignmentEnglish.name)
             put("boxLoopContinuous", tpl.boxLoopContinuous)
             put("trueFullscreen", tpl.trueFullscreen)
         }
@@ -2175,8 +2176,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         verseText.style.margin = '0 auto';
 
         englishSection.style.width = '100%';
-        // v1.8: English stays left unless centered.
-        const enAlignCss = align === 'CENTER' ? 'center' : 'left';
+        // 1.9.4: English verse uses its own per-language alignment (default LEFT).
+        const enAlign = data.verseAlignmentEnglish || 'LEFT';
+        const enAlignCss = enAlign === 'CENTER' ? 'center' : (enAlign === 'RIGHT' ? 'right' : 'left');
         englishSection.style.textAlign = enAlignCss;
         // v1.8: honor the bilingualSpacing setting (was hardcoded 10px,
         // overwriting the marginTop set above).
@@ -2226,7 +2228,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
           citationRow.style.width = '100%';
           citationRow.style.justifyContent = 'flex-start';
           verseText.style.textAlign = 'left';
-          englishSection.style.textAlign = 'left';
+          // 1.9.4: English verse uses its own per-language alignment.
+          const enAlignLt = data.verseAlignmentEnglish || 'LEFT';
+          englishSection.style.textAlign = enAlignLt === 'CENTER' ? 'center' : (enAlignLt === 'RIGHT' ? 'right' : 'left');
         } else {
           container.style.direction = 'rtl';
           cardBox.style.textAlign = 'right';
@@ -2239,8 +2243,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
           citationRow.style.width = '100%';
           citationRow.style.justifyContent = 'flex-start';
           verseText.style.textAlign = 'right';
-          // v1.8: English stays left unless centered.
-          englishSection.style.textAlign = 'left';
+          // 1.9.4: English verse uses its own per-language alignment.
+          const enAlignRt = data.verseAlignmentEnglish || 'LEFT';
+          englishSection.style.textAlign = enAlignRt === 'CENTER' ? 'center' : (enAlignRt === 'RIGHT' ? 'right' : 'left');
         }
       }
 
@@ -2685,6 +2690,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         window.__gradRotateTimer = setInterval(function() {
           var phase = 2 * Math.PI * spd * (Date.now() / 1000);
           var s = Math.sin(phase);
+          // 1.9.4 fix: setting style.background resets backgroundSize to auto,
+          // killing the position animation. Re-assert 200% every frame.
+          target.style.backgroundSize = '200% 200%';
           if (anim === 'flow') {
             target.style.background = 'linear-gradient(' + baseAngle + 'deg, rgba(' + r + ',' + g + ',' + b + ',' + ga1 + ') 0%, rgba(' + g2r.r + ',' + g2r.g + ',' + g2r.b + ',' + ga2 + ') 100%)';
             target.style.backgroundPosition = (50 + 50 * s) + '% 50%';
@@ -3664,9 +3672,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 if (tpl.secondaryVerseIsItalic) textSkewX = -0.25f
             }
             
-            // v1.9: English verse text alignment (from tpl.alignment).
-            val secAlignment = when (tpl.alignment) {
+            // 1.9.4: English verse text alignment (per-language, default LEFT).
+            val secAlignment = when (tpl.verseAlignmentEnglish) {
                 BroadcastTextAlignment.CENTER -> Layout.Alignment.ALIGN_CENTER
+                BroadcastTextAlignment.RIGHT -> Layout.Alignment.ALIGN_OPPOSITE // LTR: OPPOSITE = right
                 else -> Layout.Alignment.ALIGN_NORMAL // LTR English: NORMAL = left
             }
             // Batch-3: English citation uses its own alignment (default RIGHT).
@@ -6163,6 +6172,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             o.put("alignment", t.alignment.name)
             o.put("citationAlignmentArabic", t.citationAlignmentArabic.name)
             o.put("citationAlignmentEnglish", t.citationAlignmentEnglish.name)
+            o.put("verseAlignmentEnglish", t.verseAlignmentEnglish.name)
             o.put("positionBottomPercent", t.positionBottomPercent)
             o.put("horizontalMarginPercent", t.horizontalMarginPercent)
             o.put("cornerRadiusDp", t.cornerRadiusDp)

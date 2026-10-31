@@ -329,7 +329,7 @@ fun TemplateEditorScreen(
     var highlightedAnchor by remember { mutableStateOf<String?>(null) }
     val anchorScope = rememberCoroutineScope()
     val anchorParent = mapOf(
-        "frame-align" to "frame", "frame-position" to "frame",
+        "frame-position" to "frame",
         "frame-padding" to "frame", "frame-autofit" to "frame", "frame-clear" to "frame",
         "arabic-citation" to "arabic", "arabic-verse" to "arabic",
         "english-citation" to "english", "english-verse" to "english",
@@ -658,15 +658,8 @@ fun TemplateEditorScreen(
             onExpandedChange = { setSectionExpanded("frame", it) },
             summary = "Box " + editingTemplate.boxHeightPercent + "% \u00b7 bottom " + editingTemplate.positionBottomPercent + "% \u00b7 margin " + editingTemplate.horizontalMarginPercent + "% \u00b7 clear " + (if (editingTemplate.clearMode == com.arabicchristianmedia.model.ClearMode.CLEAR_VERSE_ONLY) "verse only" else "all")
         ) {
-                    // Alignment
-                    Text("محاذاة النص (Alignment)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
-                    Spacer(Modifier.height(4.dp))
-                    Row(modifier = anchorModifier("frame-align"), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        BroadcastTextAlignment.entries.forEach { align ->
-                            FilterChip(selected = editingTemplate.alignment == align, onClick = { onUpdate(editingTemplate.copy(alignment = align)) }, label = { Text(align.displayName, fontSize = 10.sp) })
-                        }
-                    }
-                    Spacer(Modifier.height(8.dp))
+                    // 1.9.4: Per-language alignment controls moved to Arabic/English
+                    // sections. The general alignment here is removed.
 
                     // v1.9.1: position / margins / corner radius — template
                     // fields the renderers always honored but the Editor
@@ -892,12 +885,32 @@ CollapsibleSection(
                         }
                     }
 
+                    // 1.9.4: Arabic citation alignment (per-language, default RIGHT).
+                    Text("محاذاة الشاهد العربي (Arabic Citation Alignment)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
+                    Spacer(Modifier.height(4.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        BroadcastTextAlignment.entries.forEach { align ->
+                            FilterChip(selected = editingTemplate.citationAlignmentArabic == align, onClick = { onUpdate(editingTemplate.copy(citationAlignmentArabic = align)) }, label = { Text(align.displayName, fontSize = 10.sp) })
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+
                     Row(modifier = anchorModifier("arabic-verse"), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text("الآية:", fontSize = 11.sp, color = bento.textSecondary)
                         StyleToggle("B", editingTemplate.verseIsBold) { onUpdate(editingTemplate.copy(verseIsBold = it)) }
                         StyleToggle("I", editingTemplate.verseIsItalic) { onUpdate(editingTemplate.copy(verseIsItalic = it)) }
                     }
                     ColorGradePickerRow("لون النص العربي (Verse Color)", editingTemplate.textColorHex, { onUpdate(editingTemplate.copy(textColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor, previewTemplate = editingTemplate, previewField = "textColorHex")
+                    // 1.9.4: Arabic verse alignment (per-language, default RIGHT).
+                    // The `alignment` field is the Arabic verse alignment.
+                    Text("محاذاة النص العربي (Arabic Verse Alignment)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
+                    Spacer(Modifier.height(4.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        BroadcastTextAlignment.entries.forEach { align ->
+                            FilterChip(selected = editingTemplate.alignment == align, onClick = { onUpdate(editingTemplate.copy(alignment = align)) }, label = { Text(align.displayName, fontSize = 10.sp) })
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
                     SliderWithLabel("حجم النص العربي", editingTemplate.verseFontSize.toFloat(), 10f..180f) {
                         val newVerse = it.toInt()
                         // One-update item 8: once the ratio is frozen, a
@@ -1035,6 +1048,15 @@ CollapsibleSection(
                                 ColorGradePickerRow("لون الشاهد الإنجليزي (English Citation Color)", editingTemplate.secondaryReferenceColorHex, { onUpdate(editingTemplate.copy(secondaryReferenceColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor, previewTemplate = editingTemplate, previewField = "secondaryReferenceColorHex")
                         }
                         SliderWithLabel("حجم الشاهد الإنجليزي", editingTemplate.secondaryReferenceFontSize.toFloat(), 8f..100f) { onUpdate(editingTemplate.copy(secondaryReferenceFontSize = it.toInt())) }
+                        // 1.9.4: English citation alignment (per-language, default RIGHT).
+                        Text("محاذاة الشاهد الإنجليزي (English Citation Alignment)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
+                        Spacer(Modifier.height(4.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            BroadcastTextAlignment.entries.forEach { align ->
+                                FilterChip(selected = editingTemplate.citationAlignmentEnglish == align, onClick = { onUpdate(editingTemplate.copy(citationAlignmentEnglish = align)) }, label = { Text(align.displayName, fontSize = 10.sp) })
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
 
                         // English Verse Controls
                         LatinFontDropdown(
@@ -1050,6 +1072,15 @@ CollapsibleSection(
                             StyleToggle("I", editingTemplate.secondaryVerseIsItalic) { onUpdate(editingTemplate.copy(secondaryVerseIsItalic = it)) }
                         }
                         ColorGradePickerRow("لون النص الإنجليزي (English Verse Color)", editingTemplate.secondaryTextColorHex, { onUpdate(editingTemplate.copy(secondaryTextColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor, previewTemplate = editingTemplate, previewField = "secondaryTextColorHex")
+                        // 1.9.4: English verse alignment (per-language, default LEFT).
+                        Text("محاذاة النص الإنجليزي (English Verse Alignment)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
+                        Spacer(Modifier.height(4.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            BroadcastTextAlignment.entries.forEach { align ->
+                                FilterChip(selected = editingTemplate.verseAlignmentEnglish == align, onClick = { onUpdate(editingTemplate.copy(verseAlignmentEnglish = align)) }, label = { Text(align.displayName, fontSize = 10.sp) })
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
                         SliderWithLabel("حجم النص الإنجليزي", editingTemplate.secondaryVerseFontSize.toFloat(), 8f..120f) { onUpdate(editingTemplate.copy(secondaryVerseFontSize = it.toInt())) }
                         // One-update item 7: per-language line spacing.
                         SliderWithLabel("تباعد أسطر الإنجليزي (English line spacing)", editingTemplate.lineSpacingEnglish, 1f..3f) { onUpdate(editingTemplate.copy(lineSpacingEnglish = it)) }
@@ -1581,7 +1612,6 @@ CollapsibleSection(
     // only point, they never hide anything.
     val anchorSections: List<Pair<String, Pair<String, List<Pair<String, String>>>>> = listOf(
         "frame" to ("الإطار والحشوة (Frame & Padding)" to listOf(
-            "frame-align" to "محاذاة النص (Alignment)",
             "frame-position" to "الموضع والهوامش (Position & Margins)",
             "frame-padding" to "حشوة البطاقة (Card Padding)",
             "frame-autofit" to "ملاءمة تلقائية (Auto-fit)",

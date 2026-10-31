@@ -274,7 +274,9 @@ fun BibleReaderScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(max = 380.dp)
+                            // 1.9.4: full-height picker (was max 380.dp) — covers
+                            // the library behind, no peeking.
+                            .fillMaxHeight()
                             .verticalScroll(rememberScrollState())
                             .background(bento.card)
                             .padding(12.dp)
@@ -376,31 +378,78 @@ fun BibleReaderScreen(
                             )
                         } else {
                             @OptIn(ExperimentalLayoutApi::class)
-                            FlowRow(
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                                horizontalArrangement = Arrangement.Center,
-                                verticalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                pickerBooks.forEach { book ->
-                                    val groupColor = BookGroupColors.color(
-                                        bookIdToGroupId[book.id] ?: "", isDarkMode
-                                    )
-                                    FilterChip(
-                                        selected = book.id == uiState.selectedBook.id,
-                                        onClick = {
-                                            pickerJumpChapter = 1
-                                            onSelectBook(book, 1)
-                                        },
-                                        label = {
-                                            Text(
-                                                BibleBookGroups.shortDisplayName(book.arabicName),
-                                                fontSize = bookLabelSize, maxLines = 1
-                                            )
-                                        },
-                                        colors = FilterChipDefaults.filterChipColors(
-                                            containerColor = groupColor.copy(alpha = 0.16f)
+                            // 1.9.4: OT and NT in separate sections — NT starts
+                            // on a new line (was one mixed flow).
+                            val otBooks = pickerBooks.filter { it.testament == Testament.OLD_TESTAMENT }
+                            val ntBooks = pickerBooks.filter { it.testament == Testament.NEW_TESTAMENT }
+                            if (otBooks.isNotEmpty()) {
+                                Text(
+                                    "العهد القديم (Old Testament)",
+                                    fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                                    color = bento.textSecondary,
+                                    modifier = Modifier.padding(vertical = 4.dp)
+                                )
+                                FlowRow(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                    horizontalArrangement = Arrangement.Center,
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    otBooks.forEach { book ->
+                                        val groupColor = BookGroupColors.color(
+                                            bookIdToGroupId[book.id] ?: "", isDarkMode
                                         )
-                                    )
+                                        FilterChip(
+                                            selected = book.id == uiState.selectedBook.id,
+                                            onClick = {
+                                                pickerJumpChapter = 1
+                                                onSelectBook(book, 1)
+                                            },
+                                            label = {
+                                                Text(
+                                                    BibleBookGroups.shortDisplayName(book.arabicName),
+                                                    fontSize = bookLabelSize, maxLines = 1
+                                                )
+                                            },
+                                            colors = FilterChipDefaults.filterChipColors(
+                                                containerColor = groupColor.copy(alpha = 0.16f)
+                                            )
+                                        )
+                                    }
+                                }
+                            }
+                            if (ntBooks.isNotEmpty()) {
+                                Text(
+                                    "العهد الجديد (New Testament)",
+                                    fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                                    color = bento.textSecondary,
+                                    modifier = Modifier.padding(vertical = 4.dp)
+                                )
+                                FlowRow(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                    horizontalArrangement = Arrangement.Center,
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    ntBooks.forEach { book ->
+                                        val groupColor = BookGroupColors.color(
+                                            bookIdToGroupId[book.id] ?: "", isDarkMode
+                                        )
+                                        FilterChip(
+                                            selected = book.id == uiState.selectedBook.id,
+                                            onClick = {
+                                                pickerJumpChapter = 1
+                                                onSelectBook(book, 1)
+                                            },
+                                            label = {
+                                                Text(
+                                                    BibleBookGroups.shortDisplayName(book.arabicName),
+                                                    fontSize = bookLabelSize, maxLines = 1
+                                                )
+                                            },
+                                            colors = FilterChipDefaults.filterChipColors(
+                                                containerColor = groupColor.copy(alpha = 0.16f)
+                                            )
+                                        )
+                                    }
                                 }
                             }
                         }

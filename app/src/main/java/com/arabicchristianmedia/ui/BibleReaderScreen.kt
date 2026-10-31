@@ -389,6 +389,7 @@ fun BibleReaderScreen(
                                     color = bento.textSecondary,
                                     modifier = Modifier.padding(vertical = 4.dp)
                                 )
+                                @OptIn(ExperimentalLayoutApi::class)
                                 FlowRow(
                                     modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                                     horizontalArrangement = Arrangement.Center,
@@ -424,6 +425,7 @@ fun BibleReaderScreen(
                                     color = bento.textSecondary,
                                     modifier = Modifier.padding(vertical = 4.dp)
                                 )
+                                @OptIn(ExperimentalLayoutApi::class)
                                 FlowRow(
                                     modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                                     horizontalArrangement = Arrangement.Center,

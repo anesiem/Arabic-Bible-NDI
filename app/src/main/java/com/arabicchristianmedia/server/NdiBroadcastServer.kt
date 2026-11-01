@@ -1103,11 +1103,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 // v1.9.5: RSS 2.0 feeds for ProPresenter/vMix data sources.
                 // ?lang=en|ar selects language (default: both).
                 cleanPath.startsWith("/lower/rss.xml") -> {
-                    val lang = queryParams["lang"]
+                    val lang = fullPath.substringAfter("?", "").split("&")
+                        .firstOrNull { it.startsWith("lang=") }?.substringAfter("=")
                     serveRssFeed(out, currentTemplate, lang, false)
                 }
                 cleanPath.startsWith("/full/rss.xml") -> {
-                    val lang = queryParams["lang"]
+                    val lang = fullPath.substringAfter("?", "").split("&")
+                        .firstOrNull { it.startsWith("lang=") }?.substringAfter("=")
                     serveRssFeed(out, currentShowTemplate, lang, true)
                 }
                 else -> {

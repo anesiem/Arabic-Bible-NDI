@@ -2041,7 +2041,7 @@ class TemplateRepository(context: Context) {
             val obj = JSONObject(json)
             if (obj.optString("name", "").trim().isEmpty()) return null
             // Sanity: a real style carries several known keys.
-            val knownKeys = listOf("fontFamily", "bgColorHex", "textColorHex", "verseFontSize", "style", "showCrossEmblem", "emblem", "autoFitMinVerseSp", "autoFitMaxVerseSp", "boxHeightPercent", "isFullScreen", "id", "useSystemFontForBrackets", "gradientColorHex2", "gradientAngleDeg", "gradientAnimation", "autoFitMinCitationSp", "autoFitRatioLock", "clearMode", "lineSpacingArabic", "lineSpacingEnglish", "autoFitFrozenRatio", "verseCitationGapArabicDp", "verseCitationGapEnglishDp", "boxLoopContinuous", "trueFullscreen", "citationAlignmentArabic", "citationAlignmentEnglish", "verseAlignmentEnglish")
+            val knownKeys = listOf("fontFamily", "bgColorHex", "textColorHex", "verseFontSize", "style", "showCrossEmblem", "emblem", "autoFitMinVerseSp", "autoFitMaxVerseSp", "boxHeightPercent", "isFullScreen", "id", "useSystemFontForBrackets", "gradientColorHex2", "gradientAngleDeg", "gradientAnimation", "autoFitMinCitationSp", "autoFitRatioLock", "clearMode", "lineSpacingArabic", "lineSpacingEnglish", "autoFitFrozenRatio", "verseCitationGapArabicDp", "verseCitationGapEnglishDp", "boxLoopContinuous", "trueFullscreen", "citationAlignmentArabic", "citationAlignmentEnglish", "verseAlignmentEnglish", "textEffect", "textEffectDepthDp")
             if (knownKeys.none { obj.has(it) }) return null
             fromJson(obj)
         } catch (e: Exception) {
@@ -2103,6 +2103,8 @@ class TemplateRepository(context: Context) {
             put("textShadowBlurDp", t.textShadowBlurDp.toDouble())
             put("textShadowOffsetDp", t.textShadowOffsetDp.toDouble())
             put("textShadowAngleDeg", t.textShadowAngleDeg)
+            put("textEffect", t.textEffect.id)
+            put("textEffectDepthDp", t.textEffectDepthDp.toDouble())
             put("cardGlowEnabled", t.cardGlowEnabled)
             put("cardGlowColorHex", t.cardGlowColorHex)
             put("emblem", t.emblem)
@@ -2232,6 +2234,8 @@ class TemplateRepository(context: Context) {
             textShadowBlurDp = obj.optDouble("textShadowBlurDp", 8.0).toFloat(),
             textShadowOffsetDp = obj.optDouble("textShadowOffsetDp", 4.0).toFloat(),
             textShadowAngleDeg = obj.optInt("textShadowAngleDeg", 90),
+            textEffect = com.arabicchristianmedia.model.TextEffectType.fromId(obj.optString("textEffect", "none")),
+            textEffectDepthDp = obj.optDouble("textEffectDepthDp", 3.0).toFloat(),
             cardGlowEnabled = if (obj.has("cardGlowEnabled")) obj.optBoolean("cardGlowEnabled", true)
                               else safeGlowDefault,
             cardGlowColorHex = obj.optString("cardGlowColorHex", "#000000"),

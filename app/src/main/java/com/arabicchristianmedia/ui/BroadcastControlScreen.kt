@@ -381,22 +381,23 @@ fun BroadcastControlScreen(
 
     val overlayBlock: @Composable () -> Unit = {
         // Card 3: Fullscreen Transparent Overlay Option
+        // v1.9.5: restructured to Column — each element on its own line
+        // with proper spacing (was Row with SpaceBetween causing overlap).
         Surface(
             shape = RoundedCornerShape(24.dp),
             color = bento.primaryContainer,
             border = androidx.compose.foundation.BorderStroke(1.dp, bento.secondary),
             modifier = Modifier.fillMaxWidth()
         ) {
-            Row(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     Box(
                         contentAlignment = Alignment.Center,
@@ -413,7 +414,7 @@ fun BroadcastControlScreen(
                         )
                     }
                     Spacer(modifier = Modifier.width(12.dp))
-                    Column {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = "عرض الشاشة الشفافة الكامل",
                             fontSize = 13.sp,
@@ -2210,7 +2211,10 @@ private fun AllUrlsCard(
         Triple("٢", "العرض الكامل (Full Show)", "/full"),
         Triple("٣", "بث MJPEG", "/stream"),
         Triple("٤", "صفحة التحكم عن بُعد", "/remote"),
-        Triple("٥", "توثيق API (API Docs)", "/api-docs")
+        Triple("٥", "توثيق API (API Docs)", "/api-docs"),
+        // v1.9.5: RSS feeds for ProPresenter/vMix data sources.
+        Triple("٦", "RSS Lower (ProPresenter/vMix)", "/lower/rss.xml"),
+        Triple("٧", "RSS Full (ProPresenter/vMix)", "/full/rss.xml")
     )
     Text(
         text = "جميع الروابط المتاحة:",

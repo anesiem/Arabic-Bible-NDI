@@ -462,9 +462,16 @@ fun TemplateEditorScreen(
         }
     }
     val tabSwitcherBlock: @Composable () -> Unit = {
-        Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(bento.surfaceVariant).padding(4.dp)) {
-            EditorTabItem("طبقة البث السفلى (Lower Third)", editorTab == 0, { onEditorTabChange(0) }, Modifier.weight(1f))
-            EditorTabItem("العرض الكامل (Full Show Projector)", editorTab == 1, { onEditorTabChange(1) }, Modifier.weight(1f))
+        // v1.9.5: compact segmented control [Full|Lower] (was full-width [Lower|Full]).
+        // Full is first and default. Visually distinct from template cards.
+        Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(14.dp))
+                .background(bento.surfaceVariant)
+                .padding(4.dp)
+        ) {
+            EditorTabItem("الكامل (Full)", editorTab == 1, { onEditorTabChange(1) })
+            EditorTabItem("السفلي (Lower)", editorTab == 0, { onEditorTabChange(0) })
         }
     }
     val tipsBlock: @Composable () -> Unit = {
@@ -517,10 +524,8 @@ fun TemplateEditorScreen(
 
         Spacer(Modifier.height(12.dp))
 
-        // 2. Tab Switcher: Lower Third vs Full Show (v1.8: segmented, unmistakable active target).
-        // v1.9.2 (#7b): the "You are editing" line that stood here moved
-        // into the header row as a compact chip; the line itself is deleted.
-        tabSwitcherBlock()
+        // v1.9.5: Tab switcher moved down to share a line with style cards
+        // (saves vertical space). See the combined Row below.
 
         Spacer(Modifier.height(12.dp))
 
@@ -792,7 +797,18 @@ fun TemplateEditorScreen(
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             InfoPopupButton("اختر النمط (Select Style)", "اضغط على زر التصميم بالأعلى للحفظ / التصدير / الاستيراد / الحذف • اضغط مطولاً على أي نمط لنفس الخيارات • التعديل بدون حفظ يمسح التمييز")
         }
-        styleCardsRow()
+        // v1.9.5: Tab switcher + style cards on one line.
+        // [Full|Lower] [card][card][card]→ — saves a full row of vertical space.
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            tabSwitcherBlock()
+            Box(modifier = Modifier.weight(1f)) {
+                styleCardsRow()
+            }
+        }
 
         Spacer(Modifier.height(8.dp))
 
@@ -1495,6 +1511,33 @@ CollapsibleSection(
                     summary = "Shadow " + (if (editingTemplate.textShadowEnabled) "on" else "off")
                 ) {
                     FeatureToggleRow("ظل النص (Text Shadow)", editingTemplate.textShadowEnabled, modifier = anchorModifier("shadow-text")) { onUpdate(editingTemplate.copy(textShadowEnabled = it)) }
+                    // v1.9.5: 3D Text Effects — integrated into the shadow box.
+                    // Effect chips + depth slider. The shadow angle (direction)
+                    // doubles as the 3D light-source anchor.
+                    Text("تأثير ثلاثي الأبعاد (3D Effect)", fontSize = 11.sp, color = bento.textSecondary)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        val effects = listOf(
+                            com.arabicchristianmedia.model.TextEffectType.NONE to "بدون (None)",
+                            com.arabicchristianmedia.model.TextEffectType.EMBOSS to "بارز (Emboss)",
+                            com.arabicchristianmedia.model.TextEffectType.DEBOSS to "غائر (Deboss)",
+                            com.arabicchristianmedia.model.TextEffectType.OUTLINE to "حدود (Outline)"
+                        )
+                        effects.forEach { (type, label) ->
+                            FilterChip(
+                                selected = editingTemplate.textEffect == type,
+                                onClick = { onUpdate(editingTemplate.copy(textEffect = type)) },
+                                label = { Text(label, fontSize = 11.sp) }
+                            )
+                        }
+                    }
+                    if (editingTemplate.textEffect != com.arabicchristianmedia.model.TextEffectType.NONE) {
+                        SliderWithLabel("عمق التأثير (Depth)", editingTemplate.textEffectDepthDp, 0f..10f) {
+                            onUpdate(editingTemplate.copy(textEffectDepthDp = it))
+                        }
+                    }
                     if (editingTemplate.textShadowEnabled) {
                         ColorGradePickerRow("لون ظل النص (Text Shadow Color)", editingTemplate.textShadowColorHex, { onUpdate(editingTemplate.copy(textShadowColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor, previewTemplate = editingTemplate, previewField = "textShadowColorHex")
                         // v1.8: shadow thickness (blur), distance (offset), and 8-direction compass.

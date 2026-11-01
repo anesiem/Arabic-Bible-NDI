@@ -383,12 +383,8 @@ fun BibleReaderScreen(
                             val otBooks = pickerBooks.filter { it.testament == Testament.OLD_TESTAMENT }
                             val ntBooks = pickerBooks.filter { it.testament == Testament.NEW_TESTAMENT }
                             if (otBooks.isNotEmpty()) {
-                                Text(
-                                    "العهد القديم (Old Testament)",
-                                    fontSize = 12.sp, fontWeight = FontWeight.Bold,
-                                    color = bento.textSecondary,
-                                    modifier = Modifier.padding(vertical = 4.dp)
-                                )
+                                // v1.9.5: OT/NT header labels removed per user request —
+                                // chips stay grouped OT then NT, just without headers.
                                 @OptIn(ExperimentalLayoutApi::class)
                                 FlowRow(
                                     modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
@@ -419,12 +415,6 @@ fun BibleReaderScreen(
                                 }
                             }
                             if (ntBooks.isNotEmpty()) {
-                                Text(
-                                    "العهد الجديد (New Testament)",
-                                    fontSize = 12.sp, fontWeight = FontWeight.Bold,
-                                    color = bento.textSecondary,
-                                    modifier = Modifier.padding(vertical = 4.dp)
-                                )
                                 @OptIn(ExperimentalLayoutApi::class)
                                 FlowRow(
                                     modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
@@ -510,6 +500,13 @@ fun BibleReaderScreen(
                     IconButton(onClick = onPrevChapter) {
                         Icon(Icons.AutoMirrored.Filled.ArrowForward, "Previous chapter", tint = bento.textSecondary)
                     }
+
+                    Spacer(modifier = Modifier.weight(1f))
+                    // v1.9.5: Search + Recent grouped on the right as "find" actions
+                    // (matches /remote page). Recent is now a labeled button, not icon-only.
+                    TextButton(onClick = { showRecentsSheet = true }) {
+                        Text("Recent", color = bento.textSecondary, fontSize = 12.sp)
+                    }
                     IconButton(onClick = {
                         showSearchBar = !showSearchBar
                         if (!showSearchBar) onClearSearch()
@@ -520,11 +517,6 @@ fun BibleReaderScreen(
                     }) {
                         Icon(if (showSearchBar) Icons.Default.Close else Icons.Default.Search, null, tint = bento.textSecondary)
                     }
-                    IconButton(onClick = { showRecentsSheet = true }) {
-                        Icon(Icons.Default.History, "Recent verses", tint = bento.textSecondary)
-                    }
-
-                    Spacer(modifier = Modifier.weight(1f))
                     // Batch-3: the ON AIR button and the display-settings
                     // gear moved to MainActivity's top bar (ON AIR replaces
                     // the LIVE pill; the gear sits beside the keyboard

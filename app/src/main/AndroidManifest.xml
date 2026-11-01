@@ -61,6 +61,13 @@
             android:exported="false"
             android:theme="@style/Theme.MyApplication" />
 
+        <!-- v1.9.5: VersePresentation was missing from the manifest, causing
+             ActivityNotFoundException when tapping "عرض كلي بملء الشاشة". -->
+        <activity
+            android:name=".ui.VersePresentation"
+            android:exported="false"
+            android:theme="@style/Theme.MyApplication" />
+
         <!-- v1.9: owns the NDI/HTTP broadcast server; keeps it alive in background.
              specialUse covers the local-network broadcast use case (no built-in
              type fits); the subtype property documents it for reviewers. -->

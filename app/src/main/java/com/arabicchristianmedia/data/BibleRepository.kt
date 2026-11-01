@@ -237,26 +237,47 @@ object BibleRepository {
     }
 
     /**
+     * Normalize Arabic text for search matching. Strips diacritics (tashkeel),
+     * tatweel (kashida), and normalizes common letter variants so search is
+     * forgiving: أ/إ/آ → ا, ة → ه, ى → ي. The DB's searchWord column already
+     * has alef normalization applied at build time; this brings the query
+     * side to parity. Display text is NEVER touched — only search matching.
+     * v1.9.5: single shared normalizer for both query and index sides.
+     */
+    fun normalizeForSearch(text: String): String {
+        val stripped = text.filter { c ->
+            val code = c.code
+            code !in 0x064B..0x065F && code != 0x0670 && code != 0x0640 &&
+            // Directional marks (index side also strips these per 2026-10-26 audit)
+            code !in 0x200E..0x200F && code !in 0x202A..0x202E
+        }
+        return stripped
+            .replace('أ', 'ا')
+            .replace('إ', 'ا')
+            .replace('آ', 'ا')
+            .replace('ة', 'ه')
+            .replace('ى', 'ي')
+    }
+
+    /**
      * Strip Arabic diacritics (tashkeel) and tatweel (kashida) from text for
      * search normalization. Allows users to find verses whether they type
      * with or without marks, or paste text with elongation.
+     * @deprecated Use normalizeForSearch() which also normalizes letter variants.
      */
     fun stripTashkeel(text: String): String {
-        return text.filter { c ->
-            val code = c.code
-            code !in 0x064B..0x065F && code != 0x0670 && code != 0x0640
-        }
+        return normalizeForSearch(text)
     }
 
     fun searchVerses(query: String): List<BibleVerse> {
-        // v2.0: strip tashkeel from query so search works regardless of diacritics.
+        // v1.9.5: normalizeForSearch() handles tashkeel + alef/ة/ى variants.
         // The match runs against the search-only searchWord column (same
-        // stripping, applied to the stored text at build time): the word
+        // normalization, applied to the stored text at build time): the word
         // column is only partly unvocalized, so matching against it missed
         // verses whose stored text kept a stray diacritic (e.g. Mark 12:26
         // stored العلّيقة while the query stripped to العليقة). word itself
         // is NEVER touched, so it can still be updated/corrected later.
-        val q = stripTashkeel(query.trim())
+        val q = normalizeForSearch(query.trim())
         if (q.isEmpty()) return emptyList()
         val helper = dbHelper ?: return emptyList()
 

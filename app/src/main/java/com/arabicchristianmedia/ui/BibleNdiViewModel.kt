@@ -2402,10 +2402,13 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         templateRepo.saveWorkingTemplate(updated)
         broadcastServer.currentTemplate = updated
         // 1.9.3: If override is ON, apply the color to the Full Show template too.
+        // v1.9.5: save it so FullscreenOverlayActivity (which loads from repo)
+        // sees the override color.
         if (_uiState.value.hdmiBackgroundOverride) {
             val showCurrent = _uiState.value.activeShowTemplate
             val showUpdated = showCurrent.copy(streamBackgroundMode = mode)
             _uiState.value = _uiState.value.copy(activeShowTemplate = showUpdated)
+            templateRepo.saveWorkingTemplate(showUpdated)
             broadcastServer.currentShowTemplate = showUpdated
         }
     }

@@ -176,6 +176,23 @@ enum class GradientAnimationType(val id: String) {
 }
 
 /**
+ * 3D text effects for verse/citation text. v1.9.5.
+ * NONE: flat text. EMBOSS: raised 3D (light from anchor direction).
+ * DEBOSS: engraved/inset (reversed lighting). OUTLINE: bold stroke.
+ * Rendered identically on NDI, HTTP, Editor preview, /stage, /stream.
+ */
+enum class TextEffectType(val id: String) {
+    NONE("none"),
+    EMBOSS("emboss"),
+    DEBOSS("deboss"),
+    OUTLINE("outline");
+    companion object {
+        fun fromId(id: String): TextEffectType =
+            values().find { it.id == id } ?: NONE
+    }
+}
+
+/**
  * Pure, testable math for the new gradient motions.
  *
  * Loop guarantee: every effect is a function of phase = 2*PI * speed
@@ -201,6 +218,18 @@ object GradientMotion {
     fun phase(timeSec: Double, speed: Float): Double =
         2.0 * Math.PI * speed.toDouble() * timeSec
     fun flowOffset(phase: Double): Float = kotlin.math.sin(phase).toFloat()
+    /**
+     * v1.9.5: seamless linear flow. Returns 0..1, moving at constant speed
+     * in one direction (no sine bounce). When used with a periodic gradient
+     * (color1 → color2 → color1), wrapping from 1 to 0 is invisible because
+     * the last frame is pixel-identical to the first. Replaces flowOffset
+     * for FLOW and SLIDE animations.
+     */
+    fun seamlessFlowOffset(timeSec: Double, speed: Float): Float {
+        if (speed <= 0f) return 0f
+        // One full cycle per 1/speed seconds, matching the old sine period.
+        return ((timeSec * speed.toDouble()) % 1.0).toFloat()
+    }
     fun shimmerMultiplier(phase: Double): Float =
         (0.88 + 0.12 * kotlin.math.sin(phase)).toFloat()
     fun waveAngle(baseDeg: Float, phase: Double): Float =
@@ -350,6 +379,15 @@ data class LowerThirdTemplate(
     val textShadowBlurDp: Float = 8f,
     val textShadowOffsetDp: Float = 4f,
     val textShadowAngleDeg: Int = 90,
+    /**
+     * v1.9.5: 3D text effect (emboss/deboss/outline). The anchor angle
+     * (textShadowAngleDeg) doubles as the 3D light-source direction:
+     * emboss puts highlight on the anchor side, deboss reverses it.
+     * Shared setting (not per-language), like the shadow system.
+     */
+    val textEffect: TextEffectType = TextEffectType.NONE,
+    /** v1.9.5: 3D effect intensity/depth in dp. */
+    val textEffectDepthDp: Float = 3f,
     /** Independent glow on the lower-third card/container (where a card exists). */
     val cardGlowEnabled: Boolean = true,
     val cardGlowColorHex: String = "#000000",

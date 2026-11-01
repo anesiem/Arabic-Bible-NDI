@@ -1100,6 +1100,16 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 cleanPath == "/full/bibleshow.json" -> {
                     serveBibleShowJson(out, currentShowTemplate)
                 }
+                // v1.9.5: RSS 2.0 feeds for ProPresenter/vMix data sources.
+                // ?lang=en|ar selects language (default: both).
+                cleanPath.startsWith("/lower/rss.xml") -> {
+                    val lang = queryParams["lang"]
+                    serveRssFeed(out, currentTemplate, lang, false)
+                }
+                cleanPath.startsWith("/full/rss.xml") -> {
+                    val lang = queryParams["lang"]
+                    serveRssFeed(out, currentShowTemplate, lang, true)
+                }
                 else -> {
                     // Deep-test fix: an unknown path used to return the
                     // /lower overlay with 200, which hid typos and broke
@@ -1326,6 +1336,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             put("textShadowBlurDp", tpl.textShadowBlurDp)
             put("textShadowOffsetDp", tpl.textShadowOffsetDp)
             put("textShadowAngleDeg", tpl.textShadowAngleDeg)
+            put("textEffect", tpl.textEffect.id)
+            put("textEffectDepthDp", tpl.textEffectDepthDp)
             put("cardGlowEnabled", tpl.cardGlowEnabled)
             put("cardGlowColorHex", tpl.cardGlowColorHex)
             put("emblem", tpl.emblem)
@@ -2518,6 +2530,48 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         return dx + 'px ' + dy + 'px ' + (blur * ss).toFixed(1) + 'px ' + col;
       }
 
+      // v1.9.5: 3D text effect CSS (emboss/deboss/outline). The anchor angle
+      // (textShadowAngleDeg) is the light-source direction. Returns CSS
+      // text-shadow value (or 'none'). Combined with textShadowCss() at
+      // the call sites.
+      function textEffectCss() {
+        var effect = data.textEffect || 'none';
+        if (effect === 'none') return 'none';
+        var depth = (data.textEffectDepthDp !== undefined) ? data.textEffectDepthDp : 3;
+        var angDeg = (data.textShadowAngleDeg !== undefined) ? data.textShadowAngleDeg : 90;
+        var ang = angDeg * Math.PI / 180;
+        var ss = getStageScale();
+        var dx = (Math.cos(ang) * depth * ss).toFixed(1);
+        var dy = (Math.sin(ang) * depth * ss).toFixed(1);
+        var ndx = (-Math.cos(ang) * depth * ss).toFixed(1);
+        var ndy = (-Math.sin(ang) * depth * ss).toFixed(1);
+        if (effect === 'emboss') {
+          // Light in anchor direction, dark opposite
+          return dx + 'px ' + dy + 'px 0px rgba(255,255,255,0.7), ' +
+                 ndx + 'px ' + ndy + 'px 0px rgba(0,0,0,0.7)';
+        } else if (effect === 'deboss') {
+          // Dark in anchor direction, light opposite (inset)
+          return dx + 'px ' + dy + 'px 0px rgba(0,0,0,0.7), ' +
+                 ndx + 'px ' + ndy + 'px 0px rgba(255,255,255,0.7)';
+        } else if (effect === 'outline') {
+          // Outline via multiple shadows (CSS has no text-stroke in all browsers)
+          var d = (depth * ss).toFixed(1);
+          return d + 'px 0px 0px rgba(0,0,0,0.8), -' + d + 'px 0px 0px rgba(0,0,0,0.8), ' +
+                 '0px ' + d + 'px 0px rgba(0,0,0,0.8), 0px -' + d + 'px 0px rgba(0,0,0,0.8)';
+        }
+        return 'none';
+      }
+
+      // v1.9.5: Combine shadow + 3D effect into single text-shadow CSS.
+      function combinedTextShadowCss() {
+        var shadow = textShadowCss();
+        var effect = textEffectCss();
+        if (shadow === 'none' && effect === 'none') return 'none';
+        if (shadow === 'none') return effect;
+        if (effect === 'none') return shadow;
+        return shadow + ', ' + effect;
+      }
+
       // Design-gradient card (2026-10-28 batch): stop any previous
       // rotate timer, then the gradient branch below (re)starts it.
       // Section 7 re-adds its own animated-background classes after
@@ -2693,9 +2747,14 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
           // 1.9.4 fix: setting style.background resets backgroundSize to auto,
           // killing the position animation. Re-assert 200% every frame.
           target.style.backgroundSize = '200% 200%';
+          // v1.9.5: FLOW and SLIDE use seamless linear motion (no sine bounce).
+          // Periodic 3-stop gradient (c1→c2→c1) + linear 0..100% position.
+          // Wrapping from 100% to 0% is invisible: last frame == first frame.
+          var linearT = ((Date.now() / 1000 * spd) % 1.0) * 100;
+          var seamlessGrad = 'linear-gradient(' + baseAngle + 'deg, rgba(' + r + ',' + g + ',' + b + ',' + ga1 + ') 0%, rgba(' + g2r.r + ',' + g2r.g + ',' + g2r.b + ',' + ga2 + ') 50%, rgba(' + r + ',' + g + ',' + b + ',' + ga1 + ') 100%)';
           if (anim === 'flow') {
-            target.style.background = 'linear-gradient(' + baseAngle + 'deg, rgba(' + r + ',' + g + ',' + b + ',' + ga1 + ') 0%, rgba(' + g2r.r + ',' + g2r.g + ',' + g2r.b + ',' + ga2 + ') 100%)';
-            target.style.backgroundPosition = (50 + 50 * s) + '% 50%';
+            target.style.background = seamlessGrad;
+            target.style.backgroundPosition = linearT + '% 50%';
           } else if (anim === 'shimmer') {
             var m = 0.88 + 0.12 * s;
             target.style.background = 'linear-gradient(' + baseAngle + 'deg, rgba(' + r + ',' + g + ',' + b + ',' + (ga1 * m) + ') 0%, rgba(' + g2r.r + ',' + g2r.g + ',' + g2r.b + ',' + (ga2 * m) + ') 100%)';
@@ -2705,8 +2764,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             target.style.background = 'linear-gradient(' + a + 'deg, rgba(' + r + ',' + g + ',' + b + ',' + ga1 + ') 0%, rgba(' + g2r.r + ',' + g2r.g + ',' + g2r.b + ',' + ga2 + ') 100%)';
             target.style.backgroundPosition = '0% 0%';
           } else if (anim === 'slide') {
-            target.style.background = 'linear-gradient(' + baseAngle + 'deg, rgba(' + r + ',' + g + ',' + b + ',' + ga1 + ') 0%, rgba(' + g2r.r + ',' + g2r.g + ',' + g2r.b + ',' + ga2 + ') 100%)';
-            target.style.backgroundPosition = (50 + 50 * s) + '% 50%';
+            target.style.background = seamlessGrad;
+            target.style.backgroundPosition = linearT + '% 50%';
           } else if (anim === 'pulse') {
             // NDI parity, exact: gradPhase = (sin(t * 1.5 * speed) + 1) / 2
             // with t = (Date.now() % 60000) / 1000, alpha = opacity *
@@ -2789,8 +2848,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       })();
 
       // Text shadow on verse + citation (independent flag, both feeds).
-      verseText.style.textShadow = textShadowCss();
-      citationRow.style.textShadow = textShadowCss();
+      verseText.style.textShadow = combinedTextShadowCss();
+      citationRow.style.textShadow = combinedTextShadowCss();
 
       // 7. Motion Background Layer
       const animType = data.animatedBackground || 'none';
@@ -3791,6 +3850,81 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
      * dedicated reused bitmaps (see [renderMotionFrame]) so the static cache is
      * never redrawn in place — static readers can never observe a half-drawn frame.
      */
+    /**
+     * v1.9.5: Draw a StaticLayout with 3D text effect. Uses layout.paint
+     * (the TextPaint the layout was built with) for color manipulation.
+     * EMBOSS: light offset in anchor direction + dark offset opposite + main.
+     * DEBOSS: reversed. OUTLINE: stroke pass + fill pass. NONE: single draw.
+     */
+    private fun drawLayoutWithEffect(
+        canvas: android.graphics.Canvas,
+        layout: android.text.StaticLayout,
+        tpl: LowerThirdTemplate,
+        scale: Float
+    ) {
+        val effect = tpl.textEffect
+        if (effect == com.arabicchristianmedia.model.TextEffectType.NONE) {
+            layout.draw(canvas)
+            return
+        }
+        val paint = layout.paint as? android.text.TextPaint ?: run {
+            layout.draw(canvas)
+            return
+        }
+        val depthPx = tpl.textEffectDepthDp * scale
+        val angleRad = Math.toRadians(tpl.textShadowAngleDeg.toDouble())
+        val dx = (Math.cos(angleRad) * depthPx).toFloat()
+        val dy = (Math.sin(angleRad) * depthPx).toFloat()
+        val origColor = paint.color
+        val origStyle = paint.style
+        val origStrokeWidth = paint.strokeWidth
+        when (effect) {
+            com.arabicchristianmedia.model.TextEffectType.EMBOSS -> {
+                // Highlight in anchor direction (light)
+                paint.color = android.graphics.Color.argb(180, 255, 255, 255)
+                canvas.save(); canvas.translate(dx, dy); layout.draw(canvas); canvas.restore()
+                // Shadow opposite (dark)
+                paint.color = android.graphics.Color.argb(180, 0, 0, 0)
+                canvas.save(); canvas.translate(-dx, -dy); layout.draw(canvas); canvas.restore()
+                // Main text on top
+                paint.color = origColor
+                layout.draw(canvas)
+            }
+            com.arabicchristianmedia.model.TextEffectType.DEBOSS -> {
+                // Shadow in anchor direction (dark) — inset look
+                paint.color = android.graphics.Color.argb(180, 0, 0, 0)
+                canvas.save(); canvas.translate(dx, dy); layout.draw(canvas); canvas.restore()
+                // Highlight opposite (light)
+                paint.color = android.graphics.Color.argb(180, 255, 255, 255)
+                canvas.save(); canvas.translate(-dx, -dy); layout.draw(canvas); canvas.restore()
+                // Main text on top
+                paint.color = origColor
+                layout.draw(canvas)
+            }
+            com.arabicchristianmedia.model.TextEffectType.OUTLINE -> {
+                // Stroke pass (outline)
+                paint.style = android.graphics.Paint.Style.STROKE
+                paint.strokeWidth = depthPx
+                // Use a darker version of text color for outline
+                val r = android.graphics.Color.red(origColor)
+                val g = android.graphics.Color.green(origColor)
+                val b = android.graphics.Color.blue(origColor)
+                // Darken by 40%
+                paint.color = android.graphics.Color.rgb((r * 0.6).toInt(), (g * 0.6).toInt(), (b * 0.6).toInt())
+                layout.draw(canvas)
+                // Fill pass (main text)
+                paint.style = android.graphics.Paint.Style.FILL
+                paint.strokeWidth = 0f
+                paint.color = origColor
+                layout.draw(canvas)
+            }
+            else -> layout.draw(canvas)
+        }
+        paint.color = origColor
+        paint.style = origStyle
+        paint.strokeWidth = origStrokeWidth
+    }
+
     private fun drawFrameInto(bitmap: Bitmap, width: Int, height: Int, isForStream: Boolean, tpl: LowerThirdTemplate, isFull: Boolean, isMotionTick: Boolean = false, verseOverride: BibleVerse? = null, isTransitionSnapshot: Boolean = false, textOnly: Boolean = false) {
         // v1.9: frame-timing instrumentation (replaces the GPU investigation).
         val drawStartNs = System.nanoTime()
@@ -4245,26 +4379,39 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 val cy = (boxTop + boxBottom) / 2f
                 val extent = (kotlin.math.abs(dirX) * boxWidth + kotlin.math.abs(dirY) * boxHeight) / 2f
                 val slideOffset = when (tpl.gradientAnimation) {
-                    GradientAnimationType.SLIDE -> (gradPhase * 2f - 1f) * extent * 0.3f
-                    // FLOW: sin sweep left-to-right then back, 0.35*extent.
-                    // sin(phase + 2*PI) == sin(phase): first frame == last.
+                    // v1.9.5: SLIDE and FLOW use seamless linear motion (no sine bounce).
+                    // The offset goes 0..1 linearly and wraps; paired with the
+                    // periodic 3-stop gradient below, the wrap is invisible.
+                    GradientAnimationType.SLIDE ->
+                        com.arabicchristianmedia.model.GradientMotion.seamlessFlowOffset(gradTimeSec.toDouble(), tpl.gradientSpeed) * extent * 2f
                     GradientAnimationType.FLOW ->
-                        com.arabicchristianmedia.model.GradientMotion.flowOffset(gradMotionPhase) * extent * 0.35f
+                        com.arabicchristianmedia.model.GradientMotion.seamlessFlowOffset(gradTimeSec.toDouble(), tpl.gradientSpeed) * extent * 2f
                     else -> 0f
                 }
                 val gradCol2 = try { Color.parseColor(tpl.gradientColorHex2) } catch (e: Exception) { baseBgCol }
                 val stopAlpha1 = (Color.alpha(baseBgCol) / 255f * bgAlpha * animFactor).toInt().coerceIn(0, 255)
                 val stopAlpha2 = (Color.alpha(gradCol2) / 255f * bgAlpha * animFactor).toInt().coerceIn(0, 255)
+                // v1.9.5: FLOW/SLIDE use a periodic 3-stop gradient (c1→c2→c1)
+                // so the linear offset wrap is invisible. Other animations
+                // keep the standard 2-stop gradient.
+                val isSeamless = tpl.gradientAnimation == GradientAnimationType.FLOW ||
+                                 tpl.gradientAnimation == GradientAnimationType.SLIDE
+                val gradColors = if (isSeamless) intArrayOf(
+                    Color.argb(stopAlpha1, Color.red(baseBgCol), Color.green(baseBgCol), Color.blue(baseBgCol)),
+                    Color.argb(stopAlpha2, Color.red(gradCol2), Color.green(gradCol2), Color.blue(gradCol2)),
+                    Color.argb(stopAlpha1, Color.red(baseBgCol), Color.green(baseBgCol), Color.blue(baseBgCol))
+                ) else intArrayOf(
+                    Color.argb(stopAlpha1, Color.red(baseBgCol), Color.green(baseBgCol), Color.blue(baseBgCol)),
+                    Color.argb(stopAlpha2, Color.red(gradCol2), Color.green(gradCol2), Color.blue(gradCol2))
+                )
                 val gradShader = LinearGradient(
                     cx - dirX * extent + dirX * slideOffset,
                     cy - dirY * extent + dirY * slideOffset,
                     cx + dirX * extent + dirX * slideOffset,
                     cy + dirY * extent + dirY * slideOffset,
-                    intArrayOf(
-                        Color.argb(stopAlpha1, Color.red(baseBgCol), Color.green(baseBgCol), Color.blue(baseBgCol)),
-                        Color.argb(stopAlpha2, Color.red(gradCol2), Color.green(gradCol2), Color.blue(gradCol2))
-                    ),
-                    null, Shader.TileMode.CLAMP
+                    gradColors,
+                    null,
+                    if (isSeamless) Shader.TileMode.MIRROR else Shader.TileMode.CLAMP
                 )
                 paint.shader = gradShader
                 canvas.drawRoundRect(rect, radius, radius, paint)
@@ -4598,7 +4745,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         val textY = citationY + tpl.verseCitationGapArabicDp * scale
         canvas.save()
         canvas.translate(translateX, textY)
-        primaryLayout.draw(canvas)
+        drawLayoutWithEffect(canvas, primaryLayout, tpl, scale)
         canvas.restore()
 
         // Draw Bilingual Section if active (BOTH mode only)
@@ -4607,7 +4754,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             val secY = textY + primaryLayout.height + bilSpacing
             canvas.save()
             canvas.translate(translateX, secY)
-            bilingualSecondary.draw(canvas)
+            drawLayoutWithEffect(canvas, bilingualSecondary, tpl, scale)
             canvas.restore()
             // v1.9: English citation on its own line below the verse (matches HTTP).
             val secCitation = layouts.secondaryCitation
@@ -4617,7 +4764,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 val citY = secY + bilingualSecondary.height + tpl.verseCitationGapEnglishDp * scale
                 canvas.save()
                 canvas.translate(translateX, citY)
-                secCitation.draw(canvas)
+                drawLayoutWithEffect(canvas, secCitation, tpl, scale)
                 canvas.restore()
             }
         }
@@ -6064,6 +6211,61 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
      * titlers and cloud graphics that prefer JSON, plus the two fields
      * polling clients need: onAir and stateVersion.
      */
+    /**
+     * v1.9.5: GET /lower/rss.xml and /full/rss.xml — RSS 2.0 feeds for
+     * ProPresenter/vMix data sources. One <item> per live verse.
+     * <title> = citation, <description> = verse text.
+     * ?lang=en|ar selects language (default: both).
+     * OFF AIR: zero items (same as serveBibleShowXml — blank, not stale).
+     */
+    private fun serveRssFeed(out: OutputStream, tpl: LowerThirdTemplate, lang: String?, isFull: Boolean) {
+        val onAir = isLive && currentVerse != null
+        val d = if (onAir) computeBibleShowData(tpl) else null
+
+        fun xmlEscape(s: String): String {
+            return s.replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;")
+                .replace("'", "&apos;")
+        }
+
+        val feedTitle = if (isFull) "Arabic Bible NDI - Full Show" else "Arabic Bible NDI - Lower Third"
+        val rss = buildString {
+            append("""<?xml version="1.0" encoding="utf-8"?>""")
+            append("\n<rss version=\"2.0\">\n")
+            append("  <channel>\n")
+            append("    <title>${xmlEscape(feedTitle)}</title>\n")
+            append("    <link>http://${getLocalIpAddress()}:$port/</link>\n")
+            append("    <description>Live Bible verse feed</description>\n")
+            if (onAir && d != null) {
+                // One item per live verse. Language selection via ?lang=.
+                val showAr = lang == null || lang == "ar"
+                val showEn = lang == null || lang == "en"
+                if (showAr && d.arabicVerse.isNotEmpty()) {
+                    append("    <item>\n")
+                    append("      <title>${xmlEscape(d.arabicCitation)}</title>\n")
+                    append("      <description>${xmlEscape(d.arabicVerse)}</description>\n")
+                    append("    </item>\n")
+                }
+                if (showEn && d.englishVerse.isNotEmpty()) {
+                    append("    <item>\n")
+                    append("      <title>${xmlEscape(d.englishCitation)}</title>\n")
+                    append("      <description>${xmlEscape(d.englishVerse)}</description>\n")
+                    append("    </item>\n")
+                }
+            }
+            // OFF AIR: zero items — the consumer goes blank, not stale.
+            append("  </channel>\n")
+            append("</rss>")
+        }
+        val bytes = rss.toByteArray(Charsets.UTF_8)
+        val header = "HTTP/1.1 200 OK\r\nContent-Type: application/rss+xml; charset=utf-8\r\nContent-Length: ${bytes.size}\r\nConnection: close\r\n\r\n"
+        out.write(header.toByteArray(Charsets.UTF_8))
+        out.write(bytes)
+        out.flush()
+    }
+
     private fun serveBibleShowJson(out: OutputStream, tpl: LowerThirdTemplate) {
         val d = computeBibleShowData(tpl)
         val root = JSONObject().apply {
@@ -6192,6 +6394,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             o.put("textShadowBlurDp", t.textShadowBlurDp.toDouble())
             o.put("textShadowOffsetDp", t.textShadowOffsetDp.toDouble())
             o.put("textShadowAngleDeg", t.textShadowAngleDeg)
+            o.put("textEffect", t.textEffect.id)
+            o.put("textEffectDepthDp", t.textEffectDepthDp.toDouble())
             o.put("cardGlowEnabled", t.cardGlowEnabled)
             o.put("cardGlowColorHex", t.cardGlowColorHex)
             o.put("emblem", t.emblem)
@@ -7303,35 +7507,41 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 </head>
 <body>
 <header id="topBar">
-  <button id="infoBtn" aria-label="About" onclick="toggleInfoPopup()">&#9432;</button>
-  <div id="topRef" dir="auto">—</div>
+  <!-- v1.9.5: reworked top bar — [gear][sync][kbd] left, ref centered, ON AIR right. Info icon removed. -->
+  <button id="gearTop" aria-label="Settings" onclick="togglePanel()">&#9881;</button>
   <button id="syncBtn" aria-label="Toggle auto-sync" onclick="toggleSync()" style="font-size:18px;" title="Auto-sync with tablet">&#128279;</button>
   <button id="kbdBtn" aria-label="Keyboard shortcuts" onclick="toggleKbdOverlay(true)">&#9000;</button>
-  <button id="gearTop" aria-label="Settings" onclick="togglePanel()">&#9881;</button>
+  <div id="topRef" dir="auto">—</div>
+  <button class="onair off" id="onAirBtnTop" onclick="toggleOnAir()">OFF AIR</button>
 </header>
-<div id="infoPopup" hidden>
-  <div class="card">
-    <p>Tap a verse to show it on the output.</p>
-    <button class="btn" onclick="toggleInfoPopup()">Close</button>
-  </div>
-</div>
 <main>
-  <!-- Item 13: one control line — book + chapter + version + reference
-       + live citation + ON AIR. It wraps gracefully on narrow screens.
-       The ref hint line is gone: the placeholder already carries the
-       examples (John 3:16 / يوحنا 3:16 / Jn 3:16). -->
-  <div class="card" id="controlBar" dir="rtl">
-    <button class="onair off" id="onAirBtn" onclick="toggleOnAir()">OFF AIR</button>
-    <select id="bookSel" aria-label="Book"><option value="">Loading books…</option></select>
-    <select id="chSel" aria-label="Chapter"></select>
-    <input id="ref" type="text" inputmode="text" autocomplete="off"
-           placeholder="John 3:16  •  يوحنا 3:16  •  Jn 3:16"
-           enterkeyhint="go" aria-label="Quick reference">
-    <button class="btn" id="goBtn" onclick="triggerRef()">▶</button>
+  <!-- v1.9.5: Row 2 — [Recent] left, [ref input with Go inside] right -->
+  <div class="card" id="refBar" dir="rtl" style="display:flex;align-items:center;gap:8px;">
+    <button id="recentsBtn" onclick="toggleRecents()" aria-label="Recents">&#128341; Recent</button>
     <span style="flex:1"></span>
-    <button id="recentsBtn" onclick="toggleRecents()" aria-label="Recents">&#128341;</button>
+    <div style="position:relative;flex:1;max-width:300px;">
+      <input id="ref" type="text" inputmode="text" autocomplete="off"
+             placeholder="John 3:16  •  يوحنا 3:16  •  Jn 3:16"
+             enterkeyhint="go" aria-label="Quick reference"
+             style="width:100%;padding-right:40px;">
+      <button class="btn" id="goBtn" onclick="triggerRef()" aria-label="Go"
+              style="position:absolute;right:4px;top:50%;transform:translateY(-50%);background:#16a34a;color:white;border:none;border-radius:6px;padding:4px 10px;">▶</button>
+    </div>
+  </div>
+  <!-- v1.9.5: Row 3 — [prev][next][chapter][book] (book rightmost) -->
+  <div class="card" id="browseBar" dir="ltr" style="display:flex;align-items:center;gap:8px;">
     <button id="prevChBtn" onclick="stepChapter(-1)" aria-label="Previous chapter">&#9664;</button>
     <button id="nextChBtn" onclick="stepChapter(1)" aria-label="Next chapter">&#9654;</button>
+    <select id="chSel" aria-label="Chapter"></select>
+    <select id="bookSel" aria-label="Book"><option value="">Loading books…</option></select>
+  </div>
+  <!-- Recents popup with close button -->
+  <div id="recentsPopup" hidden style="position:fixed;top:60px;left:10px;right:10px;max-width:400px;margin:0 auto;background:var(--chrome-card,#fff);border:1px solid var(--chrome-border,#e2e8f0);border-radius:12px;z-index:90;max-height:60vh;overflow-y:auto;padding:12px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+      <strong>Recent verses</strong>
+      <button onclick="toggleRecents()" aria-label="Close" style="background:none;border:none;font-size:18px;cursor:pointer;">×</button>
+    </div>
+    <div id="recentsList"></div>
   </div>
   <!-- Batch-3: shortcuts line removed (now behind keyboard icon); recents moved to control bar -->
   <div id="kbdOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:100;align-items:center;justify-content:center;" onclick="if(event.target===this)toggleKbdOverlay(false)">
@@ -7486,8 +7696,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
           chSel.value = String(d.chapter);
           loadChapter(d.chapter, function() {
             // Scroll to the verse after chapter loads.
+            // v1.9.5: fixed selector (was [data-verse], rows use [data-v]).
             setTimeout(function() {
-              var verseEl = document.querySelector('[data-verse="' + d.verse + '"]');
+              var verseEl = document.querySelector('[data-v="' + d.verse + '"]');
               if (verseEl) verseEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
             }, 300);
           });
@@ -7583,11 +7794,18 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       html += '<option value="' + c + '">' + label + '</option>';
     }
     chSel.innerHTML = html;
-    chSel.value = '1';
+    // v1.9.5: preserve current chapter if valid for this book
+    // (was unconditionally resetting to '1', breaking SSE sync).
+    var cur = parseInt(chSel.value, 10);
+    if (isNaN(cur) || cur < 1 || cur > book.chapters) {
+      chSel.value = '1';
+    }
   }
 
   var loadSeq = 0;
-  function loadChapter(ch) {
+  // v1.9.5: accepts optional callback run after chapter renders
+  // (fixes SSE sync where callback was silently ignored).
+  function loadChapter(ch, callback) {
     if (curBookIdx < 0) return;
     curChapter = ch;
     if (chSel.value !== String(ch)) chSel.value = String(ch);
@@ -7625,6 +7843,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
           });
         }
         markLiveRow();
+        // v1.9.5: run callback after render (for SSE sync scroll).
+        if (typeof callback === 'function') callback();
         markRecentRows();
       })
       .catch(function() {
@@ -7727,7 +7947,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   }
 
   function renderOnAir() {
-    var btn = document.getElementById('onAirBtn');
+    var btn = document.getElementById('onAirBtnTop');
     if (live.onAir) {
       btn.className = 'onair on';
       btn.textContent = '🔴 ON AIR';
@@ -7739,7 +7959,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
   // 2026-10-28: phone Recents is an icon opening a sheet, Browse first.
   function toggleRecents() {
-    document.body.classList.toggle('recents-open');
+    // v1.9.5: toggle the recents popup (was CSS class on body).
+    var popup = document.getElementById('recentsPopup');
+    if (popup) popup.hidden = !popup.hidden;
   }
 
   // Item 6+7+10: recents mirrored from the master (persisted now, not

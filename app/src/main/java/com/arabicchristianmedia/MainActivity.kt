@@ -298,7 +298,8 @@ class MainActivity : ComponentActivity() {
                 }
                 // v1.9: editor sub-tab (Lower Third / Full Show) hoisted here so it
                 // survives both rotation and main-tab switches.
-                var editorTab by rememberSaveable { mutableIntStateOf(0) }
+                // v1.9.5: default to Full Show tab (was Lower).
+                var editorTab by rememberSaveable { mutableIntStateOf(1) }
                 val context = LocalContext.current
                 // Editor tips visibility, hoisted so the top-bar info icon
                 // (wide Editor layout) can reopen the tips card. Persisted

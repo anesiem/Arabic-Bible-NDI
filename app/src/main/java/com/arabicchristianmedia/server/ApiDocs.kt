@@ -245,6 +245,30 @@ object ApiDocs {
           "400": { "description": "Empty body." }
         }
       }
+    },
+    "/lower/rss.xml": {
+      "get": {
+        "summary": "RSS 2.0 feed (Lower Third)",
+        "description": "RSS 2.0 feed for ProPresenter/vMix data sources. One <item> per live verse: <title> = citation, <description> = verse text. OFF AIR returns zero items (consumer goes blank, not stale).",
+        "parameters": [
+          { "name": "lang", "in": "query", "required": false, "schema": { "type": "string", "enum": ["en", "ar"] }, "description": "Language filter. Default: both languages." }
+        ],
+        "responses": {
+          "200": { "description": "RSS 2.0 XML with live verse items (or zero items when OFF AIR)." }
+        }
+      }
+    },
+    "/full/rss.xml": {
+      "get": {
+        "summary": "RSS 2.0 feed (Full Show)",
+        "description": "RSS 2.0 feed for ProPresenter/vMix data sources. One <item> per live verse: <title> = citation, <description> = verse text. OFF AIR returns zero items (consumer goes blank, not stale).",
+        "parameters": [
+          { "name": "lang", "in": "query", "required": false, "schema": { "type": "string", "enum": ["en", "ar"] }, "description": "Language filter. Default: both languages." }
+        ],
+        "responses": {
+          "200": { "description": "RSS 2.0 XML with live verse items (or zero items when OFF AIR)." }
+        }
+      }
     }
   }
 }

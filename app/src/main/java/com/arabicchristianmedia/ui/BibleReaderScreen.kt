@@ -403,7 +403,7 @@ fun BibleReaderScreen(
                                 FlowRow(
                                     modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                                     // 2026-11-02: left-aligned per user request (was Center).
-                                    horizontalArrangement = Arrangement.Left,
+                                    horizontalArrangement = Arrangement.Center, // 2026-11-02: reverted (Left needs LTR wrapper)
                                     verticalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
                                     otBooks.forEach { book ->
@@ -434,7 +434,7 @@ fun BibleReaderScreen(
                                 FlowRow(
                                     modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                                     // 2026-11-02: left-aligned per user request (was Center).
-                                    horizontalArrangement = Arrangement.Left,
+                                    horizontalArrangement = Arrangement.Center, // 2026-11-02: reverted (Left needs LTR wrapper)
                                     verticalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
                                     ntBooks.forEach { book ->

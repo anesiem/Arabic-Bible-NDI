@@ -971,7 +971,7 @@ fun BentoVerseCard(
         else -> bento.border
     }
     val borderWidth = if (isCued || isFocused || inSermonList) 2.dp else 1.dp
-    val showRecentLine = isRecent && !isLiveOnAir && !isCued && !isFocused
+    val showRecentLine = isRecent
 
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
         Box(modifier = Modifier.fillMaxWidth()) {

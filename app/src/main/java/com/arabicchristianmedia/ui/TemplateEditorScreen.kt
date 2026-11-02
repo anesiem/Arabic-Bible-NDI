@@ -792,11 +792,7 @@ fun TemplateEditorScreen(
     val stageBlock: @Composable () -> Unit = {
         // 4. Style Selector (per-tab collection; highlight = selected style id, NOT the working template id)
         // Batch-3: the design chip moved to the title block — the stage
-        // keeps only the style help. No separate Import button — Import
-        // lives in the design menu.
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            InfoPopupButton("اختر النمط (Select Style)", "اضغط على زر التصميم بالأعلى للحفظ / التصدير / الاستيراد / الحذف • اضغط مطولاً على أي نمط لنفس الخيارات • التعديل بدون حفظ يمسح التمييز")
-        }
+        // 2026-11-02: style help ⓘ removed per user request.
         // v1.9.5: Tab switcher + style cards on one line.
         // [Full|Lower] [card][card][card]→ — saves a full row of vertical space.
         Row(

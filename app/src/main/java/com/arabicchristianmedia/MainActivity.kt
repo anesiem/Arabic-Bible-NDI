@@ -288,8 +288,10 @@ class MainActivity : ComponentActivity() {
                 var displaySettingsNonce by remember { mutableIntStateOf(0) }
                 // v2.0: a successful share (sermonListNonce bump) opens the
                 // sermon list tab so the operator lands on the verses.
+                // 2026-11-02: tab order is Library(0)→Editor(1)→Sermon(2)→Setup(3);
+                // Sermon is index 2, not 3 (was stale from pre-1.9.4 order).
                 LaunchedEffect(uiState.sermonListNonce) {
-                    if (uiState.sermonListNonce > 0) selectedTab = 3
+                    if (uiState.sermonListNonce > 0) selectedTab = 2
                 }
                 // v1.9.1: a sermon row's book icon jumps to the Library tab
                 // at the focused verse (without putting it on air).

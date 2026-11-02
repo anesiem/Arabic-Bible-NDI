@@ -143,6 +143,8 @@ data class BibleNdiUiState(
     val hdmiBackgroundOverride: Boolean = false,
     // v2.0: bumped on every successful share so MainActivity opens the list tab.
     val sermonListNonce: Long = 0,
+    // 2026-11-02: bumped when top-bar shortcut tapped; TemplateEditorScreen expands header.
+    val editorExpandNonce: Long = 0,
     // v1.9.1: named saved sermons + which one the working list belongs to.
     val savedSermons: List<SavedSermon> = emptyList(),
     val currentSermonId: String? = null,
@@ -2813,6 +2815,11 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
 
     fun dismissStatusMessage() {
         _uiState.value = _uiState.value.copy(statusMessage = null)
+    }
+
+    // 2026-11-02: top-bar shortcut requests TemplateEditor to expand its header.
+    fun requestEditorExpand() {
+        _uiState.value = _uiState.value.copy(editorExpandNonce = _uiState.value.editorExpandNonce + 1)
     }
 
     override fun onCleared() {

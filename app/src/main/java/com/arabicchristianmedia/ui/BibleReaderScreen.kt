@@ -350,7 +350,8 @@ fun BibleReaderScreen(
                         // numbers, not only verses (18 -> 13sp, 30 -> 21sp).
                         // Item 18: recents removed (saves space).
                         // Book label size scales with reader font.
-                        val bookLabelSize = (uiState.readerFontSize * 13 / 18).coerceIn(11, 24).sp
+                        // 2026-11-02: float division for smooth scaling (was integer truncation).
+                        val bookLabelSize = (uiState.readerFontSize * 13f / 18f).coerceIn(11f, 24f).sp
 
                         // ONE generic search across all 66 books (moved out
                         // of the OT/NT tabs). Picking a book follows its
@@ -401,7 +402,8 @@ fun BibleReaderScreen(
                                 @OptIn(ExperimentalLayoutApi::class)
                                 FlowRow(
                                     modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                                    horizontalArrangement = Arrangement.Center,
+                                    // 2026-11-02: left-aligned per user request (was Center).
+                                    horizontalArrangement = Arrangement.Left,
                                     verticalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
                                     otBooks.forEach { book ->
@@ -431,7 +433,8 @@ fun BibleReaderScreen(
                                 @OptIn(ExperimentalLayoutApi::class)
                                 FlowRow(
                                     modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                                    horizontalArrangement = Arrangement.Center,
+                                    // 2026-11-02: left-aligned per user request (was Center).
+                                    horizontalArrangement = Arrangement.Left,
                                     verticalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
                                     ntBooks.forEach { book ->
@@ -464,6 +467,8 @@ fun BibleReaderScreen(
                         // Chapter number grid (tap = jump). The +/- stepper
                         // row was removed in batch-3 — tap a circle directly.
                         Box(modifier = Modifier.heightIn(min = 120.dp, max = 220.dp)) {
+                            // 2026-11-02: LTR wrapper for left-aligned chapters per user request.
+                            androidx.compose.runtime.CompositionLocalProvider(androidx.compose.ui.platform.LocalLayoutDirection provides androidx.compose.ui.unit.LayoutDirection.Ltr) {
                             LazyVerticalGrid(
                                 columns = GridCells.Adaptive(minSize = 52.dp),
                                 horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -475,7 +480,8 @@ fun BibleReaderScreen(
                                     // picker font (18 -> 14sp, 30 -> 23sp)
                                     // and the circle grows with the number,
                                     // so 3-digit chapters never overflow.
-                                    val chNumSize = (uiState.readerFontSize * 14 / 18).coerceIn(11, 26).sp
+                                    // 2026-11-02: float division for smooth scaling.
+                                    val chNumSize = (uiState.readerFontSize * 14f / 18f).coerceIn(11f, 26f).sp
                                     val chCircle = (48 + (uiState.readerFontSize - 18).coerceAtLeast(0) * 2).coerceAtMost(72).dp
                                     Box(
                                         modifier = Modifier.size(chCircle).clip(CircleShape)
@@ -491,6 +497,7 @@ fun BibleReaderScreen(
                                     }
                                 }
                             }
+                            } // CompositionLocalProvider (LTR)
                         }
 
                     }
@@ -789,8 +796,9 @@ fun BibleReaderScreen(
                     uiState.sermonPlaylist.map { it.verse.id }.toSet()
                 }
                 // Item 6: recents marker set (same verses the sheet lists).
+                // 2026-11-02: case-insensitive matching (defensive against bookId case drift).
                 val recentVerseIds = remember(uiState.recentVerses) {
-                    uiState.recentVerses.map { it.id }.toSet()
+                    uiState.recentVerses.map { it.id.lowercase() }.toSet()
                 }
                 if (uiState.isLoadingBible && versesToShow.isEmpty()) {
                     // First-launch database copy: show progress instead of a blank list.
@@ -864,7 +872,7 @@ fun BibleReaderScreen(
                             isLiveOnAir = isCued && uiState.isLiveOnAir,
                             isFocused = uiState.readerFocusVerseId == verse.id,
                             inSermonList = verse.id in sermonVerseIds,
-                            isRecent = verse.id in recentVerseIds,
+                            isRecent = verse.id.lowercase() in recentVerseIds,
                             version = uiState.bibleVersion,
                             fontSizeSp = uiState.readerFontSize,
                             showCitation = uiState.isSearching,

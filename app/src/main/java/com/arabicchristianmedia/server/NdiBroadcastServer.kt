@@ -7508,6 +7508,14 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   body.force-dark .livepill { color: #f1f5f9; }
   body.force-dark .livepill.on { background: rgba(220,38,38,0.22); border-color: rgba(220,38,38,0.7); color: #fecaca; }
   body.force-dark .livepill.disconnected { background: rgba(245,158,11,0.22); border-color: rgba(245,158,11,0.7); color: #fde68a; }
+  /* 2026-11-02 item 19: single clean rule for browse-bar selects (was 18px/13px conflict). */
+  #browseBar select { font-size: 14px !important; padding: 8px 10px !important; max-width: 100%; }
+  /* 2026-11-02 item 32: big-screen layout — constrain width, fix ON AIR/status. */
+  @media (min-width: 768px) {
+    body { align-items: center; }
+    body > .card, body > #refBar, body > #browseBar { max-width: 800px; width: 100%; }
+    #topBar { max-width: 800px; width: 100%; }
+  }
 </style>
 </head>
 <body>
@@ -7523,14 +7531,14 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   <!-- v1.9.5: Row 2 — [Recent] left, [ref input with Go inside] right -->
   <div class="card" id="refBar" dir="rtl" style="display:flex;align-items:center;gap:8px;">
     <button id="recentsBtn" onclick="toggleRecents()" aria-label="Recents">&#128341; Recent</button>
-    <span style="flex:1"></span>
-    <div style="position:relative;flex:1;max-width:300px;">
+    <!-- 2026-11-02: flexbox layout (was absolute positioning, broke on narrow RTL screens). -->
+    <div style="display:flex;flex:1;gap:4px;max-width:320px;min-width:0;">
       <input id="ref" type="text" inputmode="text" autocomplete="off"
              placeholder="John 3:16  •  يوحنا 3:16  •  Jn 3:16"
              enterkeyhint="go" aria-label="Quick reference"
-             style="width:100%;padding-right:40px;">
+             style="flex:1;min-width:0;">
       <button class="btn" id="goBtn" onclick="triggerRef()" aria-label="Go"
-              style="position:absolute;right:4px;top:50%;transform:translateY(-50%);background:#16a34a;color:white;border:none;border-radius:6px;padding:4px 10px;">▶</button>
+              style="flex:none;background:#16a34a;color:white;border:none;border-radius:6px;padding:8px 12px;">▶</button>
     </div>
   </div>
   <!-- v1.9.5: Row 3 — [prev][next][chapter][book] (book rightmost) -->
@@ -7966,7 +7974,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   function toggleRecents() {
     // v1.9.5: toggle the recents popup (was CSS class on body).
     var popup = document.getElementById('recentsPopup');
-    if (popup) popup.hidden = !popup.hidden;
+    if (popup) {
+      var willShow = popup.hidden;
+      popup.hidden = !popup.hidden;
+      // 2026-11-02 item 17: when opening, fetch fresh recents immediately
+      // (don't wait for the next poll cycle).
+      if (willShow && typeof pollNow === 'function') pollNow();
+    }
   }
 
   // Item 6+7+10: recents mirrored from the master (persisted now, not
@@ -8086,6 +8100,29 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       markLiveRow();
       markRecentRows();
       renderRecents(j.recents || []);
+      // 2026-11-02 item 18: poll-based fallback for dropdown sync (if SSE verseSelected
+      // didn't fire). When sync is on and the live verse changed, update book/chapter dropdowns.
+      if (syncEnabled && j.bookId && j.chapterNum) {
+        var syncKey = j.bookId + ':' + j.chapterNum;
+        if (window._lastSyncKey !== syncKey) {
+          window._lastSyncKey = syncKey;
+          var sbIdx = -1;
+          for (var si = 0; si < books.length; si++) {
+            if (books[si].id === j.bookId) { sbIdx = si; break; }
+          }
+          if (sbIdx >= 0 && sbIdx !== curBookIdx) {
+            curBookIdx = sbIdx;
+            var bookSelEl = document.getElementById('bookSel');
+            var chSelEl = document.getElementById('chSel');
+            if (bookSelEl) bookSelEl.value = String(sbIdx);
+            if (typeof fillChapters === 'function') fillChapters(books[sbIdx]);
+            if (chSelEl) chSelEl.value = String(j.chapterNum);
+            if (typeof loadChapter === 'function') loadChapter(j.chapterNum, function() {
+              if (typeof scrollToVerse === 'function' && j.verseNum) scrollToVerse(j.verseNum);
+            });
+          }
+        }
+      }
       // A poll that succeeds after failures restores the normal state
       // (the pill/button were already rewritten above) and clears the
       // disconnect notice.

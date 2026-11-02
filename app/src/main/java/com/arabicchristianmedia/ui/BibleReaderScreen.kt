@@ -403,7 +403,7 @@ fun BibleReaderScreen(
                                 FlowRow(
                                     modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                                     // 2026-11-02: left-aligned per user request (was Center).
-                                    horizontalArrangement = Arrangement.Center, // 2026-11-02: reverted (Left needs LTR wrapper)
+                                    horizontalArrangement = Arrangement.End, // 2026-11-02: End=left in RTL (item 20)
                                     verticalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
                                     otBooks.forEach { book ->
@@ -434,7 +434,7 @@ fun BibleReaderScreen(
                                 FlowRow(
                                     modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                                     // 2026-11-02: left-aligned per user request (was Center).
-                                    horizontalArrangement = Arrangement.Center, // 2026-11-02: reverted (Left needs LTR wrapper)
+                                    horizontalArrangement = Arrangement.End, // 2026-11-02: End=left in RTL (item 20)
                                     verticalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
                                     ntBooks.forEach { book ->
@@ -472,7 +472,7 @@ fun BibleReaderScreen(
                                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                                 verticalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
-                                items((1..uiState.selectedBook.totalChapters).toList()) { ch ->
+                                items((1..uiState.selectedBook.totalChapters).toList().reversed()) { ch -> // 2026-11-02: reversed for LTR display in RTL (item 20)
                                     val isSelected = ch == uiState.selectedChapter
                                     // J15: chapter numbers scale with the
                                     // picker font (18 -> 14sp, 30 -> 23sp)

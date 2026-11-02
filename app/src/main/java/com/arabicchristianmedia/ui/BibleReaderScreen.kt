@@ -467,8 +467,6 @@ fun BibleReaderScreen(
                         // Chapter number grid (tap = jump). The +/- stepper
                         // row was removed in batch-3 — tap a circle directly.
                         Box(modifier = Modifier.heightIn(min = 120.dp, max = 220.dp)) {
-                            // 2026-11-02: LTR wrapper for left-aligned chapters per user request.
-                            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
                             LazyVerticalGrid(
                                 columns = GridCells.Adaptive(minSize = 52.dp),
                                 horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -497,7 +495,7 @@ fun BibleReaderScreen(
                                     }
                                 }
                             }
-                            } // CompositionLocalProvider (LTR)
+                            }
                         }
 
                     }

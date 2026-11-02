@@ -495,7 +495,6 @@ fun BibleReaderScreen(
                                     }
                                 }
                             }
-                            }
                         }
 
                     }

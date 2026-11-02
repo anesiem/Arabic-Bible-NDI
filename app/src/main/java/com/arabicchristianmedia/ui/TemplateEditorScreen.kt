@@ -1594,21 +1594,24 @@ CollapsibleSection(
     }
 
     val glowSectionBlock: @Composable () -> Unit = {
-CollapsibleSection(
-                    modifier = anchorModifier("glow"),
-                    title = "IV — التوهج (Glow)",
-                    // Batch-4: Glow never auto-expands — only manual tap or anchor.
-                    initiallyExpanded = false,
-                    expanded = isSectionExpanded("glow", false),
-                    onExpandedChange = { setSectionExpanded("glow", it) },
-                    summary = "Glow " + (if (editingTemplate.cardGlowEnabled) "on" else "off")
-                ) {
-                    if (!editingTemplate.isFullScreen) {
-                        FeatureToggleRow("توهج الكارت (Card Glow)", editingTemplate.cardGlowEnabled, modifier = anchorModifier("shadow-glow")) { onUpdate(editingTemplate.copy(cardGlowEnabled = it)) }
-                        if (editingTemplate.cardGlowEnabled) {
-                            ColorGradePickerRow("لون توهج الكارت (Card Glow Color)", editingTemplate.cardGlowColorHex, { onUpdate(editingTemplate.copy(cardGlowColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor, previewTemplate = editingTemplate, previewField = "cardGlowColorHex")
-                        }
-                    }                }
+        // Glow only applies to card mode, not fullscreen — hide the section entirely
+        // in fullscreen so users don't see an empty expander (item 28).
+        if (!editingTemplate.isFullScreen) {
+            CollapsibleSection(
+                modifier = anchorModifier("glow"),
+                title = "IV — التوهج (Glow)",
+                // Batch-4: Glow never auto-expands — only manual tap or anchor.
+                initiallyExpanded = false,
+                expanded = isSectionExpanded("glow", false),
+                onExpandedChange = { setSectionExpanded("glow", it) },
+                summary = "Glow " + (if (editingTemplate.cardGlowEnabled) "on" else "off")
+            ) {
+                FeatureToggleRow("توهج الكارت (Card Glow)", editingTemplate.cardGlowEnabled, modifier = anchorModifier("shadow-glow")) { onUpdate(editingTemplate.copy(cardGlowEnabled = it)) }
+                if (editingTemplate.cardGlowEnabled) {
+                    ColorGradePickerRow("لون توهج الكارت (Card Glow Color)", editingTemplate.cardGlowColorHex, { onUpdate(editingTemplate.copy(cardGlowColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor, previewTemplate = editingTemplate, previewField = "cardGlowColorHex")
+                }
+            }
+        }
     }
 
     val sheetBlock: @Composable () -> Unit = {

@@ -795,7 +795,7 @@ fun BibleReaderScreen(
                 // Item 6: recents marker set (same verses the sheet lists).
                 // 2026-11-02: case-insensitive matching (defensive against bookId case drift).
                 val recentVerseIds = remember(uiState.recentVerses) {
-                    uiState.recentVerses.map { it.id.lowercase() }.toSet()
+                    uiState.recentVerses.map { "${it.bookId.lowercase()}_${it.chapter}_${it.verse}" }.toSet()
                 }
                 if (uiState.isLoadingBible && versesToShow.isEmpty()) {
                     // First-launch database copy: show progress instead of a blank list.
@@ -869,7 +869,7 @@ fun BibleReaderScreen(
                             isLiveOnAir = isCued && uiState.isLiveOnAir,
                             isFocused = uiState.readerFocusVerseId == verse.id,
                             inSermonList = verse.id in sermonVerseIds,
-                            isRecent = verse.id.lowercase() in recentVerseIds,
+                            isRecent = "${verse.bookId.lowercase()}_${verse.chapter}_${verse.verse}" in recentVerseIds,
                             version = uiState.bibleVersion,
                             fontSizeSp = uiState.readerFontSize,
                             showCitation = uiState.isSearching,
@@ -961,7 +961,7 @@ fun BentoVerseCard(
     val targetColor = when {
         isLiveOnAir || isCued -> highlightColor
         inSermonList -> listColors.sermonTint
-        isRecent -> listColors.recentLine.copy(alpha = 0.15f)
+        isRecent -> listColors.recentLine.copy(alpha = 0.25f)
         else -> bento.card
     }
     val bgColor by animateColorAsState(targetColor, label = "cardBg")

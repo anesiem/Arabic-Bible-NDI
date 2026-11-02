@@ -601,6 +601,9 @@ class MainActivity : ComponentActivity() {
                                 onClearRecents = { viewModel.clearRecents() },
                                 onSendRecentsToSermon = { merge -> viewModel.sendRecentsToSermon(merge) },
                                 displaySettingsNonce = displaySettingsNonce,
+                                // 2026-11-02 bugfix: reset the nonce after the dialog opens
+                                // so tab switches don't reopen it.
+                                onDisplaySettingsConsumed = { displaySettingsNonce = 0 },
                                 onIncreaseFontSize = { viewModel.increaseFontSize() },
                                 onDecreaseFontSize = { viewModel.decreaseFontSize() },
                                 onSetAppThemeMode = { viewModel.setAppThemeMode(it) },

@@ -7145,7 +7145,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   function loadAll() {
     fetch('/api/verse').then(function (r) { return r.json(); }).then(renderVerse).catch(function () {});
     fetch('/api/sermons/current').then(function (r) { return r.json(); }).then(renderSermon).catch(function () { renderSermon(null); });
-    fetch('/api/recents').then(function (r) { return r.json(); }).then(renderRecents).catch(function () {});
+    // 2026-11-02 bugfix: /api/recents returns {"ok":true,"recents":[...]} —
+    // renderRecents expects the bare array (was receiving the object, so
+    // .length was undefined and the list always showed empty).
+    fetch('/api/recents').then(function (r) { return r.json(); }).then(function (d) { renderRecents(d.recents || []); }).catch(function () {});
   }
   el('gear').onclick = function () { var p = el('panel'); p.hidden = !p.hidden; };
   (function () {

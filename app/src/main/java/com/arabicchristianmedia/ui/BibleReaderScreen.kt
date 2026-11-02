@@ -106,7 +106,11 @@ fun BibleReaderScreen(
     onClearRecents: () -> Unit = {},
     // Batch-3: display-settings nonce from MainActivity's top-bar gear —
     // opens the existing "إعدادات العرض" dialog without duplicating it.
+    // 2026-11-02 bugfix: the nonce is consumed via onDisplaySettingsConsumed
+    // after opening, otherwise every tab switch recreates the screen and the
+    // LaunchedEffect reopens the dialog (nonce stays > 0 forever).
     displaySettingsNonce: Int = 0,
+    onDisplaySettingsConsumed: () -> Unit = {},
     onIncreaseFontSize: () -> Unit = {},
     onDecreaseFontSize: () -> Unit = {},
     onSetAppThemeMode: (AppThemeMode) -> Unit = {},
@@ -135,8 +139,13 @@ fun BibleReaderScreen(
     }
     var displayMenuExpanded by remember { mutableStateOf(false) }
     // Batch-3: top-bar gear nonce opens the display settings dialog.
+    // 2026-11-02 bugfix: consume the nonce after opening so tab switches
+    // don't reopen the dialog (screen recreation re-runs this effect).
     LaunchedEffect(displaySettingsNonce) {
-        if (displaySettingsNonce > 0) displayMenuExpanded = true
+        if (displaySettingsNonce > 0) {
+            displayMenuExpanded = true
+            onDisplaySettingsConsumed()
+        }
     }
     var scripturePickerExpanded by remember { mutableStateOf(false) }
     // Batch item 3: pending picker chapter jump (target chapter); the
@@ -189,9 +198,13 @@ fun BibleReaderScreen(
     // list arrives (selectedChapter match), then cleared — so later list
     // changes (search, verse taps) never re-trigger it. Declared after
     // the active-verse effect so this scroll wins for the tap.
+    // 2026-11-02 bugfix: chapter arrows/swipe also scroll to verse 1.
+    // They set pickerJumpChapter = -1 (sentinel: any chapter), since the
+    // screen doesn't know the target chapter number in advance.
     LaunchedEffect(pickerJumpChapter, uiState.displayedVerses) {
         val target = pickerJumpChapter
-        if (target != null && uiState.selectedChapter == target && uiState.displayedVerses.isNotEmpty()) {
+        if (target != null && uiState.displayedVerses.isNotEmpty() &&
+            (target == -1 || uiState.selectedChapter == target)) {
             lazyListState.scrollToItem(0)
             pickerJumpChapter = null
         }
@@ -494,10 +507,12 @@ fun BibleReaderScreen(
                     // to the NEXT chapter, the RIGHT arrow to the PREVIOUS
                     // chapter. Chapter browsing never changes the live
                     // outputs — the server holds the on-air verse.
-                    IconButton(onClick = onNextChapter) {
+                    // 2026-11-02 bugfix: arrows scroll the new chapter to verse 1
+                    // (pickerJumpChapter = -1 sentinel; see LaunchedEffect above).
+                    IconButton(onClick = { pickerJumpChapter = -1; onNextChapter() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, "Next chapter", tint = bento.textSecondary)
                     }
-                    IconButton(onClick = onPrevChapter) {
+                    IconButton(onClick = { pickerJumpChapter = -1; onPrevChapter() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowForward, "Previous chapter", tint = bento.textSecondary)
                     }
 
@@ -827,10 +842,11 @@ fun BibleReaderScreen(
                                             // v1.9.1 (#9): Arabic is RTL —
                                             // swipe RIGHT = NEXT chapter
                                             // (page turn), LEFT = previous.
+                                            // 2026-11-02 bugfix: swipe also scrolls to verse 1.
                                             if (dragX > 0) {
-                                                onNextChapter()
+                                                pickerJumpChapter = -1; onNextChapter()
                                             } else {
-                                                onPrevChapter()
+                                                pickerJumpChapter = -1; onPrevChapter()
                                             }
                                         }
                                     }

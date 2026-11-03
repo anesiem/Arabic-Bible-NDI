@@ -7542,12 +7542,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     <select id="bookSel" aria-label="Book"><option value="">Loading books…</option></select>
   </div>
   <!-- Recents popup with close button -->
-  <div id="recentsPopup" hidden style="position:fixed;top:60px;left:10px;right:10px;max-width:400px;margin:0 auto;background:var(--chrome-card,#fff);border:1px solid var(--chrome-border,#e2e8f0);border-radius:12px;z-index:90;max-height:60vh;overflow-y:auto;padding:12px;">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+  <div id="recentsPopup" hidden style="position:fixed;top:10px;left:10px;right:10px;bottom:10px;max-width:600px;margin:0 auto;background:var(--chrome-card,#fff);border:1px solid var(--chrome-border,#e2e8f0);border-radius:12px;z-index:90;display:flex;flex-direction:column;overflow:hidden;">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:12px;border-bottom:1px solid var(--chrome-border,#e2e8f0);position:sticky;top:0;background:var(--chrome-card,#fff);z-index:1;">
       <strong>Recent verses</strong>
       <button onclick="toggleRecents()" aria-label="Close" style="background:none;border:none;font-size:18px;cursor:pointer;">×</button>
     </div>
-    <div id="recentsList"></div>
+    <div id="recentsList" style="overflow-y:auto;padding:12px;flex:1;"></div>
   </div>
   <!-- Batch-3: shortcuts line removed (now behind keyboard icon); recents moved to control bar -->
   <div id="kbdOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:100;align-items:center;justify-content:center;" onclick="if(event.target===this)toggleKbdOverlay(false)">
@@ -7705,12 +7705,22 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
           fillChapters(books[bookIdx]);
           chSel.value = String(d.chapter);
           loadChapter(d.chapter, function() {
-            // Scroll to the verse after chapter loads.
-            // v1.9.5: fixed selector (was [data-verse], rows use [data-v]).
-            setTimeout(function() {
+            // 2026-11-03: Robust scroll to verse — retry up to 5 times (300ms apart)
+            // in case verses aren't rendered yet. Falls back to top of list.
+            var attempts = 0;
+            function tryScrollToVerse() {
               var verseEl = document.querySelector('[data-v="' + d.verse + '"]');
-              if (verseEl) verseEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            }, 300);
+              if (verseEl) {
+                verseEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                // Also highlight briefly so the user sees which verse synced.
+                verseEl.style.outline = '2px solid var(--live-yellow,#F5D76E)';
+                setTimeout(function() { verseEl.style.outline = ''; }, 2000);
+              } else if (attempts < 5) {
+                attempts++;
+                setTimeout(tryScrollToVerse, 300);
+              }
+            }
+            setTimeout(tryScrollToVerse, 300);
           });
         }
       } catch (err) {}
@@ -8094,12 +8104,16 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         document.documentElement.style.setProperty('--chrome-primary-rgb', hexToRgb(darkMode ? j.chromeDarkPrimary : j.chromeLightPrimary));
       }
       renderOnAir();
-      markLiveRow();
-      markRecentRows();
-      // 2026-11-03: /api/verse does NOT return recents — fetch from /api/recents separately.
+      // 2026-11-03: Mark rows AFTER recents arrive (was marking before fetch completed,
+      // so lastRecents was empty and colors never showed).
       fetch('/api/recents').then(function(r) { return r.json(); }).then(function(rj) {
         renderRecents((rj && rj.recents) || []);
-      }).catch(function() {});
+        markLiveRow();
+        markRecentRows();
+      }).catch(function() {
+        markLiveRow();
+        markRecentRows();
+      });
       // 2026-11-02 item 18: poll-based fallback for dropdown sync (if SSE verseSelected
       // didn't fire). When sync is on and the live verse changed, update book/chapter dropdowns.
       if (syncEnabled && j.bookId && j.chapterNum) {

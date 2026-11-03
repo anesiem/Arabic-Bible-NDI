@@ -7188,7 +7188,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   applyLayout();
   loadAll();
   tick();
-  setInterval(loadAll, 5000);
+  setInterval(loadAll, 30000);
   setInterval(tick, 1000);
 </script>
 </body>

@@ -2041,7 +2041,7 @@ class TemplateRepository(context: Context) {
             val obj = JSONObject(json)
             if (obj.optString("name", "").trim().isEmpty()) return null
             // Sanity: a real style carries several known keys.
-            val knownKeys = listOf("fontFamily", "bgColorHex", "textColorHex", "verseFontSize", "style", "showCrossEmblem", "emblem", "autoFitMinVerseSp", "autoFitMaxVerseSp", "boxHeightPercent", "isFullScreen", "id", "useSystemFontForBrackets", "gradientColorHex2", "gradientAngleDeg", "gradientAnimation", "autoFitMinCitationSp", "autoFitRatioLock", "clearMode", "lineSpacingArabic", "lineSpacingEnglish", "autoFitFrozenRatio", "verseCitationGapArabicDp", "verseCitationGapEnglishDp", "boxLoopContinuous", "trueFullscreen", "citationAlignmentArabic", "citationAlignmentEnglish", "verseAlignmentEnglish", "textEffect", "textEffectDepthDp", "cardGlowRadiusDp", "showAccentBorderWidthDp")
+            val knownKeys = listOf("fontFamily", "bgColorHex", "textColorHex", "verseFontSize", "style", "showCrossEmblem", "emblem", "autoFitMinVerseSp", "autoFitMaxVerseSp", "boxHeightPercent", "isFullScreen", "id", "useSystemFontForBrackets", "gradientColorHex2", "gradientAngleDeg", "gradientAnimation", "autoFitMinCitationSp", "autoFitRatioLock", "clearMode", "lineSpacingArabic", "lineSpacingEnglish", "autoFitFrozenRatio", "verseCitationGapArabicDp", "verseCitationGapEnglishDp", "boxLoopContinuous", "trueFullscreen", "citationAlignmentArabic", "citationAlignmentEnglish", "verseAlignmentEnglish", "textEffect", "textEffectDepthDp", "cardGlowRadiusDp", "showAccentBorderWidthDp", "cardGlowOpacity", "accentOpacity")
             if (knownKeys.none { obj.has(it) }) return null
             fromJson(obj)
         } catch (e: Exception) {
@@ -2107,6 +2107,8 @@ class TemplateRepository(context: Context) {
             put("textEffectDepthDp", t.textEffectDepthDp.toDouble())
             put("cardGlowEnabled", t.cardGlowEnabled)
             put("cardGlowColorHex", t.cardGlowColorHex)
+            put("cardGlowOpacity", t.cardGlowOpacity.toDouble())
+            put("accentOpacity", t.accentOpacity.toDouble())
             put("emblem", t.emblem)
             put("bilingualMode", t.bilingualMode)
             put("languageMode", t.languageMode.name)
@@ -2240,6 +2242,8 @@ class TemplateRepository(context: Context) {
             cardGlowEnabled = if (obj.has("cardGlowEnabled")) obj.optBoolean("cardGlowEnabled", true)
                               else safeGlowDefault,
             cardGlowColorHex = obj.optString("cardGlowColorHex", "#000000"),
+            cardGlowOpacity = obj.optDouble("cardGlowOpacity", 1.0).toFloat(),
+            accentOpacity = obj.optDouble("accentOpacity", 1.0).toFloat(),
             // v1.7 migration: the legacy showCrossEmblem boolean becomes a
             // free emblem string; old "true" styles get the cross glyph.
             emblem = if (obj.has("emblem")) obj.optString("emblem", "")

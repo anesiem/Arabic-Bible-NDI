@@ -1191,6 +1191,9 @@ CollapsibleSection(
                         SliderWithLabel("سمك إطار التمييز (Border Thickness)", editingTemplate.showAccentBorderWidthDp, 1f..12f) {
                             onUpdate(editingTemplate.copy(showAccentBorderWidthDp = it))
                         }
+                        SliderWithLabel("شفافية الإطار (Border Opacity)", editingTemplate.accentOpacity, 0f..1f) {
+                            onUpdate(editingTemplate.copy(accentOpacity = it))
+                        }
                     }
 
                     // Split transitions (combined batch): the BOX
@@ -1613,6 +1616,9 @@ CollapsibleSection(
                 ColorGradePickerRow("لون توهج الكارت (Card Glow Color)", editingTemplate.cardGlowColorHex, { onUpdate(editingTemplate.copy(cardGlowColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor, previewTemplate = editingTemplate, previewField = "cardGlowColorHex")
                 SliderWithLabel("حجم نطاق التوهج (Glow Radius)", editingTemplate.cardGlowRadiusDp, 0f..48f) {
                     onUpdate(editingTemplate.copy(cardGlowRadiusDp = it))
+                }
+                SliderWithLabel("شفافية التوهج (Glow Opacity)", editingTemplate.cardGlowOpacity, 0f..1f) {
+                    onUpdate(editingTemplate.copy(cardGlowOpacity = it))
                 }
             }
         }

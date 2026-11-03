@@ -1347,6 +1347,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             put("cardGlowColorHex", tpl.cardGlowColorHex)
             put("cardGlowRadiusDp", tpl.cardGlowRadiusDp.toDouble())
             put("showAccentBorderWidthDp", tpl.showAccentBorderWidthDp.toDouble())
+            put("cardGlowOpacity", tpl.cardGlowOpacity.toDouble())
+            put("accentOpacity", tpl.accentOpacity.toDouble())
             put("emblem", tpl.emblem)
             // Combined batch: pure is derived from opacity 0 (toggle
             // removed); the legacy flag still counts, so old saves
@@ -6396,6 +6398,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             o.put("cardGlowColorHex", t.cardGlowColorHex)
             o.put("cardGlowRadiusDp", t.cardGlowRadiusDp.toDouble())
             o.put("showAccentBorderWidthDp", t.showAccentBorderWidthDp.toDouble())
+            o.put("cardGlowOpacity", t.cardGlowOpacity.toDouble())
+            o.put("accentOpacity", t.accentOpacity.toDouble())
             o.put("emblem", t.emblem)
             o.put("languageMode", t.languageMode.name)
             o.put("pureTransparent", t.isPureTransparentBackground)

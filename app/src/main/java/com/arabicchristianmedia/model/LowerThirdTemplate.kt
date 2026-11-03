@@ -391,6 +391,8 @@ data class LowerThirdTemplate(
     /** Independent glow on the lower-third card/container (where a card exists). */
     val cardGlowEnabled: Boolean = true,
     val cardGlowColorHex: String = "#000000",
+    val cardGlowOpacity: Float = 1.0f,
+    val accentOpacity: Float = 1.0f,
     /**
      * User emblem: any emoji/symbol typed via the system keyboard (empty = none).
      * Rendered next to the citation on every surface (NDI, HTTP, preview).

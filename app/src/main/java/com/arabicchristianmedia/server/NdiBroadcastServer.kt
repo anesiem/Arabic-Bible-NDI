@@ -7690,6 +7690,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     updateSyncBtn();
   }
   updateSyncBtn();
+  // Shared helper: find book index by bookId (replaces 3 duplicated loops).
+  function findBookIndex(bookId) {
+    for (var i = 0; i < books.length; i++) {
+      if (books[i].id === bookId) return i;
+    }
+    return -1;
+  }
   // SSE listener for verseSelected events from tablet.
   try {
     var syncEs = new EventSource('/events');
@@ -7698,10 +7705,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       try {
         var d = JSON.parse(e.data);
         // Find book index by bookId, update dropdowns, load chapter, scroll to verse.
-        var bookIdx = -1;
-        for (var i = 0; i < books.length; i++) {
-          if (books[i].id === d.bookId) { bookIdx = i; break; }
-        }
+        var bookIdx = findBookIndex(d.bookId);
         if (bookIdx >= 0) {
           curBookIdx = bookIdx;
           bookSel.value = String(bookIdx);
@@ -8099,17 +8103,17 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       renderOnAir();
       markLiveRow();
       markRecentRows();
-      renderRecents(j.recents || []);
+      // 2026-11-03: /api/verse does NOT return recents — fetch from /api/recents separately.
+      fetch('/api/recents').then(function(r) { return r.json(); }).then(function(rj) {
+        renderRecents((rj && rj.recents) || []);
+      }).catch(function() {});
       // 2026-11-02 item 18: poll-based fallback for dropdown sync (if SSE verseSelected
       // didn't fire). When sync is on and the live verse changed, update book/chapter dropdowns.
       if (syncEnabled && j.bookId && j.chapterNum) {
         var syncKey = j.bookId + ':' + j.chapterNum;
         if (window._lastSyncKey !== syncKey) {
           window._lastSyncKey = syncKey;
-          var sbIdx = -1;
-          for (var si = 0; si < books.length; si++) {
-            if (books[si].id === j.bookId) { sbIdx = si; break; }
-          }
+          var sbIdx = findBookIndex(j.bookId);
           // 2026-11-03: update dropdowns on ANY book/chapter change, not just book change
           // (was skipping when book stayed same but chapter changed).
           if (sbIdx >= 0) {

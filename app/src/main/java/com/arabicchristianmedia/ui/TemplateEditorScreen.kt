@@ -1253,12 +1253,13 @@ CollapsibleSection(
                                 selected = editingTemplate.animatedBackground == type,
                                 onClick = {
                                     // v2.0: apply coordinated card style pairing
+                                    // 2026-11-03: DO NOT auto-set bgOpacity — user controls it manually
+                                    // via the Background Opacity slider (was zeroing card on video select).
                                     val pairing = getBackgroundPairing(type)
                                     val updated = if (pairing != null) {
                                         editingTemplate.copy(
                                             animatedBackground = type,
                                             style = pairing.style,
-                                            bgOpacity = pairing.bgOpacity,
                                             accentColorHex = pairing.accentColorHex,
                                             isPureTransparentBackground = pairing.isPureTransparentBackground
                                         )
@@ -1594,22 +1595,20 @@ CollapsibleSection(
     }
 
     val glowSectionBlock: @Composable () -> Unit = {
-        // Glow only applies to card mode, not fullscreen — hide the section entirely
-        // in fullscreen so users don't see an empty expander (item 28).
-        if (!editingTemplate.isFullScreen) {
-            CollapsibleSection(
-                modifier = anchorModifier("glow"),
-                title = "IV — التوهج (Glow)",
-                // Batch-4: Glow never auto-expands — only manual tap or anchor.
-                initiallyExpanded = false,
-                expanded = isSectionExpanded("glow", false),
-                onExpandedChange = { setSectionExpanded("glow", it) },
-                summary = "Glow " + (if (editingTemplate.cardGlowEnabled) "on" else "off")
-            ) {
-                FeatureToggleRow("توهج الكارت (Card Glow)", editingTemplate.cardGlowEnabled, modifier = anchorModifier("shadow-glow")) { onUpdate(editingTemplate.copy(cardGlowEnabled = it)) }
-                if (editingTemplate.cardGlowEnabled) {
-                    ColorGradePickerRow("لون توهج الكارت (Card Glow Color)", editingTemplate.cardGlowColorHex, { onUpdate(editingTemplate.copy(cardGlowColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor, previewTemplate = editingTemplate, previewField = "cardGlowColorHex")
-                }
+        // 2026-11-03: Glow ALWAYS visible + expandable in both card and fullscreen modes
+        // (per Ashraf: "I want it to be always there and expand it also").
+        CollapsibleSection(
+            modifier = anchorModifier("glow"),
+            title = "IV — التوهج (Glow)",
+            // Batch-4: Glow never auto-expands — only manual tap or anchor.
+            initiallyExpanded = false,
+            expanded = isSectionExpanded("glow", false),
+            onExpandedChange = { setSectionExpanded("glow", it) },
+            summary = "Glow " + (if (editingTemplate.cardGlowEnabled) "on" else "off")
+        ) {
+            FeatureToggleRow("توهج الكارت (Card Glow)", editingTemplate.cardGlowEnabled, modifier = anchorModifier("shadow-glow")) { onUpdate(editingTemplate.copy(cardGlowEnabled = it)) }
+            if (editingTemplate.cardGlowEnabled) {
+                ColorGradePickerRow("لون توهج الكارت (Card Glow Color)", editingTemplate.cardGlowColorHex, { onUpdate(editingTemplate.copy(cardGlowColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor, previewTemplate = editingTemplate, previewField = "cardGlowColorHex")
             }
         }
     }

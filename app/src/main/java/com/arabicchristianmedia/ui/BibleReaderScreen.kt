@@ -961,7 +961,7 @@ fun BentoVerseCard(
     val targetColor = when {
         isLiveOnAir || isCued -> highlightColor
         inSermonList -> listColors.sermonTint
-        isRecent -> listColors.recentLine.copy(alpha = 0.25f)
+        isRecent -> listColors.recents // 2026-11-03: theme variable, no hardcoded alpha (user rule)
         else -> bento.card
     }
     val bgColor by animateColorAsState(targetColor, label = "cardBg")

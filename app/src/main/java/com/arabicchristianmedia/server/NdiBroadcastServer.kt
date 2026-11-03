@@ -7994,7 +7994,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     if (rj === lastRecentsJson) return;
     lastRecentsJson = rj;
     lastRecents = recents;
-    var list = document.getElementById('recentList');
+    var list = document.getElementById('recentsList'); // 2026-11-03: fixed ID typo (was 'recentList')
     var countEl = document.getElementById('recentsCount');
     if (countEl) { countEl.textContent = recents.length ? '(' + recents.length + ')' : ''; }
     if (!recents.length) { list.innerHTML = '<div class="hint">لم تفتح أي آية بعد.</div>'; markRecentRows(); return; }
@@ -8110,12 +8110,15 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
           for (var si = 0; si < books.length; si++) {
             if (books[si].id === j.bookId) { sbIdx = si; break; }
           }
-          if (sbIdx >= 0 && sbIdx !== curBookIdx) {
+          // 2026-11-03: update dropdowns on ANY book/chapter change, not just book change
+          // (was skipping when book stayed same but chapter changed).
+          if (sbIdx >= 0) {
+            var bookChanged = (sbIdx !== curBookIdx);
             curBookIdx = sbIdx;
             var bookSelEl = document.getElementById('bookSel');
             var chSelEl = document.getElementById('chSel');
-            if (bookSelEl) bookSelEl.value = String(sbIdx);
-            if (typeof fillChapters === 'function') fillChapters(books[sbIdx]);
+            if (bookSelEl && bookChanged) bookSelEl.value = String(sbIdx);
+            if (bookChanged && typeof fillChapters === 'function') fillChapters(books[sbIdx]);
             if (chSelEl) chSelEl.value = String(j.chapterNum);
             if (typeof loadChapter === 'function') loadChapter(j.chapterNum, function() {
               if (typeof scrollToVerse === 'function' && j.verseNum) scrollToVerse(j.verseNum);

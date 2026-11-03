@@ -5374,6 +5374,17 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         return map
     }
 
+    /** Load all saved sermons, returning empty list on error. */
+    private fun loadSavedSermons() = try { SermonStore(context).loadSaved() } catch (e: Exception) { emptyList() }
+
+    /** Find a sermon by id, returning null on error or if not found. */
+    private fun findSermon(id: String) = try { SermonStore(context).loadSaved().firstOrNull { it.id == id } } catch (e: Exception) { null }
+
+    /** Send a standard 404 "Sermon not found" JSON response. */
+    private fun sendSermonNotFound(out: OutputStream, id: String) {
+        sendJson(out, 404, """{"ok":false,"error":"Sermon not found: ${jsonEscape(id)}"}""")
+    }
+
     /** Send a JSON response with consistent {"ok": ...} shape. */
     private fun sendJson(out: OutputStream, statusCode: Int, json: String) {
         val bytes = json.toByteArray(Charsets.UTF_8)
@@ -5382,6 +5393,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             200 -> "OK"
             400 -> "Bad Request"
             404 -> "Not Found"
+            500 -> "Internal Server Error"
+            503 -> "Service Unavailable"
             else -> "OK"
         }
         writer.print("HTTP/1.1 $statusCode $statusText\r\n")
@@ -5512,6 +5525,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             sendJson(out, 400, "{\"ok\":false,\"error\":\"Provide ?book=<id>&chapter=<n>\"}")
             return
         }
+        if (chapter < 1) {
+            sendJson(out, 400, "{\"ok\":false,\"error\":\"chapter must be >= 1\"}")
+            return
+        }
         val verses = try { com.arabicchristianmedia.data.BibleRepository.getVerses(bookId, chapter) } catch (e: Exception) { emptyList() }
         // v1.9.2 (#5): "vn" is the verse number pre-formatted for the
         // page's browse language (Eastern Arabic numerals for ar, via the
@@ -5624,7 +5641,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     }
 
     private fun serveSermonList(out: OutputStream) {
-        val saved = try { SermonStore(context).loadSaved() } catch (e: Exception) { emptyList() }
+        val saved = loadSavedSermons()
         val sb = StringBuilder()
         sb.append("""{"ok":true,"sermons":[""")
         saved.forEachIndexed { i, s ->
@@ -5676,6 +5693,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
     private fun serveSermonById(out: OutputStream, cleanPath: String, fullPath: String, method: String, body: String) {
         val rest = cleanPath.removePrefix("/api/sermons/")
+        val queryParams = parseQueryParams(fullPath)
         // Export formats: /api/sermons/{id}.json|.txt|.md|.csv and /card.png
         val exportMatch = Regex("""^(.+)\.(json|txt|md|csv)$""").matchEntire(rest)
         if (exportMatch != null) {
@@ -5687,32 +5705,32 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         val action = parts.getOrNull(1) ?: ""
         when (action) {
             "" -> {
-                val saved = try { SermonStore(context).loadSaved().firstOrNull { it.id == id } } catch (e: Exception) { null }
+                val saved = findSermon(id)
                 if (saved == null) {
-                    sendJson(out, 404, """{"ok":false,"error":"Sermon not found: ${jsonEscape(id)}"}""")
+                    sendSermonNotFound(out, id)
                     return
                 }
                 sendJson(out, 200, """{"ok":true,"sermon":${savedSermonJson(saved.id, saved.name, saved.updatedAt, saved.entries)}}""")
             }
             "card.png" -> {
-                val index = parseQueryParams(fullPath)["index"]?.toIntOrNull() ?: 0
-                val saved = try { SermonStore(context).loadSaved().firstOrNull { it.id == id } } catch (e: Exception) { null }
+                val index = queryParams["index"]?.toIntOrNull() ?: 0
+                val saved = findSermon(id)
                 val ref = saved?.entries?.getOrNull(index)
                 val verse = ref?.let { try { BibleRepository.getVerses(it.bookId, it.chapter).firstOrNull { v -> v.verse == it.verse } } catch (e: Exception) { null } }
                 if (verse == null) {
                     sendJson(out, 404, """{"ok":false,"error":"Sermon verse not found: ${jsonEscape(id)} index $index"}""")
                     return
                 }
-                serveVerseCardPngForVerse(out, verse, parseQueryParams(fullPath)["template"] == "full")
+                serveVerseCardPngForVerse(out, verse, queryParams["template"] == "full")
             }
             "activate" -> {
                 if (method != "POST" && method != "GET") {
                     sendJson(out, 400, """{"ok":false,"error":"Use POST /api/sermons/$id/activate"}""")
                     return
                 }
-                val merge = parseQueryParams(fullPath)["merge"] == "1" || parseQueryParams(fullPath)["merge"] == "true"
+                val merge = queryParams["merge"] == "1" || queryParams["merge"] == "true"
                 val ok = try { onSermonActivate?.invoke(id, merge) } catch (e: Exception) { false } ?: false
-                if (!ok) sendJson(out, 404, """{"ok":false,"error":"Sermon not found: ${jsonEscape(id)}"}""")
+                if (!ok) sendSermonNotFound(out, id)
                 else sendJson(out, 200, """{"ok":true,"id":"${jsonEscape(id)}","merge":$merge}""")
             }
             "rename" -> {
@@ -5735,7 +5753,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                     return
                 }
                 val ok = try { onSermonDelete?.invoke(id) } catch (e: Exception) { false } ?: false
-                if (!ok) sendJson(out, 404, """{"ok":false,"error":"Sermon not found: ${jsonEscape(id)}"}""")
+                if (!ok) sendSermonNotFound(out, id)
                 else sendJson(out, 200, """{"ok":true,"deleted":"${jsonEscape(id)}"}""")
             }
             else -> sendJson(out, 404, """{"ok":false,"error":"Unknown sermon action: ${jsonEscape(action)}"}""")
@@ -5743,9 +5761,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     }
 
     private fun serveSermonExport(out: OutputStream, id: String, format: String) {
-        val saved = try { SermonStore(context).loadSaved().firstOrNull { it.id == id } } catch (e: Exception) { null }
+        val saved = findSermon(id)
         if (saved == null) {
-            sendJson(out, 404, """{"ok":false,"error":"Sermon not found: ${jsonEscape(id)}"}""")
+            sendSermonNotFound(out, id)
             return
         }
         if (format == "json") {
@@ -5979,22 +5997,21 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
      * the tablet, behind the LAN + future PIN design.
      */
     private fun serveRemoteSermonPage(out: OutputStream, id: String) {
-        val saved = try { SermonStore(context).loadSaved().firstOrNull { it.id == id } } catch (e: Exception) { null }
+        val saved = findSermon(id)
         if (saved == null) {
-            sendJson(out, 404, """{"ok":false,"error":"Sermon not found: ${jsonEscape(id)}"}""")
+            sendSermonNotFound(out, id)
             return
         }
-        fun htmlEscape(s: String) = s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
         val rows = StringBuilder()
         saved.entries.forEach { r ->
             val verse = try { BibleRepository.getVerses(r.bookId, r.chapter).firstOrNull { it.verse == r.verse } } catch (e: Exception) { null }
             if (verse != null) {
-                rows.append("<div class=\"vrow\"><div><b>${htmlEscape(verse.getFormattedEnglishCitation())} — ${htmlEscape(verse.getFormattedArabicCitation())}</b><div dir=\"rtl\">${htmlEscape(verse.arabicText)}</div><div>${htmlEscape(verse.englishText ?: "")}</div></div></div>")
+                rows.append("<div class=\"vrow\"><div><b>${xmlEscape(verse.getFormattedEnglishCitation())} — ${xmlEscape(verse.getFormattedArabicCitation())}</b><div dir=\"rtl\">${xmlEscape(verse.arabicText)}</div><div>${xmlEscape(verse.englishText ?: "")}</div></div></div>")
             }
         }
-        val html = """<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${htmlEscape(saved.name)} — Sermon (read-only)</title>
+        val html = """<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${xmlEscape(saved.name)} — Sermon (read-only)</title>
 <style>body{font-family:system-ui,sans-serif;background:#0d1117;color:#e6edf3;margin:0;padding:16px}main{max-width:900px;margin:auto}.vrow{border-bottom:1px solid #30363d;padding:12px 0}button{padding:10px 14px;border-radius:12px;border:1px solid #334155;background:transparent;color:inherit;cursor:pointer;margin:4px}</style></head>
-<body><main><h1>${htmlEscape(saved.name)}</h1><p>${saved.entries.size} verses — read-only. Copy or download; this page cannot trigger, clear, or edit.</p>
+<body><main><h1>${xmlEscape(saved.name)}</h1><p>${saved.entries.size} verses — read-only. Copy or download; this page cannot trigger, clear, or edit.</p>
 <button onclick="copyAll()">Copy all</button> <a href="/api/sermons/${saved.id}.json"><button>Download JSON</button></a> <a href="/api/sermons/${saved.id}.txt"><button>Download text</button></a>
 <div id="rows">$rows</div>
 <script>function copyAll(){var t=document.getElementById('rows').innerText;navigator.clipboard.writeText(t).then(function(){alert('Copied');});}</script>

@@ -5343,6 +5343,15 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     // ---- v1.8 remote API ----
 
     /** Parse URL query string into a decoded map. */
+    // Shared XML escaper (was duplicated in serveBibleShowXml and serveRssFeed).
+    private fun xmlEscape(s: String): String {
+        return s.replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace("\"", "&quot;")
+            .replace("'", "&apos;")
+    }
+
     private fun parseQueryParams(fullPath: String): Map<String, String> {
         val qIndex = fullPath.indexOf('?')
         if (qIndex < 0) return emptyMap()
@@ -6157,14 +6166,6 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         } catch (e: Exception) { "" }
         val bookAbbreviationOut = if (onAirXml) bookAbbreviationXml else ""
 
-        fun xmlEscape(s: String): String {
-            return s.replace("&", "&amp;")
-                .replace("<", "&lt;")
-                .replace(">", "&gt;")
-                .replace("\"", "&quot;")
-                .replace("'", "&apos;")
-        }
-
         val xml = buildString {
             append("""<?xml version="1.0" encoding="utf-8"?>""")
             append("\n<BibleShowData>\n")
@@ -6223,14 +6224,6 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     private fun serveRssFeed(out: OutputStream, tpl: LowerThirdTemplate, lang: String?, isFull: Boolean) {
         val onAir = isLive && currentVerse != null
         val d = if (onAir) computeBibleShowData(tpl) else null
-
-        fun xmlEscape(s: String): String {
-            return s.replace("&", "&amp;")
-                .replace("<", "&lt;")
-                .replace(">", "&gt;")
-                .replace("\"", "&quot;")
-                .replace("'", "&apos;")
-        }
 
         val feedTitle = if (isFull) "Arabic Bible NDI - Full Show" else "Arabic Bible NDI - Lower Third"
         val rss = buildString {

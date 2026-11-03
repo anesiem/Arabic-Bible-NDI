@@ -7144,7 +7144,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     // 2026-11-02 bugfix: /api/recents returns {"ok":true,"recents":[...]} —
     // renderRecents expects the bare array (was receiving the object, so
     // .length was undefined and the list always showed empty).
-    fetch('/api/recents').then(function (r) { return r.json(); }).then(function (d) { renderRecents(d.recents || []); }).catch(function () {});
+    fetch('/api/recents').then(function (r) { return r.json(); }).then(function (d) { renderRecents(d); }).catch(function () {});
   }
   el('gear').onclick = function () { var p = el('panel'); p.hidden = !p.hidden; };
   (function () {
@@ -7714,7 +7714,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             function tryScrollToVerse() {
               var verseEl = document.querySelector('[data-v="' + d.verse + '"]');
               if (verseEl) {
-                verseEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                verseEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
                 // Also highlight briefly so the user sees which verse synced.
                 verseEl.style.outline = '2px solid var(--live-yellow,#F5D76E)';
                 setTimeout(function() { verseEl.style.outline = ''; }, 2000);

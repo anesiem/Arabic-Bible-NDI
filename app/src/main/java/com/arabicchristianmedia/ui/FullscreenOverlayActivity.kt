@@ -64,10 +64,13 @@ class FullscreenOverlayActivity : ComponentActivity() {
         val templateRepo = TemplateRepository(this)
         val activeTplId = templateRepo.getActiveTemplateId()
         val template = templateRepo.getAllTemplates().firstOrNull { it.id == activeTplId }
-            ?: TemplateRepository.DEFAULT_TEMPLATES[0]
+            ?: TemplateRepository.DEFAULT_TEMPLATES.firstOrNull()
+            ?: LowerThirdTemplate(id = "default", name = "Default")
 
-        val defaultVerse = BibleRepository.getVerses("jhn", 3).firstOrNull { it.verse == 16 }
-            ?: BibleRepository.getVerses("jhn", 3).first()
+        val verses = BibleRepository.getVerses("jhn", 3)
+        val defaultVerse = verses.firstOrNull { it.verse == 16 }
+            ?: verses.firstOrNull()
+            ?: BibleVerse("jhn_3_16", "jhn", "يوحنا", "John", 3, 16, "لأنه هكذا أحب الله العالم...", "For God so loved the world...")
 
         setContent {
             FullscreenOverlayContent(

@@ -243,4 +243,14 @@ class ReferenceParserTest {
         assertNotNull(r)
         assertEquals("gen", r!!.book.id)
     }
+
+    @Test
+    fun parseMixedVerseListAndRange() {
+        val result = ReferenceParser.parse("التكوين ٤١: ٣٨، ٣٩، ٤١-٤٣", books)
+        assertNotNull(result)
+        assertEquals("gen", result!!.book.id)
+        assertEquals(41, result.chapter)
+        assertEquals(38, result.verse)
+        assertEquals(listOf(38, 39, 41, 42, 43), result.verseList)
+    }
 }

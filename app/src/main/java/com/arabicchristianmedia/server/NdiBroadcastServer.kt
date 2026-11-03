@@ -1345,6 +1345,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             put("textEffectDepthDp", tpl.textEffectDepthDp)
             put("cardGlowEnabled", tpl.cardGlowEnabled)
             put("cardGlowColorHex", tpl.cardGlowColorHex)
+            put("cardGlowRadiusDp", tpl.cardGlowRadiusDp.toDouble())
+            put("showAccentBorderWidthDp", tpl.showAccentBorderWidthDp.toDouble())
             put("emblem", tpl.emblem)
             // Combined batch: pure is derived from opacity 0 (toggle
             // removed); the legacy flag still counts, so old saves
@@ -2505,17 +2507,15 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         if (isNaN(r)) r = 0; if (isNaN(g)) g = 0; if (isNaN(b)) b = 0; if (isNaN(a)) a = 1;
         return { r: r, g: g, b: b, a: a };
       }
-      function cardGlowShadow(shape, alpha) {
-        // v1.9.2 (#3): the shadow draws whenever the card has a VISIBLE
-        // EDGE (any inset from the frame) — the same rule as NDI and the
-        // Editor preview — instead of the old blanket fullscreen ban.
-        // Lower's card is always inset in practice; Full is inset when
-        // any box slider leaves a gap.
+      function cardGlowShadow(alpha) {
         if (!data.cardGlowEnabled) return 'none';
         if (isFull && !(data.horizontalMarginPercent > 0 || data.positionBottomPercent > 0 || (data.boxHeightPercent ?? 100) < 100)) return 'none';
         var c = hexToRgb(data.cardGlowColorHex);
         if (!c) return 'none';
-        return shape + ' rgba(' + c.r + ',' + c.g + ',' + c.b + ',' + alpha + ')';
+        var rad = (data.cardGlowRadiusDp !== undefined) ? data.cardGlowRadiusDp : 16;
+        var blur = (rad * 2.5 * getStageScale()) + 'px';
+        var dy = (rad * 0.75 * getStageScale()) + 'px';
+        return '0 ' + dy + ' ' + blur + ' rgba(' + c.r + ',' + c.g + ',' + c.b + ',' + alpha + ')';
       }
       function textShadowCss() {
         // v1.8: directional shadow from the style's thickness (blur),
@@ -2620,30 +2620,15 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         var a1e = a1own * opacity, a2e = (g2.a !== undefined ? g2.a : 1) * opacity;
         var gA = 'rgba(' + r + ',' + g + ',' + b + ',' + a1e + ')';
         var gB = 'rgba(' + g2.r + ',' + g2.g + ',' + g2.b + ',' + a2e + ')';
-        cardBox.style.background = 'linear-gradient(' + gAngle + 'deg, ' + gA + ' 0%, ' + gB + ' 100%)';
-        cardBox.style.border = data.showAccentBorder ? (6 * getStageScale()) + 'px solid ' + accent : 'none';
-        cardBox.style.boxShadow = cardGlowShadow('0 16px 40px', 0.55);
+        var bwStr = ((data.showAccentBorderWidthDp !== undefined ? data.showAccentBorderWidthDp : 2) * 3 * getStageScale()) + 'px solid ' + accent;
+        cardBox.style.border = data.showAccentBorder ? bwStr : 'none';
+        cardBox.style.boxShadow = cardGlowShadow(0.55);
         if (gAnim === 'slide' && gSpeed > 0) {
           cardBox.style.backgroundSize = '200% 200%';
           cardBox.classList.add('bg-flow');
           cardBox.style.animationDuration = (15 / gSpeed) + 's';
         } else if (gAnim === 'pulse' && gSpeed > 0) {
-          // Combined batch, HTTP Pulse parity fix: DO NOT add
-          // bg-breath here. bg-breath is candleBreath (scale 1 to
-          // 1.1, opacity 0.7 to 1, alternate) on the whole cardBox,
-          // which zoomed the entire lower third on HTTP. NDI Pulse
-          // only breathes gradient alpha (0.7 to 1.0, same formula
-          // below), with no scale at all. Pulse is therefore driven
-          // by the post-chain timer below (alpha only, NDI formula),
-          // never by a transform on the card. NDI Pulse is untouched,
-          // Pulse itself is not removed, and no separate Zoom effect
-          // is added here (that is a separate proposal, pending).
-          // (No class, no animationDuration — timer below owns it.)
         } else if (gAnim === 'rotate' && gSpeed > 0 && !fullBleed) {
-          // CSS cannot animate a gradient angle on its own, so a
-          // 50ms timer turns it (NDI turns it natively at the same
-          // 30 deg/s at speed 1). Cleared at the top of this section
-          // on the next apply, so it never fights a new style.
           (function() {
             var base = gAngle, start = Date.now();
             window.__gradRotateTimer = setInterval(function() {
@@ -2653,25 +2638,23 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
           })();
         }
       } else if (data.style === 'CLASSIC_BANNER') {
-        // One-update item 11: first color's own alpha × card opacity.
+        var bwStr = ((data.showAccentBorderWidthDp !== undefined ? data.showAccentBorderWidthDp : 2) * 3 * getStageScale()) + 'px solid ' + accent;
         cardBox.style.backgroundColor = 'rgba(' + r + ',' + g + ',' + b + ',' + (a1own * opacity) + ')';
-        // v2.0: border width scaled (NDI stroke: 6 x frame scale); the
-        // corner radius keeps the scaled value set above (NDI honors the
-        // style's cornerRadiusDp for the banner too — was hardcoded 4px).
-        cardBox.style.borderRight = data.showAccentBorder ? (6 * getStageScale()) + 'px solid ' + accent : 'none';
+        cardBox.style.borderRight = data.showAccentBorder ? bwStr : 'none';
         cardBox.style.borderLeft = 'none';
-        cardBox.style.boxShadow = cardGlowShadow('0 12px 36px', 0.6);
+        cardBox.style.boxShadow = cardGlowShadow(0.6);
       } else if (data.style === 'ROYAL_LITURGICAL') {
+        var bwStr = ((data.showAccentBorderWidthDp !== undefined ? data.showAccentBorderWidthDp : 2) * 3 * getStageScale()) + 'px solid ' + accent;
         cardBox.style.background = 'linear-gradient(135deg, rgba(' + r + ',' + g + ',' + b + ',' + (a1own * opacity) + ') 0%, rgba(20,20,35,' + opacity + ') 100%)';
-        cardBox.style.border = data.showAccentBorder ? (6 * getStageScale()) + 'px solid ' + accent : 'none';
-        cardBox.style.boxShadow = cardGlowShadow('0 10px 40px', 0.7);
+        cardBox.style.border = data.showAccentBorder ? bwStr : 'none';
+        cardBox.style.boxShadow = cardGlowShadow(0.7);
       } else {
-        // One-update item 11: first color's own alpha × card opacity.
+        var bwStr = ((data.showAccentBorderWidthDp !== undefined ? data.showAccentBorderWidthDp : 2) * 3 * getStageScale()) + 'px solid ' + accent;
         cardBox.style.backgroundColor = 'rgba(' + r + ',' + g + ',' + b + ',' + (a1own * opacity) + ')';
         cardBox.style.backdropFilter = 'blur(16px)';
         cardBox.style.webkitBackdropFilter = 'blur(16px)';
-        cardBox.style.border = data.showAccentBorder ? (6 * getStageScale()) + 'px solid ' + accent : 'none';
-        cardBox.style.boxShadow = cardGlowShadow('0 16px 40px', 0.55);
+        cardBox.style.border = data.showAccentBorder ? bwStr : 'none';
+        cardBox.style.boxShadow = cardGlowShadow(0.55);
       }
 
       // Combined batch, HTTP layer fix: with a custom video, the
@@ -4243,11 +4226,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // behind video/card, under the visible-card rule (not !pure).
         // Follow-up (trueFullscreen): no card glow — the card is bypassed.
         if (!textOnly && !fullBleed && !tpl.isPureTransparentBackground && tpl.cardGlowEnabled && cardHasVisibleEdge) {
-            val (shadowDyCss, shadowBlurCss, shadowAlphaF) = when (tpl.style) {
-                TemplateStyle.CLASSIC_BANNER -> Triple(12f, 36f, 0.6f)
-                TemplateStyle.ROYAL_LITURGICAL -> Triple(10f, 40f, 0.7f)
-                else -> Triple(16f, 40f, 0.55f)
-            }
+            val shadowBlurCss = tpl.cardGlowRadiusDp * 2.5f
+            val shadowDyCss = tpl.cardGlowRadiusDp * 0.75f
+            val shadowAlphaF = 0.55f
             val glowCol = try { Color.parseColor(tpl.cardGlowColorHex) } catch (e: Exception) { Color.BLACK }
             val shadowCol = Color.argb(
                 (255 * shadowAlphaF * boxGlowFactor).toInt().coerceIn(0, 255),
@@ -4582,7 +4563,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         if (!textOnly && !fullBleed && !tpl.isPureTransparentBackground && tpl.showAccentBorder) {
             val accCol = try { Color.parseColor(tpl.accentColorHex) } catch (e: Exception) { Color.YELLOW }
             paint.color = accCol
-            paint.strokeWidth = 6f * scale
+            paint.strokeWidth = tpl.showAccentBorderWidthDp * 3f * scale
             paint.style = Paint.Style.STROKE
             canvas.drawRoundRect(rect, radius, radius, paint)
             paint.style = Paint.Style.FILL
@@ -6413,6 +6394,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             o.put("textEffectDepthDp", t.textEffectDepthDp.toDouble())
             o.put("cardGlowEnabled", t.cardGlowEnabled)
             o.put("cardGlowColorHex", t.cardGlowColorHex)
+            o.put("cardGlowRadiusDp", t.cardGlowRadiusDp.toDouble())
+            o.put("showAccentBorderWidthDp", t.showAccentBorderWidthDp.toDouble())
             o.put("emblem", t.emblem)
             o.put("languageMode", t.languageMode.name)
             o.put("pureTransparent", t.isPureTransparentBackground)
@@ -7141,7 +7124,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     }
     box.innerHTML = h;
     var cur = box.querySelector('.cur');
-    if (cur) { cur.scrollIntoView({ block: 'nearest' }); }
+    if (cur) { cur.scrollIntoView({ block: 'start', behavior: 'smooth' }); }
   }
   function renderRecents(d) {
     lastRecents = d;
@@ -7338,9 +7321,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   #controlBar #bookSel { flex: 2 1 140px; }
   #controlBar #chSel { flex: 1 1 64px; }
   #controlBar #langSel { flex: 1 1 80px; }
-  #controlBar #ref { flex: 2 1 140px; }
-  #controlBar #goBtn { width: auto; flex: none; padding: 12px 14px; min-height: 48px; font-size: 16px; }
-  #controlBar .onair { width: auto; flex: none; padding: 10px 14px; min-height: 44px; font-size: 14px; }
+  #controlBar #ref { flex: 2 1 140px; height: 44px; padding: 10px 12px; font-size: 15px; }
+  #controlBar #goBtn { width: auto; flex: none; height: 44px; min-height: 44px; padding: 8px 14px; font-size: 14px; font-weight: 700; border-radius: 12px; margin: 0; display: inline-flex; align-items: center; justify-content: center; }
+  #controlBar .onair { width: auto; flex: none; height: 44px; min-height: 44px; padding: 8px 14px; font-size: 14px; }
   #controlBar .livepill { max-width: none; flex: 1 1 140px; margin-top: 0; }
   /* Item 28: small neutral Clear button beside the ON AIR toggle. */
   #controlBar #clearBtn { width: auto; flex: none; padding: 12px 14px; min-height: 48px; font-size: 14px; font-weight: 700; background: transparent; border: 1px solid var(--chrome-border, #334155); color: inherit; border-radius: 16px; cursor: pointer; }
@@ -7420,6 +7403,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     /* One-update item 19: RTL Arabic support for the recents sheet. */
     body.recents-open #recentCard .vrow { direction: rtl; text-align: right; }
     body.recents-open #recentCard .vrow .ve { direction: ltr; text-align: left; }
+  }
+  @media (max-width: 480px) {
+    #controlBar .livepill { flex: 1 1 100%; max-width: 100%; text-align: center; justify-content: center; margin: 4px 0; }
+    #controlBar #ref { flex: 1 1 120px; }
+    #controlBar #goBtn { height: 44px; padding: 8px 12px; font-size: 14px; }
   }
   .vn { font-weight: 800; min-width: 30px; text-align: center; opacity: 0.65; padding-top: 2px; }
   .va { font-size: 17px; line-height: 1.8; }

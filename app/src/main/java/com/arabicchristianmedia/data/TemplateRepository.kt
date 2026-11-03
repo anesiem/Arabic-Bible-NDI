@@ -2041,7 +2041,7 @@ class TemplateRepository(context: Context) {
             val obj = JSONObject(json)
             if (obj.optString("name", "").trim().isEmpty()) return null
             // Sanity: a real style carries several known keys.
-            val knownKeys = listOf("fontFamily", "bgColorHex", "textColorHex", "verseFontSize", "style", "showCrossEmblem", "emblem", "autoFitMinVerseSp", "autoFitMaxVerseSp", "boxHeightPercent", "isFullScreen", "id", "useSystemFontForBrackets", "gradientColorHex2", "gradientAngleDeg", "gradientAnimation", "autoFitMinCitationSp", "autoFitRatioLock", "clearMode", "lineSpacingArabic", "lineSpacingEnglish", "autoFitFrozenRatio", "verseCitationGapArabicDp", "verseCitationGapEnglishDp", "boxLoopContinuous", "trueFullscreen", "citationAlignmentArabic", "citationAlignmentEnglish", "verseAlignmentEnglish", "textEffect", "textEffectDepthDp")
+            val knownKeys = listOf("fontFamily", "bgColorHex", "textColorHex", "verseFontSize", "style", "showCrossEmblem", "emblem", "autoFitMinVerseSp", "autoFitMaxVerseSp", "boxHeightPercent", "isFullScreen", "id", "useSystemFontForBrackets", "gradientColorHex2", "gradientAngleDeg", "gradientAnimation", "autoFitMinCitationSp", "autoFitRatioLock", "clearMode", "lineSpacingArabic", "lineSpacingEnglish", "autoFitFrozenRatio", "verseCitationGapArabicDp", "verseCitationGapEnglishDp", "boxLoopContinuous", "trueFullscreen", "citationAlignmentArabic", "citationAlignmentEnglish", "verseAlignmentEnglish", "textEffect", "textEffectDepthDp", "cardGlowRadiusDp", "showAccentBorderWidthDp")
             if (knownKeys.none { obj.has(it) }) return null
             fromJson(obj)
         } catch (e: Exception) {
@@ -2139,8 +2139,9 @@ class TemplateRepository(context: Context) {
             put("autoFitRatioLock", t.autoFitRatioLock)
             put("lineSpacingArabic", t.lineSpacingArabic.toDouble())
             put("lineSpacingEnglish", t.lineSpacingEnglish.toDouble())
-            if (t.autoFitFrozenRatio != null) put("autoFitFrozenRatio", t.autoFitFrozenRatio!!.toDouble())
             if (t.autoFitFrozenRatio != null) put("autoFitFrozenRatio", t.autoFitFrozenRatio.toDouble())
+            put("cardGlowRadiusDp", t.cardGlowRadiusDp.toDouble())
+            put("showAccentBorderWidthDp", t.showAccentBorderWidthDp.toDouble())
         }
     }
 
@@ -2293,7 +2294,9 @@ class TemplateRepository(context: Context) {
             autoFitRatioLock = obj.optBoolean("autoFitRatioLock", true),
             lineSpacingArabic = obj.optDouble("lineSpacingArabic", 1.5).toFloat().coerceIn(1f, 3f),
             lineSpacingEnglish = obj.optDouble("lineSpacingEnglish", 1.5).toFloat().coerceIn(1f, 3f),
-            autoFitFrozenRatio = if (obj.has("autoFitFrozenRatio")) obj.optDouble("autoFitFrozenRatio", 0.0).toFloat().takeIf { it > 0f } else null
+            autoFitFrozenRatio = if (obj.has("autoFitFrozenRatio")) obj.optDouble("autoFitFrozenRatio", 0.0).toFloat().takeIf { it > 0f } else null,
+            cardGlowRadiusDp = obj.optDouble("cardGlowRadiusDp", 16.0).toFloat().coerceIn(0f, 100f),
+            showAccentBorderWidthDp = obj.optDouble("showAccentBorderWidthDp", 2.0).toFloat().coerceIn(0f, 30f)
         ).let { migrateLegacyVideo(it) }
     }
 

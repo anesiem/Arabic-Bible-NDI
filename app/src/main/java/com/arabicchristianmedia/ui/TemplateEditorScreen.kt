@@ -1188,6 +1188,9 @@ CollapsibleSection(
                     }
                     if (editingTemplate.showAccentBorder) {
                         ColorGradePickerRow("لون إطار التمييز (Accent Color)", editingTemplate.accentColorHex, { onUpdate(editingTemplate.copy(accentColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor, previewTemplate = editingTemplate, previewField = "accentColorHex")
+                        SliderWithLabel("سمك إطار التمييز (Border Thickness)", editingTemplate.showAccentBorderWidthDp, 1f..12f) {
+                            onUpdate(editingTemplate.copy(showAccentBorderWidthDp = it))
+                        }
                     }
 
                     // Split transitions (combined batch): the BOX
@@ -1595,8 +1598,7 @@ CollapsibleSection(
     }
 
     val glowSectionBlock: @Composable () -> Unit = {
-        // 2026-11-03: Glow ALWAYS visible + expandable in both card and fullscreen modes
-        // (per Ashraf: "I want it to be always there and expand it also").
+    val glowSectionBlock: @Composable () -> Unit = {
         CollapsibleSection(
             modifier = anchorModifier("glow"),
             title = "IV — التوهج (Glow)",
@@ -1609,8 +1611,12 @@ CollapsibleSection(
             FeatureToggleRow("توهج الكارت (Card Glow)", editingTemplate.cardGlowEnabled, modifier = anchorModifier("shadow-glow")) { onUpdate(editingTemplate.copy(cardGlowEnabled = it)) }
             if (editingTemplate.cardGlowEnabled) {
                 ColorGradePickerRow("لون توهج الكارت (Card Glow Color)", editingTemplate.cardGlowColorHex, { onUpdate(editingTemplate.copy(cardGlowColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor, previewTemplate = editingTemplate, previewField = "cardGlowColorHex")
+                SliderWithLabel("حجم نطاق التوهج (Glow Radius)", editingTemplate.cardGlowRadiusDp, 0f..48f) {
+                    onUpdate(editingTemplate.copy(cardGlowRadiusDp = it))
+                }
             }
         }
+    }
     }
 
     val sheetBlock: @Composable () -> Unit = {

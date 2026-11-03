@@ -527,6 +527,10 @@ data class LowerThirdTemplate(
      * recorded value. Toggling auto-fit off/on never clears it.
      */
     val autoFitFrozenRatio: Float? = null,
+    /** Card glow radius / blur spread (dp) — default 16dp. */
+    val cardGlowRadiusDp: Float = 16f,
+    /** Accent border width (dp) — default 2dp. */
+    val showAccentBorderWidthDp: Float = 2f,
 )
 
 /** Auto-fit frozen-ratio math (one-update item 8), pure and unit-testable.

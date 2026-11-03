@@ -15,13 +15,15 @@
 .cxx
 local.properties
 .env
-debug.keystore
 # v1.7: never commit build outputs or signing keys
 *.apk
 *.aab
 *.keystore
 *.jks
 *.p12
+# Fixed debug keystore for CI — committed intentionally so all CI builds share
+# the same debug signature (no more install wipes). NOT a release key.
+!debug.keystore
 
 # Repo cleanup (2026-10-20): build outputs and IDE state stay local
 /app/release/

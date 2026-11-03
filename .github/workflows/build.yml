@@ -12,6 +12,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Generate fixed debug keystore (one-time)
+        run: |
+          if [ ! -f debug.keystore ]; then
+            keytool -genkeypair -keystore debug.keystore -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10950 -storepass android -keypass android -dname "CN=Android Debug,O=Android,C=US"
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add -f debug.keystore
+            git commit -m "CI: commit fixed debug keystore for stable debug signatures" || echo "Nothing to commit"
+            git push origin HEAD:${{ github.ref_name }} || echo "Push failed (may need workflow write permission)"
+          else
+            echo "debug.keystore already exists, skipping generation"
+          fi
       - uses: actions/setup-java@v4
         with:
           distribution: temurin

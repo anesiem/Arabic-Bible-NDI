@@ -82,7 +82,9 @@ android {
       }
     }
     debug {
-      signingConfig = signingConfigs.getByName("debug")
+      // Use the fixed debug keystore (committed to repo) so all CI builds
+      // share the same signature — no more install wipes.
+      signingConfig = signingConfigs.getByName("debugConfig")
     }
   }
   compileOptions {

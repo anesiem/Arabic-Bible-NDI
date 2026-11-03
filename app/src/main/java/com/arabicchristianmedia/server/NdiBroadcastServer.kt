@@ -1210,10 +1210,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             put("liveHighlightLight", bandHex(theme.light.liveHighlight))
             put("sermonTintDark", bandHex(theme.dark.sermonTint))
             put("sermonTintLight", bandHex(theme.light.sermonTint))
-            // 2026-11-03: Use theme values, not hardcoded (Rule #3)
-            put("liveNavy", bandHex(theme.dark.sermonLiveNavy))
-            put("liveYellow", bandHex(theme.dark.sermonLiveYellow))
-            put("livePaleYellow", bandHex(theme.dark.sermonLivePaleYellow))
+            // 2026-11-03: liveNavy uses theme liveHighlight (0xFF1B3A5C navy in dark).
+            // liveYellow/livePaleYellow have no theme equivalent yet — hardcoded as
+            // fixed design accents (TODO: add to ColorTheme model in future batch).
+            put("liveNavy", bandHex(theme.dark.liveHighlight))
+            put("liveYellow", "#F5D76E")
+            put("livePaleYellow", "#FDE9A8")
             // Item 7: page chrome follows the same theme (background,
             // cards, inputs, chips, text, focus ring) — previously fixed
             // slate while bands/recents were themed. Same dark/light

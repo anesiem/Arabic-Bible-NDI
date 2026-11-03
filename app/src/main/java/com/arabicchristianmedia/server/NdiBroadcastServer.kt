@@ -1210,9 +1210,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             put("liveHighlightLight", bandHex(theme.light.liveHighlight))
             put("sermonTintDark", bandHex(theme.dark.sermonTint))
             put("sermonTintLight", bandHex(theme.light.sermonTint))
-            put("liveNavy", "#1B3A5C")
-            put("liveYellow", "#F5D76E")
-            put("livePaleYellow", "#FDE9A8")
+            // 2026-11-03: Use theme values, not hardcoded (Rule #3)
+            put("liveNavy", bandHex(theme.dark.sermonLiveNavy))
+            put("liveYellow", bandHex(theme.dark.sermonLiveYellow))
+            put("livePaleYellow", bandHex(theme.dark.sermonLivePaleYellow))
             // Item 7: page chrome follows the same theme (background,
             // cards, inputs, chips, text, focus ring) — previously fixed
             // slate while bands/recents were themed. Same dark/light
@@ -7542,12 +7543,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     <select id="bookSel" aria-label="Book"><option value="">Loading books…</option></select>
   </div>
   <!-- Recents popup with close button -->
-  <div id="recentsPopup" hidden style="position:fixed;top:10px;left:10px;right:10px;bottom:10px;max-width:600px;margin:0 auto;background:var(--chrome-card,#fff);border:1px solid var(--chrome-border,#e2e8f0);border-radius:12px;z-index:90;display:flex;flex-direction:column;overflow:hidden;">
+  <div id="recentsPopup" hidden style="position:fixed;top:10px;left:10px;right:10px;bottom:10px;max-width:600px;margin:0 auto;background:var(--chrome-card,#fff);border:1px solid var(--chrome-border,#e2e8f0);border-radius:12px;z-index:90;overflow:hidden;">
     <div style="display:flex;justify-content:space-between;align-items:center;padding:12px;border-bottom:1px solid var(--chrome-border,#e2e8f0);position:sticky;top:0;background:var(--chrome-card,#fff);z-index:1;">
       <strong>Recent verses</strong>
       <button onclick="toggleRecents()" aria-label="Close" style="background:none;border:none;font-size:18px;cursor:pointer;">×</button>
     </div>
-    <div id="recentsList" style="overflow-y:auto;padding:12px;flex:1;"></div>
+    <div id="recentsList" style="overflow-y:auto;padding:12px;height:calc(100% - 60px);"></div>
   </div>
   <!-- Batch-3: shortcuts line removed (now behind keyboard icon); recents moved to control bar -->
   <div id="kbdOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:100;align-items:center;justify-content:center;" onclick="if(event.target===this)toggleKbdOverlay(false)">

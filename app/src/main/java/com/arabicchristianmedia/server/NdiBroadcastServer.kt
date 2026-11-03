@@ -7530,7 +7530,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 </header>
 <main>
   <!-- v1.9.5: Row 2 — [Recent] left, [ref input with Go inside] right -->
-  <div class="card" id="refBar" dir="rtl" style="display:flex;align-items:center;gap:8px;">
+  <div class="card" id="refBar" dir="rtl" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
     <button id="recentsBtn" onclick="toggleRecents()" aria-label="Recents">&#128341; Recent</button>
     <!-- 2026-11-02: flexbox layout (was absolute positioning, broke on narrow RTL screens). -->
     <div style="display:flex;flex:1;gap:4px;max-width:320px;min-width:0;">
@@ -7719,7 +7719,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             function tryScrollToVerse() {
               var verseEl = document.querySelector('[data-v="' + d.verse + '"]');
               if (verseEl) {
-                verseEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                verseEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 // Also highlight briefly so the user sees which verse synced.
                 verseEl.style.outline = '2px solid var(--live-yellow,#F5D76E)';
                 setTimeout(function() { verseEl.style.outline = ''; }, 2000);

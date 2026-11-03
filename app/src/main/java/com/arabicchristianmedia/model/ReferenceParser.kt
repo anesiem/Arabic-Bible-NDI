@@ -54,37 +54,61 @@ object ReferenceParser {
             return ParsedReference(book, chapter, verse, endVerse = endVerse)
         }
 
-        // v1.9.1: verse-list form — "John 3:16, 18" -> verses [16, 18] of
-        // chapter 3, in written order (duplicates dropped). The separator
-        // is the Western "," or the Arabic "،".
-        val listMatch = Regex("""(\d+)\s*:\s*(\d+)((?:\s*[,،]\s*\d+)+)\s*$""").find(normalized)
+        // v2.0 (enhanced): flexible verse list & mixed range form — "John 3:16, 18, 20-22" or "التكوين ٤١: ٣٨، ٣٩، ٤١-٤٣".
+        // Matches <book> <chapter> : <verse-expr> ending the string.
+        val listMatch = Regex("""(.*?)\s+(\d+)\s*:\s*(.+)""").find(normalized)
         if (listMatch != null) {
-            val chapter = listMatch.groupValues[1].toIntOrNull() ?: return null
-            val first = listMatch.groupValues[2].toIntOrNull() ?: return null
-            val rest = Regex("""\d+""").findAll(listMatch.groupValues[3]).map { it.value.toInt() }.toList()
-            val verses = (listOf(first) + rest).distinct()
-            if (chapter < 1 || verses.any { it < 1 }) return null
-            val bookPart = normalized.substring(0, listMatch.range.first).trim()
-            if (bookPart.isEmpty()) return null
+            val bookPart = listMatch.groupValues[1].trim()
+            val chapter = listMatch.groupValues[2].toIntOrNull() ?: return null
+            val verseExpr = listMatch.groupValues[3].trim()
+
+            if (bookPart.isEmpty() || chapter < 1) return null
             val book = findBook(bookPart, books) ?: return null
             if (chapter > book.totalChapters) return null
-            return ParsedReference(book, chapter, verses.first(), verseList = verses)
+
+            val verses = mutableListOf<Int>()
+            val parts = verseExpr.split(Regex("[,،]"))
+            for (part in parts) {
+                val p = part.trim()
+                if (p.isEmpty()) continue
+                if (p.contains("-")) {
+                    val rangeParts = p.split("-").map { it.trim() }
+                    if (rangeParts.size == 2) {
+                        val start = rangeParts[0].toIntOrNull() ?: return null
+                        val end = rangeParts[1].toIntOrNull() ?: return null
+                        if (start < 1 || end < start) return null
+                        for (v in start..end) {
+                            verses.add(v)
+                        }
+                    } else {
+                        return null
+                    }
+                } else {
+                    val v = p.toIntOrNull() ?: return null
+                    if (v < 1) return null
+                    verses.add(v)
+                }
+            }
+
+            if (verses.isEmpty()) return null
+            val distinctVerses = verses.distinct()
+
+            if (distinctVerses.size == 1 && !verseExpr.contains("-")) {
+                return ParsedReference(book, chapter, distinctVerses[0])
+            }
+
+            if (!verseExpr.contains(",") && !verseExpr.contains("،") && verseExpr.contains("-")) {
+                val start = distinctVerses.first()
+                val end = distinctVerses.last()
+                if (distinctVerses.size == (end - start + 1)) {
+                    return ParsedReference(book, chapter, start, endVerse = end)
+                }
+            }
+
+            return ParsedReference(book, chapter, distinctVerses.first(), verseList = distinctVerses)
         }
 
-        // Split into book part and chapter:verse part.
-        // The chapter:verse is at the end: "John 3:16" -> book="John", cv="3:16"
-        val cvMatch = Regex("""(\d+)\s*:\s*(\d+)\s*$""").find(normalized) ?: return null
-        val chapter = cvMatch.groupValues[1].toIntOrNull() ?: return null
-        val verse = cvMatch.groupValues[2].toIntOrNull() ?: return null
-        if (chapter < 1 || verse < 1) return null
-
-        val bookPart = normalized.substring(0, cvMatch.range.first).trim()
-        if (bookPart.isEmpty()) return null
-
-        val book = findBook(bookPart, books) ?: return null
-        if (chapter > book.totalChapters) return null
-
-        return ParsedReference(book, chapter, verse)
+        return null
     }
 
     /**

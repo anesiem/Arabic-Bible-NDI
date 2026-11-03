@@ -1145,6 +1145,9 @@ CollapsibleSection(
                     }
                     if (editingTemplate.showAccentBorder) {
                         ColorGradePickerRow("لون إطار التمييز (Accent Color)", editingTemplate.accentColorHex, { onUpdate(editingTemplate.copy(accentColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor, previewTemplate = editingTemplate, previewField = "accentColorHex")
+                        SliderWithLabel("سمك إطار التمييز (Border Thickness)", editingTemplate.showAccentBorderWidthDp, 1f..12f) {
+                            onUpdate(editingTemplate.copy(showAccentBorderWidthDp = it))
+                        }
                     }
 
                     // Split transitions (combined batch): the BOX
@@ -1537,6 +1540,9 @@ CollapsibleSection(
                         FeatureToggleRow("توهج الكارت (Card Glow)", editingTemplate.cardGlowEnabled, modifier = anchorModifier("shadow-glow")) { onUpdate(editingTemplate.copy(cardGlowEnabled = it)) }
                         if (editingTemplate.cardGlowEnabled) {
                             ColorGradePickerRow("لون توهج الكارت (Card Glow Color)", editingTemplate.cardGlowColorHex, { onUpdate(editingTemplate.copy(cardGlowColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor, previewTemplate = editingTemplate, previewField = "cardGlowColorHex")
+                            SliderWithLabel("حجم نطاق التوهج (Glow Radius)", editingTemplate.cardGlowRadiusDp, 0f..48f) {
+                                onUpdate(editingTemplate.copy(cardGlowRadiusDp = it))
+                            }
                         }
                     }                }
     }

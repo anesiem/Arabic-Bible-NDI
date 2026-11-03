@@ -383,16 +383,15 @@ fun BroadcastControlScreen(
             border = androidx.compose.foundation.BorderStroke(1.dp, bento.secondary),
             modifier = Modifier.fillMaxWidth()
         ) {
-            Row(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     Box(
                         contentAlignment = Alignment.Center,
@@ -409,17 +408,21 @@ fun BroadcastControlScreen(
                         )
                     }
                     Spacer(modifier = Modifier.width(12.dp))
-                    Column {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = "عرض الشاشة الشفافة الكامل",
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold,
-                            color = bento.onPrimaryContainer
+                            color = bento.onPrimaryContainer,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                         Text(
                             text = "HDMI capture or NDI Screen capture ready",
                             fontSize = 10.sp,
-                            color = bento.textSecondary
+                            color = bento.textSecondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
@@ -427,13 +430,26 @@ fun BroadcastControlScreen(
                 Surface(
                     shape = RoundedCornerShape(16.dp),
                     color = bento.primary,
+                    onClick = onLaunchFullscreenOverlay,
                     modifier = Modifier
-                        .clip(RoundedCornerShape(16.dp))
-                        .clickable(onClick = onLaunchFullscreenOverlay)
-                        .padding(horizontal = 14.dp, vertical = 8.dp)
+                        .fillMaxWidth()
                         .testTag("fullscreen_overlay_button")
                 ) {
-                    Text("عرض سفلي بملء الشاشة", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.onPrimary)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 10.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            "عرض سفلي بملء الشاشة",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = bento.onPrimary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
             }
         }

@@ -525,15 +525,18 @@ fun BroadcastControlScreen(
             }
             // 1.9.3: Override toggle — when ON, color applies to both Lower and Full Show.
             // 1.9.4: fixed overlap — Column layout with proper spacing.
+            // Item 21 (1.9.8): ensure no overlap — each element on its own line.
             Spacer(modifier = Modifier.height(8.dp))
             Column(
                 modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text(
                     text = "تطبيق اللون على العرضين",
                     fontSize = 12.sp,
-                    color = bento.textSecondary
+                    color = bento.textSecondary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
                 )
                 androidx.compose.material3.Switch(
                     checked = uiState.hdmiBackgroundOverride,

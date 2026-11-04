@@ -721,6 +721,15 @@ fun TemplateEditorScreen(
                         SliderWithLabel("سفلي (Bottom)", editingTemplate.cardPaddingBottomDp, 0f..120f) { onUpdate(editingTemplate.copy(cardPaddingBottomDp = it)) }
                         SliderWithLabel("أيسر (Left)", editingTemplate.cardPaddingLeftDp, 0f..160f) { onUpdate(editingTemplate.copy(cardPaddingLeftDp = it)) }
                         SliderWithLabel("أيمن (Right)", editingTemplate.cardPaddingRightDp, 0f..160f) { onUpdate(editingTemplate.copy(cardPaddingRightDp = it)) }
+                        // Item 24 (1.9.8): redirect note when trueFullscreen ignores padding.
+                        if (editingTemplate.trueFullscreen) {
+                            Text(
+                                "ملاحظة: يتم تجاهل الحشو في وضع ملء الشاشة الحقيقي (Note: padding ignored in True Fullscreen)",
+                                fontSize = 11.sp,
+                                color = bento.textSecondary,
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
                     }
                     Spacer(Modifier.height(8.dp))
 

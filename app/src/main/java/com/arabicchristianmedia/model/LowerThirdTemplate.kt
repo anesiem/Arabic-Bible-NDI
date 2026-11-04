@@ -298,7 +298,7 @@ data class LowerThirdTemplate(
     val name: String,
     val style: TemplateStyle = TemplateStyle.TRANSPARENT_OUTLINE,
     val bgColorHex: String = "#000000",
-    val bgOpacity: Float = 0.0f,
+    val bgOpacity: Float = 0.85f,
     val accentColorHex: String = "#F59E0B",
     val textColorHex: String = "#FFFFFF",
     val referenceColorHex: String = "#FBBF24",

@@ -2607,11 +2607,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         cardBox.style.boxShadow = 'none';
         cardBox.style.borderRadius = '0';
       } else if (data.isPureTransparentBackground) { // v1.9: toggle is the single authority (was: style check overrode it)
+        // Item 16 (1.9.8): respect the glow setting even on transparent
+        // background — don't force it off.
         cardBox.style.backgroundColor = 'transparent';
         cardBox.style.backdropFilter = 'none';
         cardBox.style.webkitBackdropFilter = 'none';
         cardBox.style.border = 'none';
-        cardBox.style.boxShadow = 'none';
+        cardBox.style.boxShadow = cardGlowShadow(data.cardGlowOpacity !== undefined ? data.cardGlowOpacity : 1);
       } else if (data.gradientEnabled) {
         // Two-color gradient at the user's angle, at bgOpacity, on
         // both renderers (NDI uses the same colors/angle/opacity).
@@ -2639,7 +2641,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
           cardBox.classList.add('bg-flow');
           cardBox.style.animationDuration = (15 / gSpeed) + 's';
         } else if (gAnim === 'pulse' && gSpeed > 0) {
-        } else if (gAnim === 'rotate' && gSpeed > 0 && !fullBleed) {
+        } else if (gAnim === 'rotate' && gSpeed > 0) {
+          // Item 23 (1.9.8): allow in true fullscreen too.
           (function() {
             var base = gAngle, start = Date.now();
             window.__gradRotateTimer = setInterval(function() {
@@ -2683,7 +2686,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       // animations like golden_rays use the same video layer and would
       // otherwise render ABOVE the card color; NDI draws card color over
       // the animation). was: custom_video only.
-      var isAnimBgActive = !fullBleed && data.animatedBackground && data.animatedBackground !== 'none';
+      // Item 23 (1.9.8): allow animated background in true fullscreen too.
+      var isAnimBgActive = data.animatedBackground && data.animatedBackground !== 'none';
       var isCustomVideoActive = isAnimBgActive && (data.animatedBackground === 'custom_video' && !!data.customVideoId);
       var showCardFillOverlay = isAnimBgActive;
       if (showCardFillOverlay) {
@@ -4236,7 +4240,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // fill (drawn after) covers the interior exactly. Drawn first,
         // behind video/card, under the visible-card rule (not !pure).
         // Follow-up (trueFullscreen): no card glow — the card is bypassed.
-        if (!textOnly && !fullBleed && !tpl.isPureTransparentBackground && tpl.cardGlowEnabled && cardHasVisibleEdge) {
+        // Item 16 (1.9.8): respect glow on transparent background too.
+        if (!textOnly && !fullBleed && tpl.cardGlowEnabled && cardHasVisibleEdge) {
             val shadowBlurCss = tpl.cardGlowRadiusDp * 2.5f
             val shadowDyCss = tpl.cardGlowRadiusDp * 0.75f
             val shadowAlphaF = tpl.cardGlowOpacity
@@ -4263,7 +4268,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // last frame (the first static render kick-starts decoding).
         val customVideoFile = resolveCustomVideoFile(tpl, isFull)
         val videoRenderer = if (customVideoFile != null) getVideoRenderer(isFull) else null
-        if (!textOnly && videoRenderer != null && customVideoFile != null) {
+        // Item 14 (1.9.8): Full Show + video → skip the card fill so the
+        // video shows through (card draws border/glow/text only). Lower unchanged.
+        val isVideoActive = !textOnly && videoRenderer != null && customVideoFile != null
+        if (isVideoActive) {
             videoRenderer.setSource(customVideoFile)
             videoRenderer.setAlpha(tpl.animatedBackgroundOpacity)
             videoRenderer.setMuted(tpl.customVideoMuted)
@@ -4330,12 +4338,14 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         }
 
         // Combined batch: pure is opacity 0 (or the legacy flag).
+        // Item 14: skip the fill in Full Show when video is active.
         val isPureDerived = tpl.bgOpacity <= 0f || tpl.isPureTransparentBackground
-        if (!textOnly && !isPureDerived) {
+        if (!textOnly && !isPureDerived && !(isFull && isVideoActive)) {
             val bgAlpha = (tpl.bgOpacity * 255).toInt().coerceIn(0, 255)
             val baseBgCol = try { Color.parseColor(tpl.bgColorHex) } catch (e: Exception) { Color.DKGRAY }
 
-            if (tpl.gradientEnabled && !fullBleed) {
+            if (tpl.gradientEnabled) {
+                // Item 23 (1.9.8): allow gradient in true fullscreen too.
                 // Design-gradient card (2026-10-28 batch): two colors at
                 // the user's angle, at bgOpacity, on BOTH renderers.
                 // It draws OVER a custom video (video is the bottom
@@ -7309,10 +7319,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   }
   input:focus, select:focus { border-color: var(--chrome-primary, #3b82f6); box-shadow: 0 0 0 3px rgba(var(--chrome-primary-rgb, 59,130,246), 0.25); }
   .btn {
-    width: 100%; padding: 16px; font-size: 19px; font-weight: 700;
+    width: 100%; max-width: 100%; padding: 16px; font-size: 19px; font-weight: 700;
     border: none; border-radius: 16px; cursor: pointer;
     background: #16a34a; color: #fff; min-height: 60px;
+    overflow: hidden; white-space: nowrap; text-overflow: ellipsis; flex-shrink: 1;
   }
+  /* Item 18 (1.9.8): green button max-width — prevent overflow on mobile. */
   .btn:active { transform: scale(0.98); opacity: 0.9; }
   .onair {
     width: 100%; padding: 16px; font-size: 18px; font-weight: 800;
@@ -7340,7 +7352,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   #controlBar #langSel { flex: 1 1 80px; }
   #controlBar #ref { flex: 2 1 140px; height: 44px; padding: 10px 12px; font-size: 15px; }
   #controlBar #goBtn { width: auto; flex: none; height: 44px; min-height: 44px; padding: 8px 14px; font-size: 14px; font-weight: 700; border-radius: 12px; margin: 0; display: inline-flex; align-items: center; justify-content: center; }
-  #controlBar .onair { width: auto; flex: none; height: 44px; min-height: 44px; padding: 8px 14px; font-size: 14px; }
+  #controlBar .onair { width: auto; flex: none; height: 44px; min-height: 44px; padding: 8px 14px; font-size: 14px; max-width: 110px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  /* Item 17 (1.9.8): ON AIR button sizing — prevent overflow on mobile. */
   #controlBar .livepill { max-width: none; flex: 1 1 140px; margin-top: 0; }
   /* Item 28: small neutral Clear button beside the ON AIR toggle. */
   #controlBar #clearBtn { width: auto; flex: none; padding: 12px 14px; min-height: 48px; font-size: 14px; font-weight: 700; background: transparent; border: 1px solid var(--chrome-border, #334155); color: inherit; border-radius: 16px; cursor: pointer; }
@@ -7383,6 +7396,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   }
   .vrow.kbd-focus { outline: 3px solid var(--live-yellow, #F5D76E); outline-offset: -3px; border-radius: 10px; }
   .vrow.live { background: var(--live-bg, #1B3A5C); border: 2px solid var(--live-yellow, #F5D76E); border-radius: 10px; color: var(--live-text, #FFFFFF); }
+  /* Item 20 (1.9.8): persistent synced-verse highlight — high contrast. */
+  .vrow.synced-live { background: var(--live-bg, #1B3A5C); border: 3px solid var(--live-yellow, #F5D76E); border-radius: 10px; color: #FFFFFF; outline: 2px solid var(--live-yellow, #F5D76E); outline-offset: 2px; }
   .vrow.recent { border-inline-start: 3px solid var(--recents, #0D9488); padding-inline-start: 9px; }
   /* 2026-10-28 remote redesign: tablet RTL control order (Clear
      rightmost, then smaller ON AIR, live pill, Arabic, book, chapter
@@ -7561,8 +7576,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   </div>
   <!-- v1.9.5: Row 3 — [prev][next][chapter][book] (book rightmost) -->
   <div class="card" id="browseBar" dir="ltr" style="display:flex;align-items:center;gap:8px;">
-    <button id="prevChBtn" onclick="stepChapter(-1)" aria-label="Previous chapter">&#9664;</button>
-    <button id="nextChBtn" onclick="stepChapter(1)" aria-label="Next chapter">&#9654;</button>
+    <button id="prevChBtn" onclick="stepChapter(-1)" aria-label="Previous chapter">&#9654;</button>
+    <button id="nextChBtn" onclick="stepChapter(1)" aria-label="Next chapter">&#9664;</button>
+    <!-- Item 19 (1.9.8): RTL — arrows point in reading direction (previous=right, next=left). -->
     <select id="chSel" aria-label="Chapter"></select>
     <select id="bookSel" aria-label="Book"><option value="">Loading books…</option></select>
   </div>
@@ -7663,7 +7679,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       var dx = e.changedTouches[0].clientX - startX;
       var dy = e.changedTouches[0].clientY - startY;
       if (Math.abs(dx) > 80 && Math.abs(dx) > Math.abs(dy) * 1.5) {
-        stepChapter(dx < 0 ? 1 : -1);
+        // Item 19 (1.9.8): RTL — swipe left = previous, swipe right = next.
+        var isRtl = document.documentElement.dir === 'rtl' || document.body.dir === 'rtl';
+        stepChapter(isRtl ? (dx < 0 ? -1 : 1) : (dx < 0 ? 1 : -1));
       }
     }, {passive: true});
   })();
@@ -7738,8 +7756,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
               if (verseEl) {
                 verseEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 // Also highlight briefly so the user sees which verse synced.
-                verseEl.style.outline = '2px solid var(--live-yellow,#F5D76E)';
-                setTimeout(function() { verseEl.style.outline = ''; }, 2000);
+                // Item 20 (1.9.8): persistent highlight — stays until another verse syncs.
+                var prevLive = vList.querySelector('.vrow.synced-live');
+                if (prevLive) prevLive.classList.remove('synced-live');
+                verseEl.classList.add('synced-live');
               } else if (attempts < 5) {
                 attempts++;
                 setTimeout(tryScrollToVerse, 300);

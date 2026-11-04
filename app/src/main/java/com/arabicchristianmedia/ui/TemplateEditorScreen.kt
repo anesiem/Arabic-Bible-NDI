@@ -1150,7 +1150,7 @@ CollapsibleSection(
                         androidx.compose.material3.Surface(shape = RoundedCornerShape(12.dp), border = androidx.compose.foundation.BorderStroke(1.dp, bento.border), color = bento.surfaceVariant) {
                             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("ألوان التدرج المرتبطة (Linked gradient colors)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary)
-                        ColorGradePickerRow("اللون الأول (First color)", editingTemplate.bgColorHex, { onUpdate(editingTemplate.copy(bgColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor, previewTemplate = editingTemplate, previewField = "bgColorHex")
+                        Text("اللون الأول = لون البطاقة أعلاه", fontSize = 11.sp, color = bento.textSecondary)
                         ColorGradePickerRow("اللون الثاني (Second color)", editingTemplate.gradientColorHex2, { onUpdate(editingTemplate.copy(gradientColorHex2 = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor, previewTemplate = editingTemplate, previewField = "gradientColorHex2")
                         SliderWithLabel("زاوية التدرج (Angle, 0-360°)", editingTemplate.gradientAngleDeg.toFloat(), 0f..360f) { onUpdate(editingTemplate.copy(gradientAngleDeg = it.toInt())) }
                         val gradientAnims = listOf(
@@ -1601,7 +1601,6 @@ CollapsibleSection(
     }
 
     val glowSectionBlock: @Composable () -> Unit = {
-    val glowSectionBlock: @Composable () -> Unit = {
         CollapsibleSection(
             modifier = anchorModifier("glow"),
             title = "IV — التوهج (Glow)",
@@ -1622,7 +1621,6 @@ CollapsibleSection(
                 }
             }
         }
-    }
     }
 
     val sheetBlock: @Composable () -> Unit = {

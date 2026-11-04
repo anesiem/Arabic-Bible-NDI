@@ -2453,7 +2453,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       const av = hex.length >= 9 ? parseInt(hex.slice(7,9), 16) / 255 : 1;
       const a1own = isNaN(av) ? 1 : av;
 
-      const accent = data.accentColorHex || '#E5A93C';
+      const accentHex = data.accentColorHex || '#E5A93C';
+      const accentOpacity = (data.accentOpacity !== undefined) ? data.accentOpacity : 1;
+      const accentRgb = hexToRgb(accentHex);
+      const accent = accentRgb ? 'rgba(' + accentRgb.r + ',' + accentRgb.g + ',' + accentRgb.b + ',' + accentOpacity + ')' : accentHex;
       const textColor = data.textColorHex || '#FFFFFF';
       // v1.8: In ENGLISH_ONLY, use the English citation color for clear design.
       const refColor = langMode === 'ENGLISH_ONLY'
@@ -2624,7 +2627,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         var gB = 'rgba(' + g2.r + ',' + g2.g + ',' + g2.b + ',' + a2e + ')';
         var bwStr = ((data.showAccentBorderWidthDp !== undefined ? data.showAccentBorderWidthDp : 2) * 3 * getStageScale()) + 'px solid ' + accent;
         cardBox.style.border = data.showAccentBorder ? bwStr : 'none';
-        cardBox.style.boxShadow = cardGlowShadow(0.55);
+        cardBox.style.boxShadow = cardGlowShadow(data.cardGlowOpacity !== undefined ? data.cardGlowOpacity : 1);
+        // 1.9.8: 3-stop gradient for seamless FLOW/SLIDE looping (matches NDI).
+        var isSeamlessAnim = (gAnim === 'flow' || gAnim === 'slide');
+        var gradBg = isSeamlessAnim
+          ? 'linear-gradient(' + gAngle + 'deg, ' + gA + ' 0%, ' + gB + ' 50%, ' + gA + ' 100%)'
+          : 'linear-gradient(' + gAngle + 'deg, ' + gA + ' 0%, ' + gB + ' 100%)';
+        cardBox.style.background = gradBg;
         if (gAnim === 'slide' && gSpeed > 0) {
           cardBox.style.backgroundSize = '200% 200%';
           cardBox.classList.add('bg-flow');
@@ -2635,7 +2644,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             var base = gAngle, start = Date.now();
             window.__gradRotateTimer = setInterval(function() {
               var a = (base + (Date.now() - start) / 1000 * 30 * gSpeed) % 360;
-              cardBox.style.background = 'linear-gradient(' + a + 'deg, ' + gA + ' 0%, ' + gB + ' 100%)';
+              cardBox.style.background = 'linear-gradient(' + a + 'deg, ' + gA + ' 0%, ' + gB + ' 50%, ' + gA + ' 100%)';
             }, 50);
           })();
         }
@@ -2644,19 +2653,19 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         cardBox.style.backgroundColor = 'rgba(' + r + ',' + g + ',' + b + ',' + (a1own * opacity) + ')';
         cardBox.style.borderRight = data.showAccentBorder ? bwStr : 'none';
         cardBox.style.borderLeft = 'none';
-        cardBox.style.boxShadow = cardGlowShadow(0.6);
+        cardBox.style.boxShadow = cardGlowShadow(data.cardGlowOpacity !== undefined ? data.cardGlowOpacity : 1);
       } else if (data.style === 'ROYAL_LITURGICAL') {
         var bwStr = ((data.showAccentBorderWidthDp !== undefined ? data.showAccentBorderWidthDp : 2) * 3 * getStageScale()) + 'px solid ' + accent;
         cardBox.style.background = 'linear-gradient(135deg, rgba(' + r + ',' + g + ',' + b + ',' + (a1own * opacity) + ') 0%, rgba(20,20,35,' + opacity + ') 100%)';
         cardBox.style.border = data.showAccentBorder ? bwStr : 'none';
-        cardBox.style.boxShadow = cardGlowShadow(0.7);
+        cardBox.style.boxShadow = cardGlowShadow(data.cardGlowOpacity !== undefined ? data.cardGlowOpacity : 1);
       } else {
         var bwStr = ((data.showAccentBorderWidthDp !== undefined ? data.showAccentBorderWidthDp : 2) * 3 * getStageScale()) + 'px solid ' + accent;
         cardBox.style.backgroundColor = 'rgba(' + r + ',' + g + ',' + b + ',' + (a1own * opacity) + ')';
         cardBox.style.backdropFilter = 'blur(16px)';
         cardBox.style.webkitBackdropFilter = 'blur(16px)';
         cardBox.style.border = data.showAccentBorder ? bwStr : 'none';
-        cardBox.style.boxShadow = cardGlowShadow(0.55);
+        cardBox.style.boxShadow = cardGlowShadow(data.cardGlowOpacity !== undefined ? data.cardGlowOpacity : 1);
       }
 
       // Combined batch, HTTP layer fix: with a custom video, the
@@ -4230,7 +4239,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         if (!textOnly && !fullBleed && !tpl.isPureTransparentBackground && tpl.cardGlowEnabled && cardHasVisibleEdge) {
             val shadowBlurCss = tpl.cardGlowRadiusDp * 2.5f
             val shadowDyCss = tpl.cardGlowRadiusDp * 0.75f
-            val shadowAlphaF = 0.55f
+            val shadowAlphaF = tpl.cardGlowOpacity
             val glowCol = try { Color.parseColor(tpl.cardGlowColorHex) } catch (e: Exception) { Color.BLACK }
             val shadowCol = Color.argb(
                 (255 * shadowAlphaF * boxGlowFactor).toInt().coerceIn(0, 255),
@@ -4563,7 +4572,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // video styles never showed a border on NDI.
         // Follow-up (trueFullscreen): no border — the card is bypassed.
         if (!textOnly && !fullBleed && !tpl.isPureTransparentBackground && tpl.showAccentBorder) {
-            val accCol = try { Color.parseColor(tpl.accentColorHex) } catch (e: Exception) { Color.YELLOW }
+            val accColBase = try { Color.parseColor(tpl.accentColorHex) } catch (e: Exception) { Color.YELLOW }
+            val accCol = Color.argb(
+                (255 * tpl.accentOpacity).toInt().coerceIn(0, 255),
+                Color.red(accColBase), Color.green(accColBase), Color.blue(accColBase)
+            )
             paint.color = accCol
             paint.strokeWidth = tpl.showAccentBorderWidthDp * 3f * scale
             paint.style = Paint.Style.STROKE

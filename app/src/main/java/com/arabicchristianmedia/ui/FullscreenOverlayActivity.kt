@@ -67,15 +67,29 @@ class FullscreenOverlayActivity : ComponentActivity() {
             ?: TemplateRepository.DEFAULT_TEMPLATES.firstOrNull()
             ?: LowerThirdTemplate(id = "default", name = "Default")
 
+        // 1.9.8: Try to get the live verse from the mode extra, fallback to John 3:16.
+        val mode = intent.getStringExtra("mode")
+        val verseRef = intent.getStringExtra("verse_ref")
+        val defaultVerse = if (verseRef != null) {
+            // Parse verse_ref (format: "book_chapter_verse") and load it
+            try {
+                val parts = verseRef.split("_")
+                if (parts.size == 3) {
+                    val verses = BibleRepository.getVerses(parts[0], parts[1].toInt())
+                    verses.firstOrNull { it.verse == parts[2].toInt() }
+                } else null
+            } catch (e: Exception) { null }
+        } else null
         val verses = BibleRepository.getVerses("jhn", 3)
-        val defaultVerse = verses.firstOrNull { it.verse == 16 }
+        val fallbackVerse = verses.firstOrNull { it.verse == 16 }
             ?: verses.firstOrNull()
             ?: BibleVerse("jhn_3_16", "jhn", "يوحنا", "John", 3, 16, "لأنه هكذا أحب الله العالم...", "For God so loved the world...")
+        val verseToShow = defaultVerse ?: fallbackVerse
 
         setContent {
             FullscreenOverlayContent(
                 template = template,
-                verse = defaultVerse,
+                verse = verseToShow,
                 onClose = { finish() }
             )
         }

@@ -144,7 +144,7 @@ fun BroadcastControlScreen(
     // Batch-3: /stream background dots (moved from Editor) — controls the
     // MJPEG /stream background only.
     onStreamBackgroundChange: (com.arabicchristianmedia.model.StreamBackgroundMode) -> Unit = {},
-    // 1.9.3: Launch Full Show full-screen (VersePresentation).
+    // 1.9.8: Launch Full Show full-screen (via FullscreenOverlayActivity).
     onLaunchFullscreenShow: () -> Unit = {},
     // 1.9.3: HDMI background override toggle.
     onHdmiBackgroundOverrideChange: (Boolean) -> Unit = {},
@@ -458,7 +458,7 @@ fun BroadcastControlScreen(
                     }
                 }
             }
-            // 1.9.3: Full Show full-screen button (uses Full Show template via VersePresentation)
+            // 1.9.8: Full Show full-screen button (uses Full Show template via FullscreenOverlayActivity)
             // 1.9.4: fixed overlap — use Column with proper spacing instead of
             // compressed Row with weight.
             Spacer(modifier = Modifier.height(8.dp))

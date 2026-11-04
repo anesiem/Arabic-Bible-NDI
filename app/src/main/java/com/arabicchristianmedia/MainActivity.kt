@@ -671,9 +671,11 @@ class MainActivity : ComponentActivity() {
                                     val intent = Intent(context, FullscreenOverlayActivity::class.java)
                                     context.startActivity(intent)
                                 },
-                                // 1.9.3: Launch Full Show full-screen (VersePresentation).
+                                // 1.9.8: Launch Full Show via FullscreenOverlayActivity (VersePresentation was not an Activity).
                                 onLaunchFullscreenShow = {
-                                    val intent = Intent(context, com.arabicchristianmedia.ui.VersePresentation::class.java)
+                                    val intent = Intent(context, com.arabicchristianmedia.ui.FullscreenOverlayActivity::class.java).apply {
+                                        putExtra("mode", "show_full")
+                                    }
                                     context.startActivity(intent)
                                 },
                                 onHdmiBackgroundOverrideChange = { viewModel.setHdmiBackgroundOverride(it) },

@@ -2052,12 +2052,17 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         cardBox.classList.remove('mode-full-show');
       }
 
-      // 2. Text Content (v1.8: three-way language mode)
-      const langMode = data.languageMode || (data.bilingual ? 'BOTH' : 'ARABIC_ONLY');
-      const showArabic = langMode !== 'ENGLISH_ONLY';
+      // 2. Text Content (Item 27: per-language toggles; fallback to legacy languageMode)
+      const showArabic = data.showArabic !== undefined ? data.showArabic : (function() {
+        const lm = data.languageMode || (data.bilingual ? 'BOTH' : 'ARABIC_ONLY');
+        return lm !== 'ENGLISH_ONLY';
+      })();
       // v1.8: English section is shown in BOTH and ENGLISH_ONLY (with its own colors).
       // No color swapping — each language keeps its own styling.
-      const showEnglishSection = langMode !== 'ARABIC_ONLY' && data.englishText;
+      const showEnglishSection = (data.showEnglish !== undefined ? data.showEnglish : (function() {
+        const lm = data.languageMode || (data.bilingual ? 'BOTH' : 'ARABIC_ONLY');
+        return lm !== 'ARABIC_ONLY';
+      })()) && data.englishText;
       const transType = data.transition || 'SLIDE_UP';
       const transDur = data.transitionDurationMs !== undefined ? data.transitionDurationMs : 350;
       const verseChanged = lastVerseText !== null && lastVerseText !== data.arabicText;
@@ -2471,7 +2476,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       const accent = accentRgb ? 'rgba(' + accentRgb.r + ',' + accentRgb.g + ',' + accentRgb.b + ',' + accentOpacity + ')' : accentHex;
       const textColor = data.textColorHex || '#FFFFFF';
       // v1.8: In ENGLISH_ONLY, use the English citation color for clear design.
-      const refColor = langMode === 'ENGLISH_ONLY'
+      // Item 27: use showArabic toggle (not deprecated langMode).
+      const refColor = !showArabic
         ? (data.secondaryReferenceColorHex || '#94A3B8')
         : (data.referenceColorHex || '#F4D06F');
 
@@ -6068,9 +6074,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         val dotNetTicks = System.currentTimeMillis() * 10000L + 621355968000000000L
 
         // v1.8: Respect the Lower Third language mode.
-        val langMode = tpl.languageMode
-        val showArabic = langMode != LanguageMode.ENGLISH_ONLY
-        val showEnglish = langMode != LanguageMode.ARABIC_ONLY
+        // Item 27: use the per-language toggles (not deprecated languageMode).
+        val showArabic = tpl.showArabic
+        val showEnglish = tpl.showEnglish
         // Numbers in Eastern Arabic when Arabic is shown (BOTH uses Arabic numbers per Ashraf).
         val useEasternNumbers = showArabic && tpl.useEasternArabicNumerals
 
@@ -6125,10 +6131,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 append(englishVerse)
             }
         }
-        val bibleLanguage = when (langMode) {
-            LanguageMode.ARABIC_ONLY -> "Arabic"
-            LanguageMode.ENGLISH_ONLY -> "English"
-            LanguageMode.BOTH -> "Arabic,English"
+        // Item 27: derive from toggles (not deprecated langMode).
+        val bibleLanguage = when {
+            showArabic && showEnglish -> "Arabic,English"
+            showEnglish -> "English"
+            else -> "Arabic"
         }
         // v1.9.1: each slot declares its own version, so a consumer never has
         // to guess which text it received (Ashraf). Arabic is always the

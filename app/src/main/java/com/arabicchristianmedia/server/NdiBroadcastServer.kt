@@ -391,7 +391,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                             handleClient(clientSocket)
                         }
                     } catch (e: Exception) {
-                        break
+                        // Item 26 (1.9.8): don't kill the accept loop on a
+                        // transient failure (e.g. connection flood from rapid
+                        // taps). Back off briefly and continue accepting.
+                        // Note: hypothesis — not log-confirmed.
+                        try { delay(500) } catch (_: Exception) { }
+                        continue
                     }
                 }
             }

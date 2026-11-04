@@ -23,8 +23,12 @@ object ReferenceScanner {
      * book (2 Kings), not verse 2 of the current chapter. Without this,
      * "Jos5:11,2Ki23:21" parsed as Joshua 5:[11,2] and lost 2 Kings 23:21.
      * The space-separated case (", 2 John") is handled below, in scan(),
-     * by checking whether a book name follows the digit. */
-    private val VERSE_REF = Regex("""(\d+)\s*:\s*(\d+)(?:\s*-\s*(\d+)|(\s*(?:[,،]\s*\d+(?:\s*-\s*\d+)?(?![A-Za-z\u0600-\u06FF]))+))?""")
+     * by checking whether a book name follows the digit.
+     * Item 25 (1.9.8): the lookahead was [A-Za-z\u0600-\u06FF] which
+     * wrongly blocked the Arabic comma ، (U+060C) — "41:38، 39" backtracked
+     * to "41:38، 3". Now blocks letters only (Latin + Arabic U+0621-U+064A),
+     * allowing Arabic punctuation. */
+    private val VERSE_REF = Regex("""(\d+)\s*:\s*(\d+)(?:\s*-\s*(\d+)|(\s*(?:[,،]\s*\d+(?:\s*-\s*\d+)?(?![A-Za-z\u0621-\u064A]))+))?""")
     // Batch-3: the list part now allows ranges per item (was: \d+ only),
     // so "41:38، 39، 41-43" captures 38, 39, AND 41-43 (was dropping -43).
 

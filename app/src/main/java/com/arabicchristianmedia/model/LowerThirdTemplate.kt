@@ -405,7 +405,11 @@ data class LowerThirdTemplate(
      */
     val bilingualMode: Boolean = false,
     /** v1.8: three-way language control (replaces [bilingualMode]). */
+    @Deprecated("Use showArabic/showEnglish instead (item 27)")
     val languageMode: LanguageMode = LanguageMode.ARABIC_ONLY,
+    /** Item 27: per-language visibility toggles (replaces [languageMode]). */
+    val showArabic: Boolean = true,
+    val showEnglish: Boolean = true,
     val isPureTransparentBackground: Boolean = true,
     val animatedBackground: AnimatedBackgroundType = AnimatedBackgroundType.NONE,
     val animatedBackgroundOpacity: Float = 0.65f,

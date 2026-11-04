@@ -9,8 +9,10 @@ import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.ServiceInfo
+import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import android.util.Log
 import com.arabicchristianmedia.MainActivity
 import com.arabicchristianmedia.R
@@ -271,6 +273,11 @@ class NdiService : Service() {
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    // Item 31: wake locks to keep the server alive when the app is backgrounded.
+    // WiFi lock prevents the radio from sleeping; partial wake lock keeps CPU running.
+    private var wifiLock: WifiManager.WifiLock? = null
+    private var wakeLock: PowerManager.WakeLock? = null
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
@@ -282,6 +289,24 @@ class NdiService : Service() {
         ensureServer(this)
         ensureSender(this)
         createNotificationChannel()
+        // Item 31: acquire wake locks so the HTTP server survives backgrounding.
+        // WiFi lock keeps the radio up; partial wake lock keeps the CPU running.
+        try {
+            val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+            wifiLock = wifiManager.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "ArabicBibleNDI::HttpServer").apply {
+                acquire()
+            }
+        } catch (e: Exception) {
+            Log.w("NdiService", "Failed to acquire WiFi lock", e)
+        }
+        try {
+            val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+            wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "ArabicBibleNDI::HttpServer").apply {
+                acquire()
+            }
+        } catch (e: Exception) {
+            Log.w("NdiService", "Failed to acquire wake lock", e)
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -362,6 +387,11 @@ class NdiService : Service() {
 
     override fun onDestroy() {
         serviceScope.cancel()
+        // Item 31: release wake locks.
+        try { wifiLock?.let { if (it.isHeld) it.release() } } catch (e: Exception) { /* ignore */ }
+        try { wakeLock?.let { if (it.isHeld) it.release() } } catch (e: Exception) { /* ignore */ }
+        wifiLock = null
+        wakeLock = null
         // Defensive: the server releases its socket, SSE clients, video decoders,
         // and the Wi-Fi/multicast locks inside stop().
         try { sender?.stopAll() } catch (e: Exception) { /* ignore */ }

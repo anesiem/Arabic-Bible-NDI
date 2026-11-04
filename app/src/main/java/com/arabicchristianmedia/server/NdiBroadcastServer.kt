@@ -1311,6 +1311,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             put("verseNum", verse?.verse ?: 0)
             put("bilingual", tpl.languageMode == LanguageMode.BOTH)
             put("languageMode", tpl.languageMode.name)
+            put("showArabic", tpl.showArabic)
+            put("showEnglish", tpl.showEnglish)
             put("style", tpl.style.name)
             put("bgColorHex", tpl.bgColorHex)
             put("bgOpacity", tpl.bgOpacity)
@@ -1564,7 +1566,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
     .card-inner-content {
       position: relative;
-      z-index: 1;
+      z-index: 3;
       width: 100%;
     }
 
@@ -1655,6 +1657,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
        section 7 — these only supply the motion). */
     .bg-flow { animation: smoothFlow 15s linear infinite; }
     .bg-breath { animation: candleBreath 5s ease-in-out infinite alternate; }
+    /* Item 37: pulse animation for gradient opacity. */
+    .bg-pulse { animation: gradientPulse 3s ease-in-out infinite alternate; }
+    @keyframes gradientPulse {
+      0% { filter: brightness(0.85); }
+      100% { filter: brightness(1.15); }
+    }
     @keyframes particleBreath {
       0% { filter: brightness(0.8); }
       100% { filter: brightness(1.3); }
@@ -1734,12 +1742,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
              card fill (flat or gradient, at bgOpacity) onto this
              overlay and clears the box background, matching the NDI
              stack: text > card color > video > glow. -->
-        <div id="card-fill-overlay" style="display:none; position:absolute; inset:0; width:100%; height:100%; pointer-events:none; border-radius:inherit;"></div>
+        <div id="card-fill-overlay" style="display:none; position:absolute; inset:0; width:100%; height:100%; pointer-events:none; border-radius:inherit; z-index:2;"></div>
         <!-- v1.9.1 parity: the particle canvas is a DIRECT child of the card,
              above its background and below the content (NDI's paint order).
              It used to live inside the animated layer, which Lower mode
              zeroes out — the stars never showed on HTTP Lower at all. -->
-        <canvas id="particle-canvas" style="display:none; position:absolute; inset:0; width:100%; height:100%; pointer-events:none;"></canvas>
+        <canvas id="particle-canvas" style="display:none; position:absolute; inset:0; width:100%; height:100%; pointer-events:none; z-index:1;"></canvas>
 
         <div class="card-inner-content">
           <div id="citation-row" class="citation-badge">
@@ -2017,18 +2025,14 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
       const isFull = data.isFullScreen || $forceFullScreen;
 
-      // Follow-up: true fullscreen bypasses the card/box on the Full feed
-      // (edge-to-edge verse, no card chrome) — NDI parity.
-      const fullBleed = isFull && data.trueFullscreen === true;
-
-      // v1.9: per-side card padding (design dp at 1920, same basis as the NDI
-      // renderer) — replaces the old hardcoded paddings.
+      // Item 35: true fullscreen is now a template macro (not a renderer branch).
+      // The macro sets margins/padding/border/glow to 0 in the template values;
+      // the renderer just renders what the template says. No fullBleed overrides.
       function padPx(dp) { return (dp * getStageScale()) + 'px'; }
-      // Follow-up: true fullscreen ignores the card padding (edge-to-edge).
-      const padT = fullBleed ? '0px' : padPx(data.cardPaddingTopDp ?? 32);
-      const padB = fullBleed ? '0px' : padPx(data.cardPaddingBottomDp ?? 32);
-      const padL = fullBleed ? '0px' : padPx(data.cardPaddingLeftDp ?? 36);
-      const padR = fullBleed ? '0px' : padPx(data.cardPaddingRightDp ?? 36);
+      const padT = padPx(data.cardPaddingTopDp ?? 32);
+      const padB = padPx(data.cardPaddingBottomDp ?? 32);
+      const padL = padPx(data.cardPaddingLeftDp ?? 36);
+      const padR = padPx(data.cardPaddingRightDp ?? 36);
 
       // v1.8: viewport-relative font sizing — the style's font sizes are
       // designed for a 1920-wide canvas (like NDI); scale to the actual
@@ -2169,8 +2173,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         container.style.marginBottom = (data.positionBottomPercent ?? 6) + 'vh';
         // Follow-up: true fullscreen ignores the box's horizontal margins
         // (edge-to-edge); the bottom position still places the text block.
-        container.style.marginLeft = fullBleed ? '0' : (data.horizontalMarginPercent ?? 6) + 'vw';
-        container.style.marginRight = fullBleed ? '0' : (data.horizontalMarginPercent ?? 6) + 'vw';
+        container.style.marginLeft = (data.horizontalMarginPercent ?? 6) + 'vw';
+        container.style.marginRight = (data.horizontalMarginPercent ?? 6) + 'vw';
         container.style.width = '';
         // v1.9.2 (#7): clamped like the renderers — box top stays in frame.
         container.style.height = Math.min(data.boxHeightPercent || 100, 100 - (data.positionBottomPercent ?? 0)) + '%';
@@ -2194,8 +2198,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         citationRow.style.display = 'flex';
         citationRow.style.width = '100%';
         // Batch-3: per-language citation alignment (default RIGHT).
+        // Item 36: use physical alignment — in RTL containers flex-start/flex-end
+        // are direction-relative, so LEFT was rendering on the right. Swap the
+        // mapping for the Arabic (RTL) citation row.
         var citeAlignAr = data.citationAlignmentArabic || 'RIGHT';
-        citationRow.style.justifyContent = citeAlignAr === 'CENTER' ? 'center' : (citeAlignAr === 'LEFT' ? 'flex-start' : 'flex-end');
+        citationRow.style.justifyContent = citeAlignAr === 'CENTER' ? 'center' : (citeAlignAr === 'LEFT' ? 'flex-end' : 'flex-start');
 
         verseText.style.width = '100%';
         verseText.style.textAlign = alignCss;
@@ -2593,7 +2600,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       // this section, so clearing here cannot strand a style.
       if (window.__gradRotateTimer) { clearInterval(window.__gradRotateTimer); window.__gradRotateTimer = null; }
       if (window.__boxMotionTimer) { clearInterval(window.__boxMotionTimer); window.__boxMotionTimer = null; }
-      cardBox.classList.remove('bg-flow');
+      cardBox.classList.remove('bg-flow'); cardBox.classList.remove('bg-pulse');
       cardBox.classList.remove('bg-breath');
       cardBox.style.animationDuration = '';
 
@@ -2601,17 +2608,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       // Batch-3: true fullscreen keeps the background color (bgColorHex at
       // bgOpacity) but skips all chrome (border/shadow/radius/glow) — was:
       // skipped the card paint entirely, losing the background.
-      if (fullBleed) {
-        cardFillOverlay.style.display = 'none';
-        if (!data.isPureTransparentBackground) {
-          cardBox.style.backgroundColor = 'rgba(' + r + ',' + g + ',' + b + ',' + (a1own * opacity) + ')';
-        } else {
-          cardBox.style.backgroundColor = 'transparent';
-        }
-        cardBox.style.border = 'none';
-        cardBox.style.boxShadow = 'none';
-        cardBox.style.borderRadius = '0';
-      } else if (data.isPureTransparentBackground) { // v1.9: toggle is the single authority (was: style check overrode it)
+      // Item 35: fullBleed branch deleted — the fullscreen macro sets the
+      // template values (margins 0, border off, glow off); the renderer
+      // just renders the template.
+      if (data.isPureTransparentBackground) { // v1.9: toggle is the single authority (was: style check overrode it)
         // Item 16 (1.9.8): respect the glow setting even on transparent
         // background — don't force it off.
         cardBox.style.backgroundColor = 'transparent';
@@ -2635,17 +2635,26 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         var bwStr = ((data.showAccentBorderWidthDp !== undefined ? data.showAccentBorderWidthDp : 2) * 3 * getStageScale()) + 'px solid ' + accent;
         cardBox.style.border = data.showAccentBorder ? bwStr : 'none';
         cardBox.style.boxShadow = cardGlowShadow(data.cardGlowOpacity !== undefined ? data.cardGlowOpacity : 1);
-        // 1.9.8: 3-stop gradient for seamless FLOW/SLIDE looping (matches NDI).
+        // Item 37: 4-stop gradient (A-B-A-B) for visible seamless FLOW/SLIDE.
+        // The old 3-stop A-B-A was symmetric — sliding showed no motion.
         var isSeamlessAnim = (gAnim === 'flow' || gAnim === 'slide');
         var gradBg = isSeamlessAnim
-          ? 'linear-gradient(' + gAngle + 'deg, ' + gA + ' 0%, ' + gB + ' 50%, ' + gA + ' 100%)'
+          ? 'linear-gradient(' + gAngle + 'deg, ' + gA + ' 0%, ' + gB + ' 33%, ' + gA + ' 66%, ' + gB + ' 100%)'
           : 'linear-gradient(' + gAngle + 'deg, ' + gA + ' 0%, ' + gB + ' 100%)';
         cardBox.style.background = gradBg;
-        if (gAnim === 'slide' && gSpeed > 0) {
+        if ((gAnim === 'slide' || gAnim === 'flow') && gSpeed > 0) {
           cardBox.style.backgroundSize = '200% 200%';
           cardBox.classList.add('bg-flow');
           cardBox.style.animationDuration = (15 / gSpeed) + 's';
         } else if (gAnim === 'pulse' && gSpeed > 0) {
+          // Item 37: pulse animates opacity via CSS class.
+          cardBox.classList.add('bg-pulse');
+          cardBox.style.animationDuration = (3 / gSpeed) + 's';
+        } else if (gAnim === 'shimmer' && gSpeed > 0) {
+          // Item 37: shimmer uses the flow class with faster timing.
+          cardBox.style.backgroundSize = '200% 200%';
+          cardBox.classList.add('bg-flow');
+          cardBox.style.animationDuration = (5 / gSpeed) + 's';
         } else if (gAnim === 'rotate' && gSpeed > 0) {
           // Item 23 (1.9.8): allow in true fullscreen too.
           (function() {
@@ -2703,7 +2712,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // Overlay takes over animation: drop the box CSS classes
         // so pulse/slide do not double-animate the whole card
         // (including text) underneath the video.
-        cardBox.classList.remove('bg-flow');
+        cardBox.classList.remove('bg-flow'); cardBox.classList.remove('bg-pulse');
         cardBox.classList.remove('bg-breath');
         cardBox.style.background = 'transparent';
         cardBox.style.backgroundColor = 'transparent';
@@ -3075,7 +3084,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       function clearGrad(el) {
         el.style.backgroundImage = 'none';
         el.style.backgroundSize = '';
-        el.classList.remove('bg-flow');
+        el.classList.remove('bg-flow'); el.classList.remove('bg-pulse');
         el.classList.remove('bg-breath');
         el.style.animationPlayState = '';
         el.style.animationDuration = '';
@@ -3186,7 +3195,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         cardBox.style.boxShadow = 'none';
         cardBox.style.backdropFilter = 'none';
         cardBox.style.webkitBackdropFilter = 'none';
-        cardBox.classList.remove('bg-flow');
+        cardBox.classList.remove('bg-flow'); cardBox.classList.remove('bg-pulse');
         cardBox.classList.remove('bg-breath');
         cardFillOverlay.style.display = 'none';
       }
@@ -6312,6 +6321,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             put("verse", d.verse)
             put("bibleLanguage", d.bibleLanguage)
             put("languageMode", tpl.languageMode.name)
+            put("showArabic", tpl.showArabic)
+            put("showEnglish", tpl.showEnglish)
             put("onAir", isLive && currentVerse != null)
             put("stateVersion", frameVersion)
         }
@@ -6430,6 +6441,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             o.put("accentOpacity", t.accentOpacity.toDouble())
             o.put("emblem", t.emblem)
             o.put("languageMode", t.languageMode.name)
+            o.put("showArabic", t.showArabic)
+            o.put("showEnglish", t.showEnglish)
             o.put("pureTransparent", t.isPureTransparentBackground)
             o.put("animatedBackground", t.animatedBackground.id)
             o.put("animatedBackgroundOpacity", t.animatedBackgroundOpacity.toDouble())
@@ -7561,7 +7574,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   <!-- v1.9.5: reworked top bar — [gear][sync][kbd] left, ref centered, ON AIR right. Info icon removed. -->
   <button id="gearTop" aria-label="Settings" onclick="togglePanel()">&#9881;</button>
   <button id="syncBtn" aria-label="Toggle auto-sync" onclick="toggleSync()" style="font-size:18px;" title="Auto-sync with tablet">&#128279;</button>
-  <button id="kbdBtn" aria-label="Keyboard shortcuts" onclick="toggleKbdOverlay(true)">&#9000;</button>
+  <!-- Item 32: keyboard shortcuts moved into the gear panel (learn-once reference). -->
   <div id="topRef" dir="auto">—</div>
   <button class="onair off" id="onAirBtnTop" onclick="toggleOnAir()">OFF AIR</button>
 </header>
@@ -7581,8 +7594,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   </div>
   <!-- v1.9.5: Row 3 — [prev][next][chapter][book] (book rightmost) -->
   <div class="card" id="browseBar" dir="ltr" style="display:flex;align-items:center;gap:8px;">
-    <button id="prevChBtn" onclick="stepChapter(-1)" aria-label="Previous chapter">&#9654;</button>
+    <!-- Item 29: RTL visual order — right arrow (previous) before left arrow (next). Actions unchanged. -->
     <button id="nextChBtn" onclick="stepChapter(1)" aria-label="Next chapter">&#9664;</button>
+    <button id="prevChBtn" onclick="stepChapter(-1)" aria-label="Previous chapter">&#9654;</button>
     <!-- Item 19 (1.9.8): RTL — arrows point in reading direction (previous=right, next=left). -->
     <select id="chSel" aria-label="Chapter"></select>
     <select id="bookSel" aria-label="Book"><option value="">Loading books…</option></select>
@@ -7654,6 +7668,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     <button data-preset="compact">Compact</button>
   </div>
   <button id="copylink">Copy link with layout</button>
+  <!-- Item 32: keyboard shortcuts live here now (was in the top bar). -->
+  <button id="kbdBtn" aria-label="Keyboard shortcuts" onclick="toggleKbdOverlay(true)">&#9000; Keyboard shortcuts</button>
 </div>
 <script>
   var books = [];
@@ -7684,9 +7700,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       var dx = e.changedTouches[0].clientX - startX;
       var dy = e.changedTouches[0].clientY - startY;
       if (Math.abs(dx) > 80 && Math.abs(dx) > Math.abs(dy) * 1.5) {
-        // Item 19 (1.9.8): RTL — swipe left = previous, swipe right = next.
-        var isRtl = document.documentElement.dir === 'rtl' || document.body.dir === 'rtl';
-        stepChapter(isRtl ? (dx < 0 ? -1 : 1) : (dx < 0 ? 1 : -1));
+        // Item 28: RTL swipe — right-to-left = previous, left-to-right = next.
+        // (Page is <html lang="en"> so dir detection fails; Arabic Bible app = RTL always.)
+        stepChapter(dx < 0 ? -1 : 1);
       }
     }, {passive: true});
   })();
@@ -8122,9 +8138,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       var ndiOff = live.onAir && cit && j.ndiActive === false;
       var topRefEl = document.getElementById('topRef');
       if (topRefEl) {
-        topRefEl.textContent =
-          cit ? (live.onAir ? (ndiOff ? cit + ' (NDI off)' : cit) : 'Off air — ' + cit) : 'Off air';
+        // Item 30: removed the redundant "Off air — " prefix (the top-right
+        // ON AIR button is the explicit status). Tint the verse ref red when
+        // ON AIR as the at-a-glance signal.
+        topRefEl.textContent = cit ? (ndiOff ? cit + ' (NDI off)' : cit) : '—';
         topRefEl.title = ndiOff ? cit + ' — NDI senders off; HTTP overlays still show this verse' : (cit || '');
+        topRefEl.style.color = live.onAir ? '#dc2626' : '';
       }
       // Theme bands + recents + chrome: mirror the app's selected theme
       // into the list/chrome variables (dark/light by the page's color
@@ -8198,7 +8217,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       document.getElementById('topRef').textContent = 'Disconnected — reconnecting…';
       /* Batch-3: livePill removed; disconnected state shown via topRef */
       var tr = document.getElementById('topRef');
-      if (tr) tr.textContent = 'Disconnected';
+      if (tr) { tr.textContent = 'Disconnected'; tr.style.color = ''; }
       setStatus('⚠ Disconnected from tablet — retrying…', 'err');
     });
   }

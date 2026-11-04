@@ -160,7 +160,8 @@ class TemplateRepository(context: Context) {
                 cardGlowColorHex = "#000000",
                 emblem = "✝",
                 bilingualMode = false,
-                languageMode = LanguageMode.ARABIC_ONLY,
+                showArabic = true,
+                showEnglish = false,
                 isPureTransparentBackground = false,
                 animatedBackground = AnimatedBackgroundType.NONE,
                 animatedBackgroundOpacity = 0.65f,
@@ -247,7 +248,8 @@ class TemplateRepository(context: Context) {
                 cardGlowColorHex = "#D4AF37",
                 emblem = "✝",
                 bilingualMode = false,
-                languageMode = LanguageMode.BOTH,
+                showArabic = true,
+                showEnglish = true,
                 isPureTransparentBackground = false,
                 animatedBackground = AnimatedBackgroundType.GOLDEN_DIVINE_RAYS,
                 animatedBackgroundOpacity = 0.5f,
@@ -334,7 +336,8 @@ class TemplateRepository(context: Context) {
                 cardGlowColorHex = "#3B82F6",
                 emblem = "",
                 bilingualMode = false,
-                languageMode = LanguageMode.BOTH,
+                showArabic = true,
+                showEnglish = true,
                 isPureTransparentBackground = false,
                 animatedBackground = AnimatedBackgroundType.NONE,
                 animatedBackgroundOpacity = 0.65f,
@@ -421,7 +424,8 @@ class TemplateRepository(context: Context) {
                 cardGlowColorHex = "#10B981",
                 emblem = "",
                 bilingualMode = false,
-                languageMode = LanguageMode.BOTH,
+                showArabic = true,
+                showEnglish = true,
                 isPureTransparentBackground = false,
                 animatedBackground = AnimatedBackgroundType.EMERALD_GARDEN_WAVES,
                 animatedBackgroundOpacity = 0.55f,
@@ -508,7 +512,8 @@ class TemplateRepository(context: Context) {
                 cardGlowColorHex = "#EC4899",
                 emblem = "",
                 bilingualMode = false,
-                languageMode = LanguageMode.BOTH,
+                showArabic = true,
+                showEnglish = true,
                 isPureTransparentBackground = false,
                 animatedBackground = AnimatedBackgroundType.ROSE_DAWN_GLOW,
                 animatedBackgroundOpacity = 0.6f,
@@ -595,7 +600,8 @@ class TemplateRepository(context: Context) {
                 cardGlowColorHex = "#F59E0B",
                 emblem = "✝",
                 bilingualMode = false,
-                languageMode = LanguageMode.BOTH,
+                showArabic = true,
+                showEnglish = true,
                 isPureTransparentBackground = false,
                 animatedBackground = AnimatedBackgroundType.CANDLE_LITURGICAL_GLOW,
                 animatedBackgroundOpacity = 0.55f,
@@ -682,7 +688,8 @@ class TemplateRepository(context: Context) {
                 cardGlowColorHex = "#0EA5E9",
                 emblem = "",
                 bilingualMode = false,
-                languageMode = LanguageMode.BOTH,
+                showArabic = true,
+                showEnglish = true,
                 isPureTransparentBackground = false,
                 animatedBackground = AnimatedBackgroundType.ETHEREAL_BLUE_WAVES,
                 animatedBackgroundOpacity = 0.6f,
@@ -769,7 +776,8 @@ class TemplateRepository(context: Context) {
                 cardGlowColorHex = "#8B5CF6",
                 emblem = "",
                 bilingualMode = false,
-                languageMode = LanguageMode.BOTH,
+                showArabic = true,
+                showEnglish = true,
                 isPureTransparentBackground = false,
                 animatedBackground = AnimatedBackgroundType.ROYAL_PURPLE_SILK,
                 animatedBackgroundOpacity = 0.55f,
@@ -856,7 +864,8 @@ class TemplateRepository(context: Context) {
                 cardGlowColorHex = "#000000",
                 emblem = "",
                 bilingualMode = false,
-                languageMode = LanguageMode.BOTH,
+                showArabic = true,
+                showEnglish = true,
                 isPureTransparentBackground = false,
                 animatedBackground = AnimatedBackgroundType.NONE,
                 animatedBackgroundOpacity = 0.65f,
@@ -943,7 +952,8 @@ class TemplateRepository(context: Context) {
                 cardGlowColorHex = "#EF4444",
                 emblem = "✝",
                 bilingualMode = false,
-                languageMode = LanguageMode.BOTH,
+                showArabic = true,
+                showEnglish = true,
                 isPureTransparentBackground = false,
                 animatedBackground = AnimatedBackgroundType.CANDLE_LITURGICAL_GLOW,
                 animatedBackgroundOpacity = 0.5f,
@@ -1084,7 +1094,8 @@ class TemplateRepository(context: Context) {
                 cardGlowColorHex = "#000000",
                 emblem = "✝",
                 bilingualMode = false,
-                languageMode = LanguageMode.ARABIC_ONLY,
+                showArabic = true,
+                showEnglish = false,
                 isPureTransparentBackground = false,
                 animatedBackground = AnimatedBackgroundType.NONE,
                 animatedBackgroundOpacity = 0.65f,
@@ -1171,7 +1182,8 @@ class TemplateRepository(context: Context) {
                 cardGlowColorHex = "#D4AF37",
                 emblem = "✝",
                 bilingualMode = false,
-                languageMode = LanguageMode.BOTH,
+                showArabic = true,
+                showEnglish = true,
                 isPureTransparentBackground = false,
                 animatedBackground = AnimatedBackgroundType.GOLDEN_DIVINE_RAYS,
                 animatedBackgroundOpacity = 0.5f,
@@ -1258,7 +1270,8 @@ class TemplateRepository(context: Context) {
                 cardGlowColorHex = "#3B82F6",
                 emblem = "",
                 bilingualMode = false,
-                languageMode = LanguageMode.BOTH,
+                showArabic = true,
+                showEnglish = true,
                 isPureTransparentBackground = false,
                 animatedBackground = AnimatedBackgroundType.NONE,
                 animatedBackgroundOpacity = 0.65f,
@@ -1345,7 +1358,8 @@ class TemplateRepository(context: Context) {
                 cardGlowColorHex = "#10B981",
                 emblem = "",
                 bilingualMode = false,
-                languageMode = LanguageMode.BOTH,
+                showArabic = true,
+                showEnglish = true,
                 isPureTransparentBackground = false,
                 animatedBackground = AnimatedBackgroundType.EMERALD_GARDEN_WAVES,
                 animatedBackgroundOpacity = 0.55f,
@@ -1432,7 +1446,8 @@ class TemplateRepository(context: Context) {
                 cardGlowColorHex = "#EC4899",
                 emblem = "",
                 bilingualMode = false,
-                languageMode = LanguageMode.BOTH,
+                showArabic = true,
+                showEnglish = true,
                 isPureTransparentBackground = false,
                 animatedBackground = AnimatedBackgroundType.ROSE_DAWN_GLOW,
                 animatedBackgroundOpacity = 0.6f,
@@ -1519,7 +1534,8 @@ class TemplateRepository(context: Context) {
                 cardGlowColorHex = "#F59E0B",
                 emblem = "✝",
                 bilingualMode = false,
-                languageMode = LanguageMode.BOTH,
+                showArabic = true,
+                showEnglish = true,
                 isPureTransparentBackground = false,
                 animatedBackground = AnimatedBackgroundType.CANDLE_LITURGICAL_GLOW,
                 animatedBackgroundOpacity = 0.55f,
@@ -1606,7 +1622,8 @@ class TemplateRepository(context: Context) {
                 cardGlowColorHex = "#0EA5E9",
                 emblem = "",
                 bilingualMode = false,
-                languageMode = LanguageMode.BOTH,
+                showArabic = true,
+                showEnglish = true,
                 isPureTransparentBackground = false,
                 animatedBackground = AnimatedBackgroundType.ETHEREAL_BLUE_WAVES,
                 animatedBackgroundOpacity = 0.6f,
@@ -1693,7 +1710,8 @@ class TemplateRepository(context: Context) {
                 cardGlowColorHex = "#8B5CF6",
                 emblem = "",
                 bilingualMode = false,
-                languageMode = LanguageMode.BOTH,
+                showArabic = true,
+                showEnglish = true,
                 isPureTransparentBackground = false,
                 animatedBackground = AnimatedBackgroundType.ROYAL_PURPLE_SILK,
                 animatedBackgroundOpacity = 0.55f,
@@ -1780,7 +1798,8 @@ class TemplateRepository(context: Context) {
                 cardGlowColorHex = "#000000",
                 emblem = "",
                 bilingualMode = false,
-                languageMode = LanguageMode.BOTH,
+                showArabic = true,
+                showEnglish = true,
                 isPureTransparentBackground = false,
                 animatedBackground = AnimatedBackgroundType.NONE,
                 animatedBackgroundOpacity = 0.65f,
@@ -1867,7 +1886,8 @@ class TemplateRepository(context: Context) {
                 cardGlowColorHex = "#EF4444",
                 emblem = "✝",
                 bilingualMode = false,
-                languageMode = LanguageMode.BOTH,
+                showArabic = true,
+                showEnglish = true,
                 isPureTransparentBackground = false,
                 animatedBackground = AnimatedBackgroundType.CANDLE_LITURGICAL_GLOW,
                 animatedBackgroundOpacity = 0.5f,
@@ -2008,7 +2028,12 @@ class TemplateRepository(context: Context) {
     fun getWorkingTemplate(isFullScreen: Boolean): LowerThirdTemplate? {
         val key = if (isFullScreen) "working_show_template" else "working_lower_template"
         val json = prefs.getString(key, null) ?: return null
-        return try { fromJson(JSONObject(json)) } catch (e: Exception) { null }
+        // Item 33: log parse failures instead of silently returning null —
+        // a corrupt working template was silently falling back to defaults.
+        return try { fromJson(JSONObject(json)) } catch (e: Exception) {
+            android.util.Log.w("TemplateRepository", "Working template parse failed for key $key, falling back", e)
+            null
+        }
     }
 
     fun saveWorkingTemplate(template: LowerThirdTemplate) {
@@ -2041,7 +2066,7 @@ class TemplateRepository(context: Context) {
             val obj = JSONObject(json)
             if (obj.optString("name", "").trim().isEmpty()) return null
             // Sanity: a real style carries several known keys.
-            val knownKeys = listOf("fontFamily", "bgColorHex", "textColorHex", "verseFontSize", "style", "showCrossEmblem", "emblem", "autoFitMinVerseSp", "autoFitMaxVerseSp", "boxHeightPercent", "isFullScreen", "id", "useSystemFontForBrackets", "gradientColorHex2", "gradientAngleDeg", "gradientAnimation", "autoFitMinCitationSp", "autoFitRatioLock", "clearMode", "lineSpacingArabic", "lineSpacingEnglish", "autoFitFrozenRatio", "verseCitationGapArabicDp", "verseCitationGapEnglishDp", "boxLoopContinuous", "trueFullscreen", "citationAlignmentArabic", "citationAlignmentEnglish", "verseAlignmentEnglish", "textEffect", "textEffectDepthDp", "cardGlowRadiusDp", "showAccentBorderWidthDp", "cardGlowOpacity", "accentOpacity")
+            val knownKeys = listOf("fontFamily", "bgColorHex", "textColorHex", "verseFontSize", "style", "showCrossEmblem", "emblem", "autoFitMinVerseSp", "autoFitMaxVerseSp", "boxHeightPercent", "isFullScreen", "id", "useSystemFontForBrackets", "gradientColorHex2", "gradientAngleDeg", "gradientAnimation", "autoFitMinCitationSp", "autoFitRatioLock", "clearMode", "lineSpacingArabic", "lineSpacingEnglish", "autoFitFrozenRatio", "verseCitationGapArabicDp", "verseCitationGapEnglishDp", "boxLoopContinuous", "trueFullscreen", "citationAlignmentArabic", "citationAlignmentEnglish", "verseAlignmentEnglish", "textEffect", "textEffectDepthDp", "cardGlowRadiusDp", "showAccentBorderWidthDp", "cardGlowOpacity", "accentOpacity", "showArabic", "showEnglish")
             if (knownKeys.none { obj.has(it) }) return null
             fromJson(obj)
         } catch (e: Exception) {
@@ -2112,6 +2137,8 @@ class TemplateRepository(context: Context) {
             put("emblem", t.emblem)
             put("bilingualMode", t.bilingualMode)
             put("languageMode", t.languageMode.name)
+            put("showArabic", t.showArabic)
+            put("showEnglish", t.showEnglish)
             put("isPureTransparentBackground", t.isPureTransparentBackground)
             put("animatedBackground", t.animatedBackground.name)
             put("animatedBackgroundOpacity", t.animatedBackgroundOpacity.toDouble())
@@ -2258,6 +2285,31 @@ class TemplateRepository(context: Context) {
                 com.arabicchristianmedia.model.LanguageMode.BOTH
             } else {
                 com.arabicchristianmedia.model.LanguageMode.ARABIC_ONLY
+            },
+            // Item 27: per-language toggles. New keys win; otherwise migrate
+            // from languageMode (ARABIC_ONLY -> Ar on/En off, etc.), then
+            // legacy bilingualMode (true -> both on).
+            showArabic = if (obj.has("showArabic")) obj.optBoolean("showArabic", true) else run {
+                val lm = if (obj.has("languageMode")) {
+                    try { com.arabicchristianmedia.model.LanguageMode.valueOf(obj.optString("languageMode")) }
+                    catch (e: Exception) { com.arabicchristianmedia.model.LanguageMode.ARABIC_ONLY }
+                } else if (obj.optBoolean("bilingualMode", false)) {
+                    com.arabicchristianmedia.model.LanguageMode.BOTH
+                } else {
+                    com.arabicchristianmedia.model.LanguageMode.ARABIC_ONLY
+                }
+                lm != com.arabicchristianmedia.model.LanguageMode.ENGLISH_ONLY
+            },
+            showEnglish = if (obj.has("showEnglish")) obj.optBoolean("showEnglish", true) else run {
+                val lm = if (obj.has("languageMode")) {
+                    try { com.arabicchristianmedia.model.LanguageMode.valueOf(obj.optString("languageMode")) }
+                    catch (e: Exception) { com.arabicchristianmedia.model.LanguageMode.ARABIC_ONLY }
+                } else if (obj.optBoolean("bilingualMode", false)) {
+                    com.arabicchristianmedia.model.LanguageMode.BOTH
+                } else {
+                    com.arabicchristianmedia.model.LanguageMode.ARABIC_ONLY
+                }
+                lm != com.arabicchristianmedia.model.LanguageMode.ARABIC_ONLY
             },
             isPureTransparentBackground = false, // migrated above; flag no longer a user mode
             animatedBackground = try { com.arabicchristianmedia.model.AnimatedBackgroundType.valueOf(obj.optString("animatedBackground")) } catch (e: Exception) { com.arabicchristianmedia.model.AnimatedBackgroundType.NONE },

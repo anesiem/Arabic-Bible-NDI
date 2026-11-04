@@ -2736,9 +2736,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         if (!data.gradientEnabled) return;
         var anim = data.gradientAnimation || 'none';
         if (anim === 'none') return;
-        // Follow-up: true fullscreen draws no card background at all — the
-        // timer below must not repaint one after the tail strip.
-        if (fullBleed) return;
+        // Item 35: fullBleed check removed — the macro controls the template values.
         var spd = (data.gradientSpeed !== undefined) ? parseFloat(data.gradientSpeed) : 1;
         if (!(spd > 0)) return;
         var target = isCustomVideoActive ? cardFillOverlay : cardBox;
@@ -2822,7 +2820,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       (function() {
         var zoomOn = !!data.boxZoomEnabled, floatOn = !!data.boxFloatEnabled,
             // Follow-up: true fullscreen draws no card glow (NDI parity).
-            swayOn = !!data.boxSwayEnabled, glowOn = !!data.boxGlowPulseEnabled && !fullBleed;
+            swayOn = !!data.boxSwayEnabled, glowOn = !!data.boxGlowPulseEnabled;
         if (!zoomOn && !floatOn && !swayOn && !glowOn) { cardBox.style.transform = ''; return; }
         var spd = (data.boxMotionSpeed !== undefined) ? parseFloat(data.boxMotionSpeed) : 1;
         var verseEnd = (transType === 'CUT' || transType === 'NONE') ? 0 : transDur;
@@ -3187,18 +3185,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       // renders edge-to-edge on the frame (NDI parity): no background,
       // border, radius, glow, or fill-over-video. The background timers
       // are gated above, so nothing repaints the card after this.
-      if (fullBleed) {
-        cardBox.style.background = 'none';
-        cardBox.style.backgroundColor = 'transparent';
-        cardBox.style.border = 'none';
-        cardBox.style.borderRadius = '0';
-        cardBox.style.boxShadow = 'none';
-        cardBox.style.backdropFilter = 'none';
-        cardBox.style.webkitBackdropFilter = 'none';
-        cardBox.classList.remove('bg-flow'); cardBox.classList.remove('bg-pulse');
-        cardBox.classList.remove('bg-breath');
-        cardFillOverlay.style.display = 'none';
-      }
+      // Item 35: fullBleed block deleted — the macro sets template values directly.
       lastStyleKey = styleKey;
       finishApply();
     }
@@ -3600,9 +3587,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         var r = 1f
         if (tpl.autoFitText) {
             // Follow-up: true fullscreen ignores card padding (edge-to-edge).
-            val fullBleed = tpl.trueFullscreen && isFull
-            val padT = if (fullBleed) 0f else tpl.cardPaddingTopDp * scale
-            val padB = if (fullBleed) 0f else tpl.cardPaddingBottomDp * scale
+            // Item 35: fullBleed removed — macro sets template values directly.
+            val padT = tpl.cardPaddingTopDp * scale
+            val padB = tpl.cardPaddingBottomDp * scale
             // v1.9.2 (#7): the fit budget is the DRAWN box height — the
             // slider height clamped so the box top stays in the frame
             // (height + bottom <= 100%), exactly as drawFrameInto clamps.
@@ -4101,16 +4088,18 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // edge-to-edge — no horizontal margins, no card padding, no card
         // chrome (fill/glow/border), no box transitions. The text block
         // still honors positionBottomPercent/boxHeightPercent.
-        val fullBleed = tpl.trueFullscreen && isFull
-        // Item 8: 0% padding respected — the coerceAtLeast minimums used to
-        // force a margin even when the user set 0%. Now 0 means 0.
-        val marginH = if (fullBleed) 0f else width * (tpl.horizontalMarginPercent / 100f)
+        // Item 35: fullBleed removed — the fullscreen macro sets template values
+        // (margins 0, etc.); the renderer just uses what the template says.
+        // Defined as false to disable the legacy branches below (to be removed).
+        val fullBleed = false
+        val marginH = width * (tpl.horizontalMarginPercent / 100f)
         val marginB = height * (tpl.positionBottomPercent / 100f)
         val boxWidth = width - (2 * marginH)
 
         // v1.8: three-way language control.
-        val showArabic = tpl.languageMode != LanguageMode.ENGLISH_ONLY
-        val showEnglish = tpl.languageMode != LanguageMode.ARABIC_ONLY &&
+        // Item 27: use the per-language toggles (not the deprecated languageMode).
+        val showArabic = tpl.showArabic
+        val showEnglish = tpl.showEnglish &&
                 !activeVerse.englishText.isNullOrBlank()
 
         val verseText = ArabicTextFormatter.prepareForBroadcast(

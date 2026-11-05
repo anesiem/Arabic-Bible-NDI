@@ -6518,7 +6518,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         sb.append("{\"ok\":true,")
         sb.append("\"app\":{\"versionName\":\"${jsonEscape(versionName)}\",\"versionCode\":$versionCode},")
         sb.append("\"device\":{\"manufacturer\":\"${jsonEscape(android.os.Build.MANUFACTURER)}\",\"model\":\"${jsonEscape(android.os.Build.MODEL)}\",\"deviceName\":\"${jsonEscape(deviceName)}\",\"android\":\"${android.os.Build.VERSION.RELEASE}\",\"sdk\":${android.os.Build.VERSION.SDK_INT}},")
-        sb.append("\"server\":{\"running\":$isRunning,\"port\":$port,\"ip\":\"${getLocalIpAddress()}\",\"uptimeMs\":$up,\"frameVersion\":$frameVersion,\"isLive\":${isLive && currentVerse != null},\"sseClients\":${sseClients.size},\"broadcastDispatcher\":\"Dispatchers.IO (Safe)\"},")
+        sb.append("\"server\":{\"running\":$isRunning,\"port\":$port,\"ip\":\"${getLocalIpAddress()}\",\"uptimeMs\":$up,\"frameVersion\":$frameVersion,\"isLive\":${isLive && currentVerse != null},\"sseClients\":${sseClients.size},\"broadcastDispatcher\":\"Dispatchers.IO (Safe)\",\"hdmiConnected\":$hdmiConnected,\"hdmiPresentationShowing\":$hdmiPresentationShowing},")
         sb.append("\"current\":{\"bookId\":\"${verse?.bookId ?: ""}\",\"bookNum\":$bookNum,\"chapter\":${verse?.chapter ?: 0},\"verse\":${verse?.verse ?: 0},\"citation\":\"${jsonEscape(verse?.getFormattedEnglishCitation() ?: "")}\"},")
         sb.append("\"lower\":${tplJson(currentTemplate)},")
         sb.append("\"full\":${tplJson(currentShowTemplate)},")

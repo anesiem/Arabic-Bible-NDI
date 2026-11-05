@@ -1118,10 +1118,9 @@ class TemplateRepository(context: Context) {
     fun getActiveTemplateId(): String? {
         val id = prefs.getString("active_template_id", null)
         // A stored highlight from a previous shipped set maps to the new
-        // designs (except the old app default, which maps to its successor
-        // Royal Gold). Unknown IDs (user styles) pass through unchanged.
+        // designs. Unknown IDs (user styles) pass through unchanged.
         if (id != null && id in LEGACY_FACTORY_IDS) {
-            return if (id == "tpl_modern_glass") "tpl_g2_lt_royal_gold" else "tpl_lt_pure_word"
+            return "tpl_lt_classic"
         }
         return id
     }

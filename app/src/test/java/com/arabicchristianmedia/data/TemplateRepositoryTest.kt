@@ -105,7 +105,7 @@ class TemplateRepositoryTest {
     @Test
     fun `legacy tpl_modern_glass migrates to its redesigned successor`() {
         repo.setActiveTemplateId("tpl_modern_glass")
-        assertEquals("tpl_g2_lt_royal_gold", repo.getActiveTemplateId())
+        assertEquals("tpl_lt_classic", repo.getActiveTemplateId())
     }
 
     @Test

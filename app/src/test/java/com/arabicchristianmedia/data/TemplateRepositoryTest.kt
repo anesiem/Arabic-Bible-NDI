@@ -111,11 +111,11 @@ class TemplateRepositoryTest {
     @Test
     fun `any other legacy factory id migrates to the pure-word default`() {
         repo.setActiveTemplateId("tpl_vivid_neon_night")
-        assertEquals("tpl_lt_pure_word", repo.getActiveTemplateId())
+        assertEquals("tpl_lt_classic", repo.getActiveTemplateId())
         // tpl_lt_golden_glory was deleted in the one-update redesign —
         // it is now a legacy id and migrates to pure word too.
         repo.setActiveTemplateId("tpl_lt_golden_glory")
-        assertEquals("tpl_lt_pure_word", repo.getActiveTemplateId())
+        assertEquals("tpl_lt_classic", repo.getActiveTemplateId())
     }
 
     @Test
@@ -167,7 +167,7 @@ class TemplateRepositoryTest {
         // One-update item 14: Pure Word templates (both feeds) are the
         // only transparent ones — no card, no glow, 100% transparent.
         // The 18 designed templates are card styles with real gradients.
-        val transparentIds = listOf("tpl_lt_pure_word", "tpl_fs_pure_word")
+        val transparentIds = listOf("tpl_fs_pure_word", "tpl_fs_golden_light", "tpl_fs_midnight", "tpl_fs_desert", "tpl_fs_royal")
         transparentIds.forEach { id ->
             val tpl = defaults.first { it.id == id }
             assertFalse("$id should not glow", tpl.cardGlowEnabled)
@@ -184,9 +184,9 @@ class TemplateRepositoryTest {
             }
         }
         assertTrue(defaults.first { it.id == "tpl_fs_pure_word" }.isFullScreen)
-        assertTrue(defaults.first { it.id == "tpl_lt_pure_word" }.let { !it.isFullScreen })
-        assertEquals(11, defaults.count { !it.isFullScreen })
-        assertEquals(12, defaults.count { it.isFullScreen })
+        assertTrue(defaults.first { it.id == "tpl_lt_classic" }.let { !it.isFullScreen })
+        assertEquals(5, defaults.count { !it.isFullScreen })
+        assertEquals(5, defaults.count { it.isFullScreen })
     }
 
     @Test

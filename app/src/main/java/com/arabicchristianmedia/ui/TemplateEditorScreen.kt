@@ -2789,9 +2789,7 @@ fun ColorGradeSpectrumModal(
         },
         text = {
             Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState()),
+                modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Row(
@@ -2862,6 +2860,14 @@ fun ColorGradeSpectrumModal(
                     }
                 }
 
+                // Item 50: sticky preview above — controls scroll below
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
                 Text("درجات الألوان المجهزة (Preset Grades)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
                 Box(modifier = Modifier.height(130.dp)) {
                     LazyVerticalGrid(
@@ -2961,6 +2967,7 @@ fun ColorGradeSpectrumModal(
                     colors = SliderDefaults.colors(thumbColor = bento.primary)
                 )
             }
+        }
         },
         confirmButton = {
             Button(

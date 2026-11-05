@@ -3274,9 +3274,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         window.__gradRotateTimer = setInterval(function() {
           var phase = 2 * Math.PI * spd * (Date.now() / 1000);
           var s = Math.sin(phase);
-          // 1.9.4 fix: setting style.background resets backgroundSize to auto,
-          // killing the position animation. Re-assert 200% every frame.
-          target.style.backgroundSize = '200% 200%';
+          // Fix #10 (item 84, 1.9.9): the background shorthand in the
+          // branches below RESETS backgroundSize to auto, so a re-assert
+          // placed BEFORE the assignment is dead — the position animation
+          // has no visual effect at size auto (flow/slide frozen, proven
+          // by probe: backgroundSize reads `initial` while position moves).
+          // Re-assert AFTER the assignment, flow/slide only (the other
+          // anims paint angle/alpha and must stay at size auto).
           // v1.9.5: FLOW and SLIDE use seamless linear motion (no sine bounce).
           // Periodic 3-stop gradient (c1→c2→c1) + linear 0..100% position.
           // Wrapping from 100% to 0% is invisible: last frame == first frame.
@@ -3313,6 +3317,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             var ra = (baseAngle + (Date.now() / 1000) * 30 * spd) % 360;
             target.style.background = 'linear-gradient(' + ra + 'deg, rgba(' + r + ',' + g + ',' + b + ',' + ga1 + ') 0%, rgba(' + g2r.r + ',' + g2r.g + ',' + g2r.b + ',' + ga2 + ') 100%)';
           }
+          // Fix #10 (item 84): re-assert AFTER the shorthand assignment,
+          // flow/slide only — position-based anims need 200% for the
+          // position to have a visual effect.
+          if (anim === 'flow' || anim === 'slide') target.style.backgroundSize = '200% 200%';
         }, 50);
       })();
 
@@ -3731,9 +3739,25 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
           else { el.style.animationPlayState = 'running'; el.style.animationDuration = (dur / animSpeed) + 's'; }
         }
       }
-      if (cardGradOn) { clearGrad(cardBox); cardGradOn = false; }
+      // Fix #11 (item 85): when the template gradient is on, Section 6
+      // just painted it on the card — clearGrad would wipe its
+      // backgroundImage, so only clear the card when the effect gradient
+      // is about to be re-applied. (Section 6 already stripped the
+      // animation classes, so nothing stale is left behind.)
+      if (cardGradOn && !data.gradientEnabled) { clearGrad(cardBox); cardGradOn = false; }
       if (grad && !data.isPureTransparentBackground) {
-        if (isFull) {
+        if (data.gradientEnabled) {
+          // Fix #11 (item 85): the template's explicit gradient wins
+          // (NDI parity — NDI's gradientEnabled branch skips the
+          // particle/video shader). Wipe the layer's effect gradient
+          // (class + inline) and leave the card on Section 6's template
+          // gradient. Particles still run — their canvas is a direct
+          // child of the card, not the layer.
+          animBgLayer.className = 'animated-bg-layer';
+          animBgLayer.style.opacity = '0';
+          clearGrad(animBgLayer);
+          cardGradOn = false;
+        } else if (isFull) {
           // The layer IS the frame background; the card goes clear so the
           // gradient is not buried under the flat fill.
           animBgLayer.className = 'animated-bg-layer';

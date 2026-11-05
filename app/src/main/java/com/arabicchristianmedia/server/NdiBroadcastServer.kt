@@ -174,6 +174,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     @Volatile
     var isRunning = false
 
+    // HDMI Presentation status (updated by HdmiPresentationManager via MainActivity).
+    // Surfaced in /api/debug for diagnostics.
+    @Volatile
+    var hdmiConnected: Boolean = false
+    @Volatile
+    var hdmiPresentationShowing: Boolean = false
+
     // v1.9.1: /debug instrumentation — per-action timings (diagnostics only;
     // volatile counters, read by /api/debug).
     private class ActionStat {

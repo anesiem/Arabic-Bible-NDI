@@ -3,7 +3,10 @@ package com.arabicchristianmedia.ui
 import android.app.Presentation
 import android.content.Context
 import android.os.Bundle
+import android.util.Log
 import android.view.Display
+import android.webkit.WebResourceError
+import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -49,7 +52,23 @@ class HdmiPresentation(
             }
             // Hardware acceleration for smooth video/animations
             setLayerType(WebView.LAYER_TYPE_HARDWARE, null)
-            webViewClient = WebViewClient()
+            webViewClient = object : WebViewClient() {
+                override fun onReceivedError(
+                    view: WebView?,
+                    request: WebResourceRequest?,
+                    error: WebResourceError?
+                ) {
+                    super.onReceivedError(view, request, error)
+                    // Log the error — the /full page may fail if the HTTP server
+                    // isn't running yet. The manager will retry on reconnect.
+                    Log.e("HdmiPresentation", "WebView load error: ${error?.description} (code ${error?.errorCode})")
+                }
+
+                override fun onPageFinished(view: WebView?, url: String?) {
+                    super.onPageFinished(view, url)
+                    Log.i("HdmiPresentation", "Loaded $url")
+                }
+            }
             // Transparent background — the /full page controls its own bg
             setBackgroundColor(android.graphics.Color.TRANSPARENT)
         }
@@ -71,9 +90,17 @@ class HdmiPresentation(
     }
 
     /**
-     * Reload the page (e.g., after template change).
+     * Reload the page (e.g., after template change or server restart).
      */
     fun refresh() {
         webView?.reload()
+    }
+
+    /**
+     * Retry loading the /full page (e.g., if the HTTP server wasn't ready
+     * when the Presentation first showed).
+     */
+    fun retryLoad(serverPort: Int = 8080) {
+        webView?.loadUrl("http://127.0.0.1:$serverPort/full")
     }
 }

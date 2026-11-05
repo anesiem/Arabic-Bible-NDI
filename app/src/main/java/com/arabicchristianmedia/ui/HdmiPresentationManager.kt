@@ -115,6 +115,19 @@ class HdmiPresentationManager(private val context: Context) {
         presentation?.refresh()
     }
 
+    /**
+     * Retry loading the /full page (call when HTTP server becomes ready,
+     * in case the Presentation showed before the server started).
+     */
+    fun retryLoad() {
+        try {
+            // Use reflection to call retryLoad if the presentation supports it
+            (presentation as? HdmiPresentation)?.retryLoad()
+        } catch (e: Exception) {
+            Log.w("HdmiPresentation", "retryLoad failed", e)
+        }
+    }
+
     fun release() {
         try {
             displayManager.unregisterDisplayListener(displayListener)

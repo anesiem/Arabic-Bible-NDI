@@ -2,265 +2,74 @@ package com.arabicchristianmedia.ui
 
 import android.os.Bundle
 import android.view.WindowManager
+import android.webkit.WebSettings
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import android.widget.FrameLayout
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.LayoutDirection
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import com.arabicchristianmedia.data.ArabicTextFormatter
-import com.arabicchristianmedia.data.BibleRepository
-import com.arabicchristianmedia.data.TemplateRepository
-import com.arabicchristianmedia.model.BibleVerse
-import com.arabicchristianmedia.model.BroadcastTextAlignment
-import com.arabicchristianmedia.model.LanguageMode
-import com.arabicchristianmedia.model.LowerThirdTemplate
-import com.arabicchristianmedia.model.TemplateStyle
-import androidx.compose.ui.tooling.preview.Preview
-import com.arabicchristianmedia.ui.theme.MyApplicationTheme
 
+/**
+ * Fullscreen overlay — shows the Full Show (/full page) in a fullscreen WebView.
+ *
+ * This is a thin wrapper: the WebView loads the local HTTP server's /full page,
+ * which already has everything (videos, animations, particles, z-index layering,
+ * true fullscreen macro, all template values). No native rendering duplication.
+ *
+ * For dual-screen (tablet + HDMI projector), use HdmiPresentationManager instead —
+ * this activity is the fallback for single-display fullscreen.
+ */
 class FullscreenOverlayActivity : ComponentActivity() {
+
+    private var webView: WebView? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+
+        // Fullscreen, keep screen on
+        window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
-        val templateRepo = TemplateRepository(this)
-        // Use the Show (Full) template when in show_full mode, not the Lower active template.
-        val isShowMode = intent.getStringExtra("mode") == "show_full"
-        val activeTplId = if (isShowMode) templateRepo.getActiveShowTemplateId() else templateRepo.getActiveTemplateId()
-        val template = templateRepo.getAllTemplates().firstOrNull { it.id == activeTplId }
-            ?: TemplateRepository.DEFAULT_TEMPLATES.firstOrNull()
-            ?: LowerThirdTemplate(id = "default", name = "Default")
-
-        // 1.9.8: Try to get the live verse from the mode extra, fallback to John 3:16.
-        val mode = intent.getStringExtra("mode")
-        val verseRef = intent.getStringExtra("verse_ref")
-        val defaultVerse = if (verseRef != null) {
-            // Parse verse_ref (format: "book_chapter_verse") and load it
-            try {
-                val parts = verseRef.split("_")
-                if (parts.size == 3) {
-                    val verses = BibleRepository.getVerses(parts[0], parts[1].toInt())
-                    verses.firstOrNull { it.verse == parts[2].toInt() }
-                } else null
-            } catch (e: Exception) { null }
-        } else null
-        val verses = BibleRepository.getVerses("jhn", 3)
-        val fallbackVerse = verses.firstOrNull { it.verse == 16 }
-            ?: verses.firstOrNull()
-            ?: BibleVerse("jhn_3_16", "jhn", "يوحنا", "John", 3, 16, "لأنه هكذا أحب الله العالم...", "For God so loved the world...")
-        val verseToShow = defaultVerse ?: fallbackVerse
-
-        setContent {
-            FullscreenOverlayContent(
-                template = template,
-                verse = verseToShow,
-                onClose = { finish() }
+        val container = FrameLayout(this).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
             )
         }
-    }
-}
 
-@Composable
-fun FullscreenOverlayContent(
-    template: LowerThirdTemplate,
-    verse: BibleVerse,
-    onClose: () -> Unit
-) {
-    var chromaKeyMode by remember { mutableStateOf(false) }
-
-    val bgCol = try { Color(android.graphics.Color.parseColor(template.bgColorHex)) } catch (e: Exception) { Color.Black }
-    val accentCol = try { Color(android.graphics.Color.parseColor(template.accentColorHex)) } catch (e: Exception) { Color(0xFFE5A93C) }
-    val textCol = try { Color(android.graphics.Color.parseColor(template.textColorHex)) } catch (e: Exception) { Color.White }
-    val refCol = try { Color(android.graphics.Color.parseColor(template.referenceColorHex)) } catch (e: Exception) { Color(0xFFF4D06F) }
-
-    val formattedVerse = ArabicTextFormatter.prepareForBroadcast(
-        verse.arabicText,
-        template.useEasternArabicNumerals,
-        template.useArabicPunctuation
-    )
-    val formattedCitation = if (template.languageMode != LanguageMode.ENGLISH_ONLY)
-        verse.getFormattedArabicCitation(template.useEasternArabicNumerals)
-    else verse.getFormattedEnglishCitation()
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(if (chromaKeyMode) Color(0xFF00FF00) else Color.Black)
-    ) {
-        // Exit & Chroma Toggle Controls (Top bar)
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(
-                onClick = onClose,
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(Color(0x66000000))
-            ) {
-                Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
+        webView = WebView(this).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+            settings.apply {
+                javaScriptEnabled = true
+                domStorageEnabled = true
+                mediaPlaybackRequiresUserGesture = false
+                cacheMode = WebSettings.LOAD_NO_CACHE
             }
-
-            Spacer(modifier = Modifier.width(12.dp))
-
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = Color(0x66000000),
-                modifier = Modifier
-                    .clip(RoundedCornerShape(16.dp))
-                    .clickable { chromaKeyMode = !chromaKeyMode }
-                    .padding(horizontal = 12.dp, vertical = 6.dp)
-            ) {
-                Text(
-                    text = if (chromaKeyMode) "Chroma Green Active" else "Pure Black Background",
-                    fontSize = 11.sp,
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold
-                )
-            }
+            setLayerType(WebView.LAYER_TYPE_HARDWARE, null)
+            webViewClient = WebViewClient()
+            setBackgroundColor(android.graphics.Color.BLACK)
         }
 
-        // Lower Third Positioned at Bottom or Full Show Projector Centered
-        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(
-                        start = if (template.isFullScreen) 0.dp else (template.horizontalMarginPercent * 4).dp,
-                        end = if (template.isFullScreen) 0.dp else (template.horizontalMarginPercent * 4).dp,
-                        bottom = if (template.isFullScreen) 0.dp else (template.positionBottomPercent * 5).dp
-                    ),
-                contentAlignment = if (template.isFullScreen) Alignment.Center else Alignment.BottomCenter
-            ) {
-                Surface(
-                    shape = RoundedCornerShape(if (template.isFullScreen) 0.dp else template.cornerRadiusDp.dp),
-                    color = if (template.style == TemplateStyle.TRANSPARENT_OUTLINE) Color.Transparent else bgCol.copy(alpha = template.bgOpacity),
-                    border = if (template.showAccentBorder && template.style != TemplateStyle.TRANSPARENT_OUTLINE && !template.isFullScreen) {
-                        BorderStroke(2.dp, accentCol)
-                    } else null,
-                    shadowElevation = if (template.cardGlowEnabled && !template.isFullScreen) 16.dp else 0.dp,
-                    modifier = if (template.isFullScreen) Modifier.fillMaxSize() else Modifier.fillMaxWidth()
-                ) {
-                    Column(
-                        modifier = if (template.isFullScreen) Modifier.fillMaxSize().padding(48.dp) else Modifier.padding(24.dp),
-                        verticalArrangement = if (template.isFullScreen) Arrangement.Center else Arrangement.Top,
-                        horizontalAlignment = if (template.isFullScreen) {
-                            when (template.alignment) {
-                                BroadcastTextAlignment.CENTER -> Alignment.CenterHorizontally
-                                BroadcastTextAlignment.LEFT -> Alignment.Start
-                                else -> Alignment.End
-                            }
-                        } else Alignment.Start
-                    ) {
-                        // RTL row (inherited): emblem sits before (right of) the
-                        // Arabic citation, matching NDI and HTTP.
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            if (template.emblem.isNotEmpty()) {
-                                Text(
-                                    text = template.emblem,
-                                    fontSize = 22.sp,
-                                    color = accentCol
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                            }
-                            Text(
-                                text = formattedCitation,
-                                fontSize = template.referenceFontSize.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = refCol
-                            )
-                        }
+        container.addView(webView)
+        setContentView(container)
 
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        // v1.8: three-way language mode — Arabic verse hidden in ENGLISH_ONLY.
-                        if (template.languageMode != LanguageMode.ENGLISH_ONLY) {
-                        Text(
-                            text = formattedVerse,
-                            fontSize = template.verseFontSize.sp,
-                            lineHeight = (template.verseFontSize * 1.5).sp,
-                            fontWeight = FontWeight.Medium,
-                            color = textCol,
-                            textAlign = when (template.alignment) {
-                                BroadcastTextAlignment.CENTER -> TextAlign.Center
-                                BroadcastTextAlignment.LEFT -> TextAlign.Left
-                                else -> TextAlign.Right
-                            }
-                        )
-                        }
-
-                        // v1.8: three-way language mode; English left unless centered.
-                        if (template.languageMode != LanguageMode.ARABIC_ONLY && verse.englishText.isNotBlank()) {
-                            Spacer(modifier = Modifier.height(6.dp))
-                            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-                                Text(
-                                    text = "${verse.englishText} (${verse.getFormattedEnglishCitation()})",
-                                    fontSize = (template.verseFontSize * 0.55).sp,
-                                    color = Color(0xFFCBD5E1),
-                                    textAlign = when (template.alignment) {
-                                        BroadcastTextAlignment.CENTER -> TextAlign.Center
-                                        else -> TextAlign.Left
-                                    },
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        // Load the Full Show page from the local HTTP server
+        webView?.loadUrl("http://127.0.0.1:8080/full")
     }
-}
 
-@Preview(showBackground = true, widthDp = 1920, heightDp = 1080)
-@Composable
-fun FullscreenOverlayContentPreview() {
-    MyApplicationTheme {
-        FullscreenOverlayContent(
-            template = TemplateRepository.DEFAULT_TEMPLATES[0],
-            verse = BibleRepository.getVerses("jhn", 3)[15],
-            onClose = {}
-        )
+    override fun onDestroy() {
+        webView?.apply {
+            stopLoading()
+            destroy()
+        }
+        webView = null
+        super.onDestroy()
+    }
+
+    @Deprecated("Use HdmiPresentationManager for dual-screen; this is single-display fallback")
+    fun refresh() {
+        webView?.reload()
     }
 }

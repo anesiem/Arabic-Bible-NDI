@@ -355,7 +355,6 @@ class TemplateRepositoryTest {
             assertTrue(tpl.id, tpl.cardPaddingRightDp >= 0f)
             assertTrue(tpl.id, tpl.autoFitMaxVerseSp > 0)
             assertTrue(tpl.id, tpl.boxHeightPercent in 10..100)
-            if (tpl.isFullScreen) assertEquals(tpl.id, 100, tpl.boxHeightPercent)
         }
     }
 

@@ -1035,10 +1035,6 @@ CollapsibleSection(
                             colors = SwitchDefaults.colors(checkedThumbColor = bento.primary)
                         )
                     }
-                    }
-                    if (editingTemplate.showEnglish) {
-                    
-                }
                 }
     }
 

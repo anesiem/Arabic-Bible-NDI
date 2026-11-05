@@ -92,10 +92,10 @@ data class BackgroundPairing(
 fun getBackgroundPairing(type: AnimatedBackgroundType): BackgroundPairing? {
     return when (type) {
         AnimatedBackgroundType.PARTICLE_STARS -> BackgroundPairing(
-            TemplateStyle.TRANSPARENT_OUTLINE, 0.0f, "#FFFFFF", true
+            TemplateStyle.TRANSPARENT_OUTLINE, 0.0f, "#FFFFFF", false
         )
         AnimatedBackgroundType.GOLDEN_PARTICLES -> BackgroundPairing(
-            TemplateStyle.TRANSPARENT_OUTLINE, 0.0f, "#F59E0B", true
+            TemplateStyle.TRANSPARENT_OUTLINE, 0.0f, "#F59E0B", false
         )
         AnimatedBackgroundType.GOLDEN_DIVINE_RAYS -> BackgroundPairing(
             TemplateStyle.MODERN_GLASS, 0.7f, "#F59E0B", false
@@ -116,7 +116,7 @@ fun getBackgroundPairing(type: AnimatedBackgroundType): BackgroundPairing? {
             TemplateStyle.MINIMALIST_PILL, 0.75f, "#F472B6", false
         )
         AnimatedBackgroundType.CUSTOM_VIDEO -> BackgroundPairing(
-            TemplateStyle.TRANSPARENT_OUTLINE, 0.0f, "#FFFFFF", true
+            TemplateStyle.TRANSPARENT_OUTLINE, 0.0f, "#FFFFFF", false
         )
         AnimatedBackgroundType.NONE -> null
     }
@@ -1002,38 +1002,41 @@ CollapsibleSection(
                     initiallyExpanded = false,
                     expanded = isSectionExpanded("language", false),
                     onExpandedChange = { setSectionExpanded("language", it) },
-                    summary = when (editingTemplate.languageMode) {
-                        com.arabicchristianmedia.model.LanguageMode.ARABIC_ONLY -> "العربية (Arabic only)"
-                        com.arabicchristianmedia.model.LanguageMode.ENGLISH_ONLY -> "English only"
-                        com.arabicchristianmedia.model.LanguageMode.BOTH -> "الاثنان (Both)"
+                    summary = when {
+                        editingTemplate.showArabic && editingTemplate.showEnglish -> "الاثنان (Both)"
+                        editingTemplate.showArabic -> "العربية (Arabic only)"
+                        editingTemplate.showEnglish -> "English only"
+                        else -> "None"
                     }
                 ) {
-                    Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(bento.surfaceVariant).padding(4.dp)) {
-                        val modes = listOf(
-                            com.arabicchristianmedia.model.LanguageMode.ARABIC_ONLY to "العربية",
-                            com.arabicchristianmedia.model.LanguageMode.ENGLISH_ONLY to "English",
-                            com.arabicchristianmedia.model.LanguageMode.BOTH to "الاثنان (Both)"
+                    // Item 47: per-language toggles (replaces dead LanguageMode selector).
+                    // Renderers use showArabic/showEnglish; languageMode is deprecated.
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("عرض العربية (Show Arabic)", fontSize = 13.sp, color = bento.textPrimary)
+                        Switch(
+                            checked = editingTemplate.showArabic,
+                            onCheckedChange = { onUpdate(editingTemplate.copy(showArabic = it)) },
+                            colors = SwitchDefaults.colors(checkedThumbColor = bento.primary)
                         )
-                        modes.forEach { (mode, label) ->
-                            val selected = editingTemplate.languageMode == mode
-                            Box(
-                                modifier = Modifier.weight(1f)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(if (selected) bento.primary else androidx.compose.ui.graphics.Color.Transparent)
-                                    .clickable { onUpdate(editingTemplate.copy(languageMode = mode)) }
-                                    .padding(vertical = 10.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    label,
-                                    fontSize = 13.sp,
-                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                                    color = if (selected) bento.onPrimary else bento.textSecondary
-                                )
-                            }
-                        }
                     }
-                    if (editingTemplate.languageMode != com.arabicchristianmedia.model.LanguageMode.ARABIC_ONLY) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("عرض الإنجليزية (Show English)", fontSize = 13.sp, color = bento.textPrimary)
+                        Switch(
+                            checked = editingTemplate.showEnglish,
+                            onCheckedChange = { onUpdate(editingTemplate.copy(showEnglish = it)) },
+                            colors = SwitchDefaults.colors(checkedThumbColor = bento.primary)
+                        )
+                    }
+                    }
+                    if (editingTemplate.showEnglish) {
                     
                 }
                 }
@@ -1043,8 +1046,8 @@ CollapsibleSection(
 CollapsibleSection(
                     modifier = anchorModifier("english"),
                     title = "I — تنسيق الخط الإنجليزي (Verse Text · English)",
-                    initiallyExpanded = editingTemplate.languageMode != com.arabicchristianmedia.model.LanguageMode.ARABIC_ONLY,
-                    expanded = isSectionExpanded("english", editingTemplate.languageMode != com.arabicchristianmedia.model.LanguageMode.ARABIC_ONLY),
+                    initiallyExpanded = editingTemplate.showEnglish,
+                    expanded = isSectionExpanded("english", editingTemplate.showEnglish),
                     onExpandedChange = { setSectionExpanded("english", it) },
                     summary = editingTemplate.secondaryFontFamily + " \u00b7 verse " + editingTemplate.secondaryVerseFontSize + " \u00b7 citation " + editingTemplate.secondaryReferenceFontSize
                 ) {
@@ -3192,7 +3195,7 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
                     (template.cardPaddingLeftDp + template.cardPaddingRightDp) * stageUnit * 0.5f).coerceAtLeast(80f)
                 val charsPerLine = (contentWDp / (0.5f * verseDp)).coerceAtLeast(6f)
                 val totalChars = verse.arabicText.length +
-                    (if (template.languageMode != com.arabicchristianmedia.model.LanguageMode.ARABIC_ONLY) verse.englishText.length else 0)
+                    (if (template.showEnglish) verse.englishText.length else 0)
                 val linesAt1 = totalChars / charsPerLine
                 val heightAt1 = linesAt1 * verseDp * 1.25f + template.referenceFontSize * stageUnit * 1.3f
                 val boxHDp = stageHDp * minOf(template.boxHeightPercent, 100 - template.positionBottomPercent).coerceAtLeast(0) / 100f
@@ -3321,7 +3324,7 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
                             )
                         }
                         Text(
-                            text = if (template.languageMode != com.arabicchristianmedia.model.LanguageMode.ENGLISH_ONLY)
+                            text = if (template.showArabic)
                                 verse.getFormattedArabicCitation(template.useEasternArabicNumerals)
                             else verse.getFormattedEnglishCitation(),
                             fontSize = with(density) { (template.referenceFontSize * previewFitScale * stageUnit).dp.toSp() },
@@ -3335,7 +3338,7 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
                     }
 
                     // v1.8: Arabic verse hidden in ENGLISH_ONLY mode.
-                    if (template.languageMode != com.arabicchristianmedia.model.LanguageMode.ENGLISH_ONLY) {
+                    if (template.showArabic) {
                     // Arabic Verse Text
                     Text(
                         text = verse.arabicText,
@@ -3356,7 +3359,7 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
                     }
                     
                     // v1.8: three-way language mode; English left unless centered.
-                    if (template.languageMode != com.arabicchristianmedia.model.LanguageMode.ARABIC_ONLY) {
+                    if (template.showEnglish) {
                         Spacer(Modifier.height((template.bilingualSpacing * stageUnit * 0.5f).dp))
                         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
                             Text(
@@ -3374,7 +3377,7 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
                             )
                             // v1.9: English citation on its own line (matches NDI + HTTP).
                             // BOTH mode only — in ENGLISH_ONLY it's already in the main citation row.
-                            if (template.languageMode == com.arabicchristianmedia.model.LanguageMode.BOTH) {
+                            if (template.showArabic && template.showEnglish) {
                                 Text(
                                     text = "(${verse.getFormattedEnglishCitation()})",
                                     fontSize = with(density) { (template.secondaryReferenceFontSize * 0.9f * previewFitScale * stageUnit).dp.toSp() },
@@ -3417,7 +3420,7 @@ fun PreviewLowerThirdDesign() {
     MyApplicationTheme {
         Box(modifier = Modifier.fillMaxSize().background(Color(0xFF0F172A))) {
             BroadcastPreviewViewport(
-                template = sampleTemplate.copy(languageMode = com.arabicchristianmedia.model.LanguageMode.BOTH),
+                template = sampleTemplate.copy(showArabic = true, showEnglish = true),
                 verse = sampleVerse,
                 previewBg = PreviewBackground.SIMULATED_STUDIO_CAMERA
             )

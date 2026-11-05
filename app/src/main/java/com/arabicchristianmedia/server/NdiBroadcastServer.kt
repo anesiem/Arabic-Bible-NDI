@@ -224,10 +224,30 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     @Volatile private var missingVideoFull: String? = null
 
     @Volatile
-    var currentTemplate: LowerThirdTemplate = LowerThirdTemplate(id = "default", name = "Default")
+    var currentTemplate: LowerThirdTemplate = loadInitialTemplate(false)
 
     @Volatile
-    var currentShowTemplate: LowerThirdTemplate = LowerThirdTemplate(id = "default_show", name = "Default Show", isFullScreen = true)
+    var currentShowTemplate: LowerThirdTemplate = loadInitialTemplate(true)
+
+    // Item 41: load working template on server start (not hardcoded default)
+    private fun loadInitialTemplate(isFullScreen: Boolean): LowerThirdTemplate {
+        return try {
+            val repo = TemplateRepository(context)
+            repo.getWorkingTemplate(isFullScreen)
+                ?: TemplateRepository.DEFAULT_TEMPLATES.firstOrNull { it.isFullScreen == isFullScreen }
+                ?: LowerThirdTemplate(
+                    id = if (isFullScreen) "default_show" else "default",
+                    name = if (isFullScreen) "Default Show" else "Default",
+                    isFullScreen = isFullScreen
+                )
+        } catch (e: Exception) {
+            LowerThirdTemplate(
+                id = if (isFullScreen) "default_show" else "default",
+                name = if (isFullScreen) "Default Show" else "Default",
+                isFullScreen = isFullScreen
+            )
+        }
+    }
 
     // v1.9: persisted verse/live state — the only render state not already persisted
     // elsewhere (style IDs live in TemplateRepository, feed specs in
@@ -2511,7 +2531,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       // further as the window shrank.
       // v1.9.2 (#7): the radius applies to Full Show too (was forced '0'
       // while the Full card was the whole frame; the CSS lock is gone).
-      const radius = scaledPx(data.cornerRadiusDp || 16);
+      const radius = scaledPx(data.cornerRadiusDp ?? 16);
       cardBox.style.borderRadius = radius;
       if (!isFull) cardBox.style.padding = padT + ' ' + padR + ' ' + padB + ' ' + padL;
 
@@ -2648,11 +2668,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         var bwStr = ((data.showAccentBorderWidthDp !== undefined ? data.showAccentBorderWidthDp : 2) * 3 * getStageScale()) + 'px solid ' + accent;
         cardBox.style.border = data.showAccentBorder ? bwStr : 'none';
         cardBox.style.boxShadow = cardGlowShadow(data.cardGlowOpacity !== undefined ? data.cardGlowOpacity : 1);
-        // Item 37: 4-stop gradient (A-B-A-B) for visible seamless FLOW/SLIDE.
-        // The old 3-stop A-B-A was symmetric — sliding showed no motion.
+        // Item 43: 5-stop gradient (A-B-A-B-A) for truly seamless FLOW/SLIDE loop.
+        // The 4-stop had a visible snap at the loop point; 5-stop has a true
+        // 50% period so position 0% and 100% show identical patterns.
         var isSeamlessAnim = (gAnim === 'flow' || gAnim === 'slide');
         var gradBg = isSeamlessAnim
-          ? 'linear-gradient(' + gAngle + 'deg, ' + gA + ' 0%, ' + gB + ' 33%, ' + gA + ' 66%, ' + gB + ' 100%)'
+          ? 'linear-gradient(' + gAngle + 'deg, ' + gA + ' 0%, ' + gB + ' 25%, ' + gA + ' 50%, ' + gB + ' 75%, ' + gA + ' 100%)'
           : 'linear-gradient(' + gAngle + 'deg, ' + gA + ' 0%, ' + gB + ' 100%)';
         cardBox.style.background = gradBg;
         if ((gAnim === 'slide' || gAnim === 'flow') && gSpeed > 0) {
@@ -3698,7 +3719,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             StaticLayout.Builder.obtain(layoutVerseText, 0, layoutVerseText.length, verseTextPaint, contentWidth)
                 .setAlignment(alignment)
-                .setLineSpacing(6f * scale * fitRatio, arLineMult)
+                .setLineSpacing(0f, arLineMult)
                 .setIncludePad(true)
                 // v2.0: greedy line breaking like the browser (HTTP overlay).
                 // The default HIGH_QUALITY balances lines (breaks early), so
@@ -3707,7 +3728,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 .build()
         } else {
             @Suppress("DEPRECATION")
-            StaticLayout(layoutVerseText, verseTextPaint, contentWidth, alignment, arLineMult, 6f * scale * fitRatio, true)
+            StaticLayout(layoutVerseText, verseTextPaint, contentWidth, alignment, arLineMult, 0f, true)
         }
         } else null
 
@@ -7244,7 +7265,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         writer.print("HTTP/1.1 200 OK\r\n")
         writer.print("Content-Type: text/html; charset=utf-8\r\n")
         writer.print("Content-Length: ${bytes.size}\r\n")
-        writer.print("Cache-Control: no-cache\r\n")
+        writer.print("Cache-Control: no-cache, no-store, must-revalidate\r\n")
+        writer.print("Pragma: no-cache\r\n")
+        writer.print("Expires: 0\r\n")
         writer.print("Connection: close\r\n\r\n")
         writer.flush()
         out.write(bytes)
@@ -8395,7 +8418,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         writer.print("HTTP/1.1 200 OK\r\n")
         writer.print("Content-Type: text/html; charset=utf-8\r\n")
         writer.print("Content-Length: ${bytes.size}\r\n")
-        writer.print("Cache-Control: no-cache\r\n")
+        writer.print("Cache-Control: no-cache, no-store, must-revalidate\r\n")
+        writer.print("Pragma: no-cache\r\n")
+        writer.print("Expires: 0\r\n")
         writer.print("Connection: close\r\n\r\n")
         writer.flush()
         out.write(bytes)

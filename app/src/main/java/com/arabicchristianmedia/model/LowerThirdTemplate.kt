@@ -227,8 +227,9 @@ object GradientMotion {
      */
     fun seamlessFlowOffset(timeSec: Double, speed: Float): Float {
         if (speed <= 0f) return 0f
-        // One full cycle per 1/speed seconds, matching the old sine period.
-        return ((timeSec * speed.toDouble()) % 1.0).toFloat()
+        // Item 44: one full cycle per 15/speed seconds, matching HTTP
+        // (was 1/speed — NDI was 15x faster than HTTP at same slider value).
+        return ((timeSec * speed.toDouble() / 15.0) % 1.0).toFloat()
     }
     fun shimmerMultiplier(phase: Double): Float =
         (0.88 + 0.12 * kotlin.math.sin(phase)).toFloat()

@@ -86,6 +86,7 @@ import com.arabicchristianmedia.ui.BibleNdiViewModel
 import com.arabicchristianmedia.ui.BibleReaderScreen
 import com.arabicchristianmedia.ui.BroadcastControlScreen
 import com.arabicchristianmedia.ui.FullscreenOverlayActivity
+import com.arabicchristianmedia.ui.HdmiPresentationManager
 import com.arabicchristianmedia.ui.SermonListScreen
 import com.arabicchristianmedia.ui.InfoPopupButton
 import com.arabicchristianmedia.ui.TemplateEditorScreen
@@ -114,6 +115,13 @@ fun androidx.compose.ui.Modifier.trackTextInputFocus(): androidx.compose.ui.Modi
 class MainActivity : ComponentActivity() {
 
     private val viewModel: BibleNdiViewModel by viewModels()
+
+    /**
+     * HDMI Presentation manager — shows the Full Show on a secondary display
+     * (HDMI projector) via Presentation API while the tablet keeps the app UI.
+     * The Presentation hosts a WebView loading the local /full page.
+     */
+    private var hdmiManager: HdmiPresentationManager? = null
 
     /**
      * v2.0: shared-text entry points — ACTION_SEND (share sheet: Google
@@ -243,6 +251,9 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         handleShareIntent(intent)
+
+        // Initialize HDMI Presentation manager (auto-detects secondary displays)
+        hdmiManager = HdmiPresentationManager(this)
 
         setContent {
             val uiState by viewModel.uiState.collectAsState()
@@ -729,6 +740,12 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onDestroy() {
+        hdmiManager?.release()
+        hdmiManager = null
+        super.onDestroy()
     }
 }
 

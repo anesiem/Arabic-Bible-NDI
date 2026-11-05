@@ -9,6 +9,7 @@ import com.arabicchristianmedia.model.LanguageMode
 import com.arabicchristianmedia.model.GradientAnimationType
 import com.arabicchristianmedia.model.LowerThirdTemplate
 import com.arabicchristianmedia.model.TemplateStyle
+import com.arabicchristianmedia.model.TextEffectType
 import com.arabicchristianmedia.model.TransitionType
 import com.arabicchristianmedia.model.VideoLoopMode
 import androidx.core.content.edit

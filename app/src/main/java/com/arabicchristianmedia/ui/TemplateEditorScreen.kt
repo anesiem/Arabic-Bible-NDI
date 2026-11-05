@@ -238,7 +238,27 @@ fun TemplateEditorScreen(
     // Editor section cards (user-controllable in Theme).
     val listColors = LocalListColors.current
     val editingTemplate = if (editorTab == 0) currentTemplate else activeShowTemplate
-    val onUpdate = if (editorTab == 0) onUpdateTemplate else onUpdateShowTemplate
+    val rawOnUpdate = if (editorTab == 0) onUpdateTemplate else onUpdateShowTemplate
+    // Item 35 (macro auto-off): if trueFullscreen is ON and the user changes a
+    // macro-controlled value (margins, padding, border, glow, box motion), the
+    // macro automatically turns OFF so they can re-apply it cleanly.
+    val onUpdate: (LowerThirdTemplate) -> Unit = { newTemplate ->
+        val old = editingTemplate
+        val macroFieldChanged = old.trueFullscreen && newTemplate.trueFullscreen && (
+            old.horizontalMarginPercent != newTemplate.horizontalMarginPercent ||
+            old.cardPaddingTopDp != newTemplate.cardPaddingTopDp ||
+            old.cardPaddingBottomDp != newTemplate.cardPaddingBottomDp ||
+            old.cardPaddingLeftDp != newTemplate.cardPaddingLeftDp ||
+            old.cardPaddingRightDp != newTemplate.cardPaddingRightDp ||
+            old.showAccentBorder != newTemplate.showAccentBorder ||
+            old.cardGlowEnabled != newTemplate.cardGlowEnabled ||
+            old.boxSwayEnabled != newTemplate.boxSwayEnabled ||
+            old.boxFloatEnabled != newTemplate.boxFloatEnabled ||
+            old.boxZoomEnabled != newTemplate.boxZoomEnabled ||
+            old.boxGlowPulseEnabled != newTemplate.boxGlowPulseEnabled
+        )
+        rawOnUpdate(if (macroFieldChanged) newTemplate.copy(trueFullscreen = false) else newTemplate)
+    }
     // Fresh template reference for async callbacks (avoids stale captures).
     val currentEditingTemplate = rememberUpdatedState(editingTemplate)
     val scope = rememberCoroutineScope()

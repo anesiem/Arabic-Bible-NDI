@@ -1180,7 +1180,7 @@ CollapsibleSection(
                             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("ألوان التدرج المرتبطة (Linked gradient colors)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary)
                         // Item 34: separate picker for the first gradient color (was linked to card color only).
-                        ColorGradePickerRow("اللون الأول (First color)", editingTemplate.gradientColorHex, { onUpdate(editingTemplate.copy(gradientColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor, previewTemplate = editingTemplate, previewField = "gradientColorHex")
+                        Text("اللون الأول = لون البطاقة أعلاه", fontSize = 11.sp, color = bento.textSecondary)
                         ColorGradePickerRow("اللون الثاني (Second color)", editingTemplate.gradientColorHex2, { onUpdate(editingTemplate.copy(gradientColorHex2 = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor, previewTemplate = editingTemplate, previewField = "gradientColorHex2")
                         SliderWithLabel("زاوية التدرج (Angle, 0-360°)", editingTemplate.gradientAngleDeg.toFloat(), 0f..360f) { onUpdate(editingTemplate.copy(gradientAngleDeg = it.toInt())) }
                         val gradientAnims = listOf(

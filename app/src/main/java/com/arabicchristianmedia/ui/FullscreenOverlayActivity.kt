@@ -62,7 +62,9 @@ class FullscreenOverlayActivity : ComponentActivity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         val templateRepo = TemplateRepository(this)
-        val activeTplId = templateRepo.getActiveTemplateId()
+        // Use the Show (Full) template when in show_full mode, not the Lower active template.
+        val isShowMode = intent.getStringExtra("mode") == "show_full"
+        val activeTplId = if (isShowMode) templateRepo.getActiveShowTemplateId() else templateRepo.getActiveTemplateId()
         val template = templateRepo.getAllTemplates().firstOrNull { it.id == activeTplId }
             ?: TemplateRepository.DEFAULT_TEMPLATES.firstOrNull()
             ?: LowerThirdTemplate(id = "default", name = "Default")

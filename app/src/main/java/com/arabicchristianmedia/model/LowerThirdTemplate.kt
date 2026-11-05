@@ -146,8 +146,29 @@ enum class AnimatedBackgroundType(val id: String, val displayNameAr: String, val
     EMERALD_GARDEN_WAVES("emerald_waves", "أمواج زمردية (Emerald Waves)", "Soft green flowing garden waves"),
     ROSE_DAWN_GLOW("rose_glow", "توهج وردي فجري (Rose Dawn)", "Gentle pink rose dawn glow"),
     GOLDEN_PARTICLES("gold_particles", "ذرات ذهبية (Golden Particles)", "Floating golden light particles"),
+    // Item 64 phase 1 (1.9.8): worship particle effects — snow, light
+    // rays, dove feathers. Particle layer (z-index 1), own opacity
+    // slider (particleOpacity), own Editor section above Motion Video.
+    SNOW("snow", "ثلج متساقط (Snowfall)", "Gentle falling snowflakes"),
+    LIGHT_RAYS("light_rays", "أشعة نور (Light Rays)", "Soft rotating heavenly light rays"),
+    DOVE_FEATHERS("dove_feathers", "ريش حمامة (Dove Feathers)", "White dove feathers drifting down"),
     CUSTOM_VIDEO("custom_video", "رابط فيديو مخصص (Custom MP4)", "Custom transparent/looping video URL")
 }
+
+// Item 64 (1.9.8): the particle effects — a subset of the animated
+// backgrounds. They render on their own layer (z-index 1, above the
+// video background, below the card) with their own opacity slider
+// (particleOpacity) and their own Editor section above Motion Video.
+// Shared by the Editor and the NDI/HTTP renderers (one list).
+val particleEffectTypes = listOf(
+    AnimatedBackgroundType.GOLDEN_PARTICLES,
+    AnimatedBackgroundType.PARTICLE_STARS,
+    AnimatedBackgroundType.SNOW,
+    AnimatedBackgroundType.LIGHT_RAYS,
+    AnimatedBackgroundType.DOVE_FEATHERS
+)
+
+fun isParticleType(type: AnimatedBackgroundType): Boolean = type in particleEffectTypes
 
 /**
  * Design-gradient card animation (2026-10-28 batch): the user chooses
@@ -414,6 +435,15 @@ data class LowerThirdTemplate(
     val isPureTransparentBackground: Boolean = true,
     val animatedBackground: AnimatedBackgroundType = AnimatedBackgroundType.NONE,
     val animatedBackgroundOpacity: Float = 0.65f,
+    /** Item 63: particle layer opacity, independent from video opacity (0 = hidden). */
+    val particleOpacity: Float = 0.65f,
+    /** Item 54: logo image layer (z-index 4). Empty logoUri = no logo. */
+    val logoUri: String = "",
+    val logoPosition: String = "top_right",
+    val logoBoxSizePercent: Float = 15f,
+    val logoOffsetXPercent: Float = 0f,
+    val logoOffsetYPercent: Float = 0f,
+    val logoOpacity: Float = 1.0f,
     val customVideoUrl: String = "",
     /**
      * v1.7: opaque ID of the user-picked background video in private storage

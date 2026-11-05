@@ -144,6 +144,13 @@ class TemplateRepository(context: Context) {
                 isPureTransparentBackground = false,
                 animatedBackground = AnimatedBackgroundType.NONE,
                 animatedBackgroundOpacity = 0.65f,
+                particleOpacity = 0.65f,
+                logoUri = "",
+                logoPosition = "top_right",
+                logoBoxSizePercent = 15f,
+                logoOffsetXPercent = 0f,
+                logoOffsetYPercent = 0f,
+                logoOpacity = 1.0f,
                 customVideoUrl = "",
                 customVideoId = "",
                 customVideoMuted = true,
@@ -177,7 +184,7 @@ class TemplateRepository(context: Context) {
                 name = "Golden Light",
                 style = TemplateStyle.TRANSPARENT_OUTLINE,
                 bgColorHex = "#000000",
-                bgOpacity = 0.0f,
+                bgOpacity = 0.15f,
                 accentColorHex = "#FFB84D",
                 textColorHex = "#FFF8E7",
                 referenceColorHex = "#FFB84D",
@@ -241,6 +248,13 @@ class TemplateRepository(context: Context) {
                 isPureTransparentBackground = false,
                 animatedBackground = AnimatedBackgroundType.NONE,
                 animatedBackgroundOpacity = 0.65f,
+                particleOpacity = 0.65f,
+                logoUri = "",
+                logoPosition = "top_right",
+                logoBoxSizePercent = 15f,
+                logoOffsetXPercent = 0f,
+                logoOffsetYPercent = 0f,
+                logoOpacity = 1.0f,
                 customVideoUrl = "",
                 customVideoId = "",
                 customVideoMuted = true,
@@ -274,7 +288,7 @@ class TemplateRepository(context: Context) {
                 name = "Midnight Clarity",
                 style = TemplateStyle.TRANSPARENT_OUTLINE,
                 bgColorHex = "#000000",
-                bgOpacity = 0.0f,
+                bgOpacity = 0.35f,
                 accentColorHex = "#F4D06F",
                 textColorHex = "#E8F0FE",
                 referenceColorHex = "#F4D06F",
@@ -338,6 +352,13 @@ class TemplateRepository(context: Context) {
                 isPureTransparentBackground = false,
                 animatedBackground = AnimatedBackgroundType.NONE,
                 animatedBackgroundOpacity = 0.65f,
+                particleOpacity = 0.65f,
+                logoUri = "",
+                logoPosition = "top_right",
+                logoBoxSizePercent = 15f,
+                logoOffsetXPercent = 0f,
+                logoOffsetYPercent = 0f,
+                logoOpacity = 1.0f,
                 customVideoUrl = "",
                 customVideoId = "",
                 customVideoMuted = true,
@@ -355,10 +376,10 @@ class TemplateRepository(context: Context) {
                 autoFitText = true,
                 autoFitMaxVerseSp = 60,
                 boxHeightPercent = 45,
-                gradientEnabled = false,
+                gradientEnabled = true,
                 gradientColorHex2 = "#0A1128",
                 gradientAngleDeg = 90,
-                gradientAnimation = GradientAnimationType.NONE,
+                gradientAnimation = GradientAnimationType.SLIDE,
                 gradientSpeed = 1.0f,
                 autoFitMinCitationSp = 10,
                 autoFitRatioLock = true,
@@ -371,7 +392,7 @@ class TemplateRepository(context: Context) {
                 name = "Desert Dawn",
                 style = TemplateStyle.TRANSPARENT_OUTLINE,
                 bgColorHex = "#000000",
-                bgOpacity = 0.0f,
+                bgOpacity = 0.5f,
                 accentColorHex = "#E07A5F",
                 textColorHex = "#FFF5E1",
                 referenceColorHex = "#E07A5F",
@@ -424,9 +445,9 @@ class TemplateRepository(context: Context) {
                 textShadowAngleDeg = 90,
                 textEffect = TextEffectType.NONE,
                 textEffectDepthDp = 3f,
-                cardGlowEnabled = false,
-                cardGlowColorHex = "#000000",
-                cardGlowOpacity = 1.0f,
+                cardGlowEnabled = true,
+                cardGlowColorHex = "#E07A5F",
+                cardGlowOpacity = 0.6f,
                 cardGlowRadiusDp = 16f,
                 emblem = "✝",
                 bilingualMode = false,
@@ -435,6 +456,13 @@ class TemplateRepository(context: Context) {
                 isPureTransparentBackground = false,
                 animatedBackground = AnimatedBackgroundType.NONE,
                 animatedBackgroundOpacity = 0.65f,
+                particleOpacity = 0.65f,
+                logoUri = "",
+                logoPosition = "top_right",
+                logoBoxSizePercent = 15f,
+                logoOffsetXPercent = 0f,
+                logoOffsetYPercent = 0f,
+                logoOpacity = 1.0f,
                 customVideoUrl = "",
                 customVideoId = "",
                 customVideoMuted = true,
@@ -452,10 +480,10 @@ class TemplateRepository(context: Context) {
                 autoFitText = true,
                 autoFitMaxVerseSp = 58,
                 boxHeightPercent = 45,
-                gradientEnabled = false,
-                gradientColorHex2 = "#0A1128",
+                gradientEnabled = true,
+                gradientColorHex2 = "#3E2723",
                 gradientAngleDeg = 90,
-                gradientAnimation = GradientAnimationType.NONE,
+                gradientAnimation = GradientAnimationType.SLIDE,
                 gradientSpeed = 1.0f,
                 autoFitMinCitationSp = 10,
                 autoFitRatioLock = true,
@@ -468,7 +496,7 @@ class TemplateRepository(context: Context) {
                 name = "Royal Proclamation",
                 style = TemplateStyle.TRANSPARENT_OUTLINE,
                 bgColorHex = "#000000",
-                bgOpacity = 0.0f,
+                bgOpacity = 0.6f,
                 accentColorHex = "#D4AF37",
                 textColorHex = "#FFFFFF",
                 referenceColorHex = "#D4AF37",
@@ -521,17 +549,24 @@ class TemplateRepository(context: Context) {
                 textShadowAngleDeg = 90,
                 textEffect = TextEffectType.NONE,
                 textEffectDepthDp = 3f,
-                cardGlowEnabled = false,
-                cardGlowColorHex = "#000000",
-                cardGlowOpacity = 1.0f,
+                cardGlowEnabled = true,
+                cardGlowColorHex = "#D4AF37",
+                cardGlowOpacity = 0.8f,
                 cardGlowRadiusDp = 16f,
                 emblem = "✝",
                 bilingualMode = false,
                 showArabic = true,
                 showEnglish = true,
                 isPureTransparentBackground = false,
-                animatedBackground = AnimatedBackgroundType.NONE,
-                animatedBackgroundOpacity = 0.65f,
+                animatedBackground = AnimatedBackgroundType.GOLDEN_PARTICLES,
+                animatedBackgroundOpacity = 0.5f,
+                particleOpacity = 0.5f,
+                logoUri = "",
+                logoPosition = "top_right",
+                logoBoxSizePercent = 15f,
+                logoOffsetXPercent = 0f,
+                logoOffsetYPercent = 0f,
+                logoOpacity = 1.0f,
                 customVideoUrl = "",
                 customVideoId = "",
                 customVideoMuted = true,
@@ -549,11 +584,11 @@ class TemplateRepository(context: Context) {
                 autoFitText = true,
                 autoFitMaxVerseSp = 62,
                 boxHeightPercent = 45,
-                gradientEnabled = false,
-                gradientColorHex2 = "#0A1128",
+                gradientEnabled = true,
+                gradientColorHex2 = "#1A1A2E",
                 gradientAngleDeg = 90,
-                gradientAnimation = GradientAnimationType.NONE,
-                gradientSpeed = 1.0f,
+                gradientAnimation = GradientAnimationType.FLOW,
+                gradientSpeed = 1.5f,
                 autoFitMinCitationSp = 10,
                 autoFitRatioLock = true,
                 lineSpacingArabic = 1.8f,
@@ -629,6 +664,13 @@ class TemplateRepository(context: Context) {
                 isPureTransparentBackground = false,
                 animatedBackground = AnimatedBackgroundType.NONE,
                 animatedBackgroundOpacity = 0.65f,
+                particleOpacity = 0.65f,
+                logoUri = "",
+                logoPosition = "top_right",
+                logoBoxSizePercent = 15f,
+                logoOffsetXPercent = 0f,
+                logoOffsetYPercent = 0f,
+                logoOpacity = 1.0f,
                 customVideoUrl = "",
                 customVideoId = "",
                 customVideoMuted = true,
@@ -726,6 +768,13 @@ class TemplateRepository(context: Context) {
                 isPureTransparentBackground = false,
                 animatedBackground = AnimatedBackgroundType.NONE,
                 animatedBackgroundOpacity = 0.65f,
+                particleOpacity = 0.65f,
+                logoUri = "",
+                logoPosition = "top_right",
+                logoBoxSizePercent = 15f,
+                logoOffsetXPercent = 0f,
+                logoOffsetYPercent = 0f,
+                logoOpacity = 1.0f,
                 customVideoUrl = "",
                 customVideoId = "",
                 customVideoMuted = true,
@@ -823,6 +872,13 @@ class TemplateRepository(context: Context) {
                 isPureTransparentBackground = false,
                 animatedBackground = AnimatedBackgroundType.NONE,
                 animatedBackgroundOpacity = 0.65f,
+                particleOpacity = 0.65f,
+                logoUri = "",
+                logoPosition = "top_right",
+                logoBoxSizePercent = 15f,
+                logoOffsetXPercent = 0f,
+                logoOffsetYPercent = 0f,
+                logoOpacity = 1.0f,
                 customVideoUrl = "",
                 customVideoId = "",
                 customVideoMuted = true,
@@ -920,6 +976,13 @@ class TemplateRepository(context: Context) {
                 isPureTransparentBackground = false,
                 animatedBackground = AnimatedBackgroundType.NONE,
                 animatedBackgroundOpacity = 0.65f,
+                particleOpacity = 0.65f,
+                logoUri = "",
+                logoPosition = "top_right",
+                logoBoxSizePercent = 15f,
+                logoOffsetXPercent = 0f,
+                logoOffsetYPercent = 0f,
+                logoOpacity = 1.0f,
                 customVideoUrl = "",
                 customVideoId = "",
                 customVideoMuted = true,
@@ -1017,6 +1080,13 @@ class TemplateRepository(context: Context) {
                 isPureTransparentBackground = false,
                 animatedBackground = AnimatedBackgroundType.NONE,
                 animatedBackgroundOpacity = 0.65f,
+                particleOpacity = 0.65f,
+                logoUri = "",
+                logoPosition = "top_right",
+                logoBoxSizePercent = 15f,
+                logoOffsetXPercent = 0f,
+                logoOffsetYPercent = 0f,
+                logoOpacity = 1.0f,
                 customVideoUrl = "",
                 customVideoId = "",
                 customVideoMuted = true,
@@ -1179,8 +1249,27 @@ class TemplateRepository(context: Context) {
 
     /**
      * Serializes one style to shareable JSON (pretty-printed) for export.
+     * Rec 3 (1.9.8): embeds the logo bytes as "logoData" (Base64, NO_WRAP)
+     * so a shared style keeps its logo — the logo file itself lives in
+     * private storage and never travels with plain JSON. Best-effort: any
+     * failure just omits logoData. Only the export path embeds it; toJson
+     * (prefs storage) stays lean.
      */
-    fun templateToJsonString(t: LowerThirdTemplate): String = toJson(t).toString(2)
+    fun templateToJsonString(t: LowerThirdTemplate): String {
+        val obj = toJson(t)
+        if (t.logoUri.isNotEmpty()) {
+            try {
+                com.arabicchristianmedia.server.LogoStore(appContext).fileFor(t.logoUri)?.let { file ->
+                    if (file.isFile && file.length() > 0) {
+                        obj.put("logoData", android.util.Base64.encodeToString(file.readBytes(), android.util.Base64.NO_WRAP))
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("TemplateRepository", "Logo embed failed, exporting without logo", e)
+            }
+        }
+        return obj.toString(2)
+    }
 
     /**
      * Parses a style from shared/imported JSON. Returns null when the payload
@@ -1191,7 +1280,7 @@ class TemplateRepository(context: Context) {
             val obj = JSONObject(json)
             if (obj.optString("name", "").trim().isEmpty()) return null
             // Sanity: a real style carries several known keys.
-            val knownKeys = listOf("fontFamily", "bgColorHex", "textColorHex", "verseFontSize", "style", "showCrossEmblem", "emblem", "autoFitMinVerseSp", "autoFitMaxVerseSp", "boxHeightPercent", "isFullScreen", "id", "useSystemFontForBrackets", "gradientColorHex2", "gradientAngleDeg", "gradientAnimation", "autoFitMinCitationSp", "autoFitRatioLock", "clearMode", "lineSpacingArabic", "lineSpacingEnglish", "autoFitFrozenRatio", "verseCitationGapArabicDp", "verseCitationGapEnglishDp", "boxLoopContinuous", "trueFullscreen", "citationAlignmentArabic", "citationAlignmentEnglish", "verseAlignmentEnglish", "textEffect", "textEffectDepthDp", "cardGlowRadiusDp", "showAccentBorderWidthDp", "cardGlowOpacity", "accentOpacity", "showArabic", "showEnglish")
+            val knownKeys = listOf("fontFamily", "bgColorHex", "textColorHex", "verseFontSize", "style", "showCrossEmblem", "emblem", "autoFitMinVerseSp", "autoFitMaxVerseSp", "boxHeightPercent", "isFullScreen", "id", "useSystemFontForBrackets", "gradientColorHex2", "gradientAngleDeg", "gradientAnimation", "autoFitMinCitationSp", "autoFitRatioLock", "clearMode", "lineSpacingArabic", "lineSpacingEnglish", "autoFitFrozenRatio", "verseCitationGapArabicDp", "verseCitationGapEnglishDp", "boxLoopContinuous", "trueFullscreen", "citationAlignmentArabic", "citationAlignmentEnglish", "verseAlignmentEnglish", "textEffect", "textEffectDepthDp", "cardGlowRadiusDp", "showAccentBorderWidthDp", "cardGlowOpacity", "accentOpacity", "showArabic", "showEnglish", "particleOpacity", "logoUri", "logoPosition", "logoBoxSizePercent", "logoOffsetXPercent", "logoOffsetYPercent", "logoOpacity", "logoData")
             if (knownKeys.none { obj.has(it) }) return null
             fromJson(obj)
         } catch (e: Exception) {
@@ -1267,6 +1356,13 @@ class TemplateRepository(context: Context) {
             put("isPureTransparentBackground", t.isPureTransparentBackground)
             put("animatedBackground", t.animatedBackground.name)
             put("animatedBackgroundOpacity", t.animatedBackgroundOpacity.toDouble())
+            put("particleOpacity", t.particleOpacity.toDouble())
+            put("logoUri", t.logoUri)
+            put("logoPosition", t.logoPosition)
+            put("logoBoxSizePercent", t.logoBoxSizePercent.toDouble())
+            put("logoOffsetXPercent", t.logoOffsetXPercent.toDouble())
+            put("logoOffsetYPercent", t.logoOffsetYPercent.toDouble())
+            put("logoOpacity", t.logoOpacity.toDouble())
             put("customVideoUrl", t.customVideoUrl)
             put("customVideoId", t.customVideoId)
             put("customVideoMuted", t.customVideoMuted)
@@ -1439,6 +1535,13 @@ class TemplateRepository(context: Context) {
             isPureTransparentBackground = false, // migrated above; flag no longer a user mode
             animatedBackground = try { com.arabicchristianmedia.model.AnimatedBackgroundType.valueOf(obj.optString("animatedBackground")) } catch (e: Exception) { com.arabicchristianmedia.model.AnimatedBackgroundType.NONE },
             animatedBackgroundOpacity = obj.optDouble("animatedBackgroundOpacity", 0.65).toFloat(),
+            particleOpacity = obj.optDouble("particleOpacity", 0.65).toFloat(),
+            logoUri = obj.optString("logoUri", ""),
+            logoPosition = obj.optString("logoPosition", "top_right"),
+            logoBoxSizePercent = obj.optDouble("logoBoxSizePercent", 15.0).toFloat(),
+            logoOffsetXPercent = obj.optDouble("logoOffsetXPercent", 0.0).toFloat(),
+            logoOffsetYPercent = obj.optDouble("logoOffsetYPercent", 0.0).toFloat(),
+            logoOpacity = obj.optDouble("logoOpacity", 1.0).toFloat(),
             customVideoUrl = obj.optString("customVideoUrl", ""),
             customVideoId = obj.optString("customVideoId", ""),
             customVideoMuted = obj.optBoolean("customVideoMuted", true),
@@ -1478,7 +1581,40 @@ class TemplateRepository(context: Context) {
             autoFitFrozenRatio = if (obj.has("autoFitFrozenRatio")) obj.optDouble("autoFitFrozenRatio", 0.0).toFloat().takeIf { it > 0f } else null,
             cardGlowRadiusDp = obj.optDouble("cardGlowRadiusDp", 16.0).toFloat().coerceIn(0f, 100f),
             showAccentBorderWidthDp = obj.optDouble("showAccentBorderWidthDp", 2.0).toFloat().coerceIn(0f, 30f)
-        ).let { migrateLegacyVideo(it) }
+        ).let { migrateLegacyVideo(it) }.let { migrateLogo(it, obj) }
+    }
+
+    /**
+     * Rec 3 (1.9.8): logo round-trip + validation on every template load.
+     * - Import: if the JSON carries embedded "logoData" (Base64, added by
+     *   templateToJsonString on export), decode + store it and point logoUri
+     *   at the new local file, so a shared style keeps its logo.
+     * - Validation: if logoUri points at a file that no longer exists
+     *   (deleted, or imported from another device without logoData), clear
+     *   it silently — a missing logo must never crash or block a load.
+     */
+    private fun migrateLogo(tpl: LowerThirdTemplate, obj: JSONObject): LowerThirdTemplate {
+        var logoUri = tpl.logoUri
+        try {
+            val logoData = obj.optString("logoData", "")
+            if (logoData.isNotEmpty()) {
+                val bytes = android.util.Base64.decode(logoData, android.util.Base64.DEFAULT)
+                val id = com.arabicchristianmedia.server.LogoStore(appContext).importFromBytes(bytes)
+                if (id != null) logoUri = id
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("TemplateRepository", "Logo data import failed, keeping logoUri", e)
+        }
+        if (logoUri.isNotEmpty()) {
+            try {
+                if (com.arabicchristianmedia.server.LogoStore(appContext).fileFor(logoUri) == null) {
+                    logoUri = ""
+                }
+            } catch (e: Exception) {
+                logoUri = ""
+            }
+        }
+        return if (logoUri == tpl.logoUri) tpl else tpl.copy(logoUri = logoUri)
     }
 
     /**

@@ -12,6 +12,7 @@ import com.arabicchristianmedia.data.RecentStore
 import com.arabicchristianmedia.data.SermonStore
 import com.arabicchristianmedia.data.TemplateRepository
 import com.arabicchristianmedia.model.AppThemeMode
+import com.arabicchristianmedia.model.ClearMode
 import com.arabicchristianmedia.model.ColorTheme
 import com.arabicchristianmedia.model.ColorThemes
 import com.arabicchristianmedia.model.colorThemeFromJson
@@ -768,6 +769,18 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
     private fun getNdiPrefs(): SharedPreferences? {
         return try {
             getApplication<Application>()?.getSharedPreferences("bible_ndi_source_specs", Context.MODE_PRIVATE)
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    // Item 52: true-fullscreen macro backup. Its own prefs file — no existing
+    // file fits template-value backup (bible_ndi_source_specs holds NDI feed
+    // specs, sermon_ui_prefs holds sermon UI, app_theme_prefs holds themes).
+    // Same defensive nullable-getter pattern as [getNdiPrefs].
+    private fun getFullscreenMacroPrefs(): SharedPreferences? {
+        return try {
+            getApplication<Application>()?.getSharedPreferences("fullscreen_macro_backup", Context.MODE_PRIVATE)
         } catch (e: Exception) {
             null
         }
@@ -2449,6 +2462,135 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         nativeSender.triggerFrameImmediate(NdiNativeSender.FEED_FULL, true)
     }
 
+    // ---- Item 52: true-fullscreen macro (backup/restore) ----
+
+    /**
+     * Item 52: the macro-controlled values. Backup/restore and the auto-off
+     * detector must agree on this set — the Editor's auto-off wrapper watches
+     * the same fields (see TemplateEditorScreen onUpdate).
+     */
+    private fun macroFieldsDiffer(a: LowerThirdTemplate, b: LowerThirdTemplate): Boolean {
+        return a.horizontalMarginPercent != b.horizontalMarginPercent ||
+            a.cardPaddingTopDp != b.cardPaddingTopDp ||
+            a.cardPaddingBottomDp != b.cardPaddingBottomDp ||
+            a.cardPaddingLeftDp != b.cardPaddingLeftDp ||
+            a.cardPaddingRightDp != b.cardPaddingRightDp ||
+            a.showAccentBorder != b.showAccentBorder ||
+            a.cardGlowEnabled != b.cardGlowEnabled ||
+            a.boxSwayEnabled != b.boxSwayEnabled ||
+            a.boxFloatEnabled != b.boxFloatEnabled ||
+            a.boxZoomEnabled != b.boxZoomEnabled ||
+            a.boxGlowPulseEnabled != b.boxGlowPulseEnabled ||
+            a.cornerRadiusDp != b.cornerRadiusDp ||
+            a.boxHeightPercent != b.boxHeightPercent ||
+            a.positionBottomPercent != b.positionBottomPercent ||
+            a.clearMode != b.clearMode
+    }
+
+    /** Item 52: back the macro-controlled values up to SharedPreferences. */
+    private fun saveFullscreenMacroBackup(prefix: String, t: LowerThirdTemplate) {
+        getFullscreenMacroPrefs()?.edit()
+            ?.putBoolean("${prefix}_has_backup", true)
+            ?.putInt("${prefix}_horizontalMarginPercent", t.horizontalMarginPercent)
+            ?.putFloat("${prefix}_cardPaddingTopDp", t.cardPaddingTopDp)
+            ?.putFloat("${prefix}_cardPaddingBottomDp", t.cardPaddingBottomDp)
+            ?.putFloat("${prefix}_cardPaddingLeftDp", t.cardPaddingLeftDp)
+            ?.putFloat("${prefix}_cardPaddingRightDp", t.cardPaddingRightDp)
+            ?.putBoolean("${prefix}_showAccentBorder", t.showAccentBorder)
+            ?.putBoolean("${prefix}_cardGlowEnabled", t.cardGlowEnabled)
+            ?.putBoolean("${prefix}_boxSwayEnabled", t.boxSwayEnabled)
+            ?.putBoolean("${prefix}_boxFloatEnabled", t.boxFloatEnabled)
+            ?.putBoolean("${prefix}_boxZoomEnabled", t.boxZoomEnabled)
+            ?.putBoolean("${prefix}_boxGlowPulseEnabled", t.boxGlowPulseEnabled)
+            ?.putInt("${prefix}_cornerRadiusDp", t.cornerRadiusDp)
+            ?.putInt("${prefix}_boxHeightPercent", t.boxHeightPercent)
+            ?.putInt("${prefix}_positionBottomPercent", t.positionBottomPercent)
+            ?.putString("${prefix}_clearMode", t.clearMode.name)
+            ?.apply()
+    }
+
+    /** Item 52: restore the backed-up values (no-op when no backup exists). */
+    private fun restoreFullscreenMacroBackup(prefix: String, t: LowerThirdTemplate): LowerThirdTemplate {
+        val prefs = getFullscreenMacroPrefs() ?: return t
+        if (!prefs.getBoolean("${prefix}_has_backup", false)) return t
+        val clearMode = try {
+            ClearMode.valueOf(prefs.getString("${prefix}_clearMode", t.clearMode.name) ?: t.clearMode.name)
+        } catch (e: Exception) {
+            t.clearMode
+        }
+        return t.copy(
+            horizontalMarginPercent = prefs.getInt("${prefix}_horizontalMarginPercent", t.horizontalMarginPercent),
+            cardPaddingTopDp = prefs.getFloat("${prefix}_cardPaddingTopDp", t.cardPaddingTopDp),
+            cardPaddingBottomDp = prefs.getFloat("${prefix}_cardPaddingBottomDp", t.cardPaddingBottomDp),
+            cardPaddingLeftDp = prefs.getFloat("${prefix}_cardPaddingLeftDp", t.cardPaddingLeftDp),
+            cardPaddingRightDp = prefs.getFloat("${prefix}_cardPaddingRightDp", t.cardPaddingRightDp),
+            showAccentBorder = prefs.getBoolean("${prefix}_showAccentBorder", t.showAccentBorder),
+            cardGlowEnabled = prefs.getBoolean("${prefix}_cardGlowEnabled", t.cardGlowEnabled),
+            boxSwayEnabled = prefs.getBoolean("${prefix}_boxSwayEnabled", t.boxSwayEnabled),
+            boxFloatEnabled = prefs.getBoolean("${prefix}_boxFloatEnabled", t.boxFloatEnabled),
+            boxZoomEnabled = prefs.getBoolean("${prefix}_boxZoomEnabled", t.boxZoomEnabled),
+            boxGlowPulseEnabled = prefs.getBoolean("${prefix}_boxGlowPulseEnabled", t.boxGlowPulseEnabled),
+            cornerRadiusDp = prefs.getInt("${prefix}_cornerRadiusDp", t.cornerRadiusDp),
+            boxHeightPercent = prefs.getInt("${prefix}_boxHeightPercent", t.boxHeightPercent),
+            positionBottomPercent = prefs.getInt("${prefix}_positionBottomPercent", t.positionBottomPercent),
+            clearMode = clearMode
+        )
+    }
+
+    /** Item 52: drop a stale backup (auto-off consumed the macro). */
+    private fun clearFullscreenMacroBackup(prefix: String) {
+        getFullscreenMacroPrefs()?.edit()?.putBoolean("${prefix}_has_backup", false)?.apply()
+    }
+
+    /**
+     * Item 52: true-fullscreen macro — the toggle changes template VALUES, not
+     * just the boolean. ON backs the current values up to SharedPreferences
+     * (survives restart) and applies the fullscreen values; explicit OFF
+     * restores the backup. Auto-off (a macro field changed while ON — the
+     * Editor flips the toggle off) applies as-is with NO restore, so the
+     * user's override survives; the stale backup is cleared.
+     */
+    private fun applyFullscreenMacroTransition(
+        old: LowerThirdTemplate,
+        new: LowerThirdTemplate,
+        isFullScreen: Boolean
+    ): LowerThirdTemplate {
+        val prefix = if (isFullScreen) "full" else "lower"
+        if (!old.trueFullscreen && new.trueFullscreen) {
+            // Toggle ON: back up current values, then apply macro values.
+            saveFullscreenMacroBackup(prefix, old)
+            return new.copy(
+                horizontalMarginPercent = 0,
+                cardPaddingTopDp = 0f,
+                cardPaddingBottomDp = 0f,
+                cardPaddingLeftDp = 0f,
+                cardPaddingRightDp = 0f,
+                showAccentBorder = false,
+                cardGlowEnabled = false,
+                boxSwayEnabled = false,
+                boxFloatEnabled = false,
+                boxZoomEnabled = false,
+                boxGlowPulseEnabled = false,
+                cornerRadiusDp = 0,
+                boxHeightPercent = 100,
+                positionBottomPercent = 0,
+                clearMode = ClearMode.CLEAR_VERSE_ONLY
+            )
+        }
+        if (old.trueFullscreen && !new.trueFullscreen) {
+            // Toggle OFF: restore only on an EXPLICIT toggle tap (no macro
+            // field changed). Auto-off (user tweaked a value while ON) keeps
+            // the user's values; clear the stale backup.
+            return if (!macroFieldsDiffer(old, new)) {
+                restoreFullscreenMacroBackup(prefix, new)
+            } else {
+                clearFullscreenMacroBackup(prefix)
+                new
+            }
+        }
+        return new
+    }
+
     /**
      * User edited a Lower Third control. The edit goes live immediately
      * (preview + HTTP + NDI) and is remembered, but the saved style is NOT
@@ -2456,7 +2598,11 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
      * saved values, the highlight clears (dirty state).
      */
     fun updateActiveTemplate(template: LowerThirdTemplate) {
-        val working = template.copy(isFullScreen = false)
+        // Item 52: true-fullscreen macro backup/restore runs here so both the
+        // Editor toggle and any other caller get the same behaviour.
+        val working = applyFullscreenMacroTransition(
+            _uiState.value.activeTemplate, template.copy(isFullScreen = false), false
+        )
         val highlightId = _uiState.value.highlightedLowerStyleId
         val savedStyle = _uiState.value.templates.firstOrNull { it.id == highlightId && !it.isFullScreen }
         val stillMatches = savedStyle != null && savedStyle == working
@@ -2482,7 +2628,10 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
      * reach HTTP /show clients live, not just NDI.
      */
     fun updateActiveShowTemplate(template: LowerThirdTemplate) {
-        val working = template.copy(isFullScreen = true)
+        // Item 52: true-fullscreen macro backup/restore (same as Lower).
+        val working = applyFullscreenMacroTransition(
+            _uiState.value.activeShowTemplate, template.copy(isFullScreen = true), true
+        )
         val highlightId = _uiState.value.highlightedShowStyleId
         val savedStyle = _uiState.value.templates.firstOrNull { it.id == highlightId && it.isFullScreen }
         val stillMatches = savedStyle != null && savedStyle == working

@@ -164,15 +164,31 @@ class TemplateRepositoryTest {
             assertTrue(tpl.textShadowColorHex.isNotBlank())
             assertTrue(tpl.cardGlowColorHex.isNotBlank())
         }
-        // One-update item 14: Pure Word templates (both feeds) are the
-        // only transparent ones — no card, no glow, 100% transparent.
-        // The 18 designed templates are card styles with real gradients.
-        val transparentIds = listOf("tpl_fs_pure_word", "tpl_fs_golden_light", "tpl_fs_midnight", "tpl_fs_desert", "tpl_fs_royal")
+        // Item 60 (1.9.8): Full templates run simple->complex — only
+        // Pure Word is 100% transparent with no glow. The other four
+        // progress: Golden Light (subtle card), Midnight (gradient),
+        // Desert (gradient + glow), Royal (gradient + glow + particles).
+        val transparentIds = listOf("tpl_fs_pure_word")
         transparentIds.forEach { id ->
             val tpl = defaults.first { it.id == id }
             assertFalse("$id should not glow", tpl.cardGlowEnabled)
             assertEquals("$id should be 100% transparent", 0.0f, tpl.bgOpacity, 0.001f)
         }
+        // Item 60 progression: opacity increases simple->complex.
+        val progression = listOf(
+            "tpl_fs_pure_word" to 0.0f,
+            "tpl_fs_golden_light" to 0.15f,
+            "tpl_fs_midnight" to 0.35f,
+            "tpl_fs_desert" to 0.5f,
+            "tpl_fs_royal" to 0.6f
+        )
+        progression.forEach { (id, expected) ->
+            val tpl = defaults.first { it.id == id }
+            assertEquals("$id bgOpacity should follow the progression", expected, tpl.bgOpacity, 0.001f)
+        }
+        assertTrue("Desert should glow", defaults.first { it.id == "tpl_fs_desert" }.cardGlowEnabled)
+        assertTrue("Royal should glow", defaults.first { it.id == "tpl_fs_royal" }.cardGlowEnabled)
+        assertTrue("Royal should have particles", defaults.first { it.id == "tpl_fs_royal" }.animatedBackground.name == "GOLDEN_PARTICLES")
         // New designs: gradient second color is a real companion —
         // never equal to first, never a dropped-alpha black.
         defaults.filter { it.id !in transparentIds }.forEach { tpl ->

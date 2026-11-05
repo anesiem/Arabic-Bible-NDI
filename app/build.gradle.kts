@@ -157,7 +157,8 @@ dependencies {
   // implementation(libs.androidx.navigation.compose)
   implementation(libs.androidx.room.ktx)
   implementation(libs.androidx.room.runtime)
-  // implementation(libs.coil.compose)
+  // implementation(libs.coil.compose) — enabled 2026-11-05 for the Logo picker thumbnail (item 54).
+  implementation(libs.coil.compose)
   implementation(libs.converter.moshi)
   implementation(libs.firebase.ai)
   // Item 22: QR codes for Setup URLs.

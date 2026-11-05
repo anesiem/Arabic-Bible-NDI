@@ -55,12 +55,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import kotlin.math.roundToInt
 import com.arabicchristianmedia.data.ArabicTextFormatter
 import com.arabicchristianmedia.data.TemplateRepository
 import com.arabicchristianmedia.model.*
+import com.arabicchristianmedia.server.LogoStore
 import com.arabicchristianmedia.server.VideoStore
+import coil.compose.AsyncImage
 import com.arabicchristianmedia.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -77,48 +80,77 @@ enum class PreviewBackground(val displayNameAr: String) {
 
 /**
  * v2.0: Coordinated card style pairing for motion backgrounds.
- * When the user picks a motion background, the card style, background opacity,
- * and accent color are auto-coordinated. The user can still adjust everything
- * after; the result saves with the style template.
+ * When the user picks a motion background, the card style and accent color
+ * are auto-coordinated. The user can still adjust everything after; the
+ * result saves with the style template.
+ * Item 62 (opacity separation): the pairing MUST NOT touch any transparency
+ * (no bgOpacity, no isPureTransparentBackground) — the user owns all
+ * transparency settings; choosing a background changes only the background
+ * type, the card style, and the accent color.
  * Returns null for NONE (leaves current style untouched).
  */
 data class BackgroundPairing(
     val style: TemplateStyle,
-    val bgOpacity: Float,
-    val accentColorHex: String,
-    val isPureTransparentBackground: Boolean
+    val accentColorHex: String
 )
 
 fun getBackgroundPairing(type: AnimatedBackgroundType): BackgroundPairing? {
     return when (type) {
         AnimatedBackgroundType.PARTICLE_STARS -> BackgroundPairing(
-            TemplateStyle.TRANSPARENT_OUTLINE, 0.0f, "#FFFFFF", false
+            TemplateStyle.TRANSPARENT_OUTLINE, "#FFFFFF"
         )
         AnimatedBackgroundType.GOLDEN_PARTICLES -> BackgroundPairing(
-            TemplateStyle.TRANSPARENT_OUTLINE, 0.0f, "#F59E0B", false
+            TemplateStyle.TRANSPARENT_OUTLINE, "#F59E0B"
         )
         AnimatedBackgroundType.GOLDEN_DIVINE_RAYS -> BackgroundPairing(
-            TemplateStyle.MODERN_GLASS, 0.7f, "#F59E0B", false
+            TemplateStyle.MODERN_GLASS, "#F59E0B"
         )
         AnimatedBackgroundType.ETHEREAL_BLUE_WAVES -> BackgroundPairing(
-            TemplateStyle.MODERN_GLASS, 0.7f, "#3B82F6", false
+            TemplateStyle.MODERN_GLASS, "#3B82F6"
         )
         AnimatedBackgroundType.ROYAL_PURPLE_SILK -> BackgroundPairing(
-            TemplateStyle.ROYAL_LITURGICAL, 0.85f, "#F59E0B", false
+            TemplateStyle.ROYAL_LITURGICAL, "#F59E0B"
         )
         AnimatedBackgroundType.CANDLE_LITURGICAL_GLOW -> BackgroundPairing(
-            TemplateStyle.ROYAL_LITURGICAL, 0.85f, "#FBBF24", false
+            TemplateStyle.ROYAL_LITURGICAL, "#FBBF24"
         )
         AnimatedBackgroundType.EMERALD_GARDEN_WAVES -> BackgroundPairing(
-            TemplateStyle.MODERN_GLASS, 0.7f, "#10B981", false
+            TemplateStyle.MODERN_GLASS, "#10B981"
         )
         AnimatedBackgroundType.ROSE_DAWN_GLOW -> BackgroundPairing(
-            TemplateStyle.MINIMALIST_PILL, 0.75f, "#F472B6", false
+            TemplateStyle.MINIMALIST_PILL, "#F472B6"
         )
         AnimatedBackgroundType.CUSTOM_VIDEO -> BackgroundPairing(
-            TemplateStyle.TRANSPARENT_OUTLINE, 0.0f, "#FFFFFF", false
+            TemplateStyle.TRANSPARENT_OUTLINE, "#FFFFFF"
+        )
+        // Item 64 phase 1 (1.9.8): worship particle effects. Pairing sets
+        // ONLY style + accent (item 62) — never transparency.
+        AnimatedBackgroundType.SNOW -> BackgroundPairing(
+            TemplateStyle.TRANSPARENT_OUTLINE, "#FFFFFF"
+        )
+        AnimatedBackgroundType.LIGHT_RAYS -> BackgroundPairing(
+            TemplateStyle.MODERN_GLASS, "#FDE68A"
+        )
+        AnimatedBackgroundType.DOVE_FEATHERS -> BackgroundPairing(
+            TemplateStyle.TRANSPARENT_OUTLINE, "#FFFFFF"
         )
         AnimatedBackgroundType.NONE -> null
+    }
+}
+
+// Item 62/64 (1.9.8): shared background-type apply — pairing sets ONLY
+// style + accent (never transparency). Used by the Motion chips and the
+// Particles picker (OOP: one place, not two copies).
+fun applyAnimatedBackground(template: LowerThirdTemplate, type: AnimatedBackgroundType): LowerThirdTemplate {
+    val pairing = getBackgroundPairing(type)
+    return if (pairing != null) {
+        template.copy(
+            animatedBackground = type,
+            style = pairing.style,
+            accentColorHex = pairing.accentColorHex
+        )
+    } else {
+        template.copy(animatedBackground = type)
     }
 }
 
@@ -242,6 +274,10 @@ fun TemplateEditorScreen(
     // Item 35 (macro auto-off): if trueFullscreen is ON and the user changes a
     // macro-controlled value (margins, padding, border, glow, box motion), the
     // macro automatically turns OFF so they can re-apply it cleanly.
+    // Item 52: the watch list must match the macro field set in
+    // BibleNdiViewModel.macroFieldsDiffer (corner radius, box height, bottom
+    // position, clear mode included) or the toggle would claim ON while
+    // values deviate from the macro.
     val onUpdate: (LowerThirdTemplate) -> Unit = { newTemplate ->
         val old = editingTemplate
         val macroFieldChanged = old.trueFullscreen && newTemplate.trueFullscreen && (
@@ -255,7 +291,11 @@ fun TemplateEditorScreen(
             old.boxSwayEnabled != newTemplate.boxSwayEnabled ||
             old.boxFloatEnabled != newTemplate.boxFloatEnabled ||
             old.boxZoomEnabled != newTemplate.boxZoomEnabled ||
-            old.boxGlowPulseEnabled != newTemplate.boxGlowPulseEnabled
+            old.boxGlowPulseEnabled != newTemplate.boxGlowPulseEnabled ||
+            old.cornerRadiusDp != newTemplate.cornerRadiusDp ||
+            old.boxHeightPercent != newTemplate.boxHeightPercent ||
+            old.positionBottomPercent != newTemplate.positionBottomPercent ||
+            old.clearMode != newTemplate.clearMode
         )
         rawOnUpdate(if (macroFieldChanged) newTemplate.copy(trueFullscreen = false) else newTemplate)
     }
@@ -277,6 +317,24 @@ fun TemplateEditorScreen(
                     if (id != null) {
                         RecentVideosStore.add(context, id)
                         onUpdate(current.copy(customVideoId = id, customVideoUrl = "", animatedBackground = AnimatedBackgroundType.CUSTOM_VIDEO))
+                    }
+                }
+            }
+        }
+    }
+
+    // Item 54 (1.9.8): logo picker — image/* → private storage (LogoStore,
+    // same model as the video picker: opaque ID only, never the raw URI).
+    var isImportingLogo by remember { mutableStateOf(false) }
+    val logoLauncher = rememberLauncherForActivityResult(contract = ActivityResultContracts.GetContent()) { uri ->
+        uri?.let {
+            isImportingLogo = true
+            scope.launch(Dispatchers.IO) {
+                val id = LogoStore(context).importFromUri(it)
+                withContext(Dispatchers.Main) {
+                    isImportingLogo = false
+                    if (id != null) {
+                        onUpdate(currentEditingTemplate.value.copy(logoUri = id))
                     }
                 }
             }
@@ -353,23 +411,26 @@ fun TemplateEditorScreen(
         "frame-padding" to "frame", "frame-autofit" to "frame", "frame-clear" to "frame",
         "arabic-citation" to "arabic", "arabic-verse" to "arabic",
         "english-citation" to "english", "english-verse" to "english",
-        "bg-motion" to "motion", "bg-emblem" to "emblem",
+        "bg-motion" to "motion",
         "bg-transition" to "transition", "bg-stream" to "motion",
         "shadow-text" to "textshadow", "shadow-glow" to "glow"
     )
     // Right-column item keys, in order. A jump resolves its id to the
     // parent section key (sub-links) or itself (sections), then scrolls.
-    // Combined batch, layer order: Language, Transition, I Verse
-    // Text (arabic, english, text shadow, emblem), II Card, III Motion,
-    // IV Glow. Frame (box geometry, judged against the preview) stays
-    // first, as in the stage, and is not a layer.
-    val rightColumnKeys = listOf("frame", "language", "transition", "arabic", "english", "textshadow", "emblem", "card", "motion", "glow")
+    // Combined batch, layer order: Logo (z-index 4, top), Transition,
+    // I Verse Text (arabic, english, text shadow), II Card, III Particles
+    // + Motion, IV Glow. Frame (box geometry, judged against the
+    // preview) stays first, as in the stage, and is not a layer.
+    // Item 56 (1.9.8): "language" section deleted. Item 64 (1.9.8):
+    // "particles" section sits directly above "motion". Item 54 (1.9.8):
+    // "emblem" deleted, replaced by "logo" at the very top.
+    val rightColumnKeys = listOf("logo", "frame", "transition", "arabic", "english", "textshadow", "card", "particles", "motion", "glow")
     // Items 1 + 12: expanded state for the collapsible sections, hoisted
     // here so it survives editor-tab switches (the old remember(syncKey)
     // re-seeded on every template change) and so anchor jumps can expand
     // a section before scrolling to it. First view still uses each
     // section's initiallyExpanded; manual toggles stick after that.
-    val collapsibleSectionIds = setOf("frame", "arabic", "language", "english", "card", "motion", "transition", "emblem", "textshadow", "glow")
+    val collapsibleSectionIds = setOf("logo", "frame", "arabic", "english", "card", "particles", "motion", "transition", "textshadow", "glow")
     // Batch-3: per-tab per-section expand memory — the map lives in the
     // ViewModel (survives tab switches, cleared on app close = all
     // collapsed on fresh launch). Per-tab keys keep Lower's "glow"
@@ -800,8 +861,8 @@ fun TemplateEditorScreen(
                     }
                     // Clear Mode (2026-10-28 hotfix): what Clear / OFF AIR
                     // does to THIS tab's template only (Lower and Full are
-                    // edited separately). Verse Only blanks text, citation
-                    // and emblem but keeps card/video/glow/border; All
+                    // edited separately). Verse Only blanks text and citation
+                    // but keeps card/video/glow/border; All
                     // removes every layer, as today. Defaults: Full ->
                     // verse only, Lower -> all (see model + fromJson).
                     Text("عند المسح (Clear mode)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
@@ -866,8 +927,25 @@ CollapsibleSection(
                     initiallyExpanded = true,
                     expanded = isSectionExpanded("arabic", true),
                     onExpandedChange = { setSectionExpanded("arabic", it) },
-                    summary = editingTemplate.fontFamily + " \u00b7 verse " + editingTemplate.verseFontSize + " \u00b7 citation " + editingTemplate.referenceFontSize
+                    summary = if (!editingTemplate.showArabic) "مخفي (Hidden)" else editingTemplate.fontFamily + " \u00b7 verse " + editingTemplate.verseFontSize + " \u00b7 citation " + editingTemplate.referenceFontSize
                 ) {
+                    // Item 56 (1.9.8): Show Arabic switch at the TOP of the
+                    // Arabic section (moved from the deleted Language
+                    // section). Font/size controls below stay editable
+                    // when hidden, so the style can be set up before showing.
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("عرض العربية (Show Arabic)", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary)
+                        Switch(
+                            checked = editingTemplate.showArabic,
+                            onCheckedChange = { onUpdate(editingTemplate.copy(showArabic = it)) },
+                            colors = SwitchDefaults.colors(checkedThumbColor = bento.primary)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
                     // One-update item 13: Tashkeel at the TOP of the Arabic
                     // group - GLOBAL (applies to all styles), not per template.
                     // Default ON.
@@ -995,48 +1073,10 @@ CollapsibleSection(
                 }
     }
 
-    val languageSectionBlock: @Composable () -> Unit = {
-CollapsibleSection(
-                    modifier = anchorModifier("language"),
-                    title = "لغة العرض (Language)",
-                    initiallyExpanded = false,
-                    expanded = isSectionExpanded("language", false),
-                    onExpandedChange = { setSectionExpanded("language", it) },
-                    summary = when {
-                        editingTemplate.showArabic && editingTemplate.showEnglish -> "الاثنان (Both)"
-                        editingTemplate.showArabic -> "العربية (Arabic only)"
-                        editingTemplate.showEnglish -> "English only"
-                        else -> "None"
-                    }
-                ) {
-                    // Item 47: per-language toggles (replaces dead LanguageMode selector).
-                    // Renderers use showArabic/showEnglish; languageMode is deprecated.
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text("عرض العربية (Show Arabic)", fontSize = 13.sp, color = bento.textPrimary)
-                        Switch(
-                            checked = editingTemplate.showArabic,
-                            onCheckedChange = { onUpdate(editingTemplate.copy(showArabic = it)) },
-                            colors = SwitchDefaults.colors(checkedThumbColor = bento.primary)
-                        )
-                    }
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text("عرض الإنجليزية (Show English)", fontSize = 13.sp, color = bento.textPrimary)
-                        Switch(
-                            checked = editingTemplate.showEnglish,
-                            onCheckedChange = { onUpdate(editingTemplate.copy(showEnglish = it)) },
-                            colors = SwitchDefaults.colors(checkedThumbColor = bento.primary)
-                        )
-                    }
-                }
-    }
+    // Item 56 (1.9.8): Language section DELETED — the Show Arabic /
+    // Show English switches moved to the top of the Arabic / English
+    // sections (controls next to what they change). No "language"
+    // anchor or section key remains.
 
     val englishSectionBlock: @Composable () -> Unit = {
 CollapsibleSection(
@@ -1045,9 +1085,25 @@ CollapsibleSection(
                     initiallyExpanded = editingTemplate.showEnglish,
                     expanded = isSectionExpanded("english", editingTemplate.showEnglish),
                     onExpandedChange = { setSectionExpanded("english", it) },
-                    summary = editingTemplate.secondaryFontFamily + " \u00b7 verse " + editingTemplate.secondaryVerseFontSize + " \u00b7 citation " + editingTemplate.secondaryReferenceFontSize
+                    summary = if (!editingTemplate.showEnglish) "مخفي (Hidden)" else editingTemplate.secondaryFontFamily + " \u00b7 verse " + editingTemplate.secondaryVerseFontSize + " \u00b7 citation " + editingTemplate.secondaryReferenceFontSize
                 ) {
-                    
+                    // Item 56 (1.9.8): Show English switch at the TOP of the
+                    // English section (moved from the deleted Language
+                    // section). Font/size controls below stay editable
+                    // when hidden, so the style can be set up before showing.
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("عرض الإنجليزية (Show English)", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary)
+                        Switch(
+                            checked = editingTemplate.showEnglish,
+                            onCheckedChange = { onUpdate(editingTemplate.copy(showEnglish = it)) },
+                            colors = SwitchDefaults.colors(checkedThumbColor = bento.primary)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
                         // One-update item 13: English version at the TOP of the
                     // English group - GLOBAL (applies to all styles).
                     Column(modifier = Modifier.fillMaxWidth()) {
@@ -1271,6 +1327,51 @@ CollapsibleSection(
                 }
     }
 
+    // Item 64 phase 1 (1.9.8): Particles section — own card above the
+    // Motion Video section. Effect picker (None + the 5 particle
+    // effects) + opacity slider (particleOpacity, own field) + speed
+    // slider (motionSpeed, shared with video motion). Density + color
+    // pickers are NOT here yet — no particleDensity / particleColor
+    // template field exists (phase 2).
+    val particlesSectionBlock: @Composable () -> Unit = {
+CollapsibleSection(
+                    modifier = anchorModifier("particles"),
+                    title = "الجسيمات (Particles)",
+                    initiallyExpanded = isParticleType(editingTemplate.animatedBackground),
+                    expanded = isSectionExpanded("particles", isParticleType(editingTemplate.animatedBackground)),
+                    onExpandedChange = { setSectionExpanded("particles", it) },
+                    summary = if (isParticleType(editingTemplate.animatedBackground)) editingTemplate.animatedBackground.displayNameAr + " \u00b7 " + (editingTemplate.particleOpacity * 100).toInt() + "%" else "بدون (None)"
+                ) {
+                    Text("تأثيرات الجسيمات (Particle Effects) — الطبقة فوق الفيديو", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(listOf(AnimatedBackgroundType.NONE) + particleEffectTypes) { type ->
+                            FilterChip(
+                                selected = editingTemplate.animatedBackground == type,
+                                onClick = { onUpdate(applyAnimatedBackground(editingTemplate, type)) },
+                                label = { Text(type.displayNameAr, fontSize = 10.sp) }
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    // Item 63 (1.9.8): particle opacity — own slider,
+                    // independent from video opacity (0 = hidden).
+                    SliderWithLabel(
+                        label = "شفافية الجسيمات (Particle Opacity)",
+                        value = editingTemplate.particleOpacity,
+                        range = 0f..1f,
+                        onValueChange = { onUpdate(editingTemplate.copy(particleOpacity = it)) }
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    SliderWithLabel(
+                        "سرعة الجسيمات (Particle Speed)",
+                        editingTemplate.motionSpeed,
+                        0f..3f
+                    ) {
+                        onUpdate(editingTemplate.copy(motionSpeed = it))
+                    }
+                }
+    }
+
     val motionSectionBlock: @Composable () -> Unit = {
 CollapsibleSection(
                     modifier = anchorModifier("motion"),
@@ -1287,21 +1388,9 @@ CollapsibleSection(
                             FilterChip(
                                 selected = editingTemplate.animatedBackground == type,
                                 onClick = {
-                                    // v2.0: apply coordinated card style pairing
-                                    // 2026-11-03: DO NOT auto-set bgOpacity — user controls it manually
-                                    // via the Background Opacity slider (was zeroing card on video select).
-                                    val pairing = getBackgroundPairing(type)
-                                    val updated = if (pairing != null) {
-                                        editingTemplate.copy(
-                                            animatedBackground = type,
-                                            style = pairing.style,
-                                            accentColorHex = pairing.accentColorHex,
-                                            isPureTransparentBackground = pairing.isPureTransparentBackground
-                                        )
-                                    } else {
-                                        editingTemplate.copy(animatedBackground = type)
-                                    }
-                                    onUpdate(updated)
+                                    // Item 62/64: shared apply — pairing sets
+                                    // style + accent only, never transparency.
+                                    onUpdate(applyAnimatedBackground(editingTemplate, type))
                                 },
                                 label = { Text(type.displayNameAr, fontSize = 10.sp) }
                             )
@@ -1503,33 +1592,104 @@ CollapsibleSection(
                 }
     }
 
-    val emblemSectionBlock: @Composable () -> Unit = {
+    // Item 54 (1.9.8): logo image layer (z-index 4, top of everything).
+    // Replaces the deleted emblem section. Own CollapsibleSection card at
+    // the very top of the Editor, before the Arabic text section.
+    val logoSectionBlock: @Composable () -> Unit = {
 CollapsibleSection(
-                    modifier = anchorModifier("emblem"),
-                    title = "I — رمز (Emblem)",
-                    initiallyExpanded = false,
-                    expanded = isSectionExpanded("emblem", false),
-                    onExpandedChange = { setSectionExpanded("emblem", it) },
-                    summary = if (editingTemplate.emblem.isEmpty()) "بدون رمز (none)" else editingTemplate.emblem
+                    modifier = anchorModifier("logo"),
+                    title = "الشعار (Logo)",
+                    initiallyExpanded = editingTemplate.logoUri.isNotEmpty(),
+                    expanded = isSectionExpanded("logo", editingTemplate.logoUri.isNotEmpty()),
+                    onExpandedChange = { setSectionExpanded("logo", it) },
+                    summary = if (editingTemplate.logoUri.isEmpty()) "بدون شعار (none)" else "شعار مضبوط (logo set)"
                 ) {
-                    Row(Modifier.fillMaxWidth().then(anchorModifier("bg-emblem")), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        // v1.7: free emblem — the user types any emoji/symbol with the
-                        // system keyboard. Empty = no emblem (hint behind the (i)).
-                        OutlinedTextField(
-                            value = editingTemplate.emblem,
-                            onValueChange = { onUpdate(editingTemplate.copy(emblem = it)) },
-                            label = { Text("رمز / إيموجي (Emblem)", fontSize = 10.sp) },
-                            placeholder = { Text("✝", fontSize = 14.sp) },
-                            singleLine = true,
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(8.dp)
-                        )
-                        InfoPopupButton("رمز / إيموجي (Emblem)", "اتركه فارغاً للإخفاء")
+                    // Picked logo thumbnail (private storage, via LogoStore).
+                    val logoFile = remember(editingTemplate.logoUri) {
+                        if (editingTemplate.logoUri.isEmpty()) null
+                        else LogoStore(context).fileFor(editingTemplate.logoUri)
                     }
-                    // Independent text shadow and card glow (v1.6). Card glow only
-                    // applies where a card exists — not on full-bleed Full Show.
-                    // v1.9: verse-change transition (HTTP overlays animate with this;
-                    // NDI applies the frame immediately).
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        if (logoFile != null) {
+                            AsyncImage(
+                                model = logoFile,
+                                contentDescription = "Logo preview",
+                                contentScale = ContentScale.Fit,
+                                modifier = Modifier.size(64.dp).clip(RoundedCornerShape(8.dp))
+                            )
+                        }
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.weight(1f)) {
+                            Button(
+                                onClick = { logoLauncher.launch("image/*") },
+                                enabled = !isImportingLogo,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(if (isImportingLogo) "جارٍ الاستيراد…" else if (editingTemplate.logoUri.isEmpty()) "اختيار شعار (Choose logo)" else "تغيير الشعار (Change logo)", fontSize = 11.sp)
+                            }
+                            // Rec 2 (1.9.8): one-tap bundled sample logo (gold cross,
+                            // assets/sample-logo.png) — picked on demand only, never
+                            // auto-shown on screen. Same async pattern as the picker.
+                            OutlinedButton(
+                                onClick = {
+                                    isImportingLogo = true
+                                    scope.launch(Dispatchers.IO) {
+                                        val id = try {
+                                            context.assets.open("sample-logo.png").use { stream ->
+                                                LogoStore(context).importFromInputStream(stream, "png")
+                                            }
+                                        } catch (e: Exception) { null }
+                                        withContext(Dispatchers.Main) {
+                                            isImportingLogo = false
+                                            if (id != null) {
+                                                onUpdate(currentEditingTemplate.value.copy(logoUri = id))
+                                            }
+                                        }
+                                    }
+                                },
+                                enabled = !isImportingLogo,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("شعار تجريبي (Use sample logo)", fontSize = 11.sp)
+                            }
+                            if (editingTemplate.logoUri.isNotEmpty()) {
+                                TextButton(
+                                    onClick = {
+                                        LogoStore(context).deleteLogo(editingTemplate.logoUri)
+                                        onUpdate(editingTemplate.copy(logoUri = ""))
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text("إزالة الشعار (Remove logo)", fontSize = 11.sp)
+                                }
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text("الموضع (Position)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
+                    Spacer(Modifier.height(4.dp))
+                    @OptIn(ExperimentalLayoutApi::class)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        val logoPositions = listOf(
+                            "top_left" to "أعلى يسار (Top-left)",
+                            "top_right" to "أعلى يمين (Top-right)",
+                            "bottom_left" to "أسفل يسار (Bottom-left)",
+                            "bottom_right" to "أسفل يمين (Bottom-right)",
+                            "top_center" to "أعلى وسط (Top-center)",
+                            "bottom_center" to "أسفل وسط (Bottom-center)"
+                        )
+                        for ((posId, posLabel) in logoPositions) {
+                            FilterChip(
+                                selected = editingTemplate.logoPosition == posId,
+                                onClick = { onUpdate(editingTemplate.copy(logoPosition = posId)) },
+                                label = { Text(posLabel, fontSize = 10.sp) }
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    SliderWithLabel("حجم الصندوق (Box size)", editingTemplate.logoBoxSizePercent, 5f..50f) { onUpdate(editingTemplate.copy(logoBoxSizePercent = it)) }
+                    SliderWithLabel("إزاحة أفقية (Offset X)", editingTemplate.logoOffsetXPercent, -20f..20f) { onUpdate(editingTemplate.copy(logoOffsetXPercent = it)) }
+                    SliderWithLabel("إزاحة عمودية (Offset Y)", editingTemplate.logoOffsetYPercent, -20f..20f) { onUpdate(editingTemplate.copy(logoOffsetYPercent = it)) }
+                    SliderWithLabel("الشفافية (Opacity)", editingTemplate.logoOpacity, 0f..1f) { onUpdate(editingTemplate.copy(logoOpacity = it)) }
                 }
     }
 
@@ -1654,7 +1814,7 @@ CollapsibleSection(
 
     val sheetBlock: @Composable () -> Unit = {
         // Combined batch, layer order (compact shares this sheet):
-        // Language, Transition, I Verse Text, II Card, III Motion,
+        // Transition, I Verse Text, II Card, III Particles + Motion,
         // IV Glow. Each section is its own card (one-update item 6),
         // alternating the theme bandA/bandB variables, wrapped in a
         // BringIntoView box so the sticky compact Jump-to can scroll
@@ -1674,13 +1834,13 @@ CollapsibleSection(
             }
         }
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            CompactSectionCard(0, "language") { languageSectionBlock() }
+            CompactSectionCard(0, "logo") { logoSectionBlock() }
             CompactSectionCard(1, "transition") { transitionSectionBlock() }
             CompactSectionCard(2, "arabic") { arabicSectionBlock() }
             CompactSectionCard(3, "english") { englishSectionBlock() }
             CompactSectionCard(4, "textshadow") { textShadowSectionBlock() }
-            CompactSectionCard(5, "emblem") { emblemSectionBlock() }
-            CompactSectionCard(6, "card") { cardSectionBlock() }
+            CompactSectionCard(5, "card") { cardSectionBlock() }
+            CompactSectionCard(6, "particles") { particlesSectionBlock() }
             CompactSectionCard(7, "motion") { motionSectionBlock() }
             CompactSectionCard(8, "glow") { glowSectionBlock() }
             Spacer(Modifier.height(100.dp))
@@ -1691,13 +1851,13 @@ CollapsibleSection(
     // flashes it; the right panel always shows every control — anchors
     // only point, they never hide anything.
     val anchorSections: List<Pair<String, Pair<String, List<Pair<String, String>>>>> = listOf(
+        "logo" to ("الشعار (Logo)" to emptyList()),
         "frame" to ("الإطار والحشوة (Frame & Padding)" to listOf(
             "frame-position" to "الموضع والهوامش (Position & Margins)",
             "frame-padding" to "حشوة البطاقة (Card Padding)",
             "frame-autofit" to "ملاءمة تلقائية (Auto-fit)",
             "frame-clear" to "عند المسح (Clear mode)"
         )),
-        "language" to ("لغة العرض (Language)" to emptyList()),
         "transition" to ("انتقال الآية (Verse Transition)" to emptyList()),
         "arabic" to ("I — تنسيق الخط العربي (Verse Text · Arabic)" to listOf(
             "arabic-citation" to "الشاهد (Citation)",
@@ -1708,8 +1868,8 @@ CollapsibleSection(
             "english-verse" to "الآية الإنجليزية (English Verse)"
         )),
         "textshadow" to ("I — ظل النص (Text Shadow)" to emptyList()),
-        "emblem" to ("I — رمز (Emblem)" to emptyList()),
         "card" to ("II — لون البطاقة (Card Color)" to emptyList()),
+        "particles" to ("الجسيمات (Particles)" to emptyList()),
         "motion" to ("III — الفيديو المتحرك (Motion Video)" to listOf(
             "bg-motion" to "الخلفيات المتحركة (Motion Backgrounds)",
             "bg-stream" to "خلفية البث (Stream Background)"
@@ -1748,7 +1908,7 @@ CollapsibleSection(
                             val full = section.first
                             val layerSections = setOf(
                                 "arabic", "english", "textshadow",
-                                "emblem", "card", "motion", "glow"
+                                "card", "motion", "glow"
                             )
                             if (sectionId in layerSections && full.contains(" (")) {
                                 val numeral = full.substringBefore(" —")
@@ -1844,14 +2004,14 @@ CollapsibleSection(
                         state = rightLazyListState,
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        item("frame") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandA), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { frameSectionBlock() } } }
-                        item("language") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandB), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { languageSectionBlock() } } }
+                        item("logo") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandA), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { logoSectionBlock() } } }
+                        item("frame") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandB), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { frameSectionBlock() } } }
                         item("transition") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandA), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { transitionSectionBlock() } } }
                         item("arabic") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandB), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { arabicSectionBlock() } } }
                         item("english") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandA), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { englishSectionBlock() } } }
                         item("textshadow") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandB), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { textShadowSectionBlock() } } }
-                        item("emblem") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandA), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { emblemSectionBlock() } } }
-                        item("card") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandB), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { cardSectionBlock() } } }
+                        item("card") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandA), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { cardSectionBlock() } } }
+                        item("particles") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandB), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { particlesSectionBlock() } } }
                         item("motion") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandA), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { motionSectionBlock() } } }
                         item("glow") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandB), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { glowSectionBlock() } } }
                     }
@@ -3300,25 +3460,13 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
                         else -> Alignment.End
                     }
                 ) {
-                    // Arabic Citation & user Emblem (v1.7: free emoji/symbol)
-                    // RTL row: the emblem sits before (right of) the Arabic citation,
-                    // matching NDI and HTTP.
+                    // Arabic Citation (Item 54: emblem deleted).
+                    // RTL row matching NDI and HTTP.
                     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        if (template.emblem.isNotEmpty()) {
-                            Text(
-                                text = template.emblem,
-                                // Sizes are computed in dp (stage-proportional, immune to the
-                                // system font scale); Text wants TextUnit, so convert via
-                                // density - dp.toSp() cancels fontScale back out.
-                                fontSize = with(density) { (template.referenceFontSize * previewFitScale * stageUnit).dp.toSp() },
-                                // v1.8: emblem uses citation styling (was accent).
-                                color = refCol
-                            )
-                        }
                         Text(
                             text = if (template.showArabic)
                                 verse.getFormattedArabicCitation(template.useEasternArabicNumerals)

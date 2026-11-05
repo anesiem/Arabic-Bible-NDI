@@ -3,6 +3,7 @@ package com.arabicchristianmedia.server
 import android.content.Context
 import android.content.SharedPreferences
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.LinearGradient
@@ -33,6 +34,7 @@ import com.arabicchristianmedia.model.ColorThemes
 import com.arabicchristianmedia.model.colorThemeFromJson
 import com.arabicchristianmedia.model.onPrimaryFor
 import com.arabicchristianmedia.model.AnimatedBackgroundType
+import com.arabicchristianmedia.model.isParticleType
 import com.arabicchristianmedia.model.BundledFonts
 import com.arabicchristianmedia.model.BackupImportResult
 import com.arabicchristianmedia.model.BibleVerse
@@ -1091,6 +1093,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 cleanPath == "/video" -> {
                     serveVideoById(out, fullPath, rangeHeader)
                 }
+                // Item 54 (1.9.8): serves a user logo image by opaque ID
+                // from private storage (same allowlist model as /video).
+                cleanPath == "/logo" -> {
+                    serveLogoById(out, fullPath)
+                }
                 cleanPath == "/remote" -> {
                     serveRemotePage(out)
                 }
@@ -1401,6 +1408,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             put("secondaryReferenceIsItalic", tpl.secondaryReferenceIsItalic)
             put("animatedBackground", tpl.animatedBackground.id)
             put("animatedBackgroundOpacity", tpl.animatedBackgroundOpacity)
+            put("particleOpacity", tpl.particleOpacity)
+            put("logoUri", tpl.logoUri)
+            put("logoPosition", tpl.logoPosition)
+            put("logoBoxSizePercent", tpl.logoBoxSizePercent)
+            put("logoOffsetXPercent", tpl.logoOffsetXPercent)
+            put("logoOffsetYPercent", tpl.logoOffsetYPercent)
+            put("logoOpacity", tpl.logoOpacity)
             put("customVideoUrl", tpl.customVideoUrl)
             put("customVideoId", tpl.customVideoId)
             put("customVideoMuted", tpl.customVideoMuted)
@@ -1679,6 +1693,26 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       animation: smoothFlow 15s linear infinite;
     }
 
+    /* Item 64 phase 1 (1.9.8): gradient bases for the new worship
+       particle effects (matches the NDI shader bases — render parity). */
+    .anim-snow {
+      background: linear-gradient(135deg, rgba(15, 23, 42, 1) 0%, rgba(30, 58, 138, 1) 50%, rgba(15, 23, 42, 1) 100%);
+      background-size: 300% 300%;
+      animation: smoothFlow 15s linear infinite;
+    }
+
+    .anim-light-rays {
+      background: linear-gradient(135deg, rgba(120, 53, 15, 1) 0%, rgba(253, 230, 138, 1) 50%, rgba(120, 53, 15, 1) 100%);
+      background-size: 300% 300%;
+      animation: smoothFlow 15s linear infinite;
+    }
+
+    .anim-dove-feathers {
+      background: linear-gradient(135deg, rgba(226, 232, 240, 1) 0%, rgba(147, 197, 253, 1) 50%, rgba(226, 232, 240, 1) 100%);
+      background-size: 300% 300%;
+      animation: smoothFlow 15s linear infinite;
+    }
+
     /* v1.9.1: animation utilities for INLINE animated gradients (the
        gradient itself is written per-apply from the payload — see
        section 7 — these only supply the motion). */
@@ -1778,7 +1812,6 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
         <div class="card-inner-content">
           <div id="citation-row" class="citation-badge">
-            <span id="cross-emblem" class="cross-icon"></span>
             <span id="citation-text"></span>
           </div>
           <div id="verse-text" class="verse-text"></div>
@@ -1789,6 +1822,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         </div>
       </div>
     </div>
+    <!-- Item 54 (1.9.8): logo image layer (z-index 4, top of everything).
+         Direct child of #stage so it is positioned against the frame, not
+         the card box. Hidden until a logo is set (see applyData). -->
+    <img id="logo-img" style="display:none; position:absolute; z-index:4; object-fit:contain; pointer-events:none;" alt="">
   </div>
 
   <script>
@@ -1815,7 +1852,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     const citationRow = document.getElementById('citation-row');
     const citationText = document.getElementById('citation-text');
     const verseText = document.getElementById('verse-text');
-    const crossEmblem = document.getElementById('cross-emblem');
+    const logoImg = document.getElementById('logo-img');
     const englishSection = document.getElementById('english-section');
     const englishText = document.getElementById('english-text');
     const englishCitation = document.getElementById('english-citation');
@@ -1832,10 +1869,16 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     let particleAnimId = null;
     let particleColor = '#7DD3FC';
     let particleArgs = null; // v1.9.2 (#11): last start args, for resize restarts
-    function startParticles(colorHex, opacity, speed) {
+    // Item 64 phase 1 (1.9.8): mode-aware particle field — 'float'
+    // (rising dots, the original), 'snow' (falling flakes with sway),
+    // 'feathers' (slow drifting rotating ellipses). 'rays' lives in
+    // startLightRays (beams, not dots). Item 61: baseAlpha floor is 0
+    // so opacity 0 fully hides the field.
+    function startParticles(colorHex, opacity, speed, mode) {
       stopParticles();
       particleColor = colorHex;
-      particleArgs = [colorHex, opacity, speed];
+      const m = mode || 'float';
+      particleArgs = [colorHex, opacity, speed, m];
       const spd = (speed === undefined || speed === null) ? 1 : parseFloat(speed);
       const canvas = particleCanvas;
       const ctx = canvas.getContext('2d');
@@ -1847,31 +1890,117 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       const count = Math.min(150, Math.max(30, Math.floor((canvas.width * canvas.height) / (ss * ss) / (1920 * 1080) * 120)));
       const particles = [];
       for (let i = 0; i < count; i++) {
-        particles.push({
+        const p = {
           x: Math.random() * canvas.width,
           y: Math.random() * canvas.height,
           vx: (6 + Math.random() * 18) * ss * spd,
           vy: -(10 + Math.random() * 22) * ss * spd,
           r: (1.2 + Math.random() * 2.8) * ss,
           tw: Math.random() * Math.PI * 2,
-          twSpeed: (0.8 + Math.random() * 2.2) * spd
-        });
+          twSpeed: (0.8 + Math.random() * 2.2) * spd,
+          rot: Math.random() * Math.PI * 2,
+          rotSpeed: (Math.random() - 0.5) * 1.2 * spd
+        };
+        if (m === 'snow') {
+          p.vx = (Math.random() * 12 - 6) * ss * spd;
+          p.vy = (8 + Math.random() * 14) * ss * spd;
+          p.r = (1.5 + Math.random() * 3) * ss;
+          p.twSpeed = (0.6 + Math.random() * 1.6) * spd;
+        } else if (m === 'feathers') {
+          p.vx = (Math.random() * 10 - 5) * ss * spd;
+          p.vy = (6 + Math.random() * 10) * ss * spd;
+          p.r = (5 + Math.random() * 7) * ss;
+          p.twSpeed = (0.5 + Math.random() * 1.2) * spd;
+        }
+        particles.push(p);
       }
-      const baseAlpha = Math.max(25, Math.min(255, Math.floor(opacity * 255)));
+      const baseAlpha = Math.max(0, Math.min(255, Math.floor(opacity * 255)));
       let lastT = performance.now();
       function frame(now) {
         const dt = Math.min(0.1, Math.max(0, (now - lastT) / 1000));
         lastT = now;
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         for (const p of particles) {
-          p.x += p.vx * dt; p.y += p.vy * dt; p.tw += p.twSpeed * dt;
-          if (p.y < -5) { p.y = canvas.height + 5; p.x = Math.random() * canvas.width; }
-          if (p.x < -5) p.x = canvas.width + 5;
-          if (p.x > canvas.width + 5) p.x = -5;
+          if (m === 'snow') {
+            p.x += (p.vx + Math.sin(p.tw) * 10 * ss * spd) * dt;
+            p.y += p.vy * dt;
+            p.tw += p.twSpeed * dt;
+            if (p.y > canvas.height + 5) { p.y = -5; p.x = Math.random() * canvas.width; }
+            if (p.x < -5) p.x = canvas.width + 5;
+            if (p.x > canvas.width + 5) p.x = -5;
+          } else if (m === 'feathers') {
+            p.x += (p.vx + Math.sin(p.tw * 0.7) * 26 * ss * spd) * dt;
+            p.y += p.vy * dt;
+            p.tw += p.twSpeed * dt;
+            p.rot += p.rotSpeed * dt;
+            if (p.y > canvas.height + 5) { p.y = -5; p.x = Math.random() * canvas.width; }
+            if (p.x < -5) p.x = canvas.width + 5;
+            if (p.x > canvas.width + 5) p.x = -5;
+          } else {
+            p.x += p.vx * dt; p.y += p.vy * dt; p.tw += p.twSpeed * dt;
+            if (p.y < -5) { p.y = canvas.height + 5; p.x = Math.random() * canvas.width; }
+            if (p.x < -5) p.x = canvas.width + 5;
+            if (p.x > canvas.width + 5) p.x = -5;
+          }
           const twinkle = (Math.sin(p.tw) + 1) / 2;
-          const alpha = Math.floor(baseAlpha * (0.25 + 0.75 * twinkle));
+          const fade = m === 'snow' ? (0.6 + 0.4 * twinkle) : m === 'feathers' ? (0.55 + 0.45 * twinkle) : (0.25 + 0.75 * twinkle);
+          const alpha = Math.floor(baseAlpha * fade);
+          ctx.fillStyle = particleColor + alpha.toString(16).padStart(2, '0');
+          if (m === 'feathers') {
+            ctx.save();
+            ctx.translate(p.x, p.y);
+            ctx.rotate(p.rot);
+            ctx.beginPath();
+            ctx.ellipse(0, 0, p.r, p.r * 0.45, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+          } else {
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+        particleAnimId = requestAnimationFrame(frame);
+      }
+      particleAnimId = requestAnimationFrame(frame);
+    }
+    // Item 64 phase 1 (1.9.8): heavenly light rays — soft beams fanning
+    // down from top-center, rotating slowly (mirrors NDI drawLightRays).
+    // Shares particleAnimId / particleArgs with startParticles so
+    // stopParticles and the resize restart work for both.
+    function startLightRays(colorHex, opacity, speed) {
+      stopParticles();
+      particleColor = colorHex;
+      particleArgs = [colorHex, opacity, speed, 'rays'];
+      const spd = (speed === undefined || speed === null) ? 1 : parseFloat(speed);
+      const canvas = particleCanvas;
+      const ctx = canvas.getContext('2d');
+      const rect = animBgLayer.getBoundingClientRect();
+      canvas.width = Math.max(1, Math.floor(rect.width));
+      canvas.height = Math.max(1, Math.floor(rect.height));
+      canvas.style.display = 'block';
+      const baseAlpha = Math.max(0, Math.min(255, Math.floor(opacity * 255)));
+      const startT = performance.now();
+      function frame(now) {
+        const t = (now - startT) / 1000;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const apexX = canvas.width / 2;
+        const apexY = -canvas.height * 0.05;
+        for (let i = 0; i < 7; i++) {
+          const r1 = (i * 0.6180339887) % 1;
+          const baseAngle = -0.9 + (i / 6) * 1.8;
+          const angle = baseAngle + Math.sin(t * 0.25 * spd + r1 * Math.PI * 2) * 0.08;
+          const len = canvas.height * 1.25;
+          const spread = (0.10 + r1 * 0.10) * canvas.width;
+          const tipX = apexX + Math.sin(angle) * len;
+          const tipY = apexY + Math.cos(angle) * len;
+          const breath = (Math.sin(t * (0.5 + r1 * 0.7) * spd + r1 * Math.PI * 2) + 1) / 2;
+          const alpha = Math.floor(baseAlpha * (0.10 + 0.10 * breath));
           ctx.beginPath();
-          ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+          ctx.moveTo(apexX, apexY);
+          ctx.lineTo(tipX - spread / 2, tipY);
+          ctx.lineTo(tipX + spread / 2, tipY);
+          ctx.closePath();
           ctx.fillStyle = particleColor + alpha.toString(16).padStart(2, '0');
           ctx.fill();
         }
@@ -2018,7 +2147,6 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
           data.arabicCitation = '';
           data.englishText = '';
           data.englishCitation = '';
-          data.emblem = '';
         } else {
           // Clear All: today's behaviour — hide everything.
           // Combined batch, Play Once: OFF AIR ends the live session.
@@ -2510,20 +2638,34 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
       verseText.style.color = textColor;
       citationRow.style.color = refColor;
-      // v1.8: emblem is transparent, citation-colored, inline with the citation
-      // (was: accent-colored chip background).
-      crossEmblem.style.backgroundColor = 'transparent';
-      crossEmblem.style.color = refColor;
-      // v1.9.1 (#13): emoji-first stack so a symbol emblem (e.g. the sun)
-      // renders as a COLOR emoji like on NDI, not the text font's
-      // monochrome glyph.
-      crossEmblem.style.fontFamily = "'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', sans-serif";
-      // v1.7: free user emblem (emoji/symbol); empty = hidden.
-      if (data.emblem) {
-        crossEmblem.textContent = data.emblem;
-        crossEmblem.style.display = 'inline-block';
+      // Item 54 (1.9.8): logo image layer (z-index 4, top of everything).
+      // Same math as NDI drawLogoLayer: box size % of min(stage w, h),
+      // contain inside the box, position from logoPosition, offsets from
+      // the screen edge. Empty logoUri = hidden. getAttribute('src')
+      // avoids the absolute-URL mismatch (and reload flicker) of .src.
+      if (data.logoUri) {
+        const logoUrl = '/logo?id=' + encodeURIComponent(data.logoUri);
+        if (logoImg.getAttribute('src') !== logoUrl) logoImg.setAttribute('src', logoUrl);
+        const stageW = stage.clientWidth || 1920;
+        const stageH = stage.clientHeight || 1080;
+        const boxSize = ((data.logoBoxSizePercent !== undefined ? data.logoBoxSizePercent : 15) / 100) * Math.min(stageW, stageH);
+        logoImg.style.width = boxSize + 'px';
+        logoImg.style.height = boxSize + 'px';
+        logoImg.style.opacity = (data.logoOpacity !== undefined ? data.logoOpacity : 1);
+        const offX = ((data.logoOffsetXPercent !== undefined ? data.logoOffsetXPercent : 0) / 100) * stageW;
+        const offY = ((data.logoOffsetYPercent !== undefined ? data.logoOffsetYPercent : 0) / 100) * stageH;
+        // Reset all edges, then set the two that apply.
+        logoImg.style.left = ''; logoImg.style.right = ''; logoImg.style.top = ''; logoImg.style.bottom = '';
+        const pos = data.logoPosition || 'top_right';
+        if (pos === 'top_left') { logoImg.style.left = offX + 'px'; logoImg.style.top = offY + 'px'; }
+        else if (pos === 'bottom_left') { logoImg.style.left = offX + 'px'; logoImg.style.bottom = offY + 'px'; }
+        else if (pos === 'bottom_right') { logoImg.style.right = offX + 'px'; logoImg.style.bottom = offY + 'px'; }
+        else if (pos === 'top_center') { logoImg.style.left = ((stageW - boxSize) / 2 + offX) + 'px'; logoImg.style.top = offY + 'px'; }
+        else if (pos === 'bottom_center') { logoImg.style.left = ((stageW - boxSize) / 2 + offX) + 'px'; logoImg.style.bottom = offY + 'px'; }
+        else { logoImg.style.right = offX + 'px'; logoImg.style.top = offY + 'px'; } // top_right default
+        logoImg.style.display = 'block';
       } else {
-        crossEmblem.style.display = 'none';
+        logoImg.style.display = 'none';
       }
 
       // v2.0: scaled like the fonts (NDI: cornerRadiusDp x 2 x frame scale).
@@ -2647,6 +2789,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       if (data.isPureTransparentBackground) { // v1.9: toggle is the single authority (was: style check overrode it)
         // Item 16 (1.9.8): respect the glow setting even on transparent
         // background — don't force it off.
+        // Item 55 (1.9.8): clear any stale gradient from a previous render
+        // (the background shorthand outranks backgroundColor).
+        cardBox.classList.remove('bg-flow','bg-pulse'); cardBox.style.background=''; cardBox.style.backgroundSize='';
         cardBox.style.backgroundColor = 'transparent';
         cardBox.style.backdropFilter = 'none';
         cardBox.style.webkitBackdropFilter = 'none';
@@ -2701,17 +2846,23 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         }
       } else if (data.style === 'CLASSIC_BANNER') {
         var bwStr = ((data.showAccentBorderWidthDp !== undefined ? data.showAccentBorderWidthDp : 2) * 3 * getStageScale()) + 'px solid ' + accent;
+        // Item 55 (1.9.8): clear any stale gradient from a previous render.
+        cardBox.classList.remove('bg-flow','bg-pulse'); cardBox.style.background=''; cardBox.style.backgroundSize='';
         cardBox.style.backgroundColor = 'rgba(' + r + ',' + g + ',' + b + ',' + (a1own * opacity) + ')';
         cardBox.style.borderRight = data.showAccentBorder ? bwStr : 'none';
         cardBox.style.borderLeft = 'none';
         cardBox.style.boxShadow = cardGlowShadow(data.cardGlowOpacity !== undefined ? data.cardGlowOpacity : 1);
       } else if (data.style === 'ROYAL_LITURGICAL') {
         var bwStr = ((data.showAccentBorderWidthDp !== undefined ? data.showAccentBorderWidthDp : 2) * 3 * getStageScale()) + 'px solid ' + accent;
+        // Item 55 (1.9.8): clear stale backgroundSize from a previous gradient render.
+        cardBox.style.backgroundSize='';
         cardBox.style.background = 'linear-gradient(135deg, rgba(' + r + ',' + g + ',' + b + ',' + (a1own * opacity) + ') 0%, rgba(20,20,35,' + opacity + ') 100%)';
         cardBox.style.border = data.showAccentBorder ? bwStr : 'none';
         cardBox.style.boxShadow = cardGlowShadow(data.cardGlowOpacity !== undefined ? data.cardGlowOpacity : 1);
       } else {
         var bwStr = ((data.showAccentBorderWidthDp !== undefined ? data.showAccentBorderWidthDp : 2) * 3 * getStageScale()) + 'px solid ' + accent;
+        // Item 55 (1.9.8): clear any stale gradient from a previous render.
+        cardBox.classList.remove('bg-flow','bg-pulse'); cardBox.style.background=''; cardBox.style.backgroundSize='';
         cardBox.style.backgroundColor = 'rgba(' + r + ',' + g + ',' + b + ',' + (a1own * opacity) + ')';
         cardBox.style.backdropFilter = 'blur(16px)';
         cardBox.style.webkitBackdropFilter = 'blur(16px)';
@@ -2903,6 +3054,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       // 7. Motion Background Layer
       const animType = data.animatedBackground || 'none';
       const animOpacity = data.animatedBackgroundOpacity !== undefined ? data.animatedBackgroundOpacity : 0.65;
+      // Item 63/64 (1.9.8): particle opacity — own slider, independent
+      // from video opacity (0 = hidden).
+      const particleOpacity = data.particleOpacity !== undefined ? data.particleOpacity : 0.65;
 
       // v1.9.2 (#2): reconfiguring the layer RESTARTS its CSS animation
       // (class wipe + re-add resets the phase to 0), and this section used
@@ -2919,7 +3073,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       var playOnceMode = data.videoLoopMode || 'fade';
       var playOnceActive = (playOnceMode === 'once' || playOnceMode === 'once_verse' || playOnceMode === 'once_golive');
       var playOnceVerseKeyJs = (data.bookId || '') + ':' + (data.chapterNum || '') + ':' + (data.verseNum || '') + ':' + (data.customVideoId || '');
-      const animKey = [animType, animOpacity, data.motionSpeed, data.isPureTransparentBackground ? 1 : 0,
+      const animKey = [animType, animOpacity, particleOpacity, data.motionSpeed, data.isPureTransparentBackground ? 1 : 0,
         data.bgOpacity, data.customVideoId || '', data.videoLoopMode || '', isFull ? 1 : 0,
         playOnceActive ? playOnceVerseKeyJs : ''].join('|');
       if (animKey !== activeAnimKey) {
@@ -2936,7 +3090,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       // refined that: NDI DOES draw particles (and the ethereal glow)
       // under pure for animated styles - only the wash/fill is gone. So
       // the canvas follows the animated type alone, pure or not.
-      if (animType !== 'gold_particles' && animType !== 'particles') {
+      if (animType !== 'gold_particles' && animType !== 'particles' && animType !== 'snow' && animType !== 'light_rays' && animType !== 'dove_feathers') {
         stopParticles();
         activeParticleKey = null;
       }
@@ -2962,19 +3116,41 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       } else if (animType === 'gold_particles') {
         animBgLayer.classList.add('anim-gold-particles');
         animBgLayer.style.opacity = animOpacity;
-        // v1.9.2 (#4): the particle key carries the speed — a speed-only
-        // change must restart the field with the new velocities (the
-        // section guard alone would leave the old speed running).
-        if (activeParticleKey !== 'gold_particles@' + data.motionSpeed) {
-          startParticles('#FCD34D', animOpacity, data.motionSpeed);
-          activeParticleKey = 'gold_particles@' + data.motionSpeed;
+        // v1.9.2 (#4): the particle key carries speed + particle opacity —
+        // either change must restart the field (the section guard alone
+        // would leave the old velocities/alpha running).
+        // Item 63/64 (1.9.8): particle fields use particleOpacity.
+        if (activeParticleKey !== 'gold_particles@' + data.motionSpeed + '@' + particleOpacity) {
+          startParticles('#FCD34D', particleOpacity, data.motionSpeed);
+          activeParticleKey = 'gold_particles@' + data.motionSpeed + '@' + particleOpacity;
         }
       } else if (animType === 'particles') {
         animBgLayer.classList.add('anim-particles');
         animBgLayer.style.opacity = animOpacity;
-        if (activeParticleKey !== 'particles@' + data.motionSpeed) {
-          startParticles('#7DD3FC', animOpacity, data.motionSpeed);
-          activeParticleKey = 'particles@' + data.motionSpeed;
+        if (activeParticleKey !== 'particles@' + data.motionSpeed + '@' + particleOpacity) {
+          startParticles('#7DD3FC', particleOpacity, data.motionSpeed);
+          activeParticleKey = 'particles@' + data.motionSpeed + '@' + particleOpacity;
+        }
+      } else if (animType === 'snow') {
+        animBgLayer.classList.add('anim-snow');
+        animBgLayer.style.opacity = animOpacity;
+        if (activeParticleKey !== 'snow@' + data.motionSpeed + '@' + particleOpacity) {
+          startParticles('#FFFFFF', particleOpacity, data.motionSpeed, 'snow');
+          activeParticleKey = 'snow@' + data.motionSpeed + '@' + particleOpacity;
+        }
+      } else if (animType === 'light_rays') {
+        animBgLayer.classList.add('anim-light-rays');
+        animBgLayer.style.opacity = animOpacity;
+        if (activeParticleKey !== 'light_rays@' + data.motionSpeed + '@' + particleOpacity) {
+          startLightRays('#FDE68A', particleOpacity, data.motionSpeed);
+          activeParticleKey = 'light_rays@' + data.motionSpeed + '@' + particleOpacity;
+        }
+      } else if (animType === 'dove_feathers') {
+        animBgLayer.classList.add('anim-dove-feathers');
+        animBgLayer.style.opacity = animOpacity;
+        if (activeParticleKey !== 'dove_feathers@' + data.motionSpeed + '@' + particleOpacity) {
+          startParticles('#FFFFFF', particleOpacity, data.motionSpeed, 'feathers');
+          activeParticleKey = 'dove_feathers@' + data.motionSpeed + '@' + particleOpacity;
         }
       } else if (animType === 'custom_video' && data.customVideoId) {
         // v1.7: videos are served by opaque ID from private storage (never by path).
@@ -3062,7 +3238,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       // only). Base durations match the CSS keyframes above.
       const animBaseDurations = {
         'golden_rays': 15, 'blue_waves': 20, 'candle_glow': 5, 'purple_silk': 18,
-        'emerald_waves': 20, 'rose_glow': 8, 'gold_particles': 15, 'particles': 10
+        'emerald_waves': 20, 'rose_glow': 8, 'gold_particles': 15, 'particles': 10,
+        // Item 64 phase 1 (1.9.8): worship particle effects.
+        'snow': 15, 'light_rays': 15, 'dove_feathers': 15
       };
       const animSpeed = data.motionSpeed === undefined ? 1.0 : parseFloat(data.motionSpeed);
       if (animType !== 'none' && animType !== 'custom_video' && animBaseDurations[animType]) {
@@ -3096,7 +3274,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         emerald_waves: [[6,78,59],[52,211,153]],
         rose_glow: [[136,19,55],[251,113,133]],
         gold_particles: [[120,53,15],[252,211,77]],
-        particles: [[15,23,42],[56,189,248]]
+        particles: [[15,23,42],[56,189,248]],
+        // Item 64 phase 1 (1.9.8): worship particle effects (matches
+        // the NDI shader bases — render parity).
+        snow: [[15,23,42],[30,58,138]],
+        light_rays: [[120,53,15],[253,230,138]],
+        dove_feathers: [[226,232,240],[147,197,253]]
       };
       const grad = GRAD_COLORS[animType];
       const gradIsRadial = animType === 'candle_glow' || animType === 'rose_glow';
@@ -3173,7 +3356,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // (radial, alpha = motion opacity x 75, capped 15..120) behind
         // the text. Mirror it on the layer; particles (for the particle
         // types) are started by the class chain above.
-        const GLOW_COLORS = { golden_rays: [251,191,36], blue_waves: [56,189,248], candle_glow: [245,158,11], purple_silk: [192,132,252], emerald_waves: [52,211,153], rose_glow: [251,113,133], gold_particles: [252,211,77], particles: [125,211,252] };
+        const GLOW_COLORS = { golden_rays: [251,191,36], blue_waves: [56,189,248], candle_glow: [245,158,11], purple_silk: [192,132,252], emerald_waves: [52,211,153], rose_glow: [251,113,133], gold_particles: [252,211,77], particles: [125,211,252], snow: [226,232,240], light_rays: [253,230,138], dove_feathers: [255,255,255] };
         const gc = GLOW_COLORS[animType] || [255,255,255];
         const ga = Math.max(15, Math.min(120, animOpacity * 75)) / 255;
         animBgLayer.className = 'animated-bg-layer';
@@ -3238,7 +3421,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         resizeFitTimer = null;
         if (lastFitFn) { try { lastFitFn(); } catch (e) { /* fit is best-effort */ } }
         if (particleAnimId && particleArgs) {
-          startParticles(particleArgs[0], particleArgs[1], particleArgs[2]);
+          // Item 64: rays restart via their own loop (mode is arg 3).
+          if (particleArgs[3] === 'rays') {
+            startLightRays(particleArgs[0], particleArgs[1], particleArgs[2]);
+          } else {
+            startParticles(particleArgs[0], particleArgs[1], particleArgs[2], particleArgs[3]);
+          }
         }
       }, 120);
     }
@@ -3358,6 +3546,16 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
      */
     private val videoStore by lazy { VideoStore(context) }
     private val videoRenderers = mutableMapOf<Boolean, VideoBackgroundRenderer>()
+    /**
+     * Item 54 (1.9.8): logo image layer (z-index 4, top of everything).
+     * The decoded bitmap is cached by logoUri — decoded once per logo
+     * change, never per frame. Null bitmap = no logo (empty URI or
+     * missing/undecodable file); drawLogoLayer then draws nothing.
+     */
+    private val logoStore by lazy { LogoStore(context) }
+    private var cachedLogoBitmap: Bitmap? = null
+    private var cachedLogoUri: String? = null
+    private val logoPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { isFilterBitmap = true }
     /** Combined batch, Play Once state per feed (isFull -> value).
      * Per Verse: last verse+video key that started a play.
      * Per Go Live: whether a play already ran this live session,
@@ -3495,6 +3693,144 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             val size = (1.2f + r2 * 2.8f) * scale
             paint.color = Color.argb(alpha, Color.red(particleColor), Color.green(particleColor), Color.blue(particleColor))
             canvas.drawCircle(x, y, size, paint)
+        }
+        canvas.restore()
+    }
+
+    /**
+     * Item 64 phase 1 (1.9.8): worship particle effects — snow, light
+     * rays, dove feathers. Same conventions as drawParticleField:
+     * deterministic pseudo-random per particle, time-based animation,
+     * clipped to the card's rounded rect, alpha from particleOpacity
+     * (baseAlpha, 0 = hidden). All render on the particle layer
+     * (z-index 1, above the video background, below the card).
+     */
+    private fun drawSnowField(
+        canvas: Canvas,
+        boxLeft: Float, boxTop: Float, boxRight: Float, boxBottom: Float,
+        radius: Float,
+        clockSec: Float,
+        scale: Float,
+        baseAlpha: Int,
+    ) {
+        val w = boxRight - boxLeft
+        val h = boxBottom - boxTop
+        if (w <= 1f || h <= 1f) return
+        val count = ((w * h) / (1920f * 1080f) * 120f).toInt().coerceIn(30, 150)
+        fun posMod(v: Float, m: Float): Float = ((v % m) + m) % m
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+        canvas.save()
+        if (radius > 0f) {
+            canvas.clipPath(Path().apply {
+                addRoundRect(RectF(boxLeft, boxTop, boxRight, boxBottom), radius, radius, Path.Direction.CW)
+            })
+        }
+        for (i in 0 until count) {
+            val r1 = ((i * 2654435761L + 1013904223L) % 1000L).toFloat() / 1000f
+            val r2 = ((i * 40503L + 2246822519L) % 1000L).toFloat() / 1000f
+            val r3 = ((i * 65599L + 3266489917L) % 1000L).toFloat() / 1000f
+            // Slow fall + gentle sideways sway, wrapping top-to-bottom.
+            val fall = clockSec * (8f + r3 * 14f) * scale
+            val sway = sin((clockSec * (0.5f + r2) + r1 * 6.2831f).toDouble()).toFloat() * 10f * scale
+            val x = boxLeft + posMod(r1 * w + sway, w)
+            val y = boxTop + posMod(r2 * h + fall, h)
+            // Soft shimmer.
+            val tw = (sin((clockSec * (0.6f + r3 * 1.6f) + r1 * 6.2831f).toDouble()).toFloat() + 1f) / 2f
+            val alpha = (baseAlpha * (0.6f + 0.4f * tw)).toInt().coerceIn(0, 255)
+            val size = (1.5f + r2 * 3f) * scale
+            paint.color = Color.argb(alpha, 255, 255, 255)
+            canvas.drawCircle(x, y, size, paint)
+        }
+        canvas.restore()
+    }
+
+    private fun drawLightRays(
+        canvas: Canvas,
+        boxLeft: Float, boxTop: Float, boxRight: Float, boxBottom: Float,
+        radius: Float,
+        clockSec: Float,
+        scale: Float,
+        baseAlpha: Int,
+    ) {
+        val w = boxRight - boxLeft
+        val h = boxBottom - boxTop
+        if (w <= 1f || h <= 1f) return
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+        canvas.save()
+        if (radius > 0f) {
+            canvas.clipPath(Path().apply {
+                addRoundRect(RectF(boxLeft, boxTop, boxRight, boxBottom), radius, radius, Path.Direction.CW)
+            })
+        }
+        // Soft beams fanning down from top-center, rotating slowly.
+        val apexX = boxLeft + w / 2f
+        val apexY = boxTop - h * 0.05f
+        val rayCount = 7
+        for (i in 0 until rayCount) {
+            val r1 = ((i * 2654435761L + 1013904223L) % 1000L).toFloat() / 1000f
+            // Beam direction sweeps slowly; each beam keeps its own phase.
+            val baseAngle = -0.9f + (i.toFloat() / (rayCount - 1).toFloat()) * 1.8f
+            val angle = baseAngle + sin((clockSec * 0.25f + r1 * 6.2831f).toDouble()).toFloat() * 0.08f
+            val len = h * 1.25f
+            val spread = (0.10f + r1 * 0.10f) * w
+            val tipX = apexX + sin(angle.toDouble()).toFloat() * len
+            val tipY = apexY + cos(angle.toDouble()).toFloat() * len
+            // Beam breathing (alpha pulses gently, out of phase per beam).
+            val breath = (sin((clockSec * (0.5f + r1 * 0.7f) + r1 * 6.2831f).toDouble()).toFloat() + 1f) / 2f
+            val alpha = (baseAlpha * (0.10f + 0.10f * breath)).toInt().coerceIn(0, 255)
+            paint.color = Color.argb(alpha, 253, 230, 138)
+            val path = Path().apply {
+                moveTo(apexX, apexY)
+                lineTo(tipX - spread / 2f, tipY)
+                lineTo(tipX + spread / 2f, tipY)
+                close()
+            }
+            canvas.drawPath(path, paint)
+        }
+        canvas.restore()
+    }
+
+    private fun drawDoveFeathers(
+        canvas: Canvas,
+        boxLeft: Float, boxTop: Float, boxRight: Float, boxBottom: Float,
+        radius: Float,
+        clockSec: Float,
+        scale: Float,
+        baseAlpha: Int,
+    ) {
+        val w = boxRight - boxLeft
+        val h = boxBottom - boxTop
+        if (w <= 1f || h <= 1f) return
+        val count = ((w * h) / (1920f * 1080f) * 60f).toInt().coerceIn(12, 60)
+        fun posMod(v: Float, m: Float): Float = ((v % m) + m) % m
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+        canvas.save()
+        if (radius > 0f) {
+            canvas.clipPath(Path().apply {
+                addRoundRect(RectF(boxLeft, boxTop, boxRight, boxBottom), radius, radius, Path.Direction.CW)
+            })
+        }
+        for (i in 0 until count) {
+            val r1 = ((i * 2654435761L + 1013904223L) % 1000L).toFloat() / 1000f
+            val r2 = ((i * 40503L + 2246822519L) % 1000L).toFloat() / 1000f
+            val r3 = ((i * 65599L + 3266489917L) % 1000L).toFloat() / 1000f
+            // Slow drift down with a wide sway, like a feather on the air.
+            val fall = clockSec * (6f + r3 * 10f) * scale
+            val sway = sin((clockSec * (0.4f + r2 * 0.5f) + r1 * 6.2831f).toDouble()).toFloat() * 26f * scale
+            val x = boxLeft + posMod(r1 * w + sway, w)
+            val y = boxTop + posMod(r2 * h + fall, h)
+            // Gentle tumble (rotation) + soft shimmer.
+            val rot = sin((clockSec * (0.5f + r3) + r1 * 6.2831f).toDouble()).toFloat() * 55f
+            val tw = (sin((clockSec * (0.5f + r3 * 1.2f) + r1 * 6.2831f).toDouble()).toFloat() + 1f) / 2f
+            val alpha = (baseAlpha * (0.55f + 0.45f * tw)).toInt().coerceIn(0, 255)
+            val fw = (5f + r2 * 7f) * scale
+            val fh = fw * 0.45f
+            paint.color = Color.argb(alpha, 255, 255, 255)
+            canvas.save()
+            canvas.translate(x, y)
+            canvas.rotate(rot)
+            canvas.drawOval(RectF(-fw, -fh, fw, fh), paint)
+            canvas.restore()
         }
         canvas.restore()
     }
@@ -3784,16 +4120,18 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
             secondaryLayout = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 // One-update item 7: English line-spacing multiplier.
-                val enLineMult = 1.15f * (tpl.lineSpacingEnglish / 1.5f)
+                // Item 57 (1.9.8): match HTTP — (1.15 + 2/fontSize) term;
+                // spacingAdd 0f (parity with the Arabic fix, item 48).
+                val enLineMult = (1.15f + 2f / tpl.secondaryVerseFontSize) * (tpl.lineSpacingEnglish / 1.5f)
                 StaticLayout.Builder.obtain(fullSecondaryText, 0, fullSecondaryText.length, secondaryTextPaint, contentWidth)
                     .setAlignment(secAlignment)
-                    .setLineSpacing(4f * scale * fitRatio, enLineMult)
+                    .setLineSpacing(0f, enLineMult)
                     .setIncludePad(true)
                     .setBreakStrategy(Layout.BREAK_STRATEGY_SIMPLE)
                     .build()
             } else {
                 @Suppress("DEPRECATION")
-                StaticLayout(fullSecondaryText, secondaryTextPaint, contentWidth, secAlignment, 1.15f * (tpl.lineSpacingEnglish / 1.5f), 4f * scale * fitRatio, true)
+                StaticLayout(fullSecondaryText, secondaryTextPaint, contentWidth, secAlignment, (1.15f + 2f / tpl.secondaryVerseFontSize) * (tpl.lineSpacingEnglish / 1.5f), 0f, true)
             }
 
             if (!isEnglishOnly) {
@@ -3816,13 +4154,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 secondaryCitationLayout = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                     StaticLayout.Builder.obtain(secCitationText, 0, secCitationText.length, secCitationPaint, contentWidth)
                         .setAlignment(secCiteAlignment)
-                        .setLineSpacing(4f * scale * fitRatio, 1.15f * (tpl.lineSpacingEnglish / 1.5f))
+                        .setLineSpacing(0f, (1.15f + 2f / tpl.secondaryReferenceFontSize) * (tpl.lineSpacingEnglish / 1.5f))
                         .setIncludePad(true)
                         .setBreakStrategy(Layout.BREAK_STRATEGY_SIMPLE)
                         .build()
                 } else {
                     @Suppress("DEPRECATION")
-                    StaticLayout(secCitationText, secCitationPaint, contentWidth, secCiteAlignment, 1.15f * (tpl.lineSpacingEnglish / 1.5f), 4f * scale * fitRatio, true)
+                    StaticLayout(secCitationText, secCitationPaint, contentWidth, secCiteAlignment, (1.15f + 2f / tpl.secondaryReferenceFontSize) * (tpl.lineSpacingEnglish / 1.5f), 0f, true)
                 }
             }
         }
@@ -3963,6 +4301,54 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         paint.strokeWidth = origStrokeWidth
     }
 
+    /**
+     * Item 54 (1.9.8): logo image layer (z-index 4, top of everything).
+     * - Box size = logoBoxSizePercent % of min(width, height), so the logo
+     *   scales the same on Lower and Full.
+     * - Bitmap scales to fit INSIDE the box preserving aspect ratio
+     *   (contain, never stretch/distort).
+     * - Position from logoPosition (top_right default); offsets shift from
+     *   the screen edge as % of width/height.
+     * - Opacity via logoOpacity (0 = fully hidden, draws nothing).
+     * - Empty logoUri or missing/undecodable file = nothing drawn.
+     */
+    private fun drawLogoLayer(canvas: Canvas, width: Int, height: Int, tpl: LowerThirdTemplate) {
+        if (tpl.logoUri.isEmpty()) return
+        val opacity = tpl.logoOpacity.coerceIn(0f, 1f)
+        if (opacity <= 0f) return
+        // Refresh the cached bitmap only when the logo changes.
+        if (cachedLogoUri != tpl.logoUri) {
+            cachedLogoBitmap?.recycle()
+            cachedLogoBitmap = null
+            cachedLogoUri = tpl.logoUri
+            try {
+                val file = logoStore.fileFor(tpl.logoUri)
+                cachedLogoBitmap = file?.let { BitmapFactory.decodeFile(it.absolutePath) }
+            } catch (e: Exception) {
+                cachedLogoBitmap = null
+            }
+        }
+        val bmp = cachedLogoBitmap ?: return
+        if (bmp.isRecycled || bmp.width <= 0 || bmp.height <= 0) return
+        val boxSize = (tpl.logoBoxSizePercent.coerceIn(1f, 100f) / 100f) * minOf(width, height).toFloat()
+        // Contain: fit inside the box, preserving aspect ratio.
+        val scale = minOf(boxSize / bmp.width, boxSize / bmp.height)
+        val dw = bmp.width * scale
+        val dh = bmp.height * scale
+        val offX = (tpl.logoOffsetXPercent / 100f) * width
+        val offY = (tpl.logoOffsetYPercent / 100f) * height
+        val (left, top) = when (tpl.logoPosition) {
+            "top_left" -> offX to offY
+            "bottom_left" -> offX to (height - dh - offY)
+            "bottom_right" -> (width - dw - offX) to (height - dh - offY)
+            "top_center" -> ((width - dw) / 2f + offX) to offY
+            "bottom_center" -> ((width - dw) / 2f + offX) to (height - dh - offY)
+            else -> (width - dw - offX) to offY // "top_right" default
+        }
+        logoPaint.alpha = (opacity * 255).toInt().coerceIn(0, 255)
+        canvas.drawBitmap(bmp, null, RectF(left, top, left + dw, top + dh), logoPaint)
+    }
+
     private fun drawFrameInto(bitmap: Bitmap, width: Int, height: Int, isForStream: Boolean, tpl: LowerThirdTemplate, isFull: Boolean, isMotionTick: Boolean = false, verseOverride: BibleVerse? = null, isTransitionSnapshot: Boolean = false, textOnly: Boolean = false) {
         // v1.9: frame-timing instrumentation (replaces the GPU investigation).
         val drawStartNs = System.nanoTime()
@@ -3975,7 +4361,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // v2.0: verseOverride renders a specific verse (transition snapshots).
         val activeVerse = verseOverride ?: currentVerse ?: return
         // Clear Mode (2026-10-28 hotfix): off-air with CLEAR_VERSE_ONLY
-        // renders every layer WITHOUT text (verse, citation, emblem all
+        // renders every layer WITHOUT text (verse and citation all
         // blanked in the text section below). Transition snapshots and
         // text-only renders are never suppressed — they borrow the live
         // frame and must show the verse they animate. MJPEG (isForStream)
@@ -4300,7 +4686,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         }
 
         // v1.7 custom video background (per feed). The video is the background
-        // layer: drawn behind card/effects/text/emblem with the user's opacity.
+        // layer: drawn behind card/effects/text with the user's opacity.
         // Motion ticks pull fresh decoded frames; static renders freeze on the
         // last frame (the first static render kick-starts decoding).
         val customVideoFile = resolveCustomVideoFile(tpl, isFull)
@@ -4375,9 +4761,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         }
 
         // Combined batch: pure is opacity 0 (or the legacy flag).
-        // Item 14: skip the fill in Full Show when video is active.
+        // Item 51 (1.9.8): fill draws over video when trueFullscreen is
+        // OFF; still skipped when trueFullscreen is ON (video shows fully).
+        // (Was item 14: skipped whenever video was active on Full.)
         val isPureDerived = tpl.bgOpacity <= 0f || tpl.isPureTransparentBackground
-        if (!textOnly && !isPureDerived && !(isFull && isVideoActive)) {
+        if (!textOnly && !isPureDerived && !(isFull && tpl.trueFullscreen)) {
             val bgAlpha = (tpl.bgOpacity * 255).toInt().coerceIn(0, 255)
             val baseBgCol = try { Color.parseColor(tpl.bgColorHex) } catch (e: Exception) { Color.DKGRAY }
 
@@ -4541,6 +4929,37 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                             intArrayOf(c1, c2, c1), null, Shader.TileMode.CLAMP
                         )
                     }
+                    // Item 64 phase 1 (1.9.8): gradient bases for the new
+                    // worship particle effects (matches the HTTP CSS
+                    // classes .anim-snow / .anim-light-rays /
+                    // .anim-dove-feathers — NDI/HTTP render parity).
+                    AnimatedBackgroundType.SNOW -> {
+                        val c1 = Color.argb(bgAlpha, 15, 23, 42)
+                        val c2 = Color.argb(bgAlpha, 30, 58, 138)
+                        LinearGradient(
+                            boxLeft, boxTop,
+                            boxRight, boxBottom,
+                            intArrayOf(c1, c2, c1), null, Shader.TileMode.CLAMP
+                        )
+                    }
+                    AnimatedBackgroundType.LIGHT_RAYS -> {
+                        val c1 = Color.argb(bgAlpha, 120, 53, 15)
+                        val c2 = Color.argb(bgAlpha, 253, 230, 138)
+                        LinearGradient(
+                            boxLeft + (boxWidth * phase), boxTop,
+                            boxRight - (boxWidth * (1f - phase)), boxBottom,
+                            intArrayOf(c1, c2, c1), null, Shader.TileMode.CLAMP
+                        )
+                    }
+                    AnimatedBackgroundType.DOVE_FEATHERS -> {
+                        val c1 = Color.argb(bgAlpha, 226, 232, 240)
+                        val c2 = Color.argb(bgAlpha, 147, 197, 253)
+                        LinearGradient(
+                            boxLeft, boxTop,
+                            boxRight, boxBottom,
+                            intArrayOf(c1, c2, c1), null, Shader.TileMode.CLAMP
+                        )
+                    }
                     else -> null
                 }
 
@@ -4554,18 +4973,26 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 }
                 // v1.9: true particle field over the card base (matches HTTP —
                 // previously these two types were a plain gradient).
-                if (tpl.animatedBackground == AnimatedBackgroundType.PARTICLE_STARS ||
-                    tpl.animatedBackground == AnimatedBackgroundType.GOLDEN_PARTICLES) {
-                    val pColor = if (tpl.animatedBackground == AnimatedBackgroundType.PARTICLE_STARS)
-                        Color.rgb(125, 211, 252) else Color.rgb(252, 211, 77)
+                // Item 64 phase 1 (1.9.8): snow, light rays, dove feathers
+                // draw their own fields on the same layer (z-index 1).
+                if (isParticleType(tpl.animatedBackground)) {
                     val pClock = (System.currentTimeMillis() % 60000L) / 1000f * tpl.motionSpeed
                     // Audit fix: particles use the motion-opacity formula on
                     // BOTH branches (the pure branch already did; this one
                     // passed the card bgAlpha, so the same style's stars were
                     // dimmer over a visible card - and HTTP only ever matched
                     // the pure formula).
-                    val particleAlpha = (tpl.animatedBackgroundOpacity * 255).toInt().coerceIn(25, 255)
-                    drawParticleField(canvas, boxLeft, boxTop, boxRight, boxBottom, radius, pClock, scale, pColor, particleAlpha)
+                    // Item 61 (1.9.8): particleOpacity (own slider) with a
+                    // 0 floor so opacity 0 fully hides the particles.
+                    val particleAlpha = (tpl.particleOpacity * 255).toInt().coerceIn(0, 255)
+                    when (tpl.animatedBackground) {
+                        AnimatedBackgroundType.PARTICLE_STARS -> drawParticleField(canvas, boxLeft, boxTop, boxRight, boxBottom, radius, pClock, scale, Color.rgb(125, 211, 252), particleAlpha)
+                        AnimatedBackgroundType.GOLDEN_PARTICLES -> drawParticleField(canvas, boxLeft, boxTop, boxRight, boxBottom, radius, pClock, scale, Color.rgb(252, 211, 77), particleAlpha)
+                        AnimatedBackgroundType.SNOW -> drawSnowField(canvas, boxLeft, boxTop, boxRight, boxBottom, radius, pClock, scale, particleAlpha)
+                        AnimatedBackgroundType.LIGHT_RAYS -> drawLightRays(canvas, boxLeft, boxTop, boxRight, boxBottom, radius, pClock, scale, particleAlpha)
+                        AnimatedBackgroundType.DOVE_FEATHERS -> drawDoveFeathers(canvas, boxLeft, boxTop, boxRight, boxBottom, radius, pClock, scale, particleAlpha)
+                        else -> {}
+                    }
                 }
             } else if (!fullBleed) {
                 // Follow-up (trueFullscreen): no card fill — the card is bypassed.
@@ -4591,6 +5018,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 AnimatedBackgroundType.EMERALD_GARDEN_WAVES -> Color.argb(animAlpha, 52, 211, 153)
                 AnimatedBackgroundType.ROSE_DAWN_GLOW -> Color.argb(animAlpha, 251, 113, 133)
                 AnimatedBackgroundType.GOLDEN_PARTICLES -> Color.argb(animAlpha, 252, 211, 77)
+                // Item 64 phase 1 (1.9.8): glow colors for the new effects.
+                AnimatedBackgroundType.SNOW -> Color.argb(animAlpha, 226, 232, 240)
+                AnimatedBackgroundType.LIGHT_RAYS -> Color.argb(animAlpha, 253, 230, 138)
+                AnimatedBackgroundType.DOVE_FEATHERS -> Color.argb(animAlpha, 255, 255, 255)
                 else -> Color.argb(animAlpha, 255, 255, 255)
             }
             val glowShader = RadialGradient(
@@ -4602,15 +5033,23 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             canvas.drawRoundRect(rect, radius, radius, paint)
             paint.shader = null
             // v1.9: true particle field over the glow (matches HTTP).
-            if (tpl.animatedBackground == AnimatedBackgroundType.PARTICLE_STARS ||
-                tpl.animatedBackground == AnimatedBackgroundType.GOLDEN_PARTICLES) {
-                val pColor = if (tpl.animatedBackground == AnimatedBackgroundType.PARTICLE_STARS)
-                    Color.rgb(125, 211, 252) else Color.rgb(252, 211, 77)
+            // Item 64 phase 1 (1.9.8): snow, light rays, dove feathers
+            // draw their own fields on the same layer (z-index 1).
+            if (isParticleType(tpl.animatedBackground)) {
                 val pClock = (System.currentTimeMillis() % 60000L) / 1000f * tpl.motionSpeed
                 // v2.0: particles need full-range alpha like HTTP (opacity*255);
                 // the delicate animAlpha (~45) belongs to the glow gradient only.
-                val particleAlpha = (tpl.animatedBackgroundOpacity * 255).toInt().coerceIn(25, 255)
-                drawParticleField(canvas, boxLeft, boxTop, boxRight, boxBottom, radius, pClock, scale, pColor, particleAlpha)
+                // Item 61 (1.9.8): particleOpacity (own slider) with a
+                // 0 floor so opacity 0 fully hides the particles.
+                val particleAlpha = (tpl.particleOpacity * 255).toInt().coerceIn(0, 255)
+                when (tpl.animatedBackground) {
+                    AnimatedBackgroundType.PARTICLE_STARS -> drawParticleField(canvas, boxLeft, boxTop, boxRight, boxBottom, radius, pClock, scale, Color.rgb(125, 211, 252), particleAlpha)
+                    AnimatedBackgroundType.GOLDEN_PARTICLES -> drawParticleField(canvas, boxLeft, boxTop, boxRight, boxBottom, radius, pClock, scale, Color.rgb(252, 211, 77), particleAlpha)
+                    AnimatedBackgroundType.SNOW -> drawSnowField(canvas, boxLeft, boxTop, boxRight, boxBottom, radius, pClock, scale, particleAlpha)
+                    AnimatedBackgroundType.LIGHT_RAYS -> drawLightRays(canvas, boxLeft, boxTop, boxRight, boxBottom, radius, pClock, scale, particleAlpha)
+                    AnimatedBackgroundType.DOVE_FEATHERS -> drawDoveFeathers(canvas, boxLeft, boxTop, boxRight, boxBottom, radius, pClock, scale, particleAlpha)
+                    else -> {}
+                }
             }
         }
 
@@ -4699,76 +5138,27 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             }
         }
 
-        // Clear Verse Only: the whole text block below (emblem +
-        // citation + verse + English section) is skipped, so no verse
-        // text, citation or emblem can leak into a cleared frame. The
+        // Clear Verse Only: the whole text block below (citation +
+        // verse + English section) is skipped, so no verse text or
+        // citation can leak into a cleared frame. The
         // layers above (video, card, glow, border) already drew.
         if (!suppressText) {
-        // User emblem (emoji/symbol) drawn adjacent to the citation on the
-        // reading-start side, in the accent color like the HTTP overlay.
-        // Empty emblem = nothing drawn.
-        val emblemText = tpl.emblem
-        if (emblemText.isNotEmpty()) {
-            val emblemPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                // v1.8: emblem uses citation styling (was accent color).
-                color = refPaint.color
-                textSize = refPaint.textSize
-                // System default typeface: reliable emoji/symbol fallback.
-                typeface = Typeface.DEFAULT
-                if (tpl.textShadowEnabled) {
-                    val shadowCol = try { Color.parseColor(tpl.textShadowColorHex) } catch (e: Exception) { Color.BLACK }
-                    setShadowLayer(shadowBlur, shadowDx, shadowDy, shadowCol)
-                }
+        // Item 54 (1.9.8): emblem deleted — the citation draws alone.
+        // Batch-3: Arabic citation uses its own alignment (default RIGHT).
+        // v1.7: no forced centering — Full Show obeys the user's alignment
+        // exactly like Lower Third and every other surface.
+        when (tpl.citationAlignmentArabic) {
+            BroadcastTextAlignment.CENTER -> {
+                refPaint.textAlign = Paint.Align.CENTER
+                canvas.drawText(citation, (boxLeft + boxRight) / 2f, citationY, refPaint)
             }
-            val emblemW = emblemPaint.measureText(emblemText)
-            val citeW = refPaint.measureText(citation)
-            val emblemGap = 16f * scale
-            val totalW = emblemW + emblemGap + citeW
-
-            fun drawEmblemAt(x: Float, align: Paint.Align) {
-                emblemPaint.textAlign = align
-                canvas.drawText(emblemText, x, citationY, emblemPaint)
+            BroadcastTextAlignment.LEFT -> {
+                refPaint.textAlign = Paint.Align.LEFT
+                canvas.drawText(citation, boxLeft + padL, citationY, refPaint)
             }
-
-            // v1.7: no forced centering — Full Show obeys the user's alignment
-            // exactly like Lower Third and every other surface.
-            // Batch-3: Arabic citation uses its own alignment (default RIGHT).
-            when (tpl.citationAlignmentArabic) {
-                    BroadcastTextAlignment.CENTER -> {
-                        // v1.9.2 (#7): centered in the box (== frame center
-                        // whenever the box spans the frame, as Lower's does).
-                        val startX = boxLeft + (boxWidth - totalW) / 2f
-                        refPaint.textAlign = Paint.Align.LEFT
-                        canvas.drawText(citation, startX, citationY, refPaint)
-                        drawEmblemAt(startX + citeW + emblemGap, Paint.Align.LEFT)
-                    }
-                    BroadcastTextAlignment.LEFT -> {
-                        refPaint.textAlign = Paint.Align.LEFT
-                        canvas.drawText(citation, boxLeft + padL + emblemW + emblemGap, citationY, refPaint)
-                        drawEmblemAt(boxLeft + padL, Paint.Align.LEFT)
-                    }
-                    BroadcastTextAlignment.RIGHT -> {
-                        refPaint.textAlign = Paint.Align.RIGHT
-                        canvas.drawText(citation, boxRight - padR - emblemW - emblemGap, citationY, refPaint)
-                        drawEmblemAt(boxRight - padR, Paint.Align.RIGHT)
-                    }
-            }
-        } else {
-            // v1.7: no forced centering here either.
-            // Batch-3: Arabic citation uses its own alignment (default RIGHT).
-            when (tpl.citationAlignmentArabic) {
-                BroadcastTextAlignment.CENTER -> {
-                    refPaint.textAlign = Paint.Align.CENTER
-                    canvas.drawText(citation, (boxLeft + boxRight) / 2f, citationY, refPaint)
-                }
-                BroadcastTextAlignment.LEFT -> {
-                    refPaint.textAlign = Paint.Align.LEFT
-                    canvas.drawText(citation, boxLeft + padL, citationY, refPaint)
-                }
-                BroadcastTextAlignment.RIGHT -> {
-                    refPaint.textAlign = Paint.Align.RIGHT
-                    canvas.drawText(citation, boxRight - padR, citationY, refPaint)
-                }
+            BroadcastTextAlignment.RIGHT -> {
+                refPaint.textAlign = Paint.Align.RIGHT
+                canvas.drawText(citation, boxRight - padR, citationY, refPaint)
             }
         }
 
@@ -4778,10 +5168,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             boxLeft + (boxWidth - contentWidth) / 2f
         } else if (tpl.alignment == BroadcastTextAlignment.RIGHT) {
             // v2.0: the verse/English block's right edge sits at the padding
-            // edge (boxRight - padR) exactly like the HTTP overlay. The
-            // emblem space (emblemW + emblemGap) belongs ONLY to the citation
-            // row, which lays it out separately above — it was wrongly
-            // shrinking the verse block and shifting it left ~40dp at 1080p.
+            // edge (boxRight - padR) exactly like the HTTP overlay.
             boxRight - padR - contentWidth
         } else {
             boxLeft + padL
@@ -4830,6 +5217,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             canvas.restoreToCount(boxFadeLayer)
         } else if (boxSaveCount >= 0) {
             canvas.restoreToCount(boxSaveCount)
+        }
+
+        // Item 54 (1.9.8): logo layer (z-index 4) — after the box restore so
+        // it is never moved/scaled by box motion, before the standby badge.
+        // Skipped for text-only transition snapshots (logo is not text).
+        if (!textOnly) {
+            drawLogoLayer(canvas, width, height, tpl)
         }
 
         if (!isLive && isForStream && !textOnly) {
@@ -4944,6 +5338,39 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                     if (n <= 0) break
                     out.write(buf, 0, n)
                     remaining -= n
+                }
+                out.flush()
+            }
+        } catch (e: Exception) {
+            // Headers may already be sent; nothing more we can do.
+        }
+    }
+
+    /**
+     * Item 54 (1.9.8): serves a user logo image by opaque ID from private storage.
+     * - ID allowlist only (LogoStore validates the pattern + canonical path):
+     *   a LAN client can never request arbitrary files.
+     * - Small files: single read with Content-Length (no Range support needed).
+     * - Content-Type from the stored extension (png/jpeg/webp).
+     */
+    private fun serveLogoById(out: OutputStream, fullPath: String) {
+        try {
+            val id = Uri.parse(fullPath).getQueryParameter("id") ?: return send404(out)
+            val file = logoStore.fileFor(id) ?: return send404(out)
+            val total = file.length()
+            if (total <= 0) return send404(out)
+            val writer = PrintWriter(out)
+            writer.print("HTTP/1.1 200 OK\r\n")
+            writer.print("Content-Type: ${logoStore.mimeFor(file)}\r\n")
+            writer.print("Content-Length: $total\r\n")
+            writer.print("Access-Control-Allow-Origin: *\r\n")
+            writer.print("Connection: close\r\n\r\n")
+            writer.flush()
+            file.inputStream().use { input ->
+                val buf = ByteArray(64 * 1024)
+                var n: Int
+                while (input.read(buf).also { n = it } > 0) {
+                    out.write(buf, 0, n)
                 }
                 out.flush()
             }
@@ -6470,6 +6897,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             o.put("pureTransparent", t.isPureTransparentBackground)
             o.put("animatedBackground", t.animatedBackground.id)
             o.put("animatedBackgroundOpacity", t.animatedBackgroundOpacity.toDouble())
+            o.put("particleOpacity", t.particleOpacity.toDouble())
+            o.put("logoUri", t.logoUri)
+            o.put("logoPosition", t.logoPosition)
+            o.put("logoBoxSizePercent", t.logoBoxSizePercent.toDouble())
+            o.put("logoOffsetXPercent", t.logoOffsetXPercent.toDouble())
+            o.put("logoOffsetYPercent", t.logoOffsetYPercent.toDouble())
+            o.put("logoOpacity", t.logoOpacity.toDouble())
             o.put("customVideoUrl", t.customVideoUrl)
             o.put("customVideoId", t.customVideoId)
             o.put("customVideoMuted", t.customVideoMuted)

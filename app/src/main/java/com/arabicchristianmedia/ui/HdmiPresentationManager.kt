@@ -29,6 +29,17 @@ class HdmiPresentationManager(private val context: Context) {
     private val _isPresentationShowing = MutableStateFlow(false)
     val isPresentationShowing: StateFlow<Boolean> = _isPresentationShowing.asStateFlow()
 
+    /**
+     * Item 72 (1.9.9): state callback — MainActivity forwards it to the
+     * ViewModel, which writes the server fields (/api/debug) and the
+     * Setup tab status rows. Invoked after every state change.
+     */
+    var onStateChanged: ((connected: Boolean, showing: Boolean) -> Unit)? = null
+
+    private fun notifyState() {
+        onStateChanged?.invoke(_isHdmiConnected.value, _isPresentationShowing.value)
+    }
+
     var isEnabled: Boolean = true
         set(value) {
             field = value
@@ -79,6 +90,7 @@ class HdmiPresentationManager(private val context: Context) {
         } else {
             dismiss()
         }
+        notifyState()
     }
 
     private fun show(display: Display) {
@@ -106,6 +118,7 @@ class HdmiPresentationManager(private val context: Context) {
         }
         presentation = null
         _isPresentationShowing.value = false
+        notifyState()
     }
 
     /**

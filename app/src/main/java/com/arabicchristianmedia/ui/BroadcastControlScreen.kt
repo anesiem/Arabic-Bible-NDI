@@ -148,6 +148,11 @@ fun BroadcastControlScreen(
     onLaunchFullscreenShow: () -> Unit = {},
     // 1.9.3: HDMI background override toggle.
     onHdmiBackgroundOverrideChange: (Boolean) -> Unit = {},
+    // Item 72 (1.9.9): HDMI presentation toggle + live status.
+    hdmiEnabled: Boolean = true,
+    hdmiConnected: Boolean = false,
+    hdmiPresentationShowing: Boolean = false,
+    onHdmiEnabledChange: (Boolean) -> Unit = {},
     // Batch-3: per-tab per-section expand memory (ViewModel-backed map).
     sectionExpandedMap: Map<String, Boolean> = emptyMap(),
     onSetSectionExpanded: (String, String, Boolean) -> Unit = { _, _, _ -> },
@@ -176,7 +181,7 @@ fun BroadcastControlScreen(
     var highlightedSetupAnchor by remember { mutableStateOf<String?>(null) }
     val setupAnchorScope = rememberCoroutineScope()
     // Column items in order, by anchor id.
-    val leftSetupKeys = listOf("broadcast", "lower", "full")
+    val leftSetupKeys = listOf("broadcast", "lower", "full", "hdmi")
     val rightSetupKeys = listOf("urls", "custom")
     fun jumpToSetupAnchor(id: String) {
         highlightedSetupAnchor = id
@@ -1089,6 +1094,50 @@ fun BroadcastControlScreen(
         }
     }
 
+    // Item 72 (1.9.9): HDMI presentation — toggle + live status. The
+    // Presentation mirrors /full on a secondary display (ThinkPad HDMI;
+    // the FireTab has no video-out — see the HDMI correction in the
+    // plan file). State flows from HdmiPresentationManager via
+    // MainActivity -> ViewModel -> server fields (/api/debug).
+    val hdmiBlock: @Composable () -> Unit = {
+        SetupSection(
+            title = "HDMI (شاشة خارجية)",
+            sectionId = "hdmi",
+            sectionExpandedMap = sectionExpandedMap,
+            onSetSectionExpanded = onSetSectionExpanded,
+            summary = if (hdmiPresentationShowing) "يعرض الآن (Showing)"
+                else if (hdmiConnected) "متصل (Connected)"
+                else "غير متصل (Not connected)"
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "عرض HDMI (HDMI Presentation)",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = bento.textPrimary
+                    )
+                    Text(
+                        text = "يعرض صفحة العرض الكامل (/full) على شاشة خارجية عند توصيلها.",
+                        fontSize = 11.sp,
+                        color = bento.textSecondary
+                    )
+                }
+                androidx.compose.material3.Switch(
+                    checked = hdmiEnabled,
+                    onCheckedChange = { onHdmiEnabledChange(it) }
+                )
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "الحالة: " + if (hdmiConnected) "متصل (Connected)" else "غير متصل (Not connected)" +
+                    " • " + if (hdmiPresentationShowing) "يعرض (Showing)" else "متوقف (Not showing)",
+                fontSize = 11.sp,
+                color = bento.textSecondary
+            )
+        }
+    }
+
     val customBlock: @Composable () -> Unit = {
         SetupSection(
             title = "التخصيص (Customizations)",
@@ -1741,6 +1790,7 @@ fun BroadcastControlScreen(
                         "broadcast" to "البث (Broadcast)",
                         "lower" to "الثلث السفلي (Lower Third)",
                         "full" to "العرض الكامل (Full Show)",
+                        "hdmi" to "HDMI (شاشة خارجية)",
                         "urls" to "الروابط (URLs)",
                         "custom" to "التخصيص (Customizations)"
                     ).forEach { (id, label) ->
@@ -1772,6 +1822,7 @@ fun BroadcastControlScreen(
                         }
                         item("lower") { Box(setupAnchorModifier("lower")) { lowerBlock() } }
                         item("full") { Box(setupAnchorModifier("full")) { fullBlock() } }
+                        item("hdmi") { Box(setupAnchorModifier("hdmi")) { hdmiBlock() } }
                     }
                     LazyColumn(
                         Modifier.weight(0.5f).fillMaxHeight().padding(start = 6.dp, end = 14.dp, top = 12.dp, bottom = 14.dp),
@@ -1814,6 +1865,7 @@ fun BroadcastControlScreen(
                 // Batch-4: Diagnostics after Lower/Full, not before.
                 lowerBlock()
                 fullBlock()
+                hdmiBlock()
                 diagnosticsBlock()
                 SetupSectionHeader("الروابط (URLs)")
                 urlsCardBlock()

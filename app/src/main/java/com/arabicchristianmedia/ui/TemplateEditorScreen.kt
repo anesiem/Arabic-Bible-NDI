@@ -96,12 +96,6 @@ data class BackgroundPairing(
 
 fun getBackgroundPairing(type: AnimatedBackgroundType): BackgroundPairing? {
     return when (type) {
-        AnimatedBackgroundType.PARTICLE_STARS -> BackgroundPairing(
-            TemplateStyle.TRANSPARENT_OUTLINE, "#FFFFFF"
-        )
-        AnimatedBackgroundType.GOLDEN_PARTICLES -> BackgroundPairing(
-            TemplateStyle.TRANSPARENT_OUTLINE, "#F59E0B"
-        )
         AnimatedBackgroundType.GOLDEN_DIVINE_RAYS -> BackgroundPairing(
             TemplateStyle.MODERN_GLASS, "#F59E0B"
         )
@@ -123,18 +117,13 @@ fun getBackgroundPairing(type: AnimatedBackgroundType): BackgroundPairing? {
         AnimatedBackgroundType.CUSTOM_VIDEO -> BackgroundPairing(
             TemplateStyle.TRANSPARENT_OUTLINE, "#FFFFFF"
         )
-        // Item 64 phase 1 (1.9.8): worship particle effects. Pairing sets
-        // ONLY style + accent (item 62) — never transparency.
-        AnimatedBackgroundType.SNOW -> BackgroundPairing(
-            TemplateStyle.TRANSPARENT_OUTLINE, "#FFFFFF"
-        )
-        AnimatedBackgroundType.LIGHT_RAYS -> BackgroundPairing(
-            TemplateStyle.MODERN_GLASS, "#FDE68A"
-        )
-        AnimatedBackgroundType.DOVE_FEATHERS -> BackgroundPairing(
-            TemplateStyle.TRANSPARENT_OUTLINE, "#FFFFFF"
-        )
         AnimatedBackgroundType.NONE -> null
+        // Item 75 (1.9.9): particle effects NEVER get a pairing — they
+        // are an overlay layer, not a background look, so picking one
+        // must not restyle the card or change the accent. (The video's
+        // pairing wins when both are set.) Saved templates keep the
+        // style+accent they already carry.
+        else -> null
     }
 }
 
@@ -152,6 +141,14 @@ fun applyAnimatedBackground(template: LowerThirdTemplate, type: AnimatedBackgrou
     } else {
         template.copy(animatedBackground = type)
     }
+}
+
+// Item 75 (1.9.9): particle-effect apply — sets ONLY the particle
+// effect. No pairing (see getBackgroundPairing): particles never
+// change the style or the accent, so adding them to a styled card
+// leaves the card exactly as it is.
+fun applyParticleEffect(template: LowerThirdTemplate, type: AnimatedBackgroundType): LowerThirdTemplate {
+    return template.copy(particleEffect = type)
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -1256,9 +1253,10 @@ CollapsibleSection(
                                 }
                             }
                         }
-                        if (editingTemplate.gradientAnimation != GradientAnimationType.NONE) {
-                            SliderWithLabel("سرعة حركة التدرج (Gradient animation speed)", editingTemplate.gradientSpeed, 0f..3f) { onUpdate(editingTemplate.copy(gradientSpeed = it)) }
-                        }
+                        // Item 69 (1.9.9): always visible — disabled while
+                        // the animation is None, so the control is never
+                        // hidden (it used to vanish with the animation).
+                        SliderWithLabel("سرعة حركة التدرج (Gradient animation speed)", editingTemplate.gradientSpeed, 0f..3f, enabled = editingTemplate.gradientAnimation != GradientAnimationType.NONE) { onUpdate(editingTemplate.copy(gradientSpeed = it)) }
                             }
                         }
                     }
@@ -1328,26 +1326,25 @@ CollapsibleSection(
     }
 
     // Item 64 phase 1 (1.9.8): Particles section — own card above the
-    // Motion Video section. Effect picker (None + the 5 particle
-    // effects) + opacity slider (particleOpacity, own field) + speed
-    // slider (motionSpeed, shared with video motion). Density + color
-    // pickers are NOT here yet — no particleDensity / particleColor
-    // template field exists (phase 2).
+    // Motion Video section. Item 75 (1.9.9): the picker writes
+    // particleEffect only (independent of the video) — picking an
+    // effect never restyles the card. Items 66/67: density slider +
+    // color picker.
     val particlesSectionBlock: @Composable () -> Unit = {
 CollapsibleSection(
                     modifier = anchorModifier("particles"),
                     title = "الجسيمات (Particles)",
-                    initiallyExpanded = isParticleType(editingTemplate.animatedBackground),
-                    expanded = isSectionExpanded("particles", isParticleType(editingTemplate.animatedBackground)),
+                    initiallyExpanded = isParticleType(editingTemplate.particleEffect),
+                    expanded = isSectionExpanded("particles", isParticleType(editingTemplate.particleEffect)),
                     onExpandedChange = { setSectionExpanded("particles", it) },
-                    summary = if (isParticleType(editingTemplate.animatedBackground)) editingTemplate.animatedBackground.displayNameAr + " \u00b7 " + (editingTemplate.particleOpacity * 100).toInt() + "%" else "بدون (None)"
+                    summary = if (isParticleType(editingTemplate.particleEffect)) editingTemplate.particleEffect.displayNameAr + " \u00b7 " + (editingTemplate.particleOpacity * 100).toInt() + "%" else "بدون (None)"
                 ) {
                     Text("تأثيرات الجسيمات (Particle Effects) — الطبقة فوق الفيديو", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(listOf(AnimatedBackgroundType.NONE) + particleEffectTypes) { type ->
                             FilterChip(
-                                selected = editingTemplate.animatedBackground == type,
-                                onClick = { onUpdate(applyAnimatedBackground(editingTemplate, type)) },
+                                selected = editingTemplate.particleEffect == type,
+                                onClick = { onUpdate(applyParticleEffect(editingTemplate, type)) },
                                 label = { Text(type.displayNameAr, fontSize = 10.sp) }
                             )
                         }
@@ -1369,6 +1366,25 @@ CollapsibleSection(
                     ) {
                         onUpdate(editingTemplate.copy(motionSpeed = it))
                     }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    // Item 66 (1.9.9): particle density — how many
+                    // particles (0.25 = sparse, 1.0 = normal, 2.0 = dense).
+                    SliderWithLabel(
+                        label = "كثافة الجسيمات (Particle Density)",
+                        value = editingTemplate.particleDensity,
+                        range = 0.25f..2.0f,
+                        onValueChange = { onUpdate(editingTemplate.copy(particleDensity = it)) }
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    // Item 67 (1.9.9): per-effect particle color. Empty =
+                    // the effect's own default color; the Default button
+                    // clears a custom color back to it.
+                    ColorGradePickerRow("لون الجسيمات (Particle Color)", if (editingTemplate.particleColorHex.isEmpty()) particleDefaultColorHex(editingTemplate.particleEffect) else editingTemplate.particleColorHex, { onUpdate(editingTemplate.copy(particleColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor, previewTemplate = editingTemplate, previewField = "particleColorHex")
+                    if (editingTemplate.particleColorHex.isNotEmpty()) {
+                        TextButton(onClick = { onUpdate(editingTemplate.copy(particleColorHex = "")) }) {
+                            Text("افتراضي (Default)", fontSize = 11.sp, color = bento.primary)
+                        }
+                    }
                 }
     }
 
@@ -1383,8 +1399,10 @@ CollapsibleSection(
                 ) {
                     // Animated Motion Backgrounds (Layer 1: Bottom background layer)
                     Text("الخلفيات المتحركة (Motion Video Backgrounds) — طبقة الخلفية", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary, modifier = anchorModifier("bg-motion"))
+                    // Item 75 (1.9.9): video types only — particle effects
+                    // live in the Particles section above, not here.
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(AnimatedBackgroundType.entries) { type ->
+                        items(AnimatedBackgroundType.entries.filter { !isParticleType(it) }) { type ->
                             FilterChip(
                                 selected = editingTemplate.animatedBackground == type,
                                 onClick = {
@@ -2648,7 +2666,7 @@ fun InfoPopupButton(infoTitle: String, infoText: String) {
 }
 
 @Composable
-fun SliderWithLabel(label: String, value: Float, range: ClosedFloatingPointRange<Float>, modifier: Modifier = Modifier, onValueChange: (Float) -> Unit) {
+fun SliderWithLabel(label: String, value: Float, range: ClosedFloatingPointRange<Float>, modifier: Modifier = Modifier, enabled: Boolean = true, onValueChange: (Float) -> Unit) {
     val bento = LocalBentoColors.current
     Column(modifier = modifier) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -2659,7 +2677,7 @@ fun SliderWithLabel(label: String, value: Float, range: ClosedFloatingPointRange
                           else "%.2f".format(value)
             Text(readout, fontSize = 11.sp, color = bento.primary, fontWeight = FontWeight.Bold)
         }
-        Slider(value = value, onValueChange = onValueChange, valueRange = range, colors = SliderDefaults.colors(thumbColor = bento.primary, activeTrackColor = bento.primary))
+        Slider(value = value, onValueChange = onValueChange, valueRange = range, enabled = enabled, colors = SliderDefaults.colors(thumbColor = bento.primary, activeTrackColor = bento.primary))
     }
 }
 

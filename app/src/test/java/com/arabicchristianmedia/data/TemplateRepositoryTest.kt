@@ -188,7 +188,8 @@ class TemplateRepositoryTest {
         }
         assertTrue("Desert should glow", defaults.first { it.id == "tpl_fs_desert" }.cardGlowEnabled)
         assertTrue("Royal should glow", defaults.first { it.id == "tpl_fs_royal" }.cardGlowEnabled)
-        assertTrue("Royal should have particles", defaults.first { it.id == "tpl_fs_royal" }.animatedBackground.name == "GOLDEN_PARTICLES")
+        assertTrue("Royal should have particles", defaults.first { it.id == "tpl_fs_royal" }.particleEffect.name == "GOLDEN_PARTICLES")
+        assertTrue("Royal video background is none (item 75 split)", defaults.first { it.id == "tpl_fs_royal" }.animatedBackground.name == "NONE")
         // New designs: gradient second color is a real companion —
         // never equal to first, never a dropped-alpha black.
         defaults.filter { it.id !in transparentIds }.forEach { tpl ->

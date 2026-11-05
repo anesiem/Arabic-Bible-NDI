@@ -187,7 +187,11 @@ class NdiService : Service() {
             snd.setMotionContentProvider { isFullScreen ->
                 val srv = server ?: return@setMotionContentProvider false
                 val tpl = if (isFullScreen) srv.currentShowTemplate else srv.currentTemplate
-                tpl.animatedBackground != AnimatedBackgroundType.NONE
+                // Item 75 (1.9.9): particles are motion content too — a
+                // particle-only style (video NONE) must still tick, or the
+                // particles freeze on NDI.
+                tpl.animatedBackground != AnimatedBackgroundType.NONE ||
+                    tpl.particleEffect != AnimatedBackgroundType.NONE
             }
             // Combined batch, motion split: a gradient animation is
             // motion content on its own — ticks run for it even with

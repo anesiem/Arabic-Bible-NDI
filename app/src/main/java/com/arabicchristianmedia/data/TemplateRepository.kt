@@ -558,7 +558,8 @@ class TemplateRepository(context: Context) {
                 showArabic = true,
                 showEnglish = true,
                 isPureTransparentBackground = false,
-                animatedBackground = AnimatedBackgroundType.GOLDEN_PARTICLES,
+                animatedBackground = AnimatedBackgroundType.NONE,
+                particleEffect = AnimatedBackgroundType.GOLDEN_PARTICLES,
                 animatedBackgroundOpacity = 0.5f,
                 particleOpacity = 0.5f,
                 logoUri = "",
@@ -1231,6 +1232,17 @@ class TemplateRepository(context: Context) {
         }
     }
 
+    /**
+     * Item 82 (1.9.9): does a working template exist on disk? Lets callers
+     * tell "never saved" (normal on a fresh install) apart from "saved but
+     * the load failed" (the 2026-11-05 crash-restart failure mode) so the
+     * latter gets logged instead of silently falling back to factory.
+     */
+    fun hasWorkingTemplate(isFullScreen: Boolean): Boolean {
+        val key = if (isFullScreen) "working_show_template" else "working_lower_template"
+        return prefs.contains(key)
+    }
+
     fun saveWorkingTemplate(template: LowerThirdTemplate) {
         val key = if (template.isFullScreen) "working_show_template" else "working_lower_template"
         prefs.edit().putString(key, toJson(template).toString()).apply()
@@ -1280,7 +1292,7 @@ class TemplateRepository(context: Context) {
             val obj = JSONObject(json)
             if (obj.optString("name", "").trim().isEmpty()) return null
             // Sanity: a real style carries several known keys.
-            val knownKeys = listOf("fontFamily", "bgColorHex", "textColorHex", "verseFontSize", "style", "showCrossEmblem", "emblem", "autoFitMinVerseSp", "autoFitMaxVerseSp", "boxHeightPercent", "isFullScreen", "id", "useSystemFontForBrackets", "gradientColorHex2", "gradientAngleDeg", "gradientAnimation", "autoFitMinCitationSp", "autoFitRatioLock", "clearMode", "lineSpacingArabic", "lineSpacingEnglish", "autoFitFrozenRatio", "verseCitationGapArabicDp", "verseCitationGapEnglishDp", "boxLoopContinuous", "trueFullscreen", "citationAlignmentArabic", "citationAlignmentEnglish", "verseAlignmentEnglish", "textEffect", "textEffectDepthDp", "cardGlowRadiusDp", "showAccentBorderWidthDp", "cardGlowOpacity", "accentOpacity", "showArabic", "showEnglish", "particleOpacity", "logoUri", "logoPosition", "logoBoxSizePercent", "logoOffsetXPercent", "logoOffsetYPercent", "logoOpacity", "logoData")
+            val knownKeys = listOf("fontFamily", "bgColorHex", "textColorHex", "verseFontSize", "style", "showCrossEmblem", "emblem", "autoFitMinVerseSp", "autoFitMaxVerseSp", "boxHeightPercent", "isFullScreen", "id", "useSystemFontForBrackets", "gradientColorHex2", "gradientAngleDeg", "gradientAnimation", "autoFitMinCitationSp", "autoFitRatioLock", "clearMode", "lineSpacingArabic", "lineSpacingEnglish", "autoFitFrozenRatio", "verseCitationGapArabicDp", "verseCitationGapEnglishDp", "boxLoopContinuous", "trueFullscreen", "citationAlignmentArabic", "citationAlignmentEnglish", "verseAlignmentEnglish", "textEffect", "textEffectDepthDp", "cardGlowRadiusDp", "showAccentBorderWidthDp", "cardGlowOpacity", "accentOpacity", "showArabic", "showEnglish", "particleOpacity", "particleEffect", "particleDensity", "particleColorHex", "logoUri", "logoPosition", "logoBoxSizePercent", "logoOffsetXPercent", "logoOffsetYPercent", "logoOpacity", "logoData")
             if (knownKeys.none { obj.has(it) }) return null
             fromJson(obj)
         } catch (e: Exception) {
@@ -1357,6 +1369,9 @@ class TemplateRepository(context: Context) {
             put("animatedBackground", t.animatedBackground.name)
             put("animatedBackgroundOpacity", t.animatedBackgroundOpacity.toDouble())
             put("particleOpacity", t.particleOpacity.toDouble())
+            put("particleEffect", t.particleEffect.name)
+            put("particleDensity", t.particleDensity.toDouble())
+            put("particleColorHex", t.particleColorHex)
             put("logoUri", t.logoUri)
             put("logoPosition", t.logoPosition)
             put("logoBoxSizePercent", t.logoBoxSizePercent.toDouble())
@@ -1413,6 +1428,20 @@ class TemplateRepository(context: Context) {
             catch (e: Exception) { TransitionType.FADE }
         val parsedTransitionDurationMs = obj.optInt("transitionDurationMs", 350)
         val parsedIsFullScreen = obj.optBoolean("isFullScreen", false)
+        // Item 75 migration: particles used to live in animatedBackground.
+        // A saved particle type there moves to particleEffect (and the
+        // video field becomes NONE); a saved particleEffect wins over
+        // the migrated value; a saved video type stays as-is.
+        val parsedAnimBg = try { AnimatedBackgroundType.valueOf(obj.optString("animatedBackground")) }
+            catch (e: Exception) { AnimatedBackgroundType.NONE }
+        val parsedParticleEffect = try { AnimatedBackgroundType.valueOf(obj.optString("particleEffect")) }
+            catch (e: Exception) { AnimatedBackgroundType.NONE }
+        val migratedAnimBg = if (com.arabicchristianmedia.model.isParticleType(parsedAnimBg)) AnimatedBackgroundType.NONE else parsedAnimBg
+        val migratedParticleEffect = when {
+            parsedParticleEffect != AnimatedBackgroundType.NONE -> parsedParticleEffect
+            com.arabicchristianmedia.model.isParticleType(parsedAnimBg) -> parsedAnimBg
+            else -> AnimatedBackgroundType.NONE
+        }
         return LowerThirdTemplate(
             id = obj.optString("id", "tpl_${System.currentTimeMillis()}"),
             name = obj.optString("name", "Custom Template"),
@@ -1533,9 +1562,12 @@ class TemplateRepository(context: Context) {
                 lm != com.arabicchristianmedia.model.LanguageMode.ARABIC_ONLY
             },
             isPureTransparentBackground = false, // migrated above; flag no longer a user mode
-            animatedBackground = try { com.arabicchristianmedia.model.AnimatedBackgroundType.valueOf(obj.optString("animatedBackground")) } catch (e: Exception) { com.arabicchristianmedia.model.AnimatedBackgroundType.NONE },
+            animatedBackground = migratedAnimBg,
             animatedBackgroundOpacity = obj.optDouble("animatedBackgroundOpacity", 0.65).toFloat(),
             particleOpacity = obj.optDouble("particleOpacity", 0.65).toFloat(),
+            particleEffect = migratedParticleEffect,
+            particleDensity = obj.optDouble("particleDensity", 1.0).toFloat(),
+            particleColorHex = obj.optString("particleColorHex", ""),
             logoUri = obj.optString("logoUri", ""),
             logoPosition = obj.optString("logoPosition", "top_right"),
             logoBoxSizePercent = obj.optDouble("logoBoxSizePercent", 15.0).toFloat(),

@@ -152,7 +152,17 @@ enum class AnimatedBackgroundType(val id: String, val displayNameAr: String, val
     SNOW("snow", "ثلج متساقط (Snowfall)", "Gentle falling snowflakes"),
     LIGHT_RAYS("light_rays", "أشعة نور (Light Rays)", "Soft rotating heavenly light rays"),
     DOVE_FEATHERS("dove_feathers", "ريش حمامة (Dove Feathers)", "White dove feathers drifting down"),
-    CUSTOM_VIDEO("custom_video", "رابط فيديو مخصص (Custom MP4)", "Custom transparent/looping video URL")
+    CUSTOM_VIDEO("custom_video", "رابط فيديو مخصص (Custom MP4)", "Custom transparent/looping video URL"),
+    // Item 76 (1.9.9): phase-2 particle effects — 7 more, 12 total.
+    // Smooth loop by construction (see the NDI draw functions): continuous
+    // time functions with edge-wrapping, sway/twinkle via sine waves.
+    EMBERS("embers", "جمر متصاعد (Embers)", "Rising warm glowing embers"),
+    PETALS("petals", "بتلات متساقطة (Petals)", "Gently falling flower petals"),
+    BUBBLES("bubbles", "فقاعات صاعدة (Bubbles)", "Soft rising translucent bubbles"),
+    CROSS_SPARKLES("cross_sparkles", "شرارات صليب (Cross Sparkles)", "Twinkling golden crosses"),
+    CLOUDS_MIST("clouds_mist", "غيوم وضباب (Clouds & Mist)", "Slow drifting clouds and mist"),
+    FIREFLIES("fireflies", "يراعات مضيئة (Fireflies)", "Wandering glowing fireflies"),
+    DOVES("doves", "حمام أبيض (Doves)", "White doves drifting peacefully")
 }
 
 // Item 64 (1.9.8): the particle effects — a subset of the animated
@@ -165,10 +175,40 @@ val particleEffectTypes = listOf(
     AnimatedBackgroundType.PARTICLE_STARS,
     AnimatedBackgroundType.SNOW,
     AnimatedBackgroundType.LIGHT_RAYS,
-    AnimatedBackgroundType.DOVE_FEATHERS
+    AnimatedBackgroundType.DOVE_FEATHERS,
+    // Item 76 (1.9.9): phase-2 effects — 12 total.
+    AnimatedBackgroundType.EMBERS,
+    AnimatedBackgroundType.PETALS,
+    AnimatedBackgroundType.BUBBLES,
+    AnimatedBackgroundType.CROSS_SPARKLES,
+    AnimatedBackgroundType.CLOUDS_MIST,
+    AnimatedBackgroundType.FIREFLIES,
+    AnimatedBackgroundType.DOVES
 )
 
 fun isParticleType(type: AnimatedBackgroundType): Boolean = type in particleEffectTypes
+
+/**
+ * Item 67 (1.9.9): each particle effect's default color (hex) — used by
+ * the Editor's color picker when particleColorHex is empty (empty =
+ * effect default). NDI (Color.rgb in the draw functions) and HTTP
+ * (section 7) mirror these values.
+ */
+fun particleDefaultColorHex(type: AnimatedBackgroundType): String = when (type) {
+    AnimatedBackgroundType.PARTICLE_STARS -> "#7DD3FC"
+    AnimatedBackgroundType.GOLDEN_PARTICLES -> "#FCD34D"
+    AnimatedBackgroundType.SNOW -> "#FFFFFF"
+    AnimatedBackgroundType.LIGHT_RAYS -> "#FDE68A"
+    AnimatedBackgroundType.DOVE_FEATHERS -> "#FFFFFF"
+    AnimatedBackgroundType.EMBERS -> "#FF8C00"
+    AnimatedBackgroundType.PETALS -> "#FFB6C1"
+    AnimatedBackgroundType.BUBBLES -> "#C8E6FF"
+    AnimatedBackgroundType.CROSS_SPARKLES -> "#FCD34D"
+    AnimatedBackgroundType.CLOUDS_MIST -> "#CBD5E1"
+    AnimatedBackgroundType.FIREFLIES -> "#BEFF64"
+    AnimatedBackgroundType.DOVES -> "#FFFFFF"
+    else -> "#FFFFFF"
+}
 
 /**
  * Design-gradient card animation (2026-10-28 batch): the user chooses
@@ -437,6 +477,22 @@ data class LowerThirdTemplate(
     val animatedBackgroundOpacity: Float = 0.65f,
     /** Item 63: particle layer opacity, independent from video opacity (0 = hidden). */
     val particleOpacity: Float = 0.65f,
+    /**
+     * Item 75 (1.9.9): particle effect, independent from the video
+     * background. [animatedBackground] is video-only now; a particle
+     * type saved there migrates here on load (see fromJson). NONE =
+     * no particles. Rendered on its own layer (z-index 1) with its own
+     * opacity ([particleOpacity]), density ([particleDensity]) and
+     * color ([particleColorHex]).
+     */
+    val particleEffect: AnimatedBackgroundType = AnimatedBackgroundType.NONE,
+    /** Item 66 (1.9.9): particle density multiplier. 1.0 = current count. */
+    val particleDensity: Float = 1.0f,
+    /**
+     * Item 67 (1.9.9): per-effect particle color override (hex, e.g.
+     * "#FFD700"). Empty = the effect's own default color.
+     */
+    val particleColorHex: String = "",
     /** Item 54: logo image layer (z-index 4). Empty logoUri = no logo. */
     val logoUri: String = "",
     val logoPosition: String = "top_right",

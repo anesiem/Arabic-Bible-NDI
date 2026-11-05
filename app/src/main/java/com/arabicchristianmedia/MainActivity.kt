@@ -254,6 +254,15 @@ class MainActivity : ComponentActivity() {
 
         // Initialize HDMI Presentation manager (auto-detects secondary displays)
         hdmiManager = HdmiPresentationManager(this)
+        // Item 72 (1.9.9): wire HDMI state to the server (/api/debug) and
+        // the Setup tab, and apply the user's persisted toggle. The
+        // Manager's init already ran checkAndShow before the callback was
+        // set, so sync the current state once here.
+        hdmiManager?.isEnabled = viewModel.uiState.value.hdmiEnabled
+        hdmiManager?.onStateChanged = { connected, showing ->
+            viewModel.setHdmiState(connected, showing)
+        }
+        hdmiManager?.let { viewModel.setHdmiState(it.isHdmiConnected.value, it.isPresentationShowing.value) }
 
         setContent {
             val uiState by viewModel.uiState.collectAsState()
@@ -266,6 +275,11 @@ class MainActivity : ComponentActivity() {
                 } else {
                     window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 }
+            }
+
+            // Item 72 (1.9.9): push the user's HDMI toggle to the Manager.
+            LaunchedEffect(uiState.hdmiEnabled) {
+                hdmiManager?.isEnabled = uiState.hdmiEnabled
             }
 
             MyApplicationTheme(
@@ -690,6 +704,11 @@ class MainActivity : ComponentActivity() {
                                     context.startActivity(intent)
                                 },
                                 onHdmiBackgroundOverrideChange = { viewModel.setHdmiBackgroundOverride(it) },
+                                // Item 72 (1.9.9): HDMI presentation toggle + status.
+                                hdmiEnabled = uiState.hdmiEnabled,
+                                hdmiConnected = uiState.hdmiConnected,
+                                hdmiPresentationShowing = uiState.hdmiPresentationShowing,
+                                onHdmiEnabledChange = { viewModel.setHdmiEnabled(it) },
                                 onToggleLive = { viewModel.toggleLive() },
                                 onClearBroadcast = { viewModel.clearBroadcast() },
                                 onSelectInterface = { viewModel.selectNetworkInterface(it) },

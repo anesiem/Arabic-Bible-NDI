@@ -142,6 +142,13 @@ data class BibleNdiUiState(
     val canUndoDelete: Boolean = false,
     // 1.9.3: HDMI background override — when true, the 4-color selection applies to both Lower and Full Show.
     val hdmiBackgroundOverride: Boolean = false,
+    // Item 72 (1.9.9): HDMI presentation — hdmiEnabled is the user's
+    // Setup toggle (persisted in bible_ndi_prefs); connected/showing are
+    // live status from HdmiPresentationManager via MainActivity, and are
+    // also written to the server fields surfaced in /api/debug.
+    val hdmiEnabled: Boolean = true,
+    val hdmiConnected: Boolean = false,
+    val hdmiPresentationShowing: Boolean = false,
     // v2.0: bumped on every successful share so MainActivity opens the list tab.
     val sermonListNonce: Long = 0,
     // 2026-11-02: bumped when top-bar shortcut tapped; TemplateEditorScreen expands header.
@@ -277,6 +284,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         }
         loadInitialDataAsync()
         loadAdvertiseSettings()
+        loadHdmiSettings()
         refreshNetworkInterfaces()
         // startBroadcastServer() // DO NOT auto-start as per request 8? 
         // User said: "on Library tab, don't start the on air, be sure it's off air till a user click on a verse"
@@ -399,6 +407,10 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             try {
                 loadInitialData()
             } catch (e: Exception) {
+                // Item 83 (1.9.9): log the failure — the old code only set
+                // a status message, so a silent throw left the Library
+                // empty with nothing in logcat to explain it.
+                android.util.Log.w("BibleNdiViewModel", "loadInitialData failed", e)
                 _uiState.value = _uiState.value.copy(
                     statusMessage = "تعذر تحميل الكتاب المقدس: ${e.message}"
                 )
@@ -424,6 +436,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             ?: TemplateRepository.DEFAULT_TEMPLATES[0]).copy(isFullScreen = false)
 
         // Full Show tab: restore working values + highlighted style (independent of Lower).
+        val hasShowWorking = templateRepo.getWorkingTemplate(true) != null
         val showHighlightId = templateRepo.getActiveShowTemplateId()
         val showStyle = allTpls.firstOrNull { it.id == showHighlightId && it.isFullScreen }
         val showWorking = (templateRepo.getWorkingTemplate(true)
@@ -433,7 +446,19 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
 
         val initialBook = BibleRepository.getBookById("jhn") ?: BibleRepository.allBooks.first()
         val initialChapter = 3
-        val verses = BibleRepository.getVerses(initialBook.id, initialChapter)
+        // Item 83 (1.9.9): after the 2026-11-05 crash-restart the first
+        // list load came back empty (chapter navigation reloaded it fine).
+        // Retry once after a short pause so a transient empty read doesn't
+        // leave the Library blank; log it either way (this runs on IO).
+        var verses = BibleRepository.getVerses(initialBook.id, initialChapter)
+        if (verses.isEmpty()) {
+            android.util.Log.w("BibleNdiViewModel", "Initial verse load empty for ${initialBook.id} ch $initialChapter, retrying once")
+            try { Thread.sleep(500) } catch (e: InterruptedException) { /* keep the empty list */ }
+            verses = BibleRepository.getVerses(initialBook.id, initialChapter)
+            if (verses.isEmpty()) {
+                android.util.Log.w("BibleNdiViewModel", "Initial verse load STILL empty after retry for ${initialBook.id} ch $initialChapter")
+            }
+        }
         // v1.8: no verse selected on launch — the user picks one.
 
         _uiState.value = _uiState.value.copy(
@@ -503,8 +528,19 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         } else {
             broadcastServer.currentVerse = null
             broadcastServer.isLive = false // Ensure server starts off-air
-            broadcastServer.currentTemplate = lowerWorking
-            broadcastServer.currentShowTemplate = showWorking
+            // Item 82 (1.9.9): only push the working templates into the
+            // server when they really loaded. If the working load failed
+            // (null -> factory fallback), the server may already hold a
+            // good template from its own load — don't clobber it. Then
+            // sync the UI from the server so the Editor shows the real
+            // working template, never a factory fallback (editing a
+            // factory fallback would overwrite the real working copy).
+            if (hasLowerWorking) broadcastServer.currentTemplate = lowerWorking
+            if (hasShowWorking) broadcastServer.currentShowTemplate = showWorking
+            _uiState.value = _uiState.value.copy(
+                activeTemplate = broadcastServer.currentTemplate,
+                activeShowTemplate = broadcastServer.currentShowTemplate
+            )
         }
     }
 
@@ -2443,6 +2479,41 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
     }
 
     /**
+     * Item 72 (1.9.9): HDMI presentation state, from
+     * HdmiPresentationManager via MainActivity. Writes the server
+     * fields surfaced in /api/debug and the Setup tab status rows.
+     */
+    fun setHdmiState(connected: Boolean, showing: Boolean) {
+        broadcastServer.hdmiConnected = connected
+        broadcastServer.hdmiPresentationShowing = showing
+        _uiState.value = _uiState.value.copy(
+            hdmiConnected = connected,
+            hdmiPresentationShowing = showing
+        )
+    }
+
+    /**
+     * Item 72 (1.9.9): the user's HDMI toggle — persisted in
+     * bible_ndi_prefs; MainActivity applies it to the Manager.
+     */
+    fun setHdmiEnabled(enabled: Boolean) {
+        _uiState.value = _uiState.value.copy(hdmiEnabled = enabled)
+        try {
+            getApplication<Application>().getSharedPreferences("bible_ndi_prefs", 0)
+                .edit().putBoolean("hdmi_enabled", enabled).apply()
+        } catch (e: Exception) {}
+    }
+
+    /** Item 72 (1.9.9): restore the persisted HDMI toggle on startup. */
+    private fun loadHdmiSettings() {
+        val enabled = try {
+            getApplication<Application>().getSharedPreferences("bible_ndi_prefs", 0)
+                .getBoolean("hdmi_enabled", true)
+        } catch (e: Exception) { true }
+        _uiState.value = _uiState.value.copy(hdmiEnabled = enabled)
+    }
+
+    /**
      * User selected a saved Full Show style. Independent of the Lower Third tab:
      * its own style list, highlight and working values.
      */
@@ -2543,12 +2614,34 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
     }
 
     /**
+     * Item 77 (1.9.9): on auto-off, restore the MOTION fields from the
+     * backup — the macro turned them all off when it went on, and
+     * auto-off (a margin/padding tweak) must not leave the user's box
+     * motion silently dead. A motion field the user JUST changed keeps
+     * the user's value (it differs between old and new); the others
+     * come back from the backup. Non-motion macro values stay as-is
+     * (the user's override semantics are unchanged).
+     */
+    private fun restoreMacroMotionFields(prefix: String, old: LowerThirdTemplate, new: LowerThirdTemplate): LowerThirdTemplate {
+        val prefs = getFullscreenMacroPrefs() ?: return new
+        if (!prefs.getBoolean("${prefix}_has_backup", false)) return new
+        return new.copy(
+            boxSwayEnabled = if (old.boxSwayEnabled != new.boxSwayEnabled) new.boxSwayEnabled else prefs.getBoolean("${prefix}_boxSwayEnabled", new.boxSwayEnabled),
+            boxFloatEnabled = if (old.boxFloatEnabled != new.boxFloatEnabled) new.boxFloatEnabled else prefs.getBoolean("${prefix}_boxFloatEnabled", new.boxFloatEnabled),
+            boxZoomEnabled = if (old.boxZoomEnabled != new.boxZoomEnabled) new.boxZoomEnabled else prefs.getBoolean("${prefix}_boxZoomEnabled", new.boxZoomEnabled),
+            boxGlowPulseEnabled = if (old.boxGlowPulseEnabled != new.boxGlowPulseEnabled) new.boxGlowPulseEnabled else prefs.getBoolean("${prefix}_boxGlowPulseEnabled", new.boxGlowPulseEnabled)
+        )
+    }
+
+    /**
      * Item 52: true-fullscreen macro — the toggle changes template VALUES, not
      * just the boolean. ON backs the current values up to SharedPreferences
      * (survives restart) and applies the fullscreen values; explicit OFF
      * restores the backup. Auto-off (a macro field changed while ON — the
-     * Editor flips the toggle off) applies as-is with NO restore, so the
-     * user's override survives; the stale backup is cleared.
+     * Editor flips the toggle off) keeps the user's override and clears the
+     * stale backup — except the MOTION fields, which item 77 restores from
+     * the backup (the macro switched them off; a margin tweak must not kill
+     * the user's box motion).
      */
     private fun applyFullscreenMacroTransition(
         old: LowerThirdTemplate,
@@ -2580,12 +2673,16 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         if (old.trueFullscreen && !new.trueFullscreen) {
             // Toggle OFF: restore only on an EXPLICIT toggle tap (no macro
             // field changed). Auto-off (user tweaked a value while ON) keeps
-            // the user's values; clear the stale backup.
+            // the user's values and clears the stale backup — except the
+            // MOTION fields (item 77: restore them from the backup, unless
+            // the user just changed that motion field itself). Restore
+            // BEFORE clearing the backup (the restore reads it).
             return if (!macroFieldsDiffer(old, new)) {
                 restoreFullscreenMacroBackup(prefix, new)
             } else {
+                val restored = restoreMacroMotionFields(prefix, old, new)
                 clearFullscreenMacroBackup(prefix)
-                new
+                restored
             }
         }
         return new

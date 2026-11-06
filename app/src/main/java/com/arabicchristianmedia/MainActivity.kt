@@ -697,13 +697,17 @@ class MainActivity : ComponentActivity() {
                                 onStartServer = { viewModel.startNdiFeeds() },
                                 onStopServer = { viewModel.stopNdiFeeds() },
                                 onLaunchFullscreenOverlay = {
-                                    val intent = Intent(context, FullscreenOverlayActivity::class.java)
+                                    val intent = Intent(context, FullscreenOverlayActivity::class.java).apply {
+                                        putExtra("mode", "show_lower")
+                                        putExtra("bgMode", uiState.activeTemplate.streamBackgroundMode.name)
+                                    }
                                     context.startActivity(intent)
                                 },
                                 // 1.9.8: Launch Full Show via FullscreenOverlayActivity (VersePresentation was not an Activity).
                                 onLaunchFullscreenShow = {
                                     val intent = Intent(context, com.arabicchristianmedia.ui.FullscreenOverlayActivity::class.java).apply {
                                         putExtra("mode", "show_full")
+                                        putExtra("bgMode", uiState.activeShowTemplate.streamBackgroundMode.name)
                                     }
                                     context.startActivity(intent)
                                 },

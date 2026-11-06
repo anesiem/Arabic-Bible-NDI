@@ -2549,6 +2549,14 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
                 .getBoolean("hdmi_enabled", true)
         } catch (e: Exception) { true }
         _uiState.value = _uiState.value.copy(hdmiEnabled = enabled)
+        // Item 104: the HDMI background override toggle was SAVED but never
+        // loaded on startup, so it reset to OFF after every restart. Load it
+        // here so the choice persists.
+        val bgOverride = try {
+            getApplication<Application>().getSharedPreferences("bible_ndi_prefs", 0)
+                .getBoolean("hdmi_background_override", false)
+        } catch (e: Exception) { false }
+        _uiState.value = _uiState.value.copy(hdmiBackgroundOverride = bgOverride)
     }
 
     /**

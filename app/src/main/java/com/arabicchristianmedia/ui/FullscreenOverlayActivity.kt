@@ -49,14 +49,30 @@ class FullscreenOverlayActivity : ComponentActivity() {
             }
             setLayerType(WebView.LAYER_TYPE_HARDWARE, null)
             webViewClient = WebViewClient()
-            setBackgroundColor(android.graphics.Color.BLACK)
+            // Item 104: the WebView background follows the stream background
+            // mode (passed as the "bgMode" intent extra by MainActivity) instead
+            // of hardcoded BLACK, so a chosen Chrome green shows behind the
+            // page instead of black. TRANSPARENT_ALPHA (or a missing extra)
+            // stays transparent so the page controls the background.
+            val bgMode = intent.getStringExtra("bgMode")
+            val bgColor = when (bgMode) {
+                "CHROMA_GREEN" -> android.graphics.Color.rgb(0x00, 0xFF, 0x00)
+                "PURE_BLACK" -> android.graphics.Color.BLACK
+                "DARK_STUDIO" -> android.graphics.Color.rgb(0x0A, 0x11, 0x28)
+                else -> android.graphics.Color.TRANSPARENT
+            }
+            setBackgroundColor(bgColor)
         }
 
         container.addView(webView)
         setContentView(container)
 
-        // Load the Full Show page from the local HTTP server
-        webView?.loadUrl("http://127.0.0.1:8080/full")
+        // Item 103: read the mode extra — the Lower button passes
+        // "show_lower" (or nothing) and the Full button passes "show_full".
+        // The old code always loaded /full, so the Lower button showed Full.
+        val mode = intent.getStringExtra("mode")
+        val page = if (mode == "show_full") "full" else "lower"
+        webView?.loadUrl("http://127.0.0.1:8080/$page")
     }
 
     override fun onDestroy() {

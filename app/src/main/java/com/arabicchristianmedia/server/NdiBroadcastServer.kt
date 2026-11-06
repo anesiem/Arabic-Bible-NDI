@@ -2428,6 +2428,21 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       }
       diag.lastVersion = data.stateVersion || diag.lastVersion;
       applyT0 = performance.now();
+      // Item 104: the stream background mode (CHROMA_GREEN / PURE_BLACK /
+      // DARK_STUDIO / TRANSPARENT_ALPHA) is applied to the stage and the
+      // page body, so the chosen background shows behind the card on the
+      // HTTP pages — the same mode the NDI/stream renderer already paints
+      // (line 5343). TRANSPARENT_ALPHA leaves the page transparent so the
+      // fullscreen WebView shows through.
+      (function() {
+        var mode = data.streamBackgroundMode || 'TRANSPARENT_ALPHA';
+        var bg = 'transparent';
+        if (mode === 'CHROMA_GREEN') bg = '#00FF00';
+        else if (mode === 'PURE_BLACK') bg = '#000000';
+        else if (mode === 'DARK_STUDIO') bg = '#0A1128';
+        stage.style.background = bg;
+        document.body.style.background = bg;
+      })();
       // Item 11: show/hide takes the selected transition's duration (CUT =
       // instant), so go-live and clear match the verse-change timing
       // instead of the fixed 0.4s in the stylesheet.
@@ -2725,10 +2740,20 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // room), so the hugging box never grows past it either.
         if (data.autoFitText !== false) {
           container.style.height = Math.min(data.boxHeightPercent || 45, 100 - (data.positionBottomPercent ?? 0)) + '%';
+          container.style.minHeight = '';
           cardBox.style.height = '100%';
+          cardBox.style.minHeight = '';
         } else {
+          // Item 101: MINIMUM height + expand — the Lower card is at least
+          // the slider box (so the split vertical alignment in section 4b
+          // has free space to work with) and EXPANDS upward beyond it when
+          // the verse needs more room (the card stays bottom-anchored).
+          // A fixed height here would stop the expansion autoFit OFF is
+          // for, so the height is a minimum, not a fixed value.
           container.style.height = '';
+          container.style.minHeight = Math.min(data.boxHeightPercent || 45, 100 - (data.positionBottomPercent ?? 0)) + '%';
           cardBox.style.height = '';
+          cardBox.style.minHeight = '100%';
         }
 
         if (data.alignment === 'CENTER') {
@@ -2806,13 +2831,23 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       englishSection.style.marginTop = '';
       englishSection.style.marginBottom = '';
       englishSection.style.order = '';
+      // Item 98: the bilingual spacing (set on englishSection at line 2646)
+      // is wiped by the reset above. Re-apply it whenever the alignments are
+      // NOT split — equal, or CENTER-mixed where the whole block anchors —
+      // so HTTP keeps the Arabic→English gap like NDI does. In the split
+      // TOP/BOTTOM case the gap is the free space (marginTop:'auto'), so no
+      // bilingual spacing there — matching NDI, which also excludes it.
+      var bilSpacingPx = (data.showBilingualSpacing ? (data.bilingualSpacing || 20) : 0) * getStageScale();
       var vJustify = 'center';
       if (vAlignAr === vAlignEn) {
         vJustify = vAlignAr === 'TOP' ? 'flex-start' : (vAlignAr === 'BOTTOM' ? 'flex-end' : 'center');
+        englishSection.style.marginTop = bilSpacingPx + 'px';
       } else if (vAlignAr === 'CENTER') {
         vJustify = vAlignEn === 'TOP' ? 'flex-start' : 'flex-end';
+        englishSection.style.marginTop = bilSpacingPx + 'px';
       } else if (vAlignEn === 'CENTER') {
         vJustify = vAlignAr === 'TOP' ? 'flex-start' : 'flex-end';
+        englishSection.style.marginTop = bilSpacingPx + 'px';
       } else if (vAlignAr === 'TOP') {
         // Arabic top, English bottom: push the English block down.
         vJustify = 'flex-start';
@@ -2846,8 +2881,17 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       // Follow-up: verse-citation gap from the style (?? keeps a 0 value
       // working; the badge's own 8px CSS margin is zeroed so the value is
       // exact on both feeds, like the NDI renderer).
+      // Item 102: the Arabic gap must also carry the verse's first-line
+      // top leading, which NDI's StaticLayout includes (Amiri's large
+      // ascent + tashkeel pushes the first glyph far below the layout
+      // top) but CSS line boxes do not. Measured 2026-11-06: NDI visual
+      // gap 66px vs HTTP 16px at the same 12dp setting (Lower, John 7:24)
+      // — the missing ~50px is ~1.5x the verse font size, so the margin
+      // adds verseFontSize * 1.5. The English gap (line 2640) is NOT
+      // changed: its Latin font has a small ascent and its visual gap
+      // already matches NDI (~13px vs 12dp).
       citationRow.style.marginBottom = '0';
-      verseText.style.marginTop = ((data.verseCitationGapArabicDp ?? 12) * getStageScale()) + 'px';
+      verseText.style.marginTop = (((data.verseCitationGapArabicDp ?? 12) + (data.verseFontSize || 26) * 1.5) * getStageScale()) + 'px';
 
       // v1.9.1: auto-fit as a callable unit (was a tail block of applyData).
       // It runs AFTER the used fonts are ready (see finishApply), so sizes
@@ -5831,7 +5875,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 // gradient base (e.g. Royal stays gold). CUSTOM_VIDEO counts
                 // as a video (its branch is null, so the fill falls back to
                 // the plain card color, as before).
-                val gradientBg = if (tpl.animatedBackground != AnimatedBackgroundType.NONE) tpl.animatedBackground else tpl.particleEffect
+                // Item 100: the card fill comes ONLY from the animated
+                // background (a procedural background IS the card). A particle
+                // effect is an OVERLAY, never the card fill — when only a
+                // particle effect is set, the shader below is null and the
+                // fallback draws the user's bgColorHex, with the particles
+                // drawn on top by the hoisted layer below.
+                val gradientBg = tpl.animatedBackground
                 val shader: Shader? = when (gradientBg) {
                     AnimatedBackgroundType.GOLDEN_DIVINE_RAYS -> {
                         val c1 = Color.argb(bgAlpha, 217, 119, 6)
@@ -6012,10 +6062,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                     paint.color = Color.argb(bgAlpha, Color.red(baseBgCol), Color.green(baseBgCol), Color.blue(baseBgCol))
                     canvas.drawRoundRect(rect, radius, radius, paint)
                 }
-                // Item 75 (1.9.9): particle field over the card base,
-                // from particleEffect (independent of the video). The
-                // shared helper keeps both feeds identical.
-                drawParticleEffectLayer(canvas, boxLeft, boxTop, boxRight, boxBottom, radius, scale, tpl)
+                // Item 99: the particle layer is drawn ONCE, independently,
+                // after the whole background chain below — not here. (It used
+                // to live only in this branch and the glow branch, so a
+                // gradient background skipped it entirely.)
             } else if (!fullBleed) {
                 // Follow-up (trueFullscreen): no card fill — the card is bypassed.
                 paint.color = Color.argb(bgAlpha, Color.red(baseBgCol), Color.green(baseBgCol), Color.blue(baseBgCol))
@@ -6065,8 +6115,21 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             paint.shader = glowShader
             canvas.drawRoundRect(rect, radius, radius, paint)
             paint.shader = null
-            // Item 75 (1.9.9): particle field over the glow, from
-            // particleEffect. The shared helper keeps both feeds identical.
+            // Item 99: the particle layer is drawn ONCE, independently,
+            // after the whole background chain below — not here. (It used
+            // to live only in this branch and the card-fill branch, so a
+            // gradient background skipped it entirely.)
+        }
+
+        // Item 99: the particle layer, drawn independently AFTER the
+        // background chain (it self-gates on particleEffect + opacity),
+        // so it renders whenever a particle effect is set — regardless
+        // of the background type (gradient, video, solid, transparent,
+        // or trueFullscreen, where the chain above is skipped but HTTP
+        // still shows particles). This matches HTTP's layer model
+        // (video 0 → particles 1 → card 2 → text 3 → logo 4).
+        // textOnly snapshots (transition frames) skip it, as before.
+        if (!textOnly) {
             drawParticleEffectLayer(canvas, boxLeft, boxTop, boxRight, boxBottom, radius, scale, tpl)
         }
 
@@ -8912,6 +8975,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   #controlBar #ref { flex: 2 1 140px; height: 44px; padding: 10px 12px; font-size: 15px; }
   #controlBar #goBtn { width: auto; flex: none; height: 44px; min-height: 44px; padding: 8px 14px; font-size: 14px; font-weight: 700; border-radius: 12px; margin: 0; display: inline-flex; align-items: center; justify-content: center; }
   #controlBar .onair { width: auto; flex: none; height: 44px; min-height: 44px; padding: 8px 14px; font-size: 14px; max-width: 110px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  /* Item 108: the top-bar ON AIR button (#onAirBtnTop) wears the full-width .onair
+     class (width:100%, min-height:60px, padding:16px) in a 44px top bar, so it
+     overflows and clips at the screen edge. Compact override, same values as
+     #controlBar .onair — scoped to this button only, the global .onair class
+     (full-width button) is unchanged. */
+  #topBar #onAirBtnTop { width: auto; flex: none; height: 44px; min-height: 44px; padding: 8px 12px; font-size: 14px; max-width: 110px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   /* Item 17 (1.9.8): ON AIR button sizing — prevent overflow on mobile. */
   #controlBar .livepill { max-width: none; flex: 1 1 140px; margin-top: 0; }
   /* Item 28: small neutral Clear button beside the ON AIR toggle. */
@@ -9137,7 +9206,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
              enterkeyhint="go" aria-label="Quick reference"
              style="flex:1;min-width:0;">
       <button class="btn" id="goBtn" onclick="triggerRef()" aria-label="Go"
-              style="flex:none;background:#16a34a;color:white;border:none;border-radius:6px;padding:8px 12px;">▶</button>
+              style="flex:none;width:auto;min-height:44px;font-size:14px;background:#16a34a;color:white;border:none;border-radius:6px;padding:8px 12px;">▶</button>
     </div>
   </div>
   <!-- v1.9.5: Row 3 — [prev][next][chapter][book] (book rightmost) -->
@@ -9341,7 +9410,19 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
               function tryScrollToVerse() {
                 var verseEl = document.querySelector('[data-v="' + d.verse + '"]');
                 if (verseEl) {
-                  verseEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                  // Items 105+107: scroll ONLY the verse list (never the page),
+                  // and only when the verse is out of view — centre it in the list.
+                  // The old scrollIntoView({block:'center'}) centred the verse in the
+                  // VIEWPORT, scrolling the whole page on mobile (list felt unscrollable
+                  // while live) and jumping on every verse change even when visible.
+                  (function() {
+                    var listRect = vList.getBoundingClientRect();
+                    var rowRect = verseEl.getBoundingClientRect();
+                    if (rowRect.top < listRect.top || rowRect.bottom > listRect.bottom) {
+                      var target = vList.scrollTop + (rowRect.top - listRect.top) - (vList.clientHeight - rowRect.height) / 2;
+                      vList.scrollTo({ top: target, behavior: 'smooth' });
+                    }
+                  })();
                   // Also highlight briefly so the user sees which verse synced.
                   // Item 20 (1.9.8): persistent highlight — stays until another verse syncs.
                   var prevLive = vList.querySelector('.vrow.synced-live');

@@ -795,10 +795,10 @@ fun TemplateEditorScreen(
                         }
                     }
                     if (paddingExpanded) {
-                        SliderWithLabel("علوي (Top)", editingTemplate.cardPaddingTopDp, 0f..120f) { onUpdate(editingTemplate.copy(cardPaddingTopDp = it)) }
-                        SliderWithLabel("سفلي (Bottom)", editingTemplate.cardPaddingBottomDp, 0f..120f) { onUpdate(editingTemplate.copy(cardPaddingBottomDp = it)) }
-                        SliderWithLabel("أيسر (Left)", editingTemplate.cardPaddingLeftDp, 0f..160f) { onUpdate(editingTemplate.copy(cardPaddingLeftDp = it)) }
-                        SliderWithLabel("أيمن (Right)", editingTemplate.cardPaddingRightDp, 0f..160f) { onUpdate(editingTemplate.copy(cardPaddingRightDp = it)) }
+                        SliderWithLabel("علوي (Top)", editingTemplate.cardPaddingTopDp, 0f..300f) { onUpdate(editingTemplate.copy(cardPaddingTopDp = it)) }
+                        SliderWithLabel("سفلي (Bottom)", editingTemplate.cardPaddingBottomDp, 0f..300f) { onUpdate(editingTemplate.copy(cardPaddingBottomDp = it)) }
+                        SliderWithLabel("أيسر (Left)", editingTemplate.cardPaddingLeftDp, 0f..300f) { onUpdate(editingTemplate.copy(cardPaddingLeftDp = it)) }
+                        SliderWithLabel("أيمن (Right)", editingTemplate.cardPaddingRightDp, 0f..300f) { onUpdate(editingTemplate.copy(cardPaddingRightDp = it)) }
                         // Item 24 (1.9.8): redirect note when trueFullscreen ignores padding.
                         if (editingTemplate.trueFullscreen) {
                             Text(

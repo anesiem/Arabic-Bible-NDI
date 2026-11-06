@@ -421,13 +421,16 @@ fun TemplateEditorScreen(
     // Item 56 (1.9.8): "language" section deleted. Item 64 (1.9.8):
     // "particles" section sits directly above "motion". Item 54 (1.9.8):
     // "emblem" deleted, replaced by "logo" at the very top.
-    val rightColumnKeys = listOf("logo", "frame", "transition", "arabic", "english", "textshadow", "card", "particles", "motion", "glow")
+    // 1.9.12 Layers panel: "layers" first — the top of the Editor controls,
+    // right under the preview (wide: first item of the right panel;
+    // compact: first card of the sheet).
+    val rightColumnKeys = listOf("layers", "logo", "frame", "transition", "arabic", "english", "textshadow", "card", "particles", "motion", "glow")
     // Items 1 + 12: expanded state for the collapsible sections, hoisted
     // here so it survives editor-tab switches (the old remember(syncKey)
     // re-seeded on every template change) and so anchor jumps can expand
     // a section before scrolling to it. First view still uses each
     // section's initiallyExpanded; manual toggles stick after that.
-    val collapsibleSectionIds = setOf("logo", "frame", "arabic", "english", "card", "particles", "motion", "transition", "textshadow", "glow")
+    val collapsibleSectionIds = setOf("layers", "logo", "frame", "arabic", "english", "card", "particles", "motion", "transition", "textshadow", "glow")
     // Batch-3: per-tab per-section expand memory — the map lives in the
     // ViewModel (survives tab switches, cleared on app close = all
     // collapsed on fresh launch). Per-tab keys keep Lower's "glow"
@@ -726,6 +729,261 @@ fun TemplateEditorScreen(
                 Spacer(Modifier.height(6.dp))
                 BroadcastPreviewViewport(editingTemplate, displayVerse, previewBg, boxEditEnabled = boxEdit, onTemplateChange = { onUpdate(it) })
 
+            }
+        }
+    }
+    // 1.9.12 Layers panel — four layer cards (Video z-0, Particles z-1,
+    // Card Color z-2, Logo z-4). One toggle per layer turns the whole layer
+    // on/off (all its grouped fields, glow grouped with card color).
+    // Toggle ON restores the layer's fields from the STORED template (the
+    // template is the memory — switching templates and back reloads the
+    // stored values); if the stored template has the layer off too, a
+    // sensible default is used (logo has no default — nothing to invent).
+    // No new template fields, no renderer changes — toggles only set
+    // existing fields. Cards are collapsed by default when the layer is
+    // off, expanded when it is on; tapping the header toggles the card
+    // manually, and toggling the layer drives the card (on = expand).
+    val storedTemplateForLayers = templates.firstOrNull { it.id == editingTemplate.id }
+    var layersExpanded by remember(editingTemplate.id) { mutableStateOf(mapOf<String, Boolean>()) }
+    fun isLayerExpanded(layerId: String, isOn: Boolean): Boolean = layersExpanded[layerId] ?: isOn
+    fun setLayerExpanded(layerId: String, value: Boolean) { layersExpanded = layersExpanded + (layerId to value) }
+    @Composable
+    fun LayerCard(
+        layerId: String,
+        name: String,
+        zIndex: Int,
+        isOn: Boolean,
+        valuesSummary: String,
+        onToggle: (Boolean) -> Unit
+    ) {
+        val expanded = isLayerExpanded(layerId, isOn)
+        Card(
+            shape = RoundedCornerShape(12.dp),
+            colors = CardDefaults.cardColors(containerColor = bento.card),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(Modifier.padding(10.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().clickable { setLayerExpanded(layerId, !expanded) },
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                        Text(name, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary)
+                        Spacer(Modifier.width(6.dp))
+                        Text("z-$zIndex", fontSize = 11.sp, color = bento.textSecondary)
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = if (expanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
+                            contentDescription = null,
+                            tint = bento.textSecondary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        // The Switch wins over the row clickable (inner
+                        // clickable), so tapping it toggles the layer
+                        // without collapsing the card.
+                        Switch(
+                            checked = isOn,
+                            onCheckedChange = { onToggle(it) },
+                            colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = bento.primary)
+                        )
+                    }
+                }
+                if (expanded) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(valuesSummary, fontSize = 11.sp, color = bento.textSecondary)
+                }
+            }
+        }
+    }
+    val layersSectionBlock: @Composable () -> Unit = {
+        val videoOn = editingTemplate.animatedBackground != AnimatedBackgroundType.NONE
+        val particlesOn = editingTemplate.particleEffect != AnimatedBackgroundType.NONE
+        val cardOn = (!editingTemplate.isPureTransparentBackground && editingTemplate.bgOpacity > 0f) ||
+            editingTemplate.gradientEnabled || editingTemplate.cardGlowEnabled || editingTemplate.showAccentBorder
+        val logoOn = editingTemplate.logoUri.isNotEmpty()
+        CollapsibleSection(
+            modifier = anchorModifier("layers"),
+            title = "الطبقات (Layers)",
+            initiallyExpanded = true,
+            expanded = isSectionExpanded("layers", true),
+            onExpandedChange = { setSectionExpanded("layers", it) },
+            summary = "Video " + (if (videoOn) "on" else "off") + " · Particles " + (if (particlesOn) "on" else "off") + " · Card " + (if (cardOn) "on" else "off") + " · Logo " + (if (logoOn) "on" else "off")
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                // Video (z-0): background, motion speed, loop mode, custom video.
+                LayerCard(
+                    layerId = "video",
+                    name = "الفيديو (Video)",
+                    zIndex = 0,
+                    isOn = videoOn,
+                    onToggle = { on ->
+                        setLayerExpanded("video", on)
+                        onUpdate(
+                            if (!on) {
+                                editingTemplate.copy(animatedBackground = AnimatedBackgroundType.NONE)
+                            } else {
+                                val src = storedTemplateForLayers
+                                if (src != null && src.animatedBackground != AnimatedBackgroundType.NONE) {
+                                    editingTemplate.copy(
+                                        animatedBackground = src.animatedBackground,
+                                        animatedBackgroundOpacity = src.animatedBackgroundOpacity,
+                                        motionSpeed = src.motionSpeed,
+                                        videoLoopMode = src.videoLoopMode,
+                                        customVideoUrl = src.customVideoUrl,
+                                        customVideoId = src.customVideoId,
+                                        customVideoMuted = src.customVideoMuted
+                                    )
+                                } else {
+                                    editingTemplate.copy(
+                                        animatedBackground = AnimatedBackgroundType.GOLDEN_DIVINE_RAYS,
+                                        animatedBackgroundOpacity = 0.65f,
+                                        motionSpeed = 1.0f,
+                                        videoLoopMode = VideoLoopMode.FADE
+                                    )
+                                }
+                            }
+                        )
+                    },
+                    valuesSummary = if (videoOn) {
+                        editingTemplate.animatedBackground.displayNameAr + " · speed " + editingTemplate.motionSpeed + " · " + editingTemplate.videoLoopMode.displayName
+                    } else {
+                        "Off — no video background"
+                    }
+                )
+                // Particles (z-1): effect, opacity, density, color.
+                LayerCard(
+                    layerId = "particles",
+                    name = "الجسيمات (Particles)",
+                    zIndex = 1,
+                    isOn = particlesOn,
+                    onToggle = { on ->
+                        setLayerExpanded("particles", on)
+                        onUpdate(
+                            if (!on) {
+                                editingTemplate.copy(particleEffect = AnimatedBackgroundType.NONE)
+                            } else {
+                                val src = storedTemplateForLayers
+                                if (src != null && src.particleEffect != AnimatedBackgroundType.NONE) {
+                                    editingTemplate.copy(
+                                        particleEffect = src.particleEffect,
+                                        particleOpacity = src.particleOpacity,
+                                        particleDensity = src.particleDensity,
+                                        particleColorHex = src.particleColorHex
+                                    )
+                                } else {
+                                    editingTemplate.copy(
+                                        particleEffect = AnimatedBackgroundType.EMBERS,
+                                        particleOpacity = 0.65f,
+                                        particleDensity = 1.0f,
+                                        particleColorHex = ""
+                                    )
+                                }
+                            }
+                        )
+                    },
+                    valuesSummary = if (particlesOn) {
+                        editingTemplate.particleEffect.displayNameAr + " · " + (editingTemplate.particleOpacity * 100).toInt() + "% · density " + editingTemplate.particleDensity + if (editingTemplate.particleColorHex.isNotEmpty()) " · " + editingTemplate.particleColorHex else ""
+                    } else {
+                        "Off — no particles"
+                    }
+                )
+                // Card Color (z-2): color, opacity, gradient, glow, accent border.
+                LayerCard(
+                    layerId = "card",
+                    name = "لون البطاقة (Card Color)",
+                    zIndex = 2,
+                    isOn = cardOn,
+                    onToggle = { on ->
+                        setLayerExpanded("card", on)
+                        if (!on) {
+                            onUpdate(
+                                editingTemplate.copy(
+                                    isPureTransparentBackground = true,
+                                    gradientEnabled = false,
+                                    cardGlowEnabled = false,
+                                    showAccentBorder = false
+                                )
+                            )
+                        } else {
+                            val src = storedTemplateForLayers
+                            val srcCardOn = src != null && ((!src.isPureTransparentBackground && src.bgOpacity > 0f) ||
+                                src.gradientEnabled || src.cardGlowEnabled || src.showAccentBorder)
+                            onUpdate(
+                                if (srcCardOn && src != null) {
+                                    editingTemplate.copy(
+                                        bgColorHex = src.bgColorHex,
+                                        bgOpacity = src.bgOpacity,
+                                        isPureTransparentBackground = src.isPureTransparentBackground,
+                                        gradientEnabled = src.gradientEnabled,
+                                        gradientColorHex2 = src.gradientColorHex2,
+                                        gradientAngleDeg = src.gradientAngleDeg,
+                                        gradientAnimation = src.gradientAnimation,
+                                        gradientSpeed = src.gradientSpeed,
+                                        cardGlowEnabled = src.cardGlowEnabled,
+                                        cardGlowColorHex = src.cardGlowColorHex,
+                                        cardGlowRadiusDp = src.cardGlowRadiusDp,
+                                        cardGlowOpacity = src.cardGlowOpacity,
+                                        showAccentBorder = src.showAccentBorder,
+                                        showAccentBorderWidthDp = src.showAccentBorderWidthDp,
+                                        accentOpacity = src.accentOpacity,
+                                        accentColorHex = src.accentColorHex
+                                    )
+                                } else {
+                                    editingTemplate.copy(
+                                        isPureTransparentBackground = false,
+                                        bgOpacity = 0.85f,
+                                        gradientEnabled = false,
+                                        cardGlowEnabled = false,
+                                        showAccentBorder = false
+                                    )
+                                }
+                            )
+                        }
+                    },
+                    valuesSummary = if (cardOn) {
+                        editingTemplate.bgColorHex + " · " + (editingTemplate.bgOpacity * 100).toInt() + "% · gradient " + (if (editingTemplate.gradientEnabled) "on" else "off") + " · glow " + (if (editingTemplate.cardGlowEnabled) "on" else "off") + " · border " + (if (editingTemplate.showAccentBorder) "on" else "off")
+                    } else {
+                        "Transparent — no card color"
+                    }
+                )
+                // Logo (z-4): image, position, size, offsets, opacity.
+                LayerCard(
+                    layerId = "logo",
+                    name = "الشعار (Logo)",
+                    zIndex = 4,
+                    isOn = logoOn,
+                    onToggle = { on ->
+                        setLayerExpanded("logo", on)
+                        if (!on) {
+                            onUpdate(editingTemplate.copy(logoUri = ""))
+                        } else {
+                            // Restore the stored logo; if the stored
+                            // template has no logo there is nothing to
+                            // invent, so the layer stays off.
+                            val src = storedTemplateForLayers
+                            if (src != null && src.logoUri.isNotEmpty()) {
+                                onUpdate(
+                                    editingTemplate.copy(
+                                        logoUri = src.logoUri,
+                                        logoPosition = src.logoPosition,
+                                        logoBoxSizePercent = src.logoBoxSizePercent,
+                                        logoOffsetXPercent = src.logoOffsetXPercent,
+                                        logoOffsetYPercent = src.logoOffsetYPercent,
+                                        logoOpacity = src.logoOpacity
+                                    )
+                                )
+                            }
+                        }
+                    },
+                    valuesSummary = if (logoOn) {
+                        editingTemplate.logoPosition + " · " + editingTemplate.logoBoxSizePercent.toInt() + "% · " + (editingTemplate.logoOpacity * 100).toInt() + "%"
+                    } else {
+                        "None — no logo"
+                    }
+                )
             }
         }
     }
@@ -1063,7 +1321,9 @@ CollapsibleSection(
                     // One-update item 7: per-language line spacing.
                     SliderWithLabel("تباعد أسطر العربي (Arabic line spacing)", editingTemplate.lineSpacingArabic, 1f..3f) { onUpdate(editingTemplate.copy(lineSpacingArabic = it)) }
                     // Follow-up: verse-citation gap (was a hardcoded 16dp in the renderers).
-                    SliderWithLabel("المسافة بين الآية والشاهد (Verse-Citation Gap · Arabic)", editingTemplate.verseCitationGapArabicDp, 0f..48f) { onUpdate(editingTemplate.copy(verseCitationGapArabicDp = it)) }
+                    // 1.9.12: max raised 48 -> 100 — with no multiplier the slider IS the
+                    // gap, so it must reach NDI-scale gaps (Amiri's visual gap was 66px).
+                    SliderWithLabel("المسافة بين الآية والشاهد (Verse-Citation Gap · Arabic)", editingTemplate.verseCitationGapArabicDp, 0f..100f) { onUpdate(editingTemplate.copy(verseCitationGapArabicDp = it)) }
                     FeatureToggleRow("علامات الترقيم العربية (Use Arabic punctuation ، ؛ ؟)", editingTemplate.useArabicPunctuation) { onUpdate(editingTemplate.copy(useArabicPunctuation = it)) }
                     FeatureToggleRow("الأرقام العربية المشرقية (Eastern Arabic numerals ١٢٣)", editingTemplate.useEasternArabicNumerals) { onUpdate(editingTemplate.copy(useEasternArabicNumerals = it)) }
                     FeatureToggleRow("تصحيح الأقواس بخط النظام (Use system font for brackets ( ) [ ] { })", editingTemplate.useSystemFontForBrackets) { onUpdate(editingTemplate.copy(useSystemFontForBrackets = it)) }
@@ -1184,7 +1444,9 @@ CollapsibleSection(
                         // One-update item 7: per-language line spacing.
                         SliderWithLabel("تباعد أسطر الإنجليزي (English line spacing)", editingTemplate.lineSpacingEnglish, 1f..3f) { onUpdate(editingTemplate.copy(lineSpacingEnglish = it)) }
                         // Follow-up: verse-citation gap (was a hardcoded 4px in the renderers).
-                        SliderWithLabel("المسافة بين الآية والشاهد (Verse-Citation Gap · English)", editingTemplate.verseCitationGapEnglishDp, 0f..48f) { onUpdate(editingTemplate.copy(verseCitationGapEnglishDp = it)) }
+                        // 1.9.12: max raised 48 -> 100, same as the Arabic gap — the slider
+                        // IS the gap (no multiplier), so it needs the same headroom.
+                        SliderWithLabel("المسافة بين الآية والشاهد (Verse-Citation Gap · English)", editingTemplate.verseCitationGapEnglishDp, 0f..100f) { onUpdate(editingTemplate.copy(verseCitationGapEnglishDp = it)) }
 
                         SliderWithLabel("المسافة الفاصلة بين اللغتين", editingTemplate.bilingualSpacing.toFloat(), 0f..150f) { onUpdate(editingTemplate.copy(bilingualSpacing = it.toInt())) }
                         FeatureToggleRow("إظهار المسافة بين اللغتين (Show spacing)", editingTemplate.showBilingualSpacing) { onUpdate(editingTemplate.copy(showBilingualSpacing = it)) }
@@ -1861,15 +2123,16 @@ CollapsibleSection(
             }
         }
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            CompactSectionCard(0, "logo") { logoSectionBlock() }
-            CompactSectionCard(1, "transition") { transitionSectionBlock() }
-            CompactSectionCard(2, "arabic") { arabicSectionBlock() }
-            CompactSectionCard(3, "english") { englishSectionBlock() }
-            CompactSectionCard(4, "textshadow") { textShadowSectionBlock() }
-            CompactSectionCard(5, "card") { cardSectionBlock() }
-            CompactSectionCard(6, "particles") { particlesSectionBlock() }
-            CompactSectionCard(7, "motion") { motionSectionBlock() }
-            CompactSectionCard(8, "glow") { glowSectionBlock() }
+            CompactSectionCard(0, "layers") { layersSectionBlock() }
+            CompactSectionCard(1, "logo") { logoSectionBlock() }
+            CompactSectionCard(2, "transition") { transitionSectionBlock() }
+            CompactSectionCard(3, "arabic") { arabicSectionBlock() }
+            CompactSectionCard(4, "english") { englishSectionBlock() }
+            CompactSectionCard(5, "textshadow") { textShadowSectionBlock() }
+            CompactSectionCard(6, "card") { cardSectionBlock() }
+            CompactSectionCard(7, "particles") { particlesSectionBlock() }
+            CompactSectionCard(8, "motion") { motionSectionBlock() }
+            CompactSectionCard(9, "glow") { glowSectionBlock() }
             Spacer(Modifier.height(100.dp))
         }
     }
@@ -1878,6 +2141,7 @@ CollapsibleSection(
     // flashes it; the right panel always shows every control — anchors
     // only point, they never hide anything.
     val anchorSections: List<Pair<String, Pair<String, List<Pair<String, String>>>>> = listOf(
+        "layers" to ("الطبقات (Layers)" to emptyList()),
         "logo" to ("الشعار (Logo)" to emptyList()),
         "frame" to ("الإطار والحشوة (Frame & Padding)" to listOf(
             "frame-position" to "الموضع والهوامش (Position & Margins)",
@@ -2031,16 +2295,17 @@ CollapsibleSection(
                         state = rightLazyListState,
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        item("logo") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandA), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { logoSectionBlock() } } }
-                        item("frame") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandB), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { frameSectionBlock() } } }
-                        item("transition") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandA), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { transitionSectionBlock() } } }
-                        item("arabic") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandB), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { arabicSectionBlock() } } }
-                        item("english") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandA), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { englishSectionBlock() } } }
-                        item("textshadow") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandB), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { textShadowSectionBlock() } } }
-                        item("card") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandA), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { cardSectionBlock() } } }
-                        item("particles") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandB), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { particlesSectionBlock() } } }
-                        item("motion") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandA), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { motionSectionBlock() } } }
-                        item("glow") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandB), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { glowSectionBlock() } } }
+                        item("layers") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandA), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { layersSectionBlock() } } }
+                        item("logo") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandB), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { logoSectionBlock() } } }
+                        item("frame") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandA), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { frameSectionBlock() } } }
+                        item("transition") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandB), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { transitionSectionBlock() } } }
+                        item("arabic") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandA), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { arabicSectionBlock() } } }
+                        item("english") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandB), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { englishSectionBlock() } } }
+                        item("textshadow") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandA), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { textShadowSectionBlock() } } }
+                        item("card") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandB), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { cardSectionBlock() } } }
+                        item("particles") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandA), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { particlesSectionBlock() } } }
+                        item("motion") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandB), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { motionSectionBlock() } } }
+                        item("glow") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandA), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { glowSectionBlock() } } }
                     }
                 }
             }

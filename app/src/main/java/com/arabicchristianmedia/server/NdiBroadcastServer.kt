@@ -1509,6 +1509,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             put("customVideoMuted", tpl.customVideoMuted)
             put("motionSpeed", tpl.motionSpeed)
             put("videoLoopMode", tpl.videoLoopMode.id)
+            // Item 104a: streamBackgroundMode was missing from buildJsonState
+            // (only in tplJson, the /api/debug dump), so /lower and /full
+            // read data.streamBackgroundMode as undefined and stayed
+            // transparent. Added here so HTTP paints the mode.
+            put("streamBackgroundMode", tpl.streamBackgroundMode.name)
             put("cardPaddingTopDp", tpl.cardPaddingTopDp.toDouble())
             put("cardPaddingBottomDp", tpl.cardPaddingBottomDp.toDouble())
             put("cardPaddingLeftDp", tpl.cardPaddingLeftDp.toDouble())
@@ -1611,10 +1616,21 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     /* Stage Container (Full Show Mode) */
     /* v1.9.2 (#7): the Full box is bottom-anchored and stretched like
        Lower's — the container IS the slider box (margin / bottom / height
-       set inline from the payload), no longer the centered full frame. */
+       set inline from the payload), no longer the centered full frame.
+       1.9.12 (Full fill fix): the stage FILLS the viewport (100vw x 100vh)
+       instead of locking to 16:9 — a 16:9 stage letterboxes on any
+       non-16:9 screen (tablet 16:10 leaves 60px green bars top/bottom;
+       same on a non-16:9 projector). The content scales by stage width
+       (getStageScale), so text sizing is unchanged; on a 16:9 viewport
+       this is identical to before. Lower keeps its 16:9 stage (vMix
+       controls the Lower overlay). */
     #stage.mode-full-show {
       justify-content: flex-end !important;
       align-items: stretch !important;
+      width: 100vw !important;
+      height: 100vh !important;
+      aspect-ratio: auto !important;
+      max-height: none !important;
     }
 
     /* ==========================================================================
@@ -2741,8 +2757,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         if (data.autoFitText !== false) {
           container.style.height = Math.min(data.boxHeightPercent || 45, 100 - (data.positionBottomPercent ?? 0)) + '%';
           container.style.minHeight = '';
+          container.style.display = '';
+          container.style.flexDirection = '';
           cardBox.style.height = '100%';
           cardBox.style.minHeight = '';
+          cardBox.style.flex = '';
         } else {
           // Item 101: MINIMUM height + expand — the Lower card is at least
           // the slider box (so the split vertical alignment in section 4b
@@ -2750,10 +2769,20 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
           // the verse needs more room (the card stays bottom-anchored).
           // A fixed height here would stop the expansion autoFit OFF is
           // for, so the height is a minimum, not a fixed value.
+          // Item 101 (fix): a percentage minHeight on cardBox resolves
+          // against the container's *height*, not its *minHeight* — with
+          // the container height auto, cardBox minHeight:100% collapses
+          // to auto, the card hugs its content, the split gap has no free
+          // space, and a long verse clips. Make the container a flex
+          // column and let cardBox stretch with flex:1 — it fills the
+          // min-height box and grows with the content.
           container.style.height = '';
           container.style.minHeight = Math.min(data.boxHeightPercent || 45, 100 - (data.positionBottomPercent ?? 0)) + '%';
+          container.style.display = 'flex';
+          container.style.flexDirection = 'column';
           cardBox.style.height = '';
-          cardBox.style.minHeight = '100%';
+          cardBox.style.minHeight = '';
+          cardBox.style.flex = '1 1 auto';
         }
 
         if (data.alignment === 'CENTER') {
@@ -2881,17 +2910,18 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       // Follow-up: verse-citation gap from the style (?? keeps a 0 value
       // working; the badge's own 8px CSS margin is zeroed so the value is
       // exact on both feeds, like the NDI renderer).
-      // Item 102: the Arabic gap must also carry the verse's first-line
-      // top leading, which NDI's StaticLayout includes (Amiri's large
-      // ascent + tashkeel pushes the first glyph far below the layout
-      // top) but CSS line boxes do not. Measured 2026-11-06: NDI visual
-      // gap 66px vs HTTP 16px at the same 12dp setting (Lower, John 7:24)
-      // — the missing ~50px is ~1.5x the verse font size, so the margin
-      // adds verseFontSize * 1.5. The English gap (line 2640) is NOT
-      // changed: its Latin font has a small ascent and its visual gap
-      // already matches NDI (~13px vs 12dp).
+      // Item 102: the Arabic verse-citation gap is the slider value,
+      // nothing else. No multiplier and no font-based leading term:
+      // the slider controls the gap on HTTP, and Ashraf tunes it to
+      // what looks right (2026-11-06 — his call). NDI's StaticLayout
+      // still adds its own first-line leading, so the visual gap on
+      // NDI will differ from HTTP by font — that is expected, and the
+      // slider is the single control for the HTTP gap.
+      // (The earlier x1.5 leading term matched Amiri but over-corrected
+      // Markazi Text — 65px vs NDI 6px — so it is removed, not made
+      // font-dependent.)
       citationRow.style.marginBottom = '0';
-      verseText.style.marginTop = (((data.verseCitationGapArabicDp ?? 12) + (data.verseFontSize || 26) * 1.5) * getStageScale()) + 'px';
+      verseText.style.marginTop = (((data.verseCitationGapArabicDp ?? 12)) * getStageScale()) + 'px';
 
       // v1.9.1: auto-fit as a callable unit (was a tail block of applyData).
       // It runs AFTER the used fonts are ready (see finishApply), so sizes
@@ -7082,6 +7112,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         statTrigger.record((System.nanoTime() - trigT0) / 1_000_000.0)
 
         if (ok) {
+            // Items 105+107: /api/trigger never told the /remote page a verse
+            // was picked — only Library/Recents taps (ViewModel) broadcast
+            // verseSelected. Emit it here too so API triggers (remote page
+            // taps, sermon-listener, any LAN caller) sync the /remote list.
+            broadcastVerseSelected(bookId!!, chapter!!, verseNum!!)
             sendJson(out, 200, """{"ok":true,"bookId":"${jsonEscape(bookId!!)}","chapter":$chapter,"verse":$verseNum,"target":"$target"}""")
         } else {
             sendJson(out, 400, """{"ok":false,"error":"Verse not found: bookId=$bookId $chapter:$verseNum"}""")
@@ -9371,6 +9406,39 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     }
     return -1;
   }
+  // Items 105+107: scroll ONLY the verse list (never the page), and only
+  // when the verse is out of view — centre it in the list. Retries up to
+  // 5 times (300ms apart) in case the verses aren't rendered yet.
+  // Defined once here so both the SSE verseSelected handler and the
+  // poll-based fallback share it — the fallback's call was a no-op
+  // because this function did not exist (only a guarded typeof check).
+  function scrollToVerse(verseNum) {
+    var attempts = 0;
+    function tryScroll() {
+      var verseEl = document.querySelector('[data-v="' + verseNum + '"]');
+      if (verseEl) {
+        // Scroll ONLY the verse list (never the page). The old
+        // scrollIntoView({block:'center'}) centred the verse in the
+        // VIEWPORT, scrolling the whole page on mobile (list felt
+        // unscrollable while live) and jumping on every verse change
+        // even when visible.
+        var listRect = vList.getBoundingClientRect();
+        var rowRect = verseEl.getBoundingClientRect();
+        if (rowRect.top < listRect.top || rowRect.bottom > listRect.bottom) {
+          var target = vList.scrollTop + (rowRect.top - listRect.top) - (vList.clientHeight - rowRect.height) / 2;
+          vList.scrollTo({ top: target, behavior: 'smooth' });
+        }
+        // Item 20 (1.9.8): persistent highlight — stays until another verse syncs.
+        var prevLive = vList.querySelector('.vrow.synced-live');
+        if (prevLive) prevLive.classList.remove('synced-live');
+        verseEl.classList.add('synced-live');
+      } else if (attempts < 5) {
+        attempts++;
+        setTimeout(tryScroll, 300);
+      }
+    }
+    setTimeout(tryScroll, 300);
+  }
   // Item 71 (1.9.9): CONNECTION LOST banner + auto-retry. The sync
   // EventSource used to reconnect silently — a dropped link left the
   // page showing stale state with no indication. onopen hides the
@@ -9404,36 +9472,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             fillChapters(books[bookIdx]);
             chSel.value = String(d.chapter);
             loadChapter(d.chapter, function() {
-              // 2026-11-03: Robust scroll to verse — retry up to 5 times (300ms apart)
-              // in case verses aren't rendered yet. Falls back to top of list.
-              var attempts = 0;
-              function tryScrollToVerse() {
-                var verseEl = document.querySelector('[data-v="' + d.verse + '"]');
-                if (verseEl) {
-                  // Items 105+107: scroll ONLY the verse list (never the page),
-                  // and only when the verse is out of view — centre it in the list.
-                  // The old scrollIntoView({block:'center'}) centred the verse in the
-                  // VIEWPORT, scrolling the whole page on mobile (list felt unscrollable
-                  // while live) and jumping on every verse change even when visible.
-                  (function() {
-                    var listRect = vList.getBoundingClientRect();
-                    var rowRect = verseEl.getBoundingClientRect();
-                    if (rowRect.top < listRect.top || rowRect.bottom > listRect.bottom) {
-                      var target = vList.scrollTop + (rowRect.top - listRect.top) - (vList.clientHeight - rowRect.height) / 2;
-                      vList.scrollTo({ top: target, behavior: 'smooth' });
-                    }
-                  })();
-                  // Also highlight briefly so the user sees which verse synced.
-                  // Item 20 (1.9.8): persistent highlight — stays until another verse syncs.
-                  var prevLive = vList.querySelector('.vrow.synced-live');
-                  if (prevLive) prevLive.classList.remove('synced-live');
-                  verseEl.classList.add('synced-live');
-                } else if (attempts < 5) {
-                  attempts++;
-                  setTimeout(tryScrollToVerse, 300);
-                }
-              }
-              setTimeout(tryScrollToVerse, 300);
+              scrollToVerse(d.verse);
             });
           }
         } catch (err) {}

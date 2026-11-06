@@ -1027,6 +1027,9 @@ CollapsibleSection(
                         }
                     }
                     Spacer(Modifier.height(8.dp))
+                    // Item 91: vertical alignment of the Arabic verse block
+                    // within the card (Top / Center / Bottom).
+                    VerticalAlignmentChoiceRow("المحاذاة العمودية للنص العربي (Arabic Vertical Alignment)", editingTemplate.verticalAlignmentArabic) { onUpdate(editingTemplate.copy(verticalAlignmentArabic = it)) }
                     SliderWithLabel("حجم النص العربي", editingTemplate.verseFontSize.toFloat(), 10f..180f) {
                         val newVerse = it.toInt()
                         // One-update item 8: once the ratio is frozen, a
@@ -1174,6 +1177,9 @@ CollapsibleSection(
                             }
                         }
                         Spacer(Modifier.height(8.dp))
+                        // Item 91: vertical alignment of the English verse block
+                        // within the card (Top / Center / Bottom).
+                        VerticalAlignmentChoiceRow("المحاذاة العمودية للنص الإنجليزي (English Vertical Alignment)", editingTemplate.verticalAlignmentEnglish) { onUpdate(editingTemplate.copy(verticalAlignmentEnglish = it)) }
                         SliderWithLabel("حجم النص الإنجليزي", editingTemplate.secondaryVerseFontSize.toFloat(), 8f..120f) { onUpdate(editingTemplate.copy(secondaryVerseFontSize = it.toInt())) }
                         // One-update item 7: per-language line spacing.
                         SliderWithLabel("تباعد أسطر الإنجليزي (English line spacing)", editingTemplate.lineSpacingEnglish, 1f..3f) { onUpdate(editingTemplate.copy(lineSpacingEnglish = it)) }
@@ -1231,8 +1237,11 @@ CollapsibleSection(
                         androidx.compose.material3.Surface(shape = RoundedCornerShape(12.dp), border = androidx.compose.foundation.BorderStroke(1.dp, bento.border), color = bento.surfaceVariant) {
                             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("ألوان التدرج المرتبطة (Linked gradient colors)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary)
-                        // Item 34: separate picker for the first gradient color (was linked to card color only).
-                        Text("اللون الأول = لون البطاقة أعلاه", fontSize = 11.sp, color = bento.textSecondary)
+                        // Item 34: separate picker for the first gradient
+                        // color. The gradient runs from bgColorHex (this
+                        // picker — the model has no separate
+                        // gradientColorHex field) to gradientColorHex2.
+                        ColorGradePickerRow("اللون الأول (First color)", editingTemplate.bgColorHex, { onUpdate(editingTemplate.copy(bgColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor, previewTemplate = editingTemplate, previewField = "bgColorHex")
                         ColorGradePickerRow("اللون الثاني (Second color)", editingTemplate.gradientColorHex2, { onUpdate(editingTemplate.copy(gradientColorHex2 = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor, previewTemplate = editingTemplate, previewField = "gradientColorHex2")
                         SliderWithLabel("زاوية التدرج (Angle, 0-360°)", editingTemplate.gradientAngleDeg.toFloat(), 0f..360f) { onUpdate(editingTemplate.copy(gradientAngleDeg = it.toInt())) }
                         val gradientAnims = listOf(
@@ -2712,6 +2721,28 @@ fun LinkedColorGroup(
     }
 }
 
+/**
+ * Item 91: one shared vertical-alignment choice row (Top / Center /
+ * Bottom) — used by the Arabic and English text sections, same
+ * FilterChip pattern as the horizontal alignment rows.
+ */
+@Composable
+fun VerticalAlignmentChoiceRow(
+    label: String,
+    selected: VerticalAlignment,
+    onSelect: (VerticalAlignment) -> Unit
+) {
+    val bento = LocalBentoColors.current
+    Text(label, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
+    Spacer(Modifier.height(4.dp))
+    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        VerticalAlignment.entries.forEach { align ->
+            FilterChip(selected = selected == align, onClick = { onSelect(align) }, label = { Text(align.displayName, fontSize = 10.sp) })
+        }
+    }
+    Spacer(Modifier.height(8.dp))
+}
+
 @Composable
 fun ColorGradePickerRow(
     label: String,
@@ -3006,13 +3037,41 @@ fun ColorGradeSpectrumModal(
                     val enCol = try { Color(android.graphics.Color.parseColor(fieldHex("secondaryTextColorHex", tpl.secondaryTextColorHex))) } catch (e: Exception) { Color.White }
                     val accentCol = try { Color(android.graphics.Color.parseColor(fieldHex("accentColorHex", tpl.accentColorHex))) } catch (e: Exception) { Color.Transparent }
                     val glowCol = try { Color(android.graphics.Color.parseColor(fieldHex("cardGlowColorHex", tpl.cardGlowColorHex))) } catch (e: Exception) { Color.Transparent }
+                    // Item 34: the candidate applies to EVERY picker's
+                    // element, not only the six fields above — the
+                    // second gradient color, the English citation, the
+                    // particle color and the text-shadow color each had
+                    // no visible preview before.
+                    val gradCol2 = try { Color(android.graphics.Color.parseColor(fieldHex("gradientColorHex2", tpl.gradientColorHex2))) } catch (e: Exception) { cardBg }
+                    val secRefCol = try { Color(android.graphics.Color.parseColor(fieldHex("secondaryReferenceColorHex", tpl.secondaryReferenceColorHex))) } catch (e: Exception) { Color.White }
+                    val particleCol = try { Color(android.graphics.Color.parseColor(fieldHex("particleColorHex", if (tpl.particleColorHex.isEmpty()) particleDefaultColorHex(tpl.particleEffect) else tpl.particleColorHex))) } catch (e: Exception) { Color.White }
+                    val shadowCol = try { Color(android.graphics.Color.parseColor(fieldHex("textShadowColorHex", tpl.textShadowColorHex))) } catch (e: Exception) { Color.Black }
+                    // Text shadow is only drawn while its own picker is
+                    // open (the preview never showed a shadow before);
+                    // the template's own angle/offset/blur are used when
+                    // the shadow is enabled, else a visible default.
+                    val previewTextShadow = if (previewField == "textShadowColorHex") {
+                        val angleRad = Math.toRadians(tpl.textShadowAngleDeg.toDouble())
+                        Shadow(
+                            color = shadowCol,
+                            offset = if (tpl.textShadowEnabled) Offset(
+                                (kotlin.math.cos(angleRad) * tpl.textShadowOffsetDp).toFloat(),
+                                (kotlin.math.sin(angleRad) * tpl.textShadowOffsetDp).toFloat()
+                            ) else Offset(2f, 2f),
+                            blurRadius = if (tpl.textShadowEnabled) tpl.textShadowBlurDp else 4f
+                        )
+                    } else null
                     val showGlow = tpl.cardGlowEnabled && previewField != "cardGlowColorHex" || previewField == "cardGlowColorHex"
                     Text("معاينة حية (Live preview)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(12.dp))
-                            .background(cardBg)
+                            // Item 34: with a gradient card the preview
+                            // draws the real gradient (first color ->
+                            // second color, candidate swapped in), so a
+                            // gradient-color edit is visible in the card.
+                            .then(if (tpl.gradientEnabled) Modifier.background(Brush.linearGradient(colors = listOf(cardBg, gradCol2))) else Modifier.background(cardBg))
                             .then(if (showGlow) Modifier.shadow(8.dp, RoundedCornerShape(12.dp), ambientColor = glowCol, spotColor = glowCol) else Modifier)
                             .border(if (tpl.showAccentBorder) 2.dp else 0.dp, accentCol, RoundedCornerShape(12.dp))
                             .padding(12.dp)
@@ -3021,18 +3080,43 @@ fun ColorGradeSpectrumModal(
                             Text(
                                 "اَللهُ مَحَبَّةٌ",
                                 color = verseCol, fontSize = 16.sp, fontWeight = FontWeight.Bold,
-                                textAlign = TextAlign.Right, modifier = Modifier.fillMaxWidth()
+                                textAlign = TextAlign.Right, modifier = Modifier.fillMaxWidth(),
+                                style = TextStyle(shadow = previewTextShadow)
                             )
                             Text(
                                 "يوحنا الأولى 4: 8",
                                 color = citCol, fontSize = 11.sp, fontWeight = FontWeight.Bold,
-                                textAlign = TextAlign.Right, modifier = Modifier.fillMaxWidth()
+                                textAlign = TextAlign.Right, modifier = Modifier.fillMaxWidth(),
+                                style = TextStyle(shadow = previewTextShadow)
                             )
                             Text(
                                 "God is love",
                                 color = enCol, fontSize = 12.sp,
-                                textAlign = TextAlign.Left, modifier = Modifier.fillMaxWidth()
+                                textAlign = TextAlign.Left, modifier = Modifier.fillMaxWidth(),
+                                style = TextStyle(shadow = previewTextShadow)
                             )
+                            // Item 34: the English citation line (the
+                            // secondary-reference picker's element).
+                            if (tpl.showEnglish) {
+                                Text(
+                                    "(1 John 4: 8)",
+                                    color = secRefCol, fontSize = 10.sp, fontWeight = FontWeight.Bold,
+                                    textAlign = TextAlign.Left, modifier = Modifier.fillMaxWidth(),
+                                    style = TextStyle(shadow = previewTextShadow)
+                                )
+                            }
+                            // Item 34: a particle strip (the particle-color
+                            // picker's element) — only while that picker
+                            // is open.
+                            if (previewField == "particleColorHex") {
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    repeat(5) {
+                                        Box(
+                                            modifier = Modifier.size(8.dp).clip(CircleShape).background(particleCol)
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }

@@ -20,8 +20,8 @@ import com.arabicchristianmedia.ui.theme.LocalBentoColors
 
 /**
  * One-update item 20: the shortcuts help card — the full keyboard map.
- * Opened by the ? key or the top-bar keyboard icon (on every tab).
- * Also documented in README + user docs.
+ * Opened by the ? key or the keyboard entry inside the gear's
+ * display-settings dialog (item 32). Also documented in README + user docs.
  */
 @Composable
 fun ShortcutsHelpDialog(onDismiss: () -> Unit) {

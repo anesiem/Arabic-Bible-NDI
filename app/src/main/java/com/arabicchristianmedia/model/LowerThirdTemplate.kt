@@ -33,6 +33,20 @@ enum class BroadcastTextAlignment(val displayName: String) {
 }
 
 /**
+ * Item 91: vertical alignment of a language's verse block within the
+ * card. TOP = the first line always starts at the same position (the
+ * top of the text area); CENTER = the block is centered (the old
+ * behaviour); BOTTOM = the block grows upward from the bottom (the
+ * lower-third look). One value per language so Arabic and English can
+ * anchor independently.
+ */
+enum class VerticalAlignment(val displayName: String) {
+    TOP("Top"),
+    CENTER("Centered"),
+    BOTTOM("Bottom")
+}
+
+/**
  * v1.8: three-way language control replacing the [LowerThirdTemplate.bilingualMode]
  * boolean. ARABIC_ONLY shows Arabic verse+citation; ENGLISH_ONLY shows English;
  * BOTH shows Arabic followed by English (with [LowerThirdTemplate.bilingualSpacing]
@@ -624,6 +638,15 @@ data class LowerThirdTemplate(
     val cardGlowRadiusDp: Float = 16f,
     /** Accent border width (dp) — default 2dp. */
     val showAccentBorderWidthDp: Float = 2f,
+    /**
+     * Item 91: per-language vertical alignment of the verse block
+     * within the card (see [VerticalAlignment]). Model default is TOP;
+     * Lower factory templates set BOTTOM explicitly, and fromJson
+     * migrates old saves by feed (Full -> TOP, Lower -> BOTTOM), so
+     * no existing template changes how it renders.
+     */
+    val verticalAlignmentArabic: VerticalAlignment = VerticalAlignment.TOP,
+    val verticalAlignmentEnglish: VerticalAlignment = VerticalAlignment.TOP,
 )
 
 /** Auto-fit frozen-ratio math (one-update item 8), pure and unit-testable.

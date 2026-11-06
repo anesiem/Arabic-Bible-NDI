@@ -48,6 +48,7 @@ import com.arabicchristianmedia.model.LowerThirdTemplate
 import com.arabicchristianmedia.model.StreamBackgroundMode
 import com.arabicchristianmedia.model.TemplateStyle
 import com.arabicchristianmedia.model.TransitionType
+import com.arabicchristianmedia.model.VerticalAlignment
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -1334,12 +1335,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             put("liveHighlightLight", bandHex(theme.light.liveHighlight))
             put("sermonTintDark", bandHex(theme.dark.sermonTint))
             put("sermonTintLight", bandHex(theme.light.sermonTint))
-            // 2026-11-03: liveNavy uses theme liveHighlight (0xFF1B3A5C navy in dark).
-            // liveYellow/livePaleYellow have no theme equivalent yet — hardcoded as
-            // fixed design accents (TODO: add to ColorTheme model in future batch).
+            // Item 96: liveYellow/livePaleYellow are now theme fields
+            // (ColorThemeTokens), same values as the sermon live yellows
+            // — the web pages pick them up automatically.
             put("liveNavy", bandHex(theme.dark.liveHighlight))
-            put("liveYellow", "#F5D76E")
-            put("livePaleYellow", "#FDE9A8")
+            put("liveYellow", bandHex(theme.dark.liveYellow))
+            put("livePaleYellow", bandHex(theme.dark.livePaleYellow))
             // Item 7: page chrome follows the same theme (background,
             // cards, inputs, chips, text, focus ring) — previously fixed
             // slate while bands/recents were themed. Same dark/light
@@ -1530,6 +1531,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             put("citationAlignmentArabic", tpl.citationAlignmentArabic.name)
             put("citationAlignmentEnglish", tpl.citationAlignmentEnglish.name)
             put("verseAlignmentEnglish", tpl.verseAlignmentEnglish.name)
+            // Item 91: per-language vertical alignment of the verse block.
+            put("verticalAlignmentArabic", tpl.verticalAlignmentArabic.name)
+            put("verticalAlignmentEnglish", tpl.verticalAlignmentEnglish.name)
             put("boxLoopContinuous", tpl.boxLoopContinuous)
             put("trueFullscreen", tpl.trueFullscreen)
         }
@@ -2633,9 +2637,26 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         englishText.style.fontStyle = data.secondaryVerseIsItalic ? 'italic' : 'normal';
         englishCitation.style.fontWeight = data.secondaryReferenceIsBold ? 'bold' : 'normal';
         englishCitation.style.fontStyle = data.secondaryReferenceIsItalic ? 'italic' : 'normal';
+        // Item 36 (1.9.10): the English citation uses its OWN alignment
+        // (default RIGHT, like NDI) — it used to inherit the English
+        // verse alignment. text-align is physical, so no direction swap.
+        var citeAlignEn = data.citationAlignmentEnglish || 'RIGHT';
+        englishCitation.style.textAlign = citeAlignEn === 'CENTER' ? 'center' : (citeAlignEn === 'LEFT' ? 'left' : 'right');
         const spacing = data.showBilingualSpacing ? (data.bilingualSpacing || 20) : 0;
         englishSection.style.marginTop = (spacing * getStageScale()) + 'px';
       }
+
+      // Item 36 (1.9.10): physical citation alignment — one helper for
+      // both feeds. justify-content is direction-relative (flex-start =
+      // right in RTL, left in LTR), so a LEFT/RIGHT setting must map to
+      // the physical side for the container's direction. NDI already
+      // draws citations at physical positions; HTTP now matches it.
+      function citationJustify(align, isRtl) {
+        if (align === 'CENTER') return 'center';
+        if (align === 'LEFT') return isRtl ? 'flex-end' : 'flex-start';
+        return isRtl ? 'flex-start' : 'flex-end';
+      }
+      var citeAlignAr = data.citationAlignmentArabic || 'RIGHT';
 
       // 4. Layout & Alignment (Ensures Full Show remains vertically & horizontally centered in middle)
       if (isFull) {
@@ -2669,12 +2690,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
         citationRow.style.display = 'flex';
         citationRow.style.width = '100%';
-        // Batch-3: per-language citation alignment (default RIGHT).
-        // Item 36: use physical alignment — in RTL containers flex-start/flex-end
-        // are direction-relative, so LEFT was rendering on the right. Swap the
-        // mapping for the Arabic (RTL) citation row.
-        var citeAlignAr = data.citationAlignmentArabic || 'RIGHT';
-        citationRow.style.justifyContent = citeAlignAr === 'CENTER' ? 'center' : (citeAlignAr === 'LEFT' ? 'flex-end' : 'flex-start');
+        // Item 36: physical alignment via the shared helper — the old
+        // inline mapping assumed RTL and was wrong when the verse
+        // alignment was LEFT (container direction ltr).
+        citationRow.style.justifyContent = citationJustify(citeAlignAr, container.style.direction === 'rtl');
 
         verseText.style.width = '100%';
         verseText.style.textAlign = alignCss;
@@ -2720,7 +2739,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
           cardBox.style.margin = '0 auto';
           citationRow.style.display = 'flex';
           citationRow.style.width = '100%';
-          citationRow.style.justifyContent = 'center';
+          // Item 36 (1.9.10): the citation follows its OWN setting
+          // (citationAlignmentArabic), not the verse alignment — the
+          // old code hardcoded 'center' here and ignored the setting.
+          citationRow.style.justifyContent = citationJustify(citeAlignAr, true);
           verseText.style.textAlign = 'center';
           englishSection.style.textAlign = 'center';
         } else if (data.alignment === 'LEFT') {
@@ -2733,7 +2755,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
           cardBox.style.margin = '0';
           citationRow.style.display = 'flex';
           citationRow.style.width = '100%';
-          citationRow.style.justifyContent = 'flex-start';
+          // Item 36 (1.9.10): the citation follows its OWN setting —
+          // the old code hardcoded 'flex-start' (left in this ltr
+          // container) and ignored citationAlignmentArabic.
+          citationRow.style.justifyContent = citationJustify(citeAlignAr, false);
           verseText.style.textAlign = 'left';
           // 1.9.4: English verse uses its own per-language alignment.
           const enAlignLt = data.verseAlignmentEnglish || 'LEFT';
@@ -2748,13 +2773,57 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
           cardBox.style.margin = '0';
           citationRow.style.display = 'flex';
           citationRow.style.width = '100%';
-          citationRow.style.justifyContent = 'flex-start';
+          // Item 36 (1.9.10): the citation follows its OWN setting —
+          // the old code hardcoded 'flex-start' (right in this rtl
+          // container) and ignored citationAlignmentArabic.
+          citationRow.style.justifyContent = citationJustify(citeAlignAr, true);
           verseText.style.textAlign = 'right';
           // 1.9.4: English verse uses its own per-language alignment.
           const enAlignRt = data.verseAlignmentEnglish || 'LEFT';
           englishSection.style.textAlign = enAlignRt === 'CENTER' ? 'center' : (enAlignRt === 'RIGHT' ? 'right' : 'left');
         }
       }
+
+      // 4b. Vertical alignment (Item 91): where the verse text sits
+      // vertically in the card. Both fields equal: the whole block
+      // anchors as one (TOP/CENTER/BOTTOM). TOP/BOTTOM split: the
+      // Arabic block (citation + verse) and the English block anchor
+      // independently. CENTER mixed with TOP/BOTTOM: the anchored value
+      // wins for the whole block (NDI does the same — render parity).
+      // The inner content is a flex column filling the card, so the
+      // justification and auto margins have free space to work with.
+      // justify-content needs 'important': the Full CSS centers it with
+      // !important. Reset the split-case margins/orders first —
+      // applyData runs on every verse/template change.
+      var vAlignAr = data.verticalAlignmentArabic || (isFull ? 'TOP' : 'BOTTOM');
+      var vAlignEn = data.verticalAlignmentEnglish || (isFull ? 'TOP' : 'BOTTOM');
+      var innerContent = document.querySelector('.card-inner-content');
+      innerContent.style.display = 'flex';
+      innerContent.style.flexDirection = 'column';
+      innerContent.style.height = '100%';
+      citationRow.style.marginTop = '';
+      verseText.style.marginBottom = '';
+      englishSection.style.marginTop = '';
+      englishSection.style.marginBottom = '';
+      englishSection.style.order = '';
+      var vJustify = 'center';
+      if (vAlignAr === vAlignEn) {
+        vJustify = vAlignAr === 'TOP' ? 'flex-start' : (vAlignAr === 'BOTTOM' ? 'flex-end' : 'center');
+      } else if (vAlignAr === 'CENTER') {
+        vJustify = vAlignEn === 'TOP' ? 'flex-start' : 'flex-end';
+      } else if (vAlignEn === 'CENTER') {
+        vJustify = vAlignAr === 'TOP' ? 'flex-start' : 'flex-end';
+      } else if (vAlignAr === 'TOP') {
+        // Arabic top, English bottom: push the English block down.
+        vJustify = 'flex-start';
+        englishSection.style.marginTop = 'auto';
+      } else {
+        // Arabic bottom, English top: English first, Arabic block down.
+        vJustify = 'flex-start';
+        englishSection.style.order = '-1';
+        citationRow.style.marginTop = 'auto';
+      }
+      innerContent.style.setProperty('justify-content', vJustify, 'important');
 
       // 5. Typography & Font Styling (bundled webfonts served from the tablet; fully offline)
       const rawFont = String(data.fontFamily || 'Amiri').replace(/['"\\]/g, '');
@@ -6035,12 +6104,39 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         }
 
         val contentTotalHeight = primaryLayout.height + citationHeight + secHeight
-        val startY = if (tpl.isFullScreen) {
-            // v1.9.2 (#7): centered in the BOX, not the frame (identical
-            // when the box is the full frame).
-            boxTop + (boxHeight - contentTotalHeight) / 2f
-        } else {
-            boxTop + padT
+        // Item 91: vertical alignment — where the text block sits in the
+        // box. Both fields equal: the whole block anchors as one (the
+        // common case; Full defaults TOP, Lower defaults BOTTOM via the
+        // fromJson migration). TOP/BOTTOM split: the Arabic block
+        // (citation + verse) and the English block anchor independently
+        // (secY below is computed from its own field, not chained).
+        // CENTER mixed with TOP/BOTTOM: the anchored value wins for the
+        // whole block (HTTP does the same — render parity; the
+        // CENTER-mixed split is a rare edge case). Single-language
+        // (no English section): the shown language's field drives it.
+        val vAlignAr = tpl.verticalAlignmentArabic
+        val vAlignEn = tpl.verticalAlignmentEnglish
+        val splitAlign = bilingualSecondary != null &&
+            vAlignAr != vAlignEn &&
+            vAlignAr != VerticalAlignment.CENTER && vAlignEn != VerticalAlignment.CENTER
+        val blockAlign = when {
+            bilingualSecondary == null && tpl.languageMode == LanguageMode.ENGLISH_ONLY -> vAlignEn
+            bilingualSecondary == null -> vAlignAr
+            splitAlign -> null
+            vAlignAr == vAlignEn -> vAlignAr
+            vAlignAr == VerticalAlignment.CENTER -> vAlignEn
+            else -> vAlignAr
+        }
+        fun anchorTop(align: VerticalAlignment, blockHeight: Float): Float = when (align) {
+            VerticalAlignment.TOP -> boxTop + padT
+            VerticalAlignment.CENTER -> boxTop + (boxHeight - blockHeight) / 2f
+            VerticalAlignment.BOTTOM -> boxTop + boxHeight - padB - blockHeight
+        }
+        val arabicBlockHeight = citationHeight + primaryLayout.height
+        val startY = when {
+            blockAlign != null -> anchorTop(blockAlign, contentTotalHeight)
+            vAlignAr == VerticalAlignment.TOP -> boxTop + padT
+            else -> boxTop + boxHeight - padB - arabicBlockHeight
         }
 
         val citationY = startY + (refPaint.textSize * 0.9f)
@@ -6133,7 +6229,18 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // Draw Bilingual Section if active (BOTH mode only)
         if (bilingualSecondary != null) {
             val bilSpacing = if (tpl.showBilingualSpacing) tpl.bilingualSpacing * scale else 0f
-            val secY = textY + primaryLayout.height + bilSpacing
+            // Item 91: TOP/BOTTOM split — the English block anchors by
+            // its own field (no bilSpacing: there is no chain when the
+            // blocks are at opposite ends). Otherwise chained below the
+            // Arabic verse, exactly as before.
+            val secY = if (splitAlign) {
+                // English content height without the leading bilSpacing
+                // (secHeight bundles it in).
+                val englishContentHeight = secHeight - bilSpacing
+                anchorTop(vAlignEn, englishContentHeight)
+            } else {
+                textY + primaryLayout.height + bilSpacing
+            }
             canvas.save()
             canvas.translate(translateX, secY)
             drawLayoutWithEffect(canvas, bilingualSecondary, tpl, scale)
@@ -7829,6 +7936,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             o.put("citationAlignmentArabic", t.citationAlignmentArabic.name)
             o.put("citationAlignmentEnglish", t.citationAlignmentEnglish.name)
             o.put("verseAlignmentEnglish", t.verseAlignmentEnglish.name)
+            // Item 91: per-language vertical alignment of the verse block.
+            o.put("verticalAlignmentArabic", t.verticalAlignmentArabic.name)
+            o.put("verticalAlignmentEnglish", t.verticalAlignmentEnglish.name)
             o.put("positionBottomPercent", t.positionBottomPercent)
             o.put("horizontalMarginPercent", t.horizontalMarginPercent)
             o.put("cornerRadiusDp", t.cornerRadiusDp)
@@ -8845,6 +8955,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   }
   .vrow.kbd-focus { outline: 3px solid var(--live-yellow, #F5D76E); outline-offset: -3px; border-radius: 10px; }
   .vrow.live { background: var(--live-bg, #1B3A5C); border: 2px solid var(--live-yellow, #F5D76E); border-radius: 10px; color: var(--live-text, #FFFFFF); }
+  /* Item 30 (1.9.10): ON AIR at-a-glance signal — the live verse's text
+     tints red while it is on air (the topRef already tints red; the row
+     text is the second signal). Light red #FCA5A5 keeps 6.1:1 contrast
+     on the navy live background. Toggled via body.onair in renderOnAir. */
+  body.onair .vrow.live .va, body.onair .vrow.live .ve { color: #FCA5A5; }
   /* Item 20 (1.9.8): persistent synced-verse highlight — high contrast. */
   .vrow.synced-live { background: var(--live-bg, #1B3A5C); border: 3px solid var(--live-yellow, #F5D76E); border-radius: 10px; color: #FFFFFF; outline: 2px solid var(--live-yellow, #F5D76E); outline-offset: 2px; }
   .vrow.recent { border-inline-start: 3px solid var(--recents, #0D9488); padding-inline-start: 9px; }
@@ -9497,6 +9612,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
   function renderOnAir() {
     var btn = document.getElementById('onAirBtnTop');
+    // Item 30 (1.9.10): body.onair drives the live-verse red text tint
+    // (CSS: body.onair .vrow.live .va/.ve). One toggle covers both the
+    // chapter list and the recents list.
+    document.body.classList.toggle('onair', !!live.onAir);
     if (live.onAir) {
       btn.className = 'onair on';
       btn.textContent = '🔴 ON AIR';

@@ -462,91 +462,87 @@ fun BroadcastControlScreen(
                         )
                     }
                 }
-            }
-            // 1.9.8: Full Show full-screen button (uses Full Show template via FullscreenOverlayActivity)
-            // 1.9.4: fixed overlap — use Column with proper spacing instead of
-            // compressed Row with weight.
-            Spacer(modifier = Modifier.height(8.dp))
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Text(
-                    text = "عرض كلي بملء الشاشة",
-                    fontSize = 12.sp,
-                    color = bento.textSecondary
-                )
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = bento.primary,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(16.dp))
-                        .clickable(onClick = onLaunchFullscreenShow)
-                        .padding(horizontal = 14.dp, vertical = 8.dp)
-                        .testTag("fullscreen_show_button")
+                // Item 90 (1.9.10): moved INSIDE the card Column — it sat directly in the Surface (Box stacking) and overlapped the title/subtitle. 1.9.8: Full Show full-screen button (uses Full Show template via FullscreenOverlayActivity)
+                // 1.9.4: fixed overlap — use Column with proper spacing instead of
+                // compressed Row with weight.
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Text("عرض كلي بملء الشاشة", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.onPrimary)
-                }
-            }
-            // 1.9.3: 4 color dots moved here from old location. Controls HDMI/full-screen background.
-            Spacer(modifier = Modifier.height(12.dp))
-            Text(
-                text = "لون خلفية العرض",
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                color = bento.textPrimary
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                val streamModes = listOf(
-                    com.arabicchristianmedia.model.StreamBackgroundMode.TRANSPARENT_ALPHA,
-                    com.arabicchristianmedia.model.StreamBackgroundMode.CHROMA_GREEN,
-                    com.arabicchristianmedia.model.StreamBackgroundMode.PURE_BLACK,
-                    com.arabicchristianmedia.model.StreamBackgroundMode.DARK_STUDIO
-                )
-                val currentStreamMode = uiState.activeTemplate.streamBackgroundMode
-                streamModes.forEach { mode ->
-                    val dotColor = try {
-                        Color(android.graphics.Color.parseColor(mode.colorHex))
-                    } catch (e: Exception) { bento.textSecondary }
-                    val dotSelected = currentStreamMode == mode
+                    Text(
+                        text = "عرض كلي بملء الشاشة",
+                        fontSize = 12.sp,
+                        color = bento.textSecondary
+                    )
                     Surface(
-                        shape = androidx.compose.foundation.shape.CircleShape,
-                        color = dotColor,
-                        border = androidx.compose.foundation.BorderStroke(
-                            if (dotSelected) 3.dp else 1.dp,
-                            if (dotSelected) bento.primary else bento.border
-                        ),
+                        shape = RoundedCornerShape(16.dp),
+                        color = bento.primary,
                         modifier = Modifier
-                            .size(if (dotSelected) 36.dp else 32.dp)
-                            .clip(androidx.compose.foundation.shape.CircleShape)
-                            .clickable { onStreamBackgroundChange(mode) }
-                    ) {}
+                            .clip(RoundedCornerShape(16.dp))
+                            .clickable(onClick = onLaunchFullscreenShow)
+                            .padding(horizontal = 14.dp, vertical = 8.dp)
+                            .testTag("fullscreen_show_button")
+                    ) {
+                        Text("عرض كلي بملء الشاشة", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.onPrimary)
+                    }
                 }
-            }
-            // 1.9.3: Override toggle — when ON, color applies to both Lower and Full Show.
-            // 1.9.4: fixed overlap — Column layout with proper spacing.
-            // Item 21 (1.9.8): ensure no overlap — each element on its own line.
-            Spacer(modifier = Modifier.height(8.dp))
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
+                // 1.9.3: 4 color dots moved here from old location. Controls HDMI/full-screen background.
                 Text(
-                    text = "تطبيق اللون على العرضين",
+                    text = "لون خلفية العرض",
                     fontSize = 12.sp,
-                    color = bento.textSecondary,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
+                    fontWeight = FontWeight.Bold,
+                    color = bento.textPrimary
                 )
-                androidx.compose.material3.Switch(
-                    checked = uiState.hdmiBackgroundOverride,
-                    onCheckedChange = { onHdmiBackgroundOverrideChange(it) }
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val streamModes = listOf(
+                        com.arabicchristianmedia.model.StreamBackgroundMode.TRANSPARENT_ALPHA,
+                        com.arabicchristianmedia.model.StreamBackgroundMode.CHROMA_GREEN,
+                        com.arabicchristianmedia.model.StreamBackgroundMode.PURE_BLACK,
+                        com.arabicchristianmedia.model.StreamBackgroundMode.DARK_STUDIO
+                    )
+                    val currentStreamMode = uiState.activeTemplate.streamBackgroundMode
+                    streamModes.forEach { mode ->
+                        val dotColor = try {
+                            Color(android.graphics.Color.parseColor(mode.colorHex))
+                        } catch (e: Exception) { bento.textSecondary }
+                        val dotSelected = currentStreamMode == mode
+                        Surface(
+                            shape = androidx.compose.foundation.shape.CircleShape,
+                            color = dotColor,
+                            border = androidx.compose.foundation.BorderStroke(
+                                if (dotSelected) 3.dp else 1.dp,
+                                if (dotSelected) bento.primary else bento.border
+                            ),
+                            modifier = Modifier
+                                .size(if (dotSelected) 36.dp else 32.dp)
+                                .clip(androidx.compose.foundation.shape.CircleShape)
+                                .clickable { onStreamBackgroundChange(mode) }
+                        ) {}
+                    }
+                }
+                // 1.9.3: Override toggle — when ON, color applies to both Lower and Full Show.
+                // 1.9.4: fixed overlap — Column layout with proper spacing.
+                // Item 21 (1.9.8): ensure no overlap — each element on its own line.
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "تطبيق اللون على العرضين",
+                        fontSize = 12.sp,
+                        color = bento.textSecondary,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    androidx.compose.material3.Switch(
+                        checked = uiState.hdmiBackgroundOverride,
+                        onCheckedChange = { onHdmiBackgroundOverrideChange(it) }
+                    )
+                }
             }
         }
     }

@@ -2,7 +2,9 @@ package com.arabicchristianmedia.data
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
+import com.arabicchristianmedia.model.ClearMode
 import com.arabicchristianmedia.model.LowerThirdTemplate
+import com.arabicchristianmedia.model.VerticalAlignment
 import com.arabicchristianmedia.model.isPureDerived
 import org.json.JSONArray
 import org.json.JSONObject
@@ -105,17 +107,40 @@ class TemplateRepositoryTest {
     @Test
     fun `legacy tpl_modern_glass migrates to its redesigned successor`() {
         repo.setActiveTemplateId("tpl_modern_glass")
-        assertEquals("tpl_lt_classic", repo.getActiveTemplateId())
+        assertEquals("tpl_lt_pure_word_v2", repo.getActiveTemplateId())
     }
 
     @Test
     fun `any other legacy factory id migrates to the pure-word default`() {
         repo.setActiveTemplateId("tpl_vivid_neon_night")
-        assertEquals("tpl_lt_classic", repo.getActiveTemplateId())
+        assertEquals("tpl_lt_pure_word_v2", repo.getActiveTemplateId())
         // tpl_lt_golden_glory was deleted in the one-update redesign —
         // it is now a legacy id and migrates to pure word too.
         repo.setActiveTemplateId("tpl_lt_golden_glory")
-        assertEquals("tpl_lt_classic", repo.getActiveTemplateId())
+        assertEquals("tpl_lt_pure_word_v2", repo.getActiveTemplateId())
+        // tpl_lt_classic was deleted in the item-94 redesign (1.9.10) —
+        // it is now a legacy id and migrates to pure word too.
+        repo.setActiveTemplateId("tpl_lt_classic")
+        assertEquals("tpl_lt_pure_word_v2", repo.getActiveTemplateId())
+    }
+
+    @Test
+    fun `legacy show ids migrate to the pure-word full default`() {
+        repo.setActiveShowTemplateId("tpl_fs_golden_light")
+        assertEquals("tpl_fs_pure_word_v2", repo.getActiveShowTemplateId())
+        repo.setActiveShowTemplateId("tpl_lt_classic")
+        assertEquals("tpl_fs_pure_word_v2", repo.getActiveShowTemplateId())
+    }
+
+    @Test
+    fun `retired 1_9_9 factory ids are legacy factory ids`() {
+        listOf(
+            "tpl_fs_pure_word", "tpl_fs_golden_light", "tpl_fs_midnight",
+            "tpl_fs_desert", "tpl_fs_royal", "tpl_lt_classic", "tpl_lt_minimal",
+            "tpl_lt_elegant", "tpl_lt_bold", "tpl_lt_soft"
+        ).forEach { id ->
+            assertTrue("$id must be a legacy factory id", TemplateRepository.isFactoryStyleId(id))
+        }
     }
 
     @Test
@@ -158,52 +183,110 @@ class TemplateRepositoryTest {
     @Test
     fun `factory styles carry explicit safe shadow and glow values`() {
         val defaults = TemplateRepository.DEFAULT_TEMPLATES
-        assertEquals(10, defaults.size)
+        assertEquals(20, defaults.size)
+        assertEquals(20, defaults.map { it.id }.toSet().size)
+        assertEquals(10, defaults.count { !it.isFullScreen })
+        assertEquals(10, defaults.count { it.isFullScreen })
+        // Item 94 (1.9.10): fresh ids — none may collide with the legacy
+        // set, or a user's Update to that style would be discarded on load.
         defaults.forEach { tpl ->
+            assertFalse("${tpl.id} must not be a legacy id", tpl.id in TemplateRepository.LEGACY_FACTORY_IDS)
             assertTrue(tpl.textShadowEnabled)
             assertTrue(tpl.textShadowColorHex.isNotBlank())
             assertTrue(tpl.cardGlowColorHex.isNotBlank())
+            assertTrue("logo stays off by default", tpl.logoUri.isEmpty())
         }
-        // Item 60 (1.9.8): Full templates run simple->complex — only
-        // Pure Word is 100% transparent with no glow. The other four
-        // progress: Golden Light (subtle card), Midnight (gradient),
-        // Desert (gradient + glow), Royal (gradient + glow + particles).
-        val transparentIds = listOf("tpl_fs_pure_word")
+        // Item 94: only one transparent style per feed (L1 + F1); the
+        // other 18 are fully opaque so the draft's contrast figures hold.
+        val transparentIds = listOf("tpl_lt_pure_word_v2", "tpl_fs_pure_word_v2")
         transparentIds.forEach { id ->
             val tpl = defaults.first { it.id == id }
             assertFalse("$id should not glow", tpl.cardGlowEnabled)
             assertEquals("$id should be 100% transparent", 0.0f, tpl.bgOpacity, 0.001f)
         }
-        // Item 60 progression: opacity increases simple->complex.
-        val progression = listOf(
-            "tpl_fs_pure_word" to 0.0f,
-            "tpl_fs_golden_light" to 0.15f,
-            "tpl_fs_midnight" to 0.35f,
-            "tpl_fs_desert" to 0.5f,
-            "tpl_fs_royal" to 0.6f
-        )
-        progression.forEach { (id, expected) ->
-            val tpl = defaults.first { it.id == id }
-            assertEquals("$id bgOpacity should follow the progression", expected, tpl.bgOpacity, 0.001f)
+        defaults.filter { it.id !in transparentIds }.forEach { tpl ->
+            assertEquals("${tpl.id} should be fully opaque", 1.0f, tpl.bgOpacity, 0.001f)
         }
-        assertTrue("Desert should glow", defaults.first { it.id == "tpl_fs_desert" }.cardGlowEnabled)
-        assertTrue("Royal should glow", defaults.first { it.id == "tpl_fs_royal" }.cardGlowEnabled)
-        assertTrue("Royal should have particles", defaults.first { it.id == "tpl_fs_royal" }.particleEffect.name == "GOLDEN_PARTICLES")
-        assertTrue("Royal video background is none (item 75 split)", defaults.first { it.id == "tpl_fs_royal" }.animatedBackground.name == "NONE")
+        // Item 94 progression: transparent -> gradient -> gradient + glow
+        // (Lower L7) -> gradient + glow + particles (Full F5).
+        assertTrue("Golden Desert (Lower) should glow", defaults.first { it.id == "tpl_lt_golden_desert" }.cardGlowEnabled)
+        assertFalse(
+            "no other Lower style glows",
+            defaults.filter { !it.isFullScreen && it.id != "tpl_lt_golden_desert" }.any { it.cardGlowEnabled }
+        )
+        // Item 95 part 2: every Full style carries the fullscreen macro
+        // values, so card glow is baked OFF even on the draft's "glow on"
+        // Full palettes (the renderer skips glow chrome in fullscreen).
+        assertFalse("no Full style glows (item 95 macro)", defaults.filter { it.isFullScreen }.any { it.cardGlowEnabled })
+        assertTrue("Royal Proclamation should have golden particles", defaults.first { it.id == "tpl_fs_royal_proclamation" }.particleEffect.name == "GOLDEN_PARTICLES")
+        assertTrue("Royal video background is none (item 75 split)", defaults.first { it.id == "tpl_fs_royal_proclamation" }.animatedBackground.name == "NONE")
+        assertFalse("no other style has particles", defaults.filter { it.id != "tpl_fs_royal_proclamation" }.any { it.particleEffect.name != "NONE" })
         // New designs: gradient second color is a real companion —
         // never equal to first, never a dropped-alpha black.
-        defaults.filter { it.id !in transparentIds }.forEach { tpl ->
-            if (tpl.gradientEnabled) {
-                assertFalse(
-                    "${tpl.id} gradient colors must differ",
-                    tpl.bgColorHex.equals(tpl.gradientColorHex2, ignoreCase = true)
-                )
-            }
+        defaults.filter { it.gradientEnabled }.forEach { tpl ->
+            assertFalse(
+                "${tpl.id} gradient colors must differ",
+                tpl.bgColorHex.equals(tpl.gradientColorHex2, ignoreCase = true)
+            )
         }
-        assertTrue(defaults.first { it.id == "tpl_fs_pure_word" }.isFullScreen)
-        assertTrue(defaults.first { it.id == "tpl_lt_classic" }.let { !it.isFullScreen })
-        assertEquals(5, defaults.count { !it.isFullScreen })
-        assertEquals(5, defaults.count { it.isFullScreen })
+        assertEquals(16, defaults.count { it.gradientEnabled })
+        // Draft palette spot-checks (bg / gradient / citation / accent).
+        val midnightLower = defaults.first { it.id == "tpl_lt_midnight_navy" }
+        assertEquals("#0A1128", midnightLower.bgColorHex)
+        assertEquals("#1B3A5C", midnightLower.gradientColorHex2)
+        assertEquals("#F5D76E", midnightLower.referenceColorHex)
+        assertEquals("#38BDF8", midnightLower.accentColorHex)
+        val royalFull = defaults.first { it.id == "tpl_fs_royal_proclamation" }
+        assertEquals("#1E1B4B", royalFull.bgColorHex)
+        assertEquals("#312E81", royalFull.gradientColorHex2)
+        assertEquals("#FBBF24", royalFull.accentColorHex)
+        val ivoryFull = defaults.first { it.id == "tpl_fs_soft_ivory" }
+        assertEquals("#FEF3C7", ivoryFull.bgColorHex)
+        assertEquals("#1C1917", ivoryFull.textColorHex)
+        assertEquals("#92400E", ivoryFull.referenceColorHex)
+        assertEquals("#334155", ivoryFull.secondaryTextColorHex)
+        // English (secondary) text: light grey on dark, dark slate on light.
+        defaults.filter { it.id !in listOf("tpl_lt_slate_sky", "tpl_fs_soft_ivory") }.forEach { tpl ->
+            assertEquals("${tpl.id} English text", "#CBD5E1", tpl.secondaryTextColorHex)
+        }
+        listOf("tpl_lt_slate_sky", "tpl_fs_soft_ivory").forEach { id ->
+            assertEquals("$id English text", "#334155", defaults.first { it.id == id }.secondaryTextColorHex)
+        }
+        // No retired 1.9.9 name survives (the draft reuses only Pure Word,
+        // Golden Light, Midnight Clarity, Desert Dawn, Royal Proclamation).
+        val retiredNames = setOf("Classic Banner", "Modern Minimal", "Elegant Serif", "Bold Contrast", "Soft Light")
+        assertTrue(defaults.none { it.name in retiredNames })
+        // Vertical alignment by feed (item 91): Full TOP, Lower BOTTOM.
+        defaults.filter { it.isFullScreen }.forEach { tpl ->
+            assertEquals(VerticalAlignment.TOP, tpl.verticalAlignmentArabic)
+            assertEquals(VerticalAlignment.TOP, tpl.verticalAlignmentEnglish)
+        }
+        defaults.filter { !it.isFullScreen }.forEach { tpl ->
+            assertEquals(VerticalAlignment.BOTTOM, tpl.verticalAlignmentArabic)
+            assertEquals(VerticalAlignment.BOTTOM, tpl.verticalAlignmentEnglish)
+        }
+        // Item 95 part 2: every Full style bakes the macro values.
+        defaults.filter { it.isFullScreen }.forEach { tpl ->
+            assertTrue(tpl.id, tpl.trueFullscreen)
+            assertEquals(tpl.id, 0, tpl.horizontalMarginPercent)
+            assertEquals(tpl.id, 0.0f, tpl.cardPaddingTopDp, 0.001f)
+            assertEquals(tpl.id, 0.0f, tpl.cardPaddingBottomDp, 0.001f)
+            assertEquals(tpl.id, 0.0f, tpl.cardPaddingLeftDp, 0.001f)
+            assertEquals(tpl.id, 0.0f, tpl.cardPaddingRightDp, 0.001f)
+            assertFalse(tpl.id, tpl.showAccentBorder)
+            assertFalse(tpl.id, tpl.boxSwayEnabled)
+            assertFalse(tpl.id, tpl.boxFloatEnabled)
+            assertFalse(tpl.id, tpl.boxZoomEnabled)
+            assertFalse(tpl.id, tpl.boxGlowPulseEnabled)
+            assertEquals(tpl.id, 0, tpl.cornerRadiusDp)
+            assertEquals(tpl.id, 100, tpl.boxHeightPercent)
+            assertEquals(tpl.id, 0, tpl.positionBottomPercent)
+            assertEquals(tpl.id, ClearMode.CLEAR_VERSE_ONLY, tpl.clearMode)
+        }
+        defaults.filter { !it.isFullScreen }.forEach { tpl ->
+            assertFalse(tpl.id, tpl.trueFullscreen)
+            assertEquals(tpl.id, ClearMode.CLEAR_ALL, tpl.clearMode)
+        }
     }
 
     @Test
@@ -361,6 +444,31 @@ class TemplateRepositoryTest {
         assertNotNull(full)
         assertEquals(45, lower!!.boxHeightPercent)
         assertEquals(100, full!!.boxHeightPercent)
+    }
+
+    @Test
+    fun `v1_9_10 vertical alignment defaults follow the screen kind`() {
+        // Old JSON without the item-91 keys: Full anchors TOP, Lower BOTTOM.
+        val lower = repo.templateFromJsonString("{\"id\":\"va1\",\"name\":\"L\"}")
+        val full = repo.templateFromJsonString("{\"id\":\"va2\",\"name\":\"F\",\"isFullScreen\":true}")
+        assertNotNull(lower)
+        assertNotNull(full)
+        assertEquals(VerticalAlignment.BOTTOM, lower!!.verticalAlignmentArabic)
+        assertEquals(VerticalAlignment.BOTTOM, lower.verticalAlignmentEnglish)
+        assertEquals(VerticalAlignment.TOP, full!!.verticalAlignmentArabic)
+        assertEquals(VerticalAlignment.TOP, full.verticalAlignmentEnglish)
+    }
+
+    @Test
+    fun `v1_9_10 vertical alignment round-trips through JSON`() {
+        val tpl = baseTemplate("va3", false).copy(
+            verticalAlignmentArabic = VerticalAlignment.BOTTOM,
+            verticalAlignmentEnglish = VerticalAlignment.CENTER
+        )
+        val imported = repo.templateFromJsonString(repo.templateToJsonString(tpl))
+        assertNotNull(imported)
+        assertEquals(VerticalAlignment.BOTTOM, imported!!.verticalAlignmentArabic)
+        assertEquals(VerticalAlignment.CENTER, imported.verticalAlignmentEnglish)
     }
 
     @Test

@@ -41,6 +41,14 @@ data class ColorThemeTokens(
     val recents: Long,
     val warning: Long,
     val liveHighlight: Long,
+    /**
+     * Item 96: live-verse yellow (sermon list live colours, #F5D76E /
+     * #FDE9A8). The live verse border (Library) and the web-page live
+     * tokens read these instead of hardcoded hex. Same value in dark
+     * and light today (no visual change); a theme may diverge later.
+     */
+    val liveYellow: Long,
+    val livePaleYellow: Long,
     val sermonTint: Long,
     val groupPentateuch: Long,
     val groupHistorical: Long,
@@ -131,7 +139,7 @@ object ColorThemes {
             primary = 0xFFD0BCFF, primaryContainer = 0xFF4F378B,
             bandA = 0xFF3B3052, bandB = 0xFF2B3A42, recents = 0xFF0D9488, warning = 0xFFFBBF24,
             // Item 11: default live style from remote page — navy bg.
-            liveHighlight = 0xFF1B3A5C, sermonTint = 0xFF2B3A42,
+            liveHighlight = 0xFF1B3A5C, liveYellow = 0xFFF5D76E, livePaleYellow = 0xFFFDE9A8, sermonTint = 0xFF2B3A42,
             groupPentateuch = 0xFFF59E0B,
             groupHistorical = 0xFF38BDF8,
             groupPoetry = 0xFFA78BFA,
@@ -149,7 +157,7 @@ object ColorThemes {
             textPrimary = 0xFF1D1B20, textSecondary = 0xFF49454F,
             primary = 0xFF6750A4, primaryContainer = 0xFFEADDFF,
             bandA = 0xFFEAE3F6, bandB = 0xFFDFE9F3, recents = 0xFF0D9488, warning = 0xFFB45309,
-            liveHighlight = 0xFFE0F2FE, sermonTint = 0xFFDFE9F3,
+            liveHighlight = 0xFFE0F2FE, liveYellow = 0xFFF5D76E, livePaleYellow = 0xFFFDE9A8, sermonTint = 0xFFDFE9F3,
             groupPentateuch = 0xFFB45309,
             groupHistorical = 0xFF0284C7,
             groupPoetry = 0xFF7C3AED,
@@ -174,7 +182,7 @@ object ColorThemes {
             textPrimary = 0xFFFFFFFF, textSecondary = 0xFFD6D0C4,
             primary = 0xFFEAB308, primaryContainer = 0xFF5A4A1A,
             bandA = 0xFF3A3226, bandB = 0xFF2E3A2E, recents = 0xFFF59E0B, warning = 0xFFFBBF24,
-            liveHighlight = 0xFF1E293B, sermonTint = 0xFF2E3A2E,
+            liveHighlight = 0xFF1E293B, liveYellow = 0xFFF5D76E, livePaleYellow = 0xFFFDE9A8, sermonTint = 0xFF2E3A2E,
             groupPentateuch = 0xFFF59E0B,
             groupHistorical = 0xFF38BDF8,
             groupPoetry = 0xFFA78BFA,
@@ -192,7 +200,7 @@ object ColorThemes {
             textPrimary = 0xFF000000, textSecondary = 0xFF333333,
             primary = 0xFF1E40AF, primaryContainer = 0xFFDCE6F5,
             bandA = 0xFFF5E6C8, bandB = 0xFFDDE8D0, recents = 0xFFB45309, warning = 0xFFB45309,
-            liveHighlight = 0xFFE0F2FE, sermonTint = 0xFFDDE8D0,
+            liveHighlight = 0xFFE0F2FE, liveYellow = 0xFFF5D76E, livePaleYellow = 0xFFFDE9A8, sermonTint = 0xFFDDE8D0,
             groupPentateuch = 0xFFB45309,
             groupHistorical = 0xFF0284C7,
             groupPoetry = 0xFF7C3AED,
@@ -219,7 +227,7 @@ object ColorThemes {
             textPrimary = 0xFFF5F3FF, textSecondary = 0xFFC4B5FD,
             primary = 0xFF7C3AED, primaryContainer = 0xFF4C2E8B,
             bandA = 0xFF2D1B4E, bandB = 0xFF123B3F, recents = 0xFF22D3EE, warning = 0xFFFBBF24,
-            liveHighlight = 0xFF1E293B, sermonTint = 0xFF123B3F,
+            liveHighlight = 0xFF1E293B, liveYellow = 0xFFF5D76E, livePaleYellow = 0xFFFDE9A8, sermonTint = 0xFF123B3F,
             groupPentateuch = 0xFFF59E0B,
             groupHistorical = 0xFF38BDF8,
             groupPoetry = 0xFFA78BFA,
@@ -237,7 +245,7 @@ object ColorThemes {
             textPrimary = 0xFF1E1B4B, textSecondary = 0xFF4C4A6B,
             primary = 0xFF7C3AED, primaryContainer = 0xFFE6DFF5,
             bandA = 0xFFEDE9FE, bandB = 0xFFCFFAFE, recents = 0xFF0891B2, warning = 0xFFB45309,
-            liveHighlight = 0xFFE0F2FE, sermonTint = 0xFFCFFAFE,
+            liveHighlight = 0xFFE0F2FE, liveYellow = 0xFFF5D76E, livePaleYellow = 0xFFFDE9A8, sermonTint = 0xFFCFFAFE,
             groupPentateuch = 0xFFB45309,
             groupHistorical = 0xFF0284C7,
             groupPoetry = 0xFF7C3AED,
@@ -262,7 +270,7 @@ object ColorThemes {
             textPrimary = 0xFFECFDF5, textSecondary = 0xFFA7F3D0,
             primary = 0xFF34D399, primaryContainer = 0xFF14532D,
             bandA = 0xFF14352C, bandB = 0xFF3B2A12, recents = 0xFFFBBF24, warning = 0xFFFBBF24,
-            liveHighlight = 0xFF1E293B, sermonTint = 0xFF3B2A12,
+            liveHighlight = 0xFF1E293B, liveYellow = 0xFFF5D76E, livePaleYellow = 0xFFFDE9A8, sermonTint = 0xFF3B2A12,
             groupPentateuch = 0xFFF59E0B,
             groupHistorical = 0xFF38BDF8,
             groupPoetry = 0xFFA78BFA,
@@ -280,7 +288,7 @@ object ColorThemes {
             textPrimary = 0xFF0F172A, textSecondary = 0xFF475569,
             primary = 0xFF047857, primaryContainer = 0xFFC9EBD9,
             bandA = 0xFFD1FAE5, bandB = 0xFFFEF3C7, recents = 0xFFB45309, warning = 0xFFB45309,
-            liveHighlight = 0xFFE0F2FE, sermonTint = 0xFFFEF3C7,
+            liveHighlight = 0xFFE0F2FE, liveYellow = 0xFFF5D76E, livePaleYellow = 0xFFFDE9A8, sermonTint = 0xFFFEF3C7,
             groupPentateuch = 0xFFB45309,
             groupHistorical = 0xFF0284C7,
             groupPoetry = 0xFF7C3AED,
@@ -305,7 +313,7 @@ object ColorThemes {
             textPrimary = 0xFFF5F5F4, textSecondary = 0xFFD6D3D1,
             primary = 0xFFC89B6A, primaryContainer = 0xFF5C4626,
             bandA = 0xFF3B332B, bandB = 0xFF2E352E, recents = 0xFFE8A33D, warning = 0xFFFBBF24,
-            liveHighlight = 0xFF1E293B, sermonTint = 0xFF2E352E,
+            liveHighlight = 0xFF1E293B, liveYellow = 0xFFF5D76E, livePaleYellow = 0xFFFDE9A8, sermonTint = 0xFF2E352E,
             groupPentateuch = 0xFFF59E0B,
             groupHistorical = 0xFF38BDF8,
             groupPoetry = 0xFFA78BFA,
@@ -323,7 +331,7 @@ object ColorThemes {
             textPrimary = 0xFF292524, textSecondary = 0xFF57534E,
             primary = 0xFF92400E, primaryContainer = 0xFFF0DCB8,
             bandA = 0xFFF5E6C8, bandB = 0xFFE7E5D4, recents = 0xFFB45309, warning = 0xFFB45309,
-            liveHighlight = 0xFFE0F2FE, sermonTint = 0xFFE7E5D4,
+            liveHighlight = 0xFFE0F2FE, liveYellow = 0xFFF5D76E, livePaleYellow = 0xFFFDE9A8, sermonTint = 0xFFE7E5D4,
             groupPentateuch = 0xFFB45309,
             groupHistorical = 0xFF0284C7,
             groupPoetry = 0xFF7C3AED,
@@ -349,7 +357,7 @@ object ColorThemes {
             textPrimary = 0xFFF1F5F9, textSecondary = 0xFF94A3B8,
             primary = 0xFF3B82F6, primaryContainer = 0xFF1E3A5F,
             bandA = 0xFF1E293B, bandB = 0xFF1C2B3A, recents = 0xFFF59E0B, warning = 0xFFFBBF24,
-            liveHighlight = 0xFFFACC15, sermonTint = 0xFF243447,
+            liveHighlight = 0xFFFACC15, liveYellow = 0xFFF5D76E, livePaleYellow = 0xFFFDE9A8, sermonTint = 0xFF243447,
             groupPentateuch = 0xFFF59E0B,
             groupHistorical = 0xFF38BDF8,
             groupPoetry = 0xFFA78BFA,
@@ -367,7 +375,7 @@ object ColorThemes {
             textPrimary = 0xFF0F172A, textSecondary = 0xFF475569,
             primary = 0xFF1D4ED8, primaryContainer = 0xFFDBEAFE,
             bandA = 0xFFDBEAFE, bandB = 0xFFFEF3C7, recents = 0xFFB45309, warning = 0xFFB45309,
-            liveHighlight = 0xFFFEF08A, sermonTint = 0xFFE0EAF5,
+            liveHighlight = 0xFFFEF08A, liveYellow = 0xFFF5D76E, livePaleYellow = 0xFFFDE9A8, sermonTint = 0xFFE0EAF5,
             groupPentateuch = 0xFFB45309,
             groupHistorical = 0xFF0284C7,
             groupPoetry = 0xFF7C3AED,
@@ -392,7 +400,7 @@ object ColorThemes {
             textPrimary = 0xFFFFF7ED, textSecondary = 0xFFD6C4A8,
             primary = 0xFFF59E0B, primaryContainer = 0xFF5A3D14,
             bandA = 0xFF33291D, bandB = 0xFF3A2E1E, recents = 0xFFFB923C, warning = 0xFFFBBF24,
-            liveHighlight = 0xFF7C2D12, sermonTint = 0xFF3A2F22,
+            liveHighlight = 0xFF7C2D12, liveYellow = 0xFFF5D76E, livePaleYellow = 0xFFFDE9A8, sermonTint = 0xFF3A2F22,
             groupPentateuch = 0xFFF59E0B,
             groupHistorical = 0xFF38BDF8,
             groupPoetry = 0xFFA78BFA,
@@ -410,7 +418,7 @@ object ColorThemes {
             textPrimary = 0xFF292524, textSecondary = 0xFF57534E,
             primary = 0xFFB45309, primaryContainer = 0xFFF5E0C0,
             bandA = 0xFFF5E6C8, bandB = 0xFFEDE0C8, recents = 0xFFB45309, warning = 0xFFB45309,
-            liveHighlight = 0xFFFEF3C7, sermonTint = 0xFFF0E4CE,
+            liveHighlight = 0xFFFEF3C7, liveYellow = 0xFFF5D76E, livePaleYellow = 0xFFFDE9A8, sermonTint = 0xFFF0E4CE,
             groupPentateuch = 0xFFB45309,
             groupHistorical = 0xFF0284C7,
             groupPoetry = 0xFF7C3AED,
@@ -434,7 +442,7 @@ object ColorThemes {
             textPrimary = 0xFFE2E8F0, textSecondary = 0xFF94A3B8,
             primary = 0xFF60A5FA, primaryContainer = 0xFF1E3A8A,
             bandA = 0xFF101A30, bandB = 0xFF0F2033, recents = 0xFF22D3EE, warning = 0xFFFBBF24,
-            liveHighlight = 0xFF1E3A8A, sermonTint = 0xFF14243D,
+            liveHighlight = 0xFF1E3A8A, liveYellow = 0xFFF5D76E, livePaleYellow = 0xFFFDE9A8, sermonTint = 0xFF14243D,
             groupPentateuch = 0xFFF59E0B,
             groupHistorical = 0xFF38BDF8,
             groupPoetry = 0xFFA78BFA,
@@ -452,7 +460,7 @@ object ColorThemes {
             textPrimary = 0xFF0F1B2D, textSecondary = 0xFF475569,
             primary = 0xFF1E40AF, primaryContainer = 0xFFDBEAFE,
             bandA = 0xFFDBEAFE, bandB = 0xFFCFFAFE, recents = 0xFF0891B2, warning = 0xFFB45309,
-            liveHighlight = 0xFFFEF08A, sermonTint = 0xFFD9E6F5,
+            liveHighlight = 0xFFFEF08A, liveYellow = 0xFFF5D76E, livePaleYellow = 0xFFFDE9A8, sermonTint = 0xFFD9E6F5,
             groupPentateuch = 0xFFB45309,
             groupHistorical = 0xFF0284C7,
             groupPoetry = 0xFF7C3AED,
@@ -491,7 +499,7 @@ fun ColorTheme.toJson(): JSONObject {
             put("text", hex(t.textPrimary)); put("textSec", hex(t.textSecondary))
             put("primary", hex(t.primary)); put("primaryCont", hex(t.primaryContainer))
             put("bandA", hex(t.bandA)); put("bandB", hex(t.bandB)); put("recents", hex(t.recents)); put("warning", hex(t.warning))
-            put("liveHighlight", hex(t.liveHighlight)); put("sermonTint", hex(t.sermonTint))
+            put("liveHighlight", hex(t.liveHighlight)); put("liveYellow", hex(t.liveYellow)); put("livePaleYellow", hex(t.livePaleYellow)); put("sermonTint", hex(t.sermonTint))
             put("gPent", hex(t.groupPentateuch)); put("gHist", hex(t.groupHistorical)); put("gPoet", hex(t.groupPoetry))
             put("gMajP", hex(t.groupMajorProphets)); put("gMinP", hex(t.groupMinorProphets)); put("gGosp", hex(t.groupGospels))
             put("gActs", hex(t.groupActs)); put("gPaul", hex(t.groupPauline)); put("gGen", hex(t.groupGeneral)); put("gRev", hex(t.groupRevelation))
@@ -524,6 +532,10 @@ fun colorThemeFromJson(obj: JSONObject): ColorTheme? {
                 // the old fixed values (dark slate / light ice-blue for
                 // live highlight, bandB for sermon tint).
                 liveHighlight = argb("liveHighlight", if (isDark) "#1E293B" else "#E0F2FE"),
+                // Item 96: pre-update custom themes fall back to the
+                // sermon live yellows.
+                liveYellow = argb("liveYellow", "#F5D76E"),
+                livePaleYellow = argb("livePaleYellow", "#FDE9A8"),
                 sermonTint = argb("sermonTint", if (isDark) "#2B3A42" else "#DFE9F3"),
                 groupPentateuch = argb("gPent", if (isDark) "#F59E0B" else "#B45309"),
                 groupHistorical = argb("gHist", if (isDark) "#38BDF8" else "#0284C7"),

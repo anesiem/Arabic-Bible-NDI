@@ -111,6 +111,9 @@ fun BibleReaderScreen(
     // LaunchedEffect reopens the dialog (nonce stays > 0 forever).
     displaySettingsNonce: Int = 0,
     onDisplaySettingsConsumed: () -> Unit = {},
+    // Item 32: keyboard-shortcuts entry inside the display-settings
+    // dialog — opens the same shortcuts help card MainActivity owns.
+    onShowShortcuts: () -> Unit = {},
     onIncreaseFontSize: () -> Unit = {},
     onDecreaseFontSize: () -> Unit = {},
     onSetAppThemeMode: (AppThemeMode) -> Unit = {},
@@ -124,6 +127,8 @@ fun BibleReaderScreen(
     onSetRecentsFontSize: (Int?) -> Unit = {},
     // Item 12: Send recents to sermon — merge=true adds to top, false replaces.
     onSendRecentsToSermon: (Boolean) -> Unit = {},
+    // Item 92: Library grid direction (LTR/RTL) — persisted in ui_prefs.
+    onSetLibraryGridRtl: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var showSearchBar by remember { mutableStateOf(false) }
@@ -258,7 +263,9 @@ fun BibleReaderScreen(
                         // the bar, so the label's centre is the bar's
                         // centre no matter how long the book/chapter is.
                         val side = maxWidth * 0.28f
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.align(Alignment.CenterStart).widthIn(max = side)) {
+                        // Item 93: the book + chapter reference sits on the
+                        // RIGHT side; the collapse arrow moves to the left.
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.align(Alignment.CenterEnd).widthIn(max = side)) {
                             Icon(Icons.AutoMirrored.Filled.MenuBook, null, tint = bento.primary, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
@@ -275,7 +282,7 @@ fun BibleReaderScreen(
                             maxLines = 1, overflow = TextOverflow.Ellipsis
                         )
                         Box(
-                            modifier = Modifier.align(Alignment.CenterEnd).size(26.dp).background(bento.primary.copy(alpha = 0.16f), CircleShape),
+                            modifier = Modifier.align(Alignment.CenterStart).size(26.dp).background(bento.primary.copy(alpha = 0.16f), CircleShape),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(if (scripturePickerExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown, null, tint = bento.primary, modifier = Modifier.size(18.dp))
@@ -338,6 +345,27 @@ fun BibleReaderScreen(
                         }
                         Spacer(Modifier.height(8.dp))
 
+                        // Item 92: grid direction control (LTR/RTL, default
+                        // LTR, persisted) — books + chapters flip together.
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text("اتجاه الشبكة (Grid direction)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
+                            FilterChip(
+                                selected = !uiState.libraryGridRtl,
+                                onClick = { onSetLibraryGridRtl(false) },
+                                label = { Text("LTR", fontSize = 12.sp) }
+                            )
+                            FilterChip(
+                                selected = uiState.libraryGridRtl,
+                                onClick = { onSetLibraryGridRtl(true) },
+                                label = { Text("RTL", fontSize = 12.sp) }
+                            )
+                        }
+                        Spacer(Modifier.height(8.dp))
+
                         // One-update item 21: the grouped color grid picker replaced
                         // the OT/NT tabs + long scrolling book list. 10
                         // Bible-study groups; books as short chips with
@@ -384,6 +412,12 @@ fun BibleReaderScreen(
                                                 book.englishName.contains(bookQuery, ignoreCase = true))
                             }
                         }
+                        // Item 92: ONE direction for BOTH grids (books +
+                        // chapters flip together, never mixed). LTR = first
+                        // item top-left, RTL = first item top-right.
+                        // Default LTR (persisted in ui_prefs).
+                        val gridDirection = if (uiState.libraryGridRtl) LayoutDirection.Rtl else LayoutDirection.Ltr
+                        CompositionLocalProvider(LocalLayoutDirection provides gridDirection) {
                         if (pickerBooks.isEmpty()) {
                             Text(
                                 "لا نتائج مطابقة.",
@@ -402,8 +436,10 @@ fun BibleReaderScreen(
                                 @OptIn(ExperimentalLayoutApi::class)
                                 FlowRow(
                                     modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                                    // 2026-11-02: left-aligned per user request (was Center).
-                                    horizontalArrangement = Arrangement.End, // 2026-11-02: End=left in RTL (item 20)
+                                    // Item 92: Start follows the grid-direction control
+                                    // (LTR = left, RTL = right); first book top-left
+                                    // in LTR, top-right in RTL — same as chapters.
+                                    horizontalArrangement = Arrangement.Start,
                                     verticalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
                                     otBooks.forEach { book ->
@@ -433,8 +469,10 @@ fun BibleReaderScreen(
                                 @OptIn(ExperimentalLayoutApi::class)
                                 FlowRow(
                                     modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                                    // 2026-11-02: left-aligned per user request (was Center).
-                                    horizontalArrangement = Arrangement.End, // 2026-11-02: End=left in RTL (item 20)
+                                    // Item 92: Start follows the grid-direction control
+                                    // (LTR = left, RTL = right); first book top-left
+                                    // in LTR, top-right in RTL — same as chapters.
+                                    horizontalArrangement = Arrangement.Start,
                                     verticalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
                                     ntBooks.forEach { book ->
@@ -472,7 +510,7 @@ fun BibleReaderScreen(
                                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                                 verticalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
-                                items((1..uiState.selectedBook.totalChapters).toList().reversed()) { ch -> // 2026-11-02: reversed for LTR display in RTL (item 20)
+                                items((1..uiState.selectedBook.totalChapters).toList()) { ch -> // Item 92: ascending from 1, in the grid direction (LTR = 1 top-left, RTL = 1 top-right)
                                     val isSelected = ch == uiState.selectedChapter
                                     // J15: chapter numbers scale with the
                                     // picker font (18 -> 14sp, 30 -> 23sp)
@@ -496,6 +534,7 @@ fun BibleReaderScreen(
                                 }
                             }
                         }
+                        } // Item 92: CompositionLocalProvider(gridDirection)
 
                     }
                 }
@@ -918,6 +957,20 @@ fun BibleReaderScreen(
                             )
                         }
                     }
+                    // Item 32: keyboard-shortcuts entry — closes this
+                    // dialog first, then opens the same shortcuts help
+                    // card (no second dialog stacked on top of this one).
+                    HorizontalDivider()
+                    TextButton(
+                        onClick = {
+                            displayMenuExpanded = false
+                            onShowShortcuts()
+                        }
+                    ) {
+                        Icon(Icons.Filled.Keyboard, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("اختصارات لوحة المفاتيح (Keyboard shortcuts)")
+                    }
                 }
             },
             confirmButton = { TextButton(onClick = { displayMenuExpanded = false }) { Text("تم") } }
@@ -966,7 +1019,11 @@ fun BentoVerseCard(
     }
     val bgColor by animateColorAsState(targetColor, label = "cardBg")
     val borderColor = when {
-        isLiveOnAir || isCued -> bento.primary
+        // Item 96: a LIVE verse's border is the theme liveYellow
+        // (yellow, like the sermon list); a merely cued verse keeps
+        // the primary border. Background stays verseLiveHighlight.
+        isLiveOnAir -> bento.liveYellow
+        isCued -> bento.primary
         isFocused -> listColors.focusedBorder
         inSermonList -> bento.border
         else -> bento.border

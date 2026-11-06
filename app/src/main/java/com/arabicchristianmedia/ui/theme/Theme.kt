@@ -33,7 +33,10 @@ data class BentoColors(
     val liveRed: Color,
     val liveRedBright: Color,
     val green: Color,
-    val warning: Color
+    val warning: Color,
+    // Item 96: the live-verse yellow, resolved from the active theme's
+    // liveYellow token (same #F5D76E in every theme today).
+    val liveYellow: Color
 )
 
 val LocalBentoColors = staticCompositionLocalOf {
@@ -55,7 +58,8 @@ val LocalBentoColors = staticCompositionLocalOf {
         liveRed = BentoLiveRed,
         liveRedBright = BentoLiveRedBright,
         green = BentoGreen,
-        warning = Color(0xFFB45309)
+        warning = Color(0xFFB45309),
+        liveYellow = Color(ColorThemes.CLASSIC.light.liveYellow)
     )
 }
 
@@ -127,7 +131,8 @@ private fun bentoColorsFromTheme(tokens: ColorThemeTokens, isDark: Boolean): Ben
         liveRed = BentoLiveRed,
         liveRedBright = BentoLiveRedBright,
         green = BentoGreen,
-        warning = Color(tokens.warning)
+        warning = Color(tokens.warning),
+        liveYellow = Color(tokens.liveYellow)
     )
 }
 

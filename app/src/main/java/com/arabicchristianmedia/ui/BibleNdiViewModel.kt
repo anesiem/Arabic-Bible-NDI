@@ -130,6 +130,10 @@ data class BibleNdiUiState(
     // universal readerFontSize; a value = local override for the recents
     // sheet only (persisted; "universal size later if he dislikes it").
     val recentsFontSize: Int? = null,
+    // Item 92: Library grid direction — false = LTR (default, first
+    // item top-left), true = RTL (first item top-right). Books +
+    // chapters flip together. Persisted in ui_prefs.
+    val libraryGridRtl: Boolean = false,
     // True while the Bible databases are being copied/loaded on first launch.
     val isLoadingBible: Boolean = false,
     // v2.0: sermon playlist built from text shared from other apps
@@ -428,7 +432,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         // fresh install (no working template ever saved) falls back to the default.
         val hasLowerWorking = templateRepo.getWorkingTemplate(false) != null
         val lowerHighlightId = templateRepo.getActiveTemplateId()
-            ?: if (!hasLowerWorking) "tpl_lt_classic" else null
+            ?: if (!hasLowerWorking) "tpl_lt_pure_word_v2" else null
         val lowerStyle = allTpls.firstOrNull { it.id == lowerHighlightId && !it.isFullScreen }
         val lowerWorking = (templateRepo.getWorkingTemplate(false)
             ?: lowerStyle
@@ -548,7 +552,11 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         refreshNetworkInterfaces()
         _uiState.value = _uiState.value.copy(isNdiProtocolEnabled = true)
         // v1.9: run under the foreground service so the broadcast survives backgrounding.
-        NdiService.start(getApplication())
+        // Item 31: forHttpServer = true — the service must start even when both
+        // NDI feeds are off, because the HTTP server starts on every launch
+        // regardless; without the service it ran unprotected and /remote died
+        // as soon as the app lost focus.
+        NdiService.start(getApplication(), forHttpServer = true)
         val handleStarted: (String) -> Unit = { url ->
             val ip = broadcastServer.getLocalIpAddress()
             val streamUrl = broadcastServer.getStreamUrl()
@@ -617,13 +625,23 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         // enabled flags so the switches reflect reality (not just the sender
         // state). A later Start re-enables both.
         nativeSender.stopAll()
-        NdiService.clearBroadcastActive(getApplication())
+        // Item 31: the HTTP server keeps running after a Master STOP (see
+        // below), so the auto-resume flag — and the foreground service that
+        // protects the server — must stay up while it does. Clearing the flag
+        // here left /remote unprotected: after a later process kill nothing
+        // auto-resumed the server, and on the next launch the NDI-OFF guard
+        // in NdiService.start() skipped the service entirely.
+        val httpRunning = _uiState.value.isServerRunning
+        if (httpRunning) {
+            NdiService.start(getApplication(), forHttpServer = true)
+        } else {
+            NdiService.clearBroadcastActive(getApplication())
+        }
         persistNdiEnabled(NdiNativeSender.FEED_LOWER, false)
         persistNdiEnabled(NdiNativeSender.FEED_FULL, false)
         // One-update item 12: never leave stale live state — if the HTTP
         // server is not running either, no output carries the verse, so
         // the verse is off air (the pill is a pure live indicator).
-        val httpRunning = _uiState.value.isServerRunning
         _uiState.value = _uiState.value.copy(
             ndiLowerEnabled = false,
             ndiFullShowEnabled = false,
@@ -636,10 +654,10 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             broadcastServer.setLiveState(false)
             triggerAllFrames()
         }
-        // refreshNotification is a safe no-op while the flag is false
-        // (see NdiService), so the notification is left as-is rather
-        // than letting REFRESH stopSelf() the service and kill the
-        // still-running HTTP server in onDestroy.
+        // Item 31: refreshNotification re-affirms the notification while the
+        // flag is true (HTTP still running); it stays a safe no-op while the
+        // flag is false (see NdiService) — never let REFRESH stopSelf() the
+        // service and kill the still-running HTTP server in onDestroy.
         NdiService.refreshNotification(getApplication())
     }
 
@@ -902,12 +920,15 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         } catch (e: Exception) { AppThemeMode.SYSTEM }
         val keepOn = prefs?.getBoolean("keep_screen_on", true) ?: true
         val recentsFontRaw = prefs?.getInt("recents_font_size", -1) ?: -1
+        val libraryGridRtl = prefs?.getBoolean("library_grid_rtl", false) ?: false
         _uiState.value = _uiState.value.copy(
             readerFontSize = fontSize,
             appThemeMode = mode,
             isKeepScreenOn = keepOn,
             // One-update item 3: -1 = follow universal (the default).
-            recentsFontSize = if (recentsFontRaw < 0) null else recentsFontRaw.coerceIn(12, 36)
+            recentsFontSize = if (recentsFontRaw < 0) null else recentsFontRaw.coerceIn(12, 36),
+            // Item 92: default LTR.
+            libraryGridRtl = libraryGridRtl
         )
     }
 
@@ -918,6 +939,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             ?.putString("app_theme_mode", state.appThemeMode.name)
             ?.putBoolean("keep_screen_on", state.isKeepScreenOn)
             ?.putInt("recents_font_size", state.recentsFontSize ?: -1)
+            ?.putBoolean("library_grid_rtl", state.libraryGridRtl)
             ?.apply()
     }
 
@@ -927,6 +949,14 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
      */
     fun setRecentsFontSize(size: Int?) {
         _uiState.value = _uiState.value.copy(recentsFontSize = size?.coerceIn(12, 36))
+        persistUiPrefs()
+    }
+
+    /**
+     * Item 92: Library grid direction (LTR/RTL) — persisted in ui_prefs.
+     */
+    fun setLibraryGridRtl(rtl: Boolean) {
+        _uiState.value = _uiState.value.copy(libraryGridRtl = rtl)
         persistUiPrefs()
     }
 
@@ -2430,7 +2460,15 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
      * transparency and spacing), the style highlights, and the choice persists.
      */
     fun selectTemplate(template: LowerThirdTemplate) {
-        val working = template.copy(isFullScreen = false)
+        // Item 95 (1.9.10): run the true-fullscreen macro on selection
+        // too — the macro used to run only on the Editor toggle flip, so
+        // selecting a style with trueFullscreen=true showed the toggle ON
+        // without applying the fullscreen values. Selection is a load,
+        // not an edit: the highlight/dirty below stay as-is (the macro is
+        // the runtime application of the style's own flag).
+        val working = applyFullscreenMacroTransition(
+            _uiState.value.activeTemplate, template.copy(isFullScreen = false), false
+        )
         _uiState.value = _uiState.value.copy(
             activeTemplate = working,
             highlightedLowerStyleId = template.id,
@@ -2518,7 +2556,16 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
      * its own style list, highlight and working values.
      */
     fun selectShowTemplate(template: LowerThirdTemplate) {
-        val working = template.copy(isFullScreen = true)
+        // Item 95 (1.9.10): run the true-fullscreen macro on selection
+        // too — see selectTemplate. A Full style with trueFullscreen=true
+        // used to show the toggle ON while its saved margins/paddings
+        // (pre-1.9.10 Pure Word: 6% margin, 32/36dp padding, 45% box height)
+        // rendered instead of the fullscreen values. The 1.9.10 Full
+        // templates bake the macro values directly, but the macro still
+        // runs on selection for user-edited styles.
+        val working = applyFullscreenMacroTransition(
+            _uiState.value.activeShowTemplate, template.copy(isFullScreen = true), true
+        )
         _uiState.value = _uiState.value.copy(
             activeShowTemplate = working,
             highlightedShowStyleId = template.id,
@@ -2677,12 +2724,20 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             // MOTION fields (item 77: restore them from the backup, unless
             // the user just changed that motion field itself). Restore
             // BEFORE clearing the backup (the restore reads it).
+            // 1.9.10: the motion restore applies only to an EDIT of the same
+            // style (old.id == new.id). On a style CHANGE (different id) the
+            // backup belongs to the previous style — restoring its motion
+            // values into the new style would overwrite the new style's own
+            // box motion, so just clear the backup and keep the new style.
             return if (!macroFieldsDiffer(old, new)) {
                 restoreFullscreenMacroBackup(prefix, new)
-            } else {
+            } else if (old.id == new.id) {
                 val restored = restoreMacroMotionFields(prefix, old, new)
                 clearFullscreenMacroBackup(prefix)
                 restored
+            } else {
+                clearFullscreenMacroBackup(prefix)
+                new
             }
         }
         return new

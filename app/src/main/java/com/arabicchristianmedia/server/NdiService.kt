@@ -76,8 +76,21 @@ class NdiService : Service() {
             return server ?: NdiBroadcastServer(context.applicationContext, PORT).also { server = it }
         }
 
-        /** Starts (or re-affirms) the foreground broadcast service. Idempotent. */
-        fun start(context: Context) {
+        /**
+         * Starts (or re-affirms) the foreground broadcast service. Idempotent.
+         *
+         * Item 31: the service protects the HTTP server as well as the NDI
+         * senders, so [forHttpServer] bypasses the NDI-OFF guard below.
+         * The guard (Fix #2) exists so a relaunch does not resurrect NDI
+         * senders the user turned off — but the HTTP server starts on every
+         * launch regardless, and with the guard it ran in the bare app
+         * process with no foreground service and no wake locks: /remote
+         * died as soon as the app lost focus and dumpsys showed no service.
+         * The guard is still honoured for feed-only starts, and disabled
+         * feeds still stay off after an auto-resume because
+         * [syncNativeSources] reads the per-feed enabled flags.
+         */
+        fun start(context: Context, forHttpServer: Boolean = false) {
             // Guard: if the user flagged NDI OFF (both feeds disabled in prefs),
             // do not set the broadcast-active flag and do not start the service.
             // The app remembers the last status across restarts.
@@ -86,27 +99,47 @@ class NdiService : Service() {
             } catch (e: Exception) { null }
             val lowerOn = ndiPrefs?.getBoolean("Bible-NDI-Lower_enabled", true) ?: true
             val fullOn = ndiPrefs?.getBoolean("Bible-NDI-Full_enabled", true) ?: true
-            if (!lowerOn && !fullOn) {
+            if (!forHttpServer && !lowerOn && !fullOn) {
                 // NDI was flagged OFF — do not resurrect.
+                Log.i("NdiService", "start() skipped: both NDI feeds are off and no HTTP server requested")
                 return
             }
             setBroadcastActive(context, true)
             ensureServer(context)
             val intent = Intent(context, NdiService::class.java).setAction(ACTION_START)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
-                @Suppress("DEPRECATION")
-                context.startService(intent)
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(intent)
+                } else {
+                    @Suppress("DEPRECATION")
+                    context.startService(intent)
+                }
+            } catch (e: Exception) {
+                // Item 31: a failed service start must never crash the caller
+                // (this runs from the ViewModel init path) — and it must be
+                // visible in logcat. A silent failure here is exactly the
+                // "dumpsys shows no service" symptom.
+                Log.e("NdiService", "Failed to start foreground service", e)
             }
         }
 
         /**
          * Requests a full stop: clears the auto-resume flag, stops the server,
          * drops the notification, and stops the service. Idempotent.
+         * The startService delivery can throw on API 26+ if the caller is
+         * backgrounded — fall back to stopping the server/senders directly
+         * so the broadcast still stops instead of crashing the caller.
+         * (The service itself then stays up until the next explicit stop;
+         * that path is logged so it stays visible.)
          */
         fun stop(context: Context) {
-            context.startService(Intent(context, NdiService::class.java).setAction(ACTION_STOP))
+            try {
+                context.startService(Intent(context, NdiService::class.java).setAction(ACTION_STOP))
+            } catch (e: Exception) {
+                Log.e("NdiService", "Failed to deliver ACTION_STOP, stopping server/senders directly", e)
+                setBroadcastActive(context, false)
+                stopAllIfPresent()
+            }
         }
 
         /** Rebuilds the ongoing notification (e.g. after feed toggles). No-op when idle. */
@@ -293,24 +326,86 @@ class NdiService : Service() {
         ensureServer(this)
         ensureSender(this)
         createNotificationChannel()
-        // Item 31: acquire wake locks so the HTTP server survives backgrounding.
-        // WiFi lock keeps the radio up; partial wake lock keeps the CPU running.
-        try {
-            val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
-            wifiLock = wifiManager.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "ArabicBibleNDI::HttpServer").apply {
-                acquire()
+        // Item 31: acquire the wake locks so the HTTP server survives
+        // backgrounding (see acquireWakeLocks).
+        acquireWakeLocks()
+    }
+
+    /**
+     * Item 31: acquires the locks that keep the broadcast alive when the app
+     * loses focus / the device dozes. The Wi-Fi lock keeps the radio at full
+     * performance so the /remote HTTP server stays reachable; the partial
+     * wake lock keeps the CPU running so the server thread and the NDI
+     * senders are not suspended. Both are held for the whole life of the
+     * service and released only by [releaseWakeLocks] in [onDestroy] — no
+     * other path drops them while the service is alive. Reference counting
+     * is off so a second acquire can never wedge the release count.
+     * WIFI_MODE_FULL_HIGH_PERF needs API 29+; older devices fall back to
+     * WIFI_MODE_FULL, which is valid on every API level.
+     */
+    @Suppress("DEPRECATION")
+    private fun acquireWakeLocks() {
+        val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+        if (wifiManager == null) {
+            Log.w("NdiService", "No WifiManager — WiFi lock not acquired")
+        } else {
+            wifiLock = try {
+                wifiManager.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "ArabicBibleNDI::HttpServer")
+            } catch (e: Exception) {
+                Log.w("NdiService", "FULL_HIGH_PERF WiFi lock unsupported, falling back to FULL", e)
+                try {
+                    wifiManager.createWifiLock(WifiManager.WIFI_MODE_FULL, "ArabicBibleNDI::HttpServer")
+                } catch (e2: Exception) {
+                    Log.w("NdiService", "Failed to create WiFi lock", e2)
+                    null
+                }
             }
+            try {
+                wifiLock?.let {
+                    it.setReferenceCounted(false)
+                    if (!it.isHeld) it.acquire()
+                }
+            } catch (e: Exception) {
+                Log.w("NdiService", "Failed to acquire WiFi lock", e)
+                wifiLock = null
+            }
+        }
+        val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
+        if (powerManager == null) {
+            Log.w("NdiService", "No PowerManager — wake lock not acquired")
+        } else {
+            try {
+                wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "ArabicBibleNDI::HttpServer").apply {
+                    setReferenceCounted(false)
+                    acquire()
+                }
+            } catch (e: Exception) {
+                Log.w("NdiService", "Failed to acquire wake lock", e)
+                wakeLock = null
+            }
+        }
+    }
+
+    /**
+     * Item 31: releases the locks from [acquireWakeLocks]. Called only from
+     * [onDestroy], so it runs on every stop path — explicit Stop, task
+     * swiped away ([onTaskRemoved]), system kill — and a process death
+     * releases the locks implicitly. Each release is guarded: a lock that
+     * was never acquired, or is already released, is a no-op, never a crash.
+     */
+    private fun releaseWakeLocks() {
+        try {
+            wifiLock?.let { if (it.isHeld) it.release() }
         } catch (e: Exception) {
-            Log.w("NdiService", "Failed to acquire WiFi lock", e)
+            Log.w("NdiService", "Failed to release WiFi lock", e)
         }
         try {
-            val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
-            wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "ArabicBibleNDI::HttpServer").apply {
-                acquire()
-            }
+            wakeLock?.let { if (it.isHeld) it.release() }
         } catch (e: Exception) {
-            Log.w("NdiService", "Failed to acquire wake lock", e)
+            Log.w("NdiService", "Failed to release wake lock", e)
         }
+        wifiLock = null
+        wakeLock = null
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -391,11 +486,8 @@ class NdiService : Service() {
 
     override fun onDestroy() {
         serviceScope.cancel()
-        // Item 31: release wake locks.
-        try { wifiLock?.let { if (it.isHeld) it.release() } } catch (e: Exception) { /* ignore */ }
-        try { wakeLock?.let { if (it.isHeld) it.release() } } catch (e: Exception) { /* ignore */ }
-        wifiLock = null
-        wakeLock = null
+        // Item 31: release the wake locks (see acquireWakeLocks).
+        releaseWakeLocks()
         // Defensive: the server releases its socket, SSE clients, video decoders,
         // and the Wi-Fi/multicast locks inside stop().
         try { sender?.stopAll() } catch (e: Exception) { /* ignore */ }

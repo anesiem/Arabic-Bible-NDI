@@ -349,7 +349,8 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                // One-update item 20: shortcuts help card (? key or top-bar icon).
+                // One-update item 20: shortcuts help card (? key, or the
+                // keyboard entry inside the gear's display-settings dialog).
                 if (shortcutsOpen) {
                     com.arabicchristianmedia.ui.ShortcutsHelpDialog(
                         onDismiss = { shortcutsOpen = false }
@@ -473,14 +474,12 @@ class MainActivity : ComponentActivity() {
                                 }
 
                                 // Live Badge & Quick Switch
-                                // One-update item 20: keyboard icon on every
-                                // tab — opens the shortcuts help card.
-                                IconButton(onClick = { shortcutsOpen = true }) {
-                                    Icon(Icons.Filled.Keyboard, "اختصارات لوحة المفاتيح (Keyboard shortcuts)", tint = bento.textSecondary)
-                                }
+                                // Item 32: the keyboard icon moved INTO the
+                                // gear's display-settings dialog (learn-once
+                                // reference) — no standalone top-bar button.
                                 // Batch-3: display-settings gear — Library tab
-                                // only, beside the keyboard icon. Bumps the
-                                // nonce; BibleReaderScreen opens its dialog.
+                                // only. Bumps the nonce; BibleReaderScreen
+                                // opens its dialog.
                                 if (selectedTab == 0) {
                                     IconButton(onClick = { displaySettingsNonce++ }) {
                                         Icon(Icons.Filled.Settings, "إعدادات العرض (Display settings)", tint = bento.textSecondary)
@@ -631,13 +630,18 @@ class MainActivity : ComponentActivity() {
                                 // 2026-11-02 bugfix: reset the nonce after the dialog opens
                                 // so tab switches don't reopen it.
                                 onDisplaySettingsConsumed = { displaySettingsNonce = 0 },
+                                // Item 32: keyboard-shortcuts entry inside the
+                                // gear's display-settings dialog opens the
+                                // same shortcuts help card.
+                                onShowShortcuts = { shortcutsOpen = true },
                                 onIncreaseFontSize = { viewModel.increaseFontSize() },
                                 onDecreaseFontSize = { viewModel.decreaseFontSize() },
                                 onSetAppThemeMode = { viewModel.setAppThemeMode(it) },
                                 closeOverlaysNonce = libraryTabTapNonce,
                                 onRemoveRecent = { viewModel.removeRecentVerse(it) },
                                 onRestoreRecent = { verse, index -> viewModel.restoreRecentVerse(verse, index) },
-                                onSetRecentsFontSize = { viewModel.setRecentsFontSize(it) }
+                                onSetRecentsFontSize = { viewModel.setRecentsFontSize(it) },
+                                onSetLibraryGridRtl = { viewModel.setLibraryGridRtl(it) }
                             )
                             1 -> TemplateEditorScreen(
                                 currentTemplate = uiState.activeTemplate,

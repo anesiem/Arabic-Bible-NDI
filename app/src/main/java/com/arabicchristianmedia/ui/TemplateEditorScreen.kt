@@ -229,6 +229,11 @@ fun TemplateEditorScreen(
     var previewBg by remember { mutableStateOf(PreviewBackground.SIMULATED_STUDIO_CAMERA) }
     // v1.9.1: visual text-box editing on the preview (drag the box edges).
     var boxEdit by remember { mutableStateOf(false) }
+    // 1.9.14 (item 24): Framing collapsible state (the 4 box-geometry
+    // sliders inside the Frame section). Hoisted here so Edit Box and
+    // Jump-to can open it too — the drag handles edit these same
+    // 4 numbers, so they belong open together.
+    var framingExpanded by remember { mutableStateOf(false) }
     val context = LocalContext.current
     // v1.9: How-it-works tips visibility, persisted, with a "don't show
     // again" option. Deep-test fix: the expanded state itself is now
@@ -404,12 +409,13 @@ fun TemplateEditorScreen(
     var highlightedAnchor by remember { mutableStateOf<String?>(null) }
     val anchorScope = rememberCoroutineScope()
     val anchorParent = mapOf(
-        "frame-position" to "frame",
-        "frame-padding" to "frame", "frame-autofit" to "frame", "frame-clear" to "frame",
+        "frame-position" to "frame", "frame-framing" to "frame",
+        "frame-padding" to "frame", "frame-autofit" to "frame",
         "arabic-citation" to "arabic", "arabic-verse" to "arabic",
         "english-citation" to "english", "english-verse" to "english",
         "bg-motion" to "motion",
         "bg-transition" to "transition", "bg-stream" to "motion",
+        "transition-clear" to "transition",
         "shadow-text" to "textshadow", "shadow-glow" to "glow"
     )
     // 1.9.14 (item 9): layer on/off, DERIVED from the existing template
@@ -482,6 +488,9 @@ fun TemplateEditorScreen(
         // wrong section. Its chip is hidden too, so a tap can't reach it.
         val sectionId = anchorParent[id] ?: id
         if (sectionId in collapsibleSectionIds) setSectionExpanded(sectionId, true)
+        // 1.9.14 (item 24): a jump to a Framing control also opens the
+        // Framing collapsible (the sliders live inside it now).
+        if (id == "frame-position" || id == "frame-framing") framingExpanded = true
         highlightedAnchor = id
         val index = rightColumnKeys.indexOf(sectionId)
         if (index >= 0) anchorScope.launch { rightLazyListState.scrollToItem(index) }
@@ -1035,29 +1044,76 @@ fun TemplateEditorScreen(
             // (setSectionExpanded("frame", true) at the Edit Box chip) —
             // the drag handles and these sliders are two forms of the same
             // three numbers, so they belong open together. 1.9.14 (item 22):
-            // the section starts collapsed like the rest.
+            // the section starts collapsed like the rest. 1.9.14 (item 24):
+            // Edit Box also opens the Framing collapsible (framingExpanded
+            // || boxEdit); True Fullscreen moved to the top; Clear Mode
+            // moved to the Transition section.
             initiallyExpanded = false,
             expanded = isSectionExpanded("frame", false),
             onExpandedChange = { setSectionExpanded("frame", it) },
-            summary = "Box " + editingTemplate.boxHeightPercent + "% \u00b7 bottom " + editingTemplate.positionBottomPercent + "% \u00b7 margin " + editingTemplate.horizontalMarginPercent + "% \u00b7 clear " + (if (editingTemplate.clearMode == com.arabicchristianmedia.model.ClearMode.CLEAR_VERSE_ONLY) "verse only" else "all")
+            summary = "Box " + editingTemplate.boxHeightPercent + "% \u00b7 bottom " + editingTemplate.positionBottomPercent + "% \u00b7 margin " + editingTemplate.horizontalMarginPercent + "%"
         ) {
                     // 1.9.4: Per-language alignment controls moved to Arabic/English
                     // sections. The general alignment here is removed.
 
-                    // v1.9.1: position / margins / corner radius — template
-                    // fields the renderers always honored but the Editor
-                    // never exposed (no write path existed anywhere).
-                    SliderWithLabel("المسافة من أسفل الشاشة (Bottom Position %)", editingTemplate.positionBottomPercent.toFloat(), 0f..30f, modifier = anchorModifier("frame-position")) { onUpdate(editingTemplate.copy(positionBottomPercent = it.toInt())) }
-                    SliderWithLabel("الهامش الأفقي (Horizontal Margin %)", editingTemplate.horizontalMarginPercent.toFloat(), 0f..30f) { onUpdate(editingTemplate.copy(horizontalMarginPercent = it.toInt())) }
-                    // v1.9.1: the text box height auto-fit fits into (was a
-                    // hardcoded 45% for Lower). Editable visually too — the
-                    // Edit Box toggle above the preview.
-                    SliderWithLabel("ارتفاع صندوق النص (Text Box Height %)", editingTemplate.boxHeightPercent.toFloat(), 10f..100f) { onUpdate(editingTemplate.copy(boxHeightPercent = it.toInt())) }
-                    SliderWithLabel("انحناء زوايا البطاقة (Corner Radius)", editingTemplate.cornerRadiusDp.toFloat(), 0f..60f) { onUpdate(editingTemplate.copy(cornerRadiusDp = it.toInt())) }
+                    // 1.9.14 (item 24): True Fullscreen FIRST — the primary
+                    // mode decision (when on, padding is ignored on Full —
+                    // see the note under Padding). Framing (the 4 sliders)
+                    // is a collapsible like Padding below.
                     // Follow-up: true fullscreen bypasses the card/box on the
                     // Full feed (edge-to-edge verse, no card chrome). Shown for
                     // both feeds; only meaningful on Full.
                     FeatureToggleRow("ملء الشاشة الحقيقي (True Fullscreen · Full feed)", editingTemplate.trueFullscreen) { onUpdate(editingTemplate.copy(trueFullscreen = it)) }
+                    Spacer(Modifier.height(8.dp))
+
+                    // 1.9.14 (item 24): Framing — the 4 box-geometry sliders
+                    // in a collapsible, same pattern as Padding below.
+                    // Auto-expands with Edit Box (the drag handles edit
+                    // these same 4 numbers) and on jump to frame-framing /
+                    // frame-position (see jumpToAnchor).
+                    val framingOpen = framingExpanded || boxEdit
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { framingExpanded = !framingExpanded }
+                            .padding(vertical = 4.dp)
+                            .then(anchorModifier("frame-framing")),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "التأطير (Framing)",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = bento.textSecondary
+                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                "Box " + editingTemplate.boxHeightPercent + "% \u00b7 bottom " + editingTemplate.positionBottomPercent + "% \u00b7 margin " + editingTemplate.horizontalMarginPercent + "% \u00b7 radius " + editingTemplate.cornerRadiusDp,
+                                fontSize = 11.sp,
+                                color = bento.textSecondary
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Icon(
+                                imageVector = if (framingOpen) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
+                                contentDescription = null,
+                                tint = bento.textSecondary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                    if (framingOpen) {
+                        // v1.9.1: position / margins / corner radius — template
+                        // fields the renderers always honored but the Editor
+                        // never exposed (no write path existed anywhere).
+                        SliderWithLabel("المسافة من أسفل الشاشة (Bottom Position %)", editingTemplate.positionBottomPercent.toFloat(), 0f..30f, modifier = anchorModifier("frame-position")) { onUpdate(editingTemplate.copy(positionBottomPercent = it.toInt())) }
+                        SliderWithLabel("الهامش الأفقي (Horizontal Margin %)", editingTemplate.horizontalMarginPercent.toFloat(), 0f..30f) { onUpdate(editingTemplate.copy(horizontalMarginPercent = it.toInt())) }
+                        // v1.9.1: the text box height auto-fit fits into (was a
+                        // hardcoded 45% for Lower). Editable visually too — the
+                        // Edit Box toggle above the preview.
+                        SliderWithLabel("ارتفاع صندوق النص (Text Box Height %)", editingTemplate.boxHeightPercent.toFloat(), 10f..100f) { onUpdate(editingTemplate.copy(boxHeightPercent = it.toInt())) }
+                        SliderWithLabel("انحناء زوايا البطاقة (Corner Radius)", editingTemplate.cornerRadiusDp.toFloat(), 0f..60f) { onUpdate(editingTemplate.copy(cornerRadiusDp = it.toInt())) }
+                    }
                     Spacer(Modifier.height(8.dp))
 
                     // v1.9: Card padding — breathing room between the card edge
@@ -1156,21 +1212,6 @@ fun TemplateEditorScreen(
                             modifier = Modifier.padding(top = 6.dp)
                         )
                     }
-                    // Clear Mode (2026-10-28 hotfix): what Clear / OFF AIR
-                    // does to THIS tab's template only (Lower and Full are
-                    // edited separately). Verse Only blanks text and citation
-                    // but keeps card/video/glow/border; All
-                    // removes every layer, as today. Defaults: Full ->
-                    // verse only, Lower -> all (see model + fromJson).
-                    Text("عند المسح (Clear mode)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
-                    Spacer(Modifier.height(4.dp))
-                    Row(modifier = anchorModifier("frame-clear"), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        FilterChip(selected = editingTemplate.clearMode == com.arabicchristianmedia.model.ClearMode.CLEAR_VERSE_ONLY, onClick = { onUpdate(editingTemplate.copy(clearMode = com.arabicchristianmedia.model.ClearMode.CLEAR_VERSE_ONLY)) }, label = { Text("مسح الآية فقط (Clear verse only)", fontSize = 10.sp) })
-                        FilterChip(selected = editingTemplate.clearMode == com.arabicchristianmedia.model.ClearMode.CLEAR_ALL, onClick = { onUpdate(editingTemplate.copy(clearMode = com.arabicchristianmedia.model.ClearMode.CLEAR_ALL)) }, label = { Text("مسح الكل (Clear all layers)", fontSize = 10.sp) })
-                    }
-                    Text(if (editingTemplate.clearMode == com.arabicchristianmedia.model.ClearMode.CLEAR_VERSE_ONLY) "عند الإيقاف تبقى الخلفية (بطاقة/فيديو/توهج) بدون نص" else "عند الإيقاف تختفي الآية وكل الطبقات", fontSize = 11.sp, color = bento.textSecondary)
-                    Spacer(Modifier.height(8.dp))
-
                     Spacer(Modifier.height(8.dp))
 
         }
@@ -1916,7 +1957,7 @@ CollapsibleSection(
                     initiallyExpanded = false,
                     expanded = isSectionExpanded("transition", false),
                     onExpandedChange = { setSectionExpanded("transition", it) },
-                    summary = editingTemplate.transition.displayName
+                    summary = editingTemplate.transition.displayName + " \u00b7 clear " + (if (editingTemplate.clearMode == com.arabicchristianmedia.model.ClearMode.CLEAR_VERSE_ONLY) "verse only" else "all")
                 ) {
                     Text("حركة انتقال الآية فقط — النص والشاهد داخل البطاقة (Verse Transition — text + citation only)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary, modifier = anchorModifier("bg-transition"))
                     Spacer(Modifier.height(4.dp))
@@ -1930,8 +1971,22 @@ CollapsibleSection(
                         }
                     }
                     SliderWithLabel("مدة انتقال الآية (Verse duration ms)", editingTemplate.transitionDurationMs.toFloat(), 0f..2000f) { onUpdate(editingTemplate.copy(transitionDurationMs = it.toInt())) }
-                    Text("انتقال الصندوق نفسه له تحكم مستقل في قسم II — البطاقة، قرب حدود البطاقة. عيّن أحدهما None لعزل الآخر، أو كليهما لحركة مشتركة.", fontSize = 11.sp, color = bento.textSecondary)
+                    Text("انتقال الصندوق نفسه له تحكم مستقل في قسم البطاقة، قرب حدود البطاقة. عيّن أحدهما None لعزل الآخر، أو كليهما لحركة مشتركة.", fontSize = 11.sp, color = bento.textSecondary)
                     Spacer(Modifier.height(4.dp))
+                    // 1.9.14 (item 24): Clear Mode moved here from Frame —
+                    // what Clear / OFF AIR does to THIS tab's template only
+                    // (Lower and Full are edited separately). Verse Only
+                    // blanks text and citation but keeps card/video/glow/
+                    // border; All removes every layer, as today.
+                    // Defaults: Full -> verse only, Lower -> all
+                    // (see model + fromJson).
+                    Text("عند المسح (Clear mode)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
+                    Spacer(Modifier.height(4.dp))
+                    Row(modifier = anchorModifier("transition-clear"), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        FilterChip(selected = editingTemplate.clearMode == com.arabicchristianmedia.model.ClearMode.CLEAR_VERSE_ONLY, onClick = { onUpdate(editingTemplate.copy(clearMode = com.arabicchristianmedia.model.ClearMode.CLEAR_VERSE_ONLY)) }, label = { Text("مسح الآية فقط (Clear verse only)", fontSize = 10.sp) })
+                        FilterChip(selected = editingTemplate.clearMode == com.arabicchristianmedia.model.ClearMode.CLEAR_ALL, onClick = { onUpdate(editingTemplate.copy(clearMode = com.arabicchristianmedia.model.ClearMode.CLEAR_ALL)) }, label = { Text("مسح الكل (Clear all layers)", fontSize = 10.sp) })
+                    }
+                    Text(if (editingTemplate.clearMode == com.arabicchristianmedia.model.ClearMode.CLEAR_VERSE_ONLY) "عند الإيقاف تبقى الخلفية (بطاقة/فيديو/توهج) بدون نص" else "عند الإيقاف تختفي الآية وكل الطبقات", fontSize = 11.sp, color = bento.textSecondary)
                     // v1.9: stream background — what fills the space around the card
                     // (chroma/luma keys, dark studio, or full transparency).
                     // v1.9.1: this setting is read ONLY by the MJPEG /stream
@@ -2235,13 +2290,14 @@ CollapsibleSection(
             "bg-stream" to "خلفية البث (Stream Background)"
         )),
         "frame" to ("الإطار والحشوة (Frame & Padding)" to listOf(
-            "frame-position" to "الموضع والهوامش (Position & Margins)",
+            "frame-framing" to "التأطير (Framing)",
             "frame-padding" to "حشوة البطاقة (Card Padding)",
-            "frame-autofit" to "ملاءمة تلقائية (Auto-fit)",
-            "frame-clear" to "عند المسح (Clear mode)"
+            "frame-autofit" to "ملاءمة تلقائية (Auto-fit)"
         )),
         "logo" to ("الشعار (Logo)" to emptyList()),
-        "transition" to ("انتقال الآية (Verse Transition)" to emptyList())
+        "transition" to ("انتقال الآية (Verse Transition)" to listOf(
+            "transition-clear" to "عند المسح (Clear mode)"
+        ))
     ).filter { (sectionId, _) ->
         when (sectionId) {
             "logo" -> logoLayerOn

@@ -9854,9 +9854,20 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     lastRecentsJson = rj;
     lastRecents = recents;
     var list = document.getElementById('recentsList'); // 2026-11-03: fixed ID typo (was 'recentList')
+    // 1.9.13 (item 10): the desktop box has its OWN list container
+    // (#recentList inside #recentCard) — it was never populated, so
+    // the box showed its label with an empty list underneath. Render
+    // the same rows into both containers so the box and the popup
+    // always agree.
+    var boxList = document.getElementById('recentList');
     var countEl = document.getElementById('recentsCount');
     if (countEl) { countEl.textContent = recents.length ? '(' + recents.length + ')' : ''; }
-    if (!recents.length) { list.innerHTML = '<div class="hint">لم تفتح أي آية بعد.</div>'; markRecentRows(); return; }
+    if (!recents.length) {
+      var emptyHtml = '<div class="hint">لم تفتح أي آية بعد.</div>';
+      if (list) list.innerHTML = emptyHtml;
+      if (boxList) boxList.innerHTML = emptyHtml;
+      markRecentRows(); return;
+    }
     var html = '';
     var bandA = true, prevKey = null;
     for (var i = 0; i < recents.length; i++) {
@@ -9873,10 +9884,17 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         '<div class="va" dir="rtl" lang="ar">' + escapeHtml(r.arabic) + '</div>' +
         '</div></div>';
     }
-    list.innerHTML = html;
-    var rows = list.querySelectorAll('.vrow');
-    for (var k = 0; k < rows.length; k++) {
-      rows[k].addEventListener('click', function() {
+    if (list) list.innerHTML = html;
+    if (boxList) boxList.innerHTML = html;
+    // 1.9.13 (item 10): attach the tap-to-trigger handler to the
+    // rows in BOTH lists (popup + desktop box). The
+    // 'recents-open' removal only matters for the mobile sheet;
+    // on desktop it is a no-op.
+    var allRows = [];
+    if (list) { var pr = list.querySelectorAll('.vrow'); for (var a = 0; a < pr.length; a++) allRows.push(pr[a]); }
+    if (boxList) { var br = boxList.querySelectorAll('.vrow'); for (var b = 0; b < br.length; b++) allRows.push(br[b]); }
+    for (var k = 0; k < allRows.length; k++) {
+      allRows[k].addEventListener('click', function() {
         var r = recents[parseInt(this.getAttribute('data-i'), 10)];
         document.body.classList.remove('recents-open');
         triggerRecent(r.ref);

@@ -817,7 +817,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         invalidateBitmapCache()
         // v1.8: Kickstart video renderer if the new template uses a custom video.
         // Without this, the video doesn't start until motion is toggled OFF/ON.
-        if (template.animatedBackground == AnimatedBackgroundType.CUSTOM_VIDEO &&
+        // 1.9.15 items 10 + 13: kickstart only when the Video layer is on.
+        if (template.videoEnabled && template.animatedBackground == AnimatedBackgroundType.CUSTOM_VIDEO &&
             template.customVideoId.isNotEmpty()) {
             try {
                 val file = videoStore.fileFor(template.customVideoId)
@@ -844,7 +845,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         currentShowTemplate = template
         invalidateBitmapCache()
         // v1.8: Kickstart video renderer for full show (same as updateTemplate).
-        if (template.animatedBackground == AnimatedBackgroundType.CUSTOM_VIDEO &&
+        // 1.9.15 items 10 + 13: kickstart only when the Video layer is on.
+        if (template.videoEnabled && template.animatedBackground == AnimatedBackgroundType.CUSTOM_VIDEO &&
             template.customVideoId.isNotEmpty()) {
             try {
                 val file = videoStore.fileFor(template.customVideoId)
@@ -868,7 +870,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     fun kickVideoRenderer(isFull: Boolean) {
         try {
             val tpl = if (isFull) currentShowTemplate else currentTemplate
-            if (tpl.animatedBackground == AnimatedBackgroundType.CUSTOM_VIDEO &&
+            // 1.9.15 items 10 + 13: kick only when the Video layer is on.
+            if (tpl.videoEnabled && tpl.animatedBackground == AnimatedBackgroundType.CUSTOM_VIDEO &&
                 tpl.customVideoId.isNotEmpty()) {
                 val file = videoStore.fileFor(tpl.customVideoId)
                 if (file != null) {
@@ -3204,7 +3207,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       // contain inside the box, position from logoPosition, offsets from
       // the screen edge. Empty logoUri = hidden. getAttribute('src')
       // avoids the absolute-URL mismatch (and reload flicker) of .src.
-      if (data.logoUri) {
+      // 1.9.15 items 10 + 13: the logo shows only when the Logo layer is
+      // on AND a logo is set (enabled-but-empty renders nothing).
+      if (data.logoEnabled && data.logoUri) {
         const logoUrl = '/logo?id=' + encodeURIComponent(data.logoUri);
         if (logoImg.getAttribute('src') !== logoUrl) logoImg.setAttribute('src', logoUrl);
         const stageW = stage.clientWidth || 1920;
@@ -3347,7 +3352,17 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       // Item 35: fullBleed branch deleted — the fullscreen macro sets the
       // template values (margins 0, border off, glow off); the renderer
       // just renders the template.
-      if (data.isPureTransparentBackground) { // v1.9: toggle is the single authority (was: style check overrode it)
+      // 1.9.15 items 10 + 13: the Card layer is off — no fill, no border,
+      // no glow. Clear any stale gradient/border/glow from a previous
+      // render; the text and the video/particle layers still show.
+      if (!data.cardEnabled) {
+        cardBox.classList.remove('bg-flow','bg-pulse'); cardBox.style.background=''; cardBox.style.backgroundSize='';
+        cardBox.style.backgroundColor = 'transparent';
+        cardBox.style.backdropFilter = 'none';
+        cardBox.style.webkitBackdropFilter = 'none';
+        cardBox.style.border = 'none';
+        cardBox.style.boxShadow = 'none';
+      } else if (data.isPureTransparentBackground) { // v1.9: toggle is the single authority (was: style check overrode it)
         // Item 16 (1.9.8): respect the glow setting even on transparent
         // background — don't force it off.
         // Item 55 (1.9.8): clear any stale gradient from a previous render
@@ -3447,7 +3462,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       // otherwise render ABOVE the card color; NDI draws card color over
       // the animation). was: custom_video only.
       // Item 23 (1.9.8): allow animated background in true fullscreen too.
-      var isAnimBgActive = data.animatedBackground && data.animatedBackground !== 'none';
+      // 1.9.15 items 10 + 13: the animated background is the Video layer —
+      // it is active only when the Video layer is on AND a background is set.
+      var isAnimBgActive = data.videoEnabled && data.animatedBackground && data.animatedBackground !== 'none';
       var isCustomVideoActive = isAnimBgActive && (data.animatedBackground === 'custom_video' && !!data.customVideoId);
       var showCardFillOverlay = isAnimBgActive;
       if (showCardFillOverlay) {
@@ -3627,9 +3644,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       // Item 75 (1.9.9): video and particles are independent now — the
       // video type comes from animatedBackground, the particle effect
       // from particleEffect. Either can be set without the other.
-      const animType = data.animatedBackground || 'none';
+      // 1.9.15 items 10 + 13: each is gated on its own layer Switch —
+      // a layer that is off contributes nothing (its type reads 'none').
+      const animType = (data.videoEnabled && data.animatedBackground) ? data.animatedBackground : 'none';
       const animOpacity = data.animatedBackgroundOpacity !== undefined ? data.animatedBackgroundOpacity : 0.65;
-      const particleType = data.particleEffect || 'none';
+      const particleType = (data.particlesEnabled && data.particleEffect) ? data.particleEffect : 'none';
       // Item 63/64 (1.9.8): particle opacity — own slider, independent
       // from video opacity (0 = hidden).
       const particleOpacity = data.particleOpacity !== undefined ? data.particleOpacity : 0.65;
@@ -3659,6 +3678,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       var playOnceVerseKeyJs = (data.bookId || '') + ':' + (data.chapterNum || '') + ':' + (data.verseNum || '') + ':' + (data.customVideoId || '');
       const animKey = [animType, animOpacity, particleType, particleOpacity, particleDensity, particleColorHex, data.motionSpeed, data.isPureTransparentBackground ? 1 : 0,
         data.bgOpacity, data.customVideoId || '', data.videoLoopMode || '', isFull ? 1 : 0,
+        data.videoEnabled ? 1 : 0, data.particlesEnabled ? 1 : 0,
         playOnceActive ? playOnceVerseKeyJs : ''].join('|');
       if (animKey !== activeAnimKey) {
       animBgLayer.className = 'animated-bg-layer';
@@ -4287,7 +4307,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
      */
     private val resolvedVideoCache = mutableMapOf<Boolean, Pair<String, java.io.File?>>()
     private fun resolveCustomVideoFile(tpl: LowerThirdTemplate, isFull: Boolean): java.io.File? {
-        if (tpl.animatedBackground != AnimatedBackgroundType.CUSTOM_VIDEO || tpl.customVideoId.isEmpty()) {
+        // 1.9.15 items 10 + 13: no video file when the Video layer is off —
+        // the renderer is never created and isVideoActive stays false.
+        if (!tpl.videoEnabled || tpl.animatedBackground != AnimatedBackgroundType.CUSTOM_VIDEO || tpl.customVideoId.isEmpty()) {
             synchronized(resolvedVideoCache) { resolvedVideoCache.remove(isFull) }
             if (isFull) missingVideoFull = null else missingVideoLower = null
             return null
@@ -4425,7 +4447,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         scale: Float,
         tpl: LowerThirdTemplate
     ) {
-        if (!isParticleType(tpl.particleEffect)) return
+        // 1.9.15 items 10 + 13: the layer draws only when its Switch is on
+        // AND an effect is set (enabled-but-empty renders nothing).
+        if (!tpl.particlesEnabled || !isParticleType(tpl.particleEffect)) return
         val pClock = (System.currentTimeMillis() % 60000L) / 1000f * tpl.motionSpeed
         // Item 61 (1.9.8): particleOpacity (own slider) with a 0 floor
         // so opacity 0 fully hides the particles.
@@ -5457,7 +5481,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
      * - Empty logoUri or missing/undecodable file = nothing drawn.
      */
     private fun drawLogoLayer(canvas: Canvas, width: Int, height: Int, tpl: LowerThirdTemplate) {
-        if (tpl.logoUri.isEmpty()) return
+        // 1.9.15 items 10 + 13: the logo draws only when its Switch is on
+        // AND a logo is set (enabled-but-empty renders nothing).
+        if (!tpl.logoEnabled || tpl.logoUri.isEmpty()) return
         val opacity = tpl.logoOpacity.coerceIn(0f, 1f)
         if (opacity <= 0f) return
         // Item 81 (1.9.9): decode first, then swap under the lock, and
@@ -5831,7 +5857,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // behind video/card, under the visible-card rule (not !pure).
         // Follow-up (trueFullscreen): no card glow — the card is bypassed.
         // Item 16 (1.9.8): respect glow on transparent background too.
-        if (!textOnly && tpl.cardGlowEnabled && cardHasVisibleEdge) {
+        // 1.9.15 items 10 + 13: the glow draws only when the Card layer is on.
+        if (!textOnly && tpl.cardEnabled && tpl.cardGlowEnabled && cardHasVisibleEdge) {
             val shadowBlurCss = tpl.cardGlowRadiusDp * 2.5f
             val shadowDyCss = tpl.cardGlowRadiusDp * 0.75f
             val shadowAlphaF = tpl.cardGlowOpacity
@@ -5860,7 +5887,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         val videoRenderer = if (customVideoFile != null) getVideoRenderer(isFull) else null
         // Item 14 (1.9.8): Full Show + video → skip the card fill so the
         // video shows through (card draws border/glow/text only). Lower unchanged.
-        val isVideoActive = !textOnly && videoRenderer != null && customVideoFile != null
+        // 1.9.15 items 10 + 13: the custom video draws only when the Video
+        // layer is on (enabled-but-empty renders nothing — the value gate
+        // below is the second guard).
+        val isVideoActive = !textOnly && tpl.videoEnabled && videoRenderer != null && customVideoFile != null
         if (isVideoActive) {
             videoRenderer.setSource(customVideoFile)
             videoRenderer.setAlpha(tpl.animatedBackgroundOpacity)
@@ -5932,11 +5962,17 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // OFF; still skipped when trueFullscreen is ON (video shows fully).
         // (Was item 14: skipped whenever video was active on Full.)
         val isPureDerived = tpl.bgOpacity <= 0f || tpl.isPureTransparentBackground
-        if (!textOnly && !isPureDerived && !(isFull && tpl.trueFullscreen)) {
+        // 1.9.15 items 10 + 13: the card fill runs when the Card layer is on,
+        // OR when the Video layer is on with a procedural background (the
+        // shader IS the video's appearance — it must draw even if the card
+        // is off). The individual branches below gate on their own layer.
+        if (!textOnly && !isPureDerived && !(isFull && tpl.trueFullscreen) && (tpl.cardEnabled || (tpl.videoEnabled && tpl.animatedBackground != AnimatedBackgroundType.NONE))) {
             val bgAlpha = (tpl.bgOpacity * 255).toInt().coerceIn(0, 255)
             val baseBgCol = try { Color.parseColor(tpl.bgColorHex) } catch (e: Exception) { Color.DKGRAY }
 
-            if (tpl.gradientEnabled) {
+            // 1.9.15 items 10 + 13: the design gradient is the Card layer —
+            // it draws only when the Card layer is on.
+            if (tpl.cardEnabled && tpl.gradientEnabled) {
                 // Item 23 (1.9.8): allow gradient in true fullscreen too.
                 // Design-gradient card (2026-10-28 batch): two colors at
                 // the user's angle, at bgOpacity, on BOTH renderers.
@@ -6015,10 +6051,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 paint.shader = gradShader
                 canvas.drawRoundRect(rect, radius, radius, paint)
                 paint.shader = null
-            } else if (videoRenderer != null) {
+            } else if (isVideoActive) {
                 // v1.7: the custom video IS the card background (already drawn
                 // above) — skip the normal fill so it stays visible.
-            } else if (tpl.animatedBackground != AnimatedBackgroundType.NONE || tpl.particleEffect != AnimatedBackgroundType.NONE) {
+                // 1.9.15: skip only when the video is actually drawing; when
+                // the Video layer is off, the card fill draws normally.
+            } else if ((tpl.videoEnabled && tpl.animatedBackground != AnimatedBackgroundType.NONE) || tpl.particleEffect != AnimatedBackgroundType.NONE) {
                 val timeSec = (System.currentTimeMillis() % 12000L) / 1000f
                 // v1.9: motion speed scales procedural animations too (was fixed speed;
                 // only custom video responded). 0 = paused (frozen mid-phase).
@@ -6036,7 +6074,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 // fallback draws the user's bgColorHex, with the particles
                 // drawn on top by the hoisted layer below.
                 val gradientBg = tpl.animatedBackground
-                val shader: Shader? = when (gradientBg) {
+                // 1.9.15 items 10 + 13: the procedural shader is the Video
+                // layer's appearance — compute it only when the Video layer
+                // is on. When the video is off, the shader is null and the
+                // branch falls back to the plain card color (below).
+                val shader: Shader? = if (tpl.videoEnabled) when (gradientBg) {
                     AnimatedBackgroundType.GOLDEN_DIVINE_RAYS -> {
                         val c1 = Color.argb(bgAlpha, 217, 119, 6)
                         val c2 = Color.argb(bgAlpha, 251, 191, 36)
@@ -6212,7 +6254,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                     paint.shader = shader
                     canvas.drawRoundRect(rect, radius, radius, paint)
                     paint.shader = null
-                } else {
+                } else if (tpl.cardEnabled) {
+                    // 1.9.15 items 10 + 13: the plain card color draws only
+                    // when the Card layer is on (shader null = no video, so
+                    // this is the card's own fill, not the video's).
                     paint.color = Color.argb(bgAlpha, Color.red(baseBgCol), Color.green(baseBgCol), Color.blue(baseBgCol))
                     canvas.drawRoundRect(rect, radius, radius, paint)
                 }
@@ -6220,24 +6265,31 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 // after the whole background chain below — not here. (It used
                 // to live only in this branch and the glow branch, so a
                 // gradient background skipped it entirely.)
-            } else {
+            } else if (tpl.cardEnabled) {
                 // Follow-up (trueFullscreen): no card fill — the card is bypassed.
+                // 1.9.15 items 10 + 13: the plain card color draws only when
+                // the Card layer is on.
                 paint.color = Color.argb(bgAlpha, Color.red(baseBgCol), Color.green(baseBgCol), Color.blue(baseBgCol))
                 canvas.drawRoundRect(rect, radius, radius, paint)
             }
 
-        } else if ((tpl.animatedBackground != AnimatedBackgroundType.NONE && tpl.animatedBackground != AnimatedBackgroundType.CUSTOM_VIDEO) || tpl.particleEffect != AnimatedBackgroundType.NONE) {
+        } else if ((tpl.videoEnabled && tpl.animatedBackground != AnimatedBackgroundType.NONE && tpl.animatedBackground != AnimatedBackgroundType.CUSTOM_VIDEO) || (tpl.particlesEnabled && tpl.particleEffect != AnimatedBackgroundType.NONE)) {
             // If Pure Transparent background with animated motion background is selected:
             // Draw a delicate, ethereal luminous motion glow directly behind the verse while maintaining 100% alpha transparency elsewhere!
             // Batch-2: use full opacity range (like HTTP and MP4), not the
             // compressed "delicate" 15-120 range. The slider now actually works.
+            // 1.9.15 items 10 + 13: the glow follows the Video layer when it
+            // is on, otherwise the Particles layer — each gated on its own
+            // Switch, so a layer that is off contributes no glow.
             val animAlpha = (tpl.animatedBackgroundOpacity * 255).toInt().coerceIn(0, 255)
             val timeSec = (System.currentTimeMillis() % 12000L) / 1000f
             // v1.9: motion speed scales procedural animations too (was fixed speed).
             val phase = (sin(timeSec.toDouble() * 1.5 * tpl.motionSpeed).toFloat() + 1f) / 2f
             // Item 75 (1.9.9): the glow follows the video when one is set,
             // otherwise the particle effect (same rule as the card fill).
-            val gradientBg = if (tpl.animatedBackground != AnimatedBackgroundType.NONE) tpl.animatedBackground else tpl.particleEffect
+            // 1.9.15: gated on the layer Switch — the video's glow only when
+            // the Video layer is on, else the particle effect's glow.
+            val gradientBg = if (tpl.videoEnabled && tpl.animatedBackground != AnimatedBackgroundType.NONE) tpl.animatedBackground else tpl.particleEffect
             val glowColor = when (gradientBg) {
                 AnimatedBackgroundType.GOLDEN_DIVINE_RAYS -> Color.argb(animAlpha, 251, 191, 36)
                 AnimatedBackgroundType.ETHEREAL_BLUE_WAVES -> Color.argb(animAlpha, 56, 189, 248)
@@ -6293,7 +6345,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // Was drawn only inside the animated-background branch, so plain and
         // video styles never showed a border on NDI.
         // Follow-up (trueFullscreen): no border — the card is bypassed.
-        if (!textOnly && !tpl.isPureTransparentBackground && tpl.showAccentBorder) {
+        // 1.9.15 items 10 + 13: the accent border draws only when the Card
+        // layer is on.
+        if (!textOnly && tpl.cardEnabled && !tpl.isPureTransparentBackground && tpl.showAccentBorder) {
             val accColBase = try { Color.parseColor(tpl.accentColorHex) } catch (e: Exception) { Color.YELLOW }
             val accCol = Color.argb(
                 (255 * tpl.accentOpacity).toInt().coerceIn(0, 255),

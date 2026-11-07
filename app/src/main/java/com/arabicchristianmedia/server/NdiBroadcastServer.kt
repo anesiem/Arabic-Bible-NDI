@@ -1624,8 +1624,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
        (getStageScale), so text sizing is unchanged; on a 16:9 viewport
        this is identical to before. Lower keeps its 16:9 stage (vMix
        controls the Lower overlay). */
+    /* 1.9.13 (item 5): Full anchors at the TOP (grows top→bottom);
+       Lower keeps flex-end (bottom anchor, grows bottom→top).
+       Item 1: the app WebView's Blink parser drops this rule on load,
+       so applyData also sets these as inline styles (the reliable path);
+       this rule stays as the fallback for browsers that parse it. */
     #stage.mode-full-show {
-      justify-content: flex-end !important;
+      justify-content: flex-start !important;
       align-items: stretch !important;
       width: 100vw !important;
       height: 100vh !important;
@@ -1941,26 +1946,41 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 </head>
 <body>
   <div id="stage">
+    <!-- 1.9.13 (item 2): the animated-bg layer is a direct child of the
+         stage, so the video/gradient background covers the FULL stage
+         in Lower mode, not just the card box. It used to live inside
+         the card box, so on HTTP Lower the video only showed within
+         the card and the background outside it was solid chroma
+         green. NDI draws the video as a full-frame background; HTTP
+         now matches. z-0, behind the card (z-1+) and the logo (z-4). -->
+    <div id="animated-bg-layer" class="animated-bg-layer">
+      <video id="custom-video-bg" style="display:none;" autoplay loop muted playsinline></video>
+    </div>
     <div id="lowerthird-container" class="visible">
       <div id="card-box" class="card-content">
-        <div id="animated-bg-layer" class="animated-bg-layer">
-          <video id="custom-video-bg" style="display:none;" autoplay loop muted playsinline></video>
-        </div>
         <!-- Combined batch, HTTP layer fix: card-color overlay, ABOVE
              the video layer and BELOW the text (card-inner-content,
-             z-index 1). A card box background always paints BEHIND
+             z-index 3). A card box background always paints BEHIND
              its children, so the old code could never put card color
              over a video — the video always won, whatever bgOpacity
              was. With a custom video active, section 6 copies the
              card fill (flat or gradient, at bgOpacity) onto this
              overlay and clears the box background, matching the NDI
-             stack: text > card color > video > glow. -->
-        <div id="card-fill-overlay" style="display:none; position:absolute; inset:0; width:100%; height:100%; pointer-events:none; border-radius:inherit; z-index:2;"></div>
-        <!-- v1.9.1 parity: the particle canvas is a DIRECT child of the card,
-             above its background and below the content (NDI's paint order).
-             It used to live inside the animated layer, which Lower mode
-             zeroes out — the stars never showed on HTTP Lower at all. -->
-        <canvas id="particle-canvas" style="display:none; position:absolute; inset:0; width:100%; height:100%; pointer-events:none; z-index:1;"></canvas>
+             stack. 1.9.13 (item 4): canonical layer order — video
+             z-0 → card color z-1 → particles z-2 → text z-3 → logo
+             z-4, identical on HTTP + NDI, independent of the
+             animated-bg state. -->
+        <div id="card-fill-overlay" style="display:none; position:absolute; inset:0; width:100%; height:100%; pointer-events:none; border-radius:inherit; z-index:1;"></div>
+        <!-- 1.9.13 (item 4): the particle canvas is a DIRECT child of the
+             card, ABOVE the card color (z-2) and below the text (z-3) —
+             the canonical order, so particles are always visible as
+             sparkle over the card, on both feeds. It used to sit at
+             z-1 BELOW the card-fill overlay, so with an animated
+             background on the overlay hid the particles entirely.
+             Item 2: the canvas is sized from the STAGE (see
+             startParticles), not the animated layer — Lower mode
+             zeroes the animated layer out, which sized it 1×1. -->
+        <canvas id="particle-canvas" style="display:none; position:absolute; inset:0; width:100%; height:100%; pointer-events:none; z-index:2;"></canvas>
 
         <div class="card-inner-content">
           <div id="citation-row" class="citation-badge">
@@ -2034,7 +2054,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       const spd = (speed === undefined || speed === null) ? 1 : parseFloat(speed);
       const canvas = particleCanvas;
       const ctx = canvas.getContext('2d');
-      const rect = animBgLayer.getBoundingClientRect();
+      // 1.9.13 (item 2): size the canvas from the STAGE, not the
+      // animated-bg layer. In Lower mode the animated layer is
+      // zeroed out (its gradient is moved onto the card), so its
+      // rect is 1×1 and the canvas stayed invisible. The stage
+      // always has the real viewport size.
+      const rect = stage.getBoundingClientRect();
       canvas.width = Math.max(1, Math.floor(rect.width));
       canvas.height = Math.max(1, Math.floor(rect.height));
       canvas.style.display = 'block';
@@ -2304,7 +2329,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       const spd = (speed === undefined || speed === null) ? 1 : parseFloat(speed);
       const canvas = particleCanvas;
       const ctx = canvas.getContext('2d');
-      const rect = animBgLayer.getBoundingClientRect();
+      // 1.9.13 (item 2): size from the STAGE (see startParticles) —
+      // the animated-bg layer is zeroed out in Lower mode.
+      const rect = stage.getBoundingClientRect();
       canvas.width = Math.max(1, Math.floor(rect.width));
       canvas.height = Math.max(1, Math.floor(rect.height));
       canvas.style.display = 'block';
@@ -2548,10 +2575,28 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         stage.classList.add('mode-full-show');
         container.classList.add('mode-full-show');
         cardBox.classList.add('mode-full-show');
+        // 1.9.13 (item 1): the app WebView's Blink parser drops the
+        // #stage.mode-full-show stylesheet rule on load (desktop
+        // Chrome parses it fine), so the 60px letterbox bar persists.
+        // Apply the fill as inline styles — inline styles do not
+        // depend on the stylesheet parser. Item 5: Full anchors at
+        // the TOP (justify-content flex-start, grows top→bottom).
+        stage.style.setProperty('width', '100vw', 'important');
+        stage.style.setProperty('height', '100vh', 'important');
+        stage.style.setProperty('aspect-ratio', 'auto', 'important');
+        stage.style.setProperty('max-height', 'none', 'important');
+        stage.style.setProperty('justify-content', 'flex-start', 'important');
       } else {
         stage.classList.remove('mode-full-show');
         container.classList.remove('mode-full-show');
         cardBox.classList.remove('mode-full-show');
+        // Clear the Full inline fill so Lower keeps its 16:9 stage
+        // and bottom anchor.
+        stage.style.removeProperty('width');
+        stage.style.removeProperty('height');
+        stage.style.removeProperty('aspect-ratio');
+        stage.style.removeProperty('max-height');
+        stage.style.removeProperty('justify-content');
       }
 
       // 2. Text Content (Item 27: per-language toggles; fallback to legacy languageMode)
@@ -2646,11 +2691,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         englishText.style.color = data.secondaryTextColorHex || '#CBD5E1';
         englishCitation.style.color = data.secondaryReferenceColorHex || '#94A3B8';
         englishText.style.fontSize = scaledPx(data.secondaryVerseFontSize || 18);
-        // One-update item 7: user line-spacing multiplier (default 1.5 =
-        // old rendering exactly).
-        englishText.style.lineHeight = ((1.15 + 2 / (data.secondaryVerseFontSize || 18)) * ((data.lineSpacingEnglish || 1.5) / 1.5)).toFixed(3);
+        // 1.9.13 (item 6): line spacing is the slider value directly —
+        // no base multiplier, no /1.5 normalization. Start clean, tune
+        // the slider (1.0–5.0) to taste.
+        englishText.style.lineHeight = ((data.lineSpacingEnglish || 1.5)).toFixed(3);
         englishCitation.style.fontSize = scaledPx(data.secondaryReferenceFontSize || 14);
-        englishCitation.style.lineHeight = ((1.15 + 2 / (data.secondaryReferenceFontSize || 14)) * ((data.lineSpacingEnglish || 1.5) / 1.5)).toFixed(3);
+        englishCitation.style.lineHeight = ((data.lineSpacingEnglish || 1.5)).toFixed(3);
         // Follow-up: English verse-citation gap from the style (?? keeps a
         // 0 value working; was a 4px CSS margin).
         englishCitation.style.marginTop = ((data.verseCitationGapEnglishDp ?? 12) * getStageScale()) + 'px';
@@ -2757,27 +2803,26 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         if (data.autoFitText !== false) {
           container.style.height = Math.min(data.boxHeightPercent || 45, 100 - (data.positionBottomPercent ?? 0)) + '%';
           container.style.minHeight = '';
+          container.style.maxHeight = '';
           container.style.display = '';
           container.style.flexDirection = '';
           cardBox.style.height = '100%';
           cardBox.style.minHeight = '';
           cardBox.style.flex = '';
         } else {
-          // Item 101: MINIMUM height + expand — the Lower card is at least
-          // the slider box (so the split vertical alignment in section 4b
-          // has free space to work with) and EXPANDS upward beyond it when
-          // the verse needs more room (the card stays bottom-anchored).
-          // A fixed height here would stop the expansion autoFit OFF is
-          // for, so the height is a minimum, not a fixed value.
-          // Item 101 (fix): a percentage minHeight on cardBox resolves
-          // against the container's *height*, not its *minHeight* — with
-          // the container height auto, cardBox minHeight:100% collapses
-          // to auto, the card hugs its content, the split gap has no free
-          // space, and a long verse clips. Make the container a flex
-          // column and let cardBox stretch with flex:1 — it fills the
-          // min-height box and grows with the content.
+          // 1.9.13 (item 5): hug content like NDI — the card is exactly
+          // as tall as its verse, and boxHeightPercent is a CAP
+          // (max-height), not a floor. The old Item-101 floor forced
+          // the card to be at least the slider box (57%) even when the
+          // verse was short, so the HTTP card sat taller and higher
+          // than the NDI card for the same verse. The split vertical
+          // alignment (section 4b) now has no free space to distribute
+          // — it positions the two language blocks independently,
+          // matching NDI. doFit (item 74) still shrinks the text when
+          // a verse would need more room than the cap.
           container.style.height = '';
-          container.style.minHeight = Math.min(data.boxHeightPercent || 45, 100 - (data.positionBottomPercent ?? 0)) + '%';
+          container.style.minHeight = '';
+          container.style.maxHeight = Math.min(data.boxHeightPercent || 45, 100 - (data.positionBottomPercent ?? 0)) + '%';
           container.style.display = 'flex';
           container.style.flexDirection = 'column';
           cardBox.style.height = '';
@@ -2898,10 +2943,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       citationRow.style.fontWeight = data.referenceIsBold ? 'bold' : 'normal';
       citationRow.style.fontStyle = data.referenceIsItalic ? 'italic' : 'normal';
       verseText.style.fontSize = scaledPx(data.verseFontSize || 26);
-      // Batch-3 (#13a): align with NDI formula (1.25 * spacing/1.5) — was:
-      // (1.25 + 3/fontSize) * (spacing/1.5), which made HTTP line breaks
-      // differ from NDI, causing NDI to render larger.
-      verseText.style.lineHeight = (1.25 * ((data.lineSpacingArabic || 1.5) / 1.5)).toFixed(3);
+      // 1.9.13 (item 6): line spacing is the slider value directly —
+      // no 1.25 base, no /1.5 normalization. Start clean, tune the
+      // slider (1.0–5.0) to taste.
+      verseText.style.lineHeight = ((data.lineSpacingArabic || 1.5)).toFixed(3);
       citationRow.style.fontSize = scaledPx(data.referenceFontSize || 18);
       // v1.9: reset the span too — the auto-fit loop shrinks citationText directly,
       // so without this each applyData compounds the shrink.
@@ -5071,10 +5116,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         } else verseText
 
         val staticLayout: StaticLayout? = if (showArabic) {
-            // One-update item 7: user line-spacing multiplier, scaled by
-            // value/1.5 so the 1.5 default reproduces the old rendering
-            // exactly on every existing template.
-            val arLineMult = 1.25f * (tpl.lineSpacingArabic / 1.5f)
+            // 1.9.13 (item 6): line spacing is the slider value
+            // directly — no 1.25 base, no /1.5 normalization.
+            // Start clean, tune the slider (1.0–5.0) to taste.
+            val arLineMult = tpl.lineSpacingArabic
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             StaticLayout.Builder.obtain(layoutVerseText, 0, layoutVerseText.length, verseTextPaint, contentWidth)
                 .setAlignment(alignment)
@@ -5150,10 +5195,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             }
 
             secondaryLayout = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                // One-update item 7: English line-spacing multiplier.
-                // Item 57 (1.9.8): match HTTP — (1.15 + 2/fontSize) term;
-                // spacingAdd 0f (parity with the Arabic fix, item 48).
-                val enLineMult = (1.15f + 2f / tpl.secondaryVerseFontSize) * (tpl.lineSpacingEnglish / 1.5f)
+                // 1.9.13 (item 6): line spacing is the slider value
+                // directly — no (1.15 + 2/fontSize) base, no /1.5
+                // normalization. Start clean, tune the slider
+                // (1.0–5.0) to taste.
+                val enLineMult = tpl.lineSpacingEnglish
                 StaticLayout.Builder.obtain(fullSecondaryText, 0, fullSecondaryText.length, secondaryTextPaint, contentWidth)
                     .setAlignment(secAlignment)
                     .setLineSpacing(0f, enLineMult)
@@ -5162,7 +5208,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                     .build()
             } else {
                 @Suppress("DEPRECATION")
-                StaticLayout(fullSecondaryText, secondaryTextPaint, contentWidth, secAlignment, (1.15f + 2f / tpl.secondaryVerseFontSize) * (tpl.lineSpacingEnglish / 1.5f), 0f, true)
+                StaticLayout(fullSecondaryText, secondaryTextPaint, contentWidth, secAlignment, tpl.lineSpacingEnglish, 0f, true)
             }
 
             if (!isEnglishOnly) {
@@ -5185,13 +5231,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 secondaryCitationLayout = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                     StaticLayout.Builder.obtain(secCitationText, 0, secCitationText.length, secCitationPaint, contentWidth)
                         .setAlignment(secCiteAlignment)
-                        .setLineSpacing(0f, (1.15f + 2f / tpl.secondaryReferenceFontSize) * (tpl.lineSpacingEnglish / 1.5f))
+                        .setLineSpacing(0f, tpl.lineSpacingEnglish)
                         .setIncludePad(true)
                         .setBreakStrategy(Layout.BREAK_STRATEGY_SIMPLE)
                         .build()
                 } else {
                     @Suppress("DEPRECATION")
-                    StaticLayout(secCitationText, secCitationPaint, contentWidth, secCiteAlignment, (1.15f + 2f / tpl.secondaryReferenceFontSize) * (tpl.lineSpacingEnglish / 1.5f), 0f, true)
+                    StaticLayout(secCitationText, secCitationPaint, contentWidth, secCiteAlignment, tpl.lineSpacingEnglish, 0f, true)
                 }
             }
         }
@@ -5615,8 +5661,18 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             tpl.autoFitText -> sliderBoxH
             else -> (layouts.contentH + padT + padB + 16f * scale).coerceAtLeast(140f * scale)
         }
-        val boxBottom = height - marginB
-        val boxTop = boxBottom - boxHeight
+        // 1.9.13 (item 5): growth direction — Lower grows bottom→top
+        // (bottom-anchored, boxBottom fixed at the position margin),
+        // Full grows top→bottom (top-anchored, boxTop fixed at the
+        // same position margin, measured from the top). For a
+        // fullscreen Full the anchor is moot (the box fills the frame).
+        val (boxTop, boxBottom) = if (isFull) {
+            val top = marginB
+            top to (top + boxHeight)
+        } else {
+            val bottom = height - marginB
+            (bottom - boxHeight) to bottom
+        }
         val boxLeft = marginH
         val boxRight = width - marginH
         val rect = RectF(boxLeft, boxTop, boxRight, boxBottom)
@@ -6156,8 +6212,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // so it renders whenever a particle effect is set — regardless
         // of the background type (gradient, video, solid, transparent,
         // or trueFullscreen, where the chain above is skipped but HTTP
-        // still shows particles). This matches HTTP's layer model
-        // (video 0 → particles 1 → card 2 → text 3 → logo 4).
+        // still shows particles). 1.9.13 (item 4): canonical layer
+        // order — video 0 → card 1 → particles 2 → text 3 → logo 4,
+        // identical on HTTP + NDI. The particle layer is drawn AFTER
+        // the card fill (above it), so the sparkle is always visible.
         // textOnly snapshots (transition frames) skip it, as before.
         if (!textOnly) {
             drawParticleEffectLayer(canvas, boxLeft, boxTop, boxRight, boxBottom, radius, scale, tpl)
@@ -9046,7 +9104,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     .status { grid-area: status; }
     .vlist { max-height: 66vh; flex: 1; }
   }
-  .vrow { display: flex; gap: 10px; padding: 12px; border-bottom: 1px solid; cursor: pointer; align-items: flex-start; }
+  /* 1.9.13 (item 9): tighter verse rows — padding 12px → 8px, so
+     more verses fit on a phone screen. The verse number (.vn)
+     stays small and inline; the full reference lives only in the
+     header, not repeated per row. */
+  .vrow { display: flex; gap: 10px; padding: 8px; border-bottom: 1px solid; cursor: pointer; align-items: flex-start; }
   .vrow:active { opacity: 0.7; }
   /* R5: row tokens — bands follow the app's picked pair (set by JS from
      the light state); the fallbacks are the default pair. Order matters:
@@ -9217,6 +9279,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     body > .card, body > #refBar, body > #browseBar { max-width: 800px; width: 100%; }
     #topBar { max-width: 800px; width: 100%; }
   }
+  /* 1.9.13 (item 9): collapsible controls — hide the ref + browse
+     bars to give the verse list the full screen on a phone. The
+     header (live ref + ON AIR + the toggle itself) stays visible
+     so the toggle is always reachable. */
+  body.controls-hidden #refBar, body.controls-hidden #browseBar { display: none; }
 </style>
 </head>
 <body>
@@ -9224,6 +9291,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   <!-- v1.9.5: reworked top bar — [gear][sync][kbd] left, ref centered, ON AIR right. Info icon removed. -->
   <button id="gearTop" aria-label="Settings" onclick="togglePanel()">&#9881;</button>
   <button id="syncBtn" aria-label="Toggle auto-sync" onclick="toggleSync()" style="font-size:18px;" title="Auto-sync with tablet">&#128279;</button>
+  <!-- 1.9.13 (item 9): collapse toggle — hides the ref + browse bars
+       so the verse list gets the full screen. ⌃ = controls shown,
+       ⌄ = controls hidden. -->
+  <button id="collapseBtn" aria-label="Hide controls" onclick="toggleControls()" style="font-size:18px;" title="Hide/show controls">&#8963;</button>
   <!-- Item 32: keyboard shortcuts moved into the gear panel (learn-once reference). -->
   <div id="topRef" dir="auto">—</div>
   <button class="onair off" id="onAirBtnTop" onclick="toggleOnAir()">OFF AIR</button>
@@ -9399,6 +9470,19 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     updateSyncBtn();
   }
   updateSyncBtn();
+  // 1.9.13 (item 9): collapse/expand the ref + browse bars so the
+  // verse list gets the full screen on a phone. The header (live
+  // ref + ON AIR + this toggle) stays visible. State is kept in
+  // the body class; the chevron flips to show the action.
+  function toggleControls() {
+    var hidden = document.body.classList.toggle('controls-hidden');
+    var btn = document.getElementById('collapseBtn');
+    if (btn) {
+      btn.innerHTML = hidden ? '&#8964;' : '&#8963;';
+      btn.setAttribute('aria-label', hidden ? 'Show controls' : 'Hide controls');
+      btn.setAttribute('title', hidden ? 'Show controls' : 'Hide controls');
+    }
+  }
   // Shared helper: find book index by bookId (replaces 3 duplicated loops).
   function findBookIndex(bookId) {
     for (var i = 0; i < books.length; i++) {

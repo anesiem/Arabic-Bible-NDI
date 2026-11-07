@@ -424,7 +424,11 @@ fun TemplateEditorScreen(
     // 1.9.12 Layers panel: "layers" first — the top of the Editor controls,
     // right under the preview (wide: first item of the right panel;
     // compact: first card of the sheet).
-    val rightColumnKeys = listOf("layers", "logo", "frame", "transition", "arabic", "english", "textshadow", "card", "particles", "motion", "glow")
+    // 1.9.13 (item 7): "layers" moved OUT of the right panel into the
+    // LEFT pane, directly under the preview (title → preview → Layers →
+    // Jump-to). It is no longer a right-column item, so it leaves
+    // rightColumnKeys; the compact sheet still lists it first.
+    val rightColumnKeys = listOf("logo", "frame", "transition", "arabic", "english", "textshadow", "card", "particles", "motion", "glow")
     // Items 1 + 12: expanded state for the collapsible sections, hoisted
     // here so it survives editor-tab switches (the old remember(syncKey)
     // re-seeded on every template change) and so anchor jumps can expand
@@ -1319,7 +1323,7 @@ CollapsibleSection(
                         )
                     }
                     // One-update item 7: per-language line spacing.
-                    SliderWithLabel("تباعد أسطر العربي (Arabic line spacing)", editingTemplate.lineSpacingArabic, 1f..3f) { onUpdate(editingTemplate.copy(lineSpacingArabic = it)) }
+                    SliderWithLabel("تباعد أسطر العربي (Arabic line spacing)", editingTemplate.lineSpacingArabic, 1f..5f) { onUpdate(editingTemplate.copy(lineSpacingArabic = it)) }
                     // Follow-up: verse-citation gap (was a hardcoded 16dp in the renderers).
                     // 1.9.12: max raised 48 -> 100 — with no multiplier the slider IS the
                     // gap, so it must reach NDI-scale gaps (Amiri's visual gap was 66px).
@@ -1442,7 +1446,7 @@ CollapsibleSection(
                         VerticalAlignmentChoiceRow("المحاذاة العمودية للنص الإنجليزي (English Vertical Alignment)", editingTemplate.verticalAlignmentEnglish) { onUpdate(editingTemplate.copy(verticalAlignmentEnglish = it)) }
                         SliderWithLabel("حجم النص الإنجليزي", editingTemplate.secondaryVerseFontSize.toFloat(), 8f..120f) { onUpdate(editingTemplate.copy(secondaryVerseFontSize = it.toInt())) }
                         // One-update item 7: per-language line spacing.
-                        SliderWithLabel("تباعد أسطر الإنجليزي (English line spacing)", editingTemplate.lineSpacingEnglish, 1f..3f) { onUpdate(editingTemplate.copy(lineSpacingEnglish = it)) }
+                        SliderWithLabel("تباعد أسطر الإنجليزي (English line spacing)", editingTemplate.lineSpacingEnglish, 1f..5f) { onUpdate(editingTemplate.copy(lineSpacingEnglish = it)) }
                         // Follow-up: verse-citation gap (was a hardcoded 4px in the renderers).
                         // 1.9.12: max raised 48 -> 100, same as the Arabic gap — the slider
                         // IS the gap (no multiplier), so it needs the same headroom.
@@ -1491,19 +1495,20 @@ CollapsibleSection(
                     // 270 = right-to-left, 0 = bottom-to-top.
                     FeatureToggleRow("بطاقة متدرجة اللونين (Gradient card)", editingTemplate.gradientEnabled) { onUpdate(editingTemplate.copy(gradientEnabled = it)) }
                     if (editingTemplate.gradientEnabled) {
-                        // Combined batch, linked gradient group: First
-                        // color (Card Color, same field as above, so
-                        // it can never be hidden again) directly above
-                        // Second color, with angle, animation, speed
-                        // and transparency in the same bordered group.
+                        // Combined batch, linked gradient group: the
+                        // gradient runs from the Card Color above
+                        // (bgColorHex — the model has no separate
+                        // gradientColorHex field) to the Second color
+                        // below, with angle, animation, speed and
+                        // transparency in the same bordered group.
+                        // 1.9.13 (item 3): the duplicate First-color
+                        // picker (same bgColorHex field as the Card
+                        // Color picker above) is removed — item 10
+                        // (1.9.8) removed it once, the 2026-11-04
+                        // batch re-added it via a phantom-field fix.
                         androidx.compose.material3.Surface(shape = RoundedCornerShape(12.dp), border = androidx.compose.foundation.BorderStroke(1.dp, bento.border), color = bento.surfaceVariant) {
                             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("ألوان التدرج المرتبطة (Linked gradient colors)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary)
-                        // Item 34: separate picker for the first gradient
-                        // color. The gradient runs from bgColorHex (this
-                        // picker — the model has no separate
-                        // gradientColorHex field) to gradientColorHex2.
-                        ColorGradePickerRow("اللون الأول (First color)", editingTemplate.bgColorHex, { onUpdate(editingTemplate.copy(bgColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor, previewTemplate = editingTemplate, previewField = "bgColorHex")
                         ColorGradePickerRow("اللون الثاني (Second color)", editingTemplate.gradientColorHex2, { onUpdate(editingTemplate.copy(gradientColorHex2 = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor, previewTemplate = editingTemplate, previewField = "gradientColorHex2")
                         SliderWithLabel("زاوية التدرج (Angle, 0-360°)", editingTemplate.gradientAngleDeg.toFloat(), 0f..360f) { onUpdate(editingTemplate.copy(gradientAngleDeg = it.toInt())) }
                         val gradientAnims = listOf(
@@ -1832,16 +1837,29 @@ CollapsibleSection(
                     }
                     Spacer(Modifier.height(4.dp))
                     if (editorTab == 0) {
-                        // Batch-4: FlowRow instead of vertical Column — chips sit
-                        // side-by-side in one band, not stacked vertically.
-                        @OptIn(ExperimentalLayoutApi::class)
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        // 1.9.13 (item 8): circular color dots, same as
+                        // the Setup tab — the dot IS the background.
+                        // Selected: 36dp + 3dp primary border;
+                        // unselected: 32dp + 1dp border. Transparent
+                        // renders as a bordered empty circle.
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically) {
                             StreamBackgroundMode.entries.forEach { mode ->
-                                FilterChip(
-                                    selected = editingTemplate.streamBackgroundMode == mode,
-                                    onClick = { onUpdate(editingTemplate.copy(streamBackgroundMode = mode)) },
-                                    label = { Text(mode.displayNameAr, fontSize = 10.sp) }
-                                )
+                                val dotColor = try {
+                                    Color(android.graphics.Color.parseColor(mode.colorHex))
+                                } catch (e: Exception) { bento.textSecondary }
+                                val dotSelected = editingTemplate.streamBackgroundMode == mode
+                                Surface(
+                                    shape = androidx.compose.foundation.shape.CircleShape,
+                                    color = dotColor,
+                                    border = androidx.compose.foundation.BorderStroke(
+                                        if (dotSelected) 3.dp else 1.dp,
+                                        if (dotSelected) bento.primary else bento.border
+                                    ),
+                                    modifier = Modifier
+                                        .size(if (dotSelected) 36.dp else 32.dp)
+                                        .clip(androidx.compose.foundation.shape.CircleShape)
+                                        .clickable { onUpdate(editingTemplate.copy(streamBackgroundMode = mode)) }
+                                ) {}
                             }
                         }
                     }
@@ -2281,6 +2299,12 @@ CollapsibleSection(
                         Spacer(Modifier.height(12.dp))
                         previewBlock(onPreviewClick = { jumpToAnchor("frame") })
                         Spacer(Modifier.height(16.dp))
+                        // 1.9.13 (item 7): Layers lives here now — directly
+                        // under the preview, so toggling a layer changes
+                        // the preview right above it. Same card shape and
+                        // band as it had at the top of the right panel.
+                        Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandA), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { layersSectionBlock() } }
+                        Spacer(Modifier.height(16.dp))
                         anchorsBlock()
                     }
                     Box(Modifier.width(1.dp).fillMaxHeight().background(bento.borderSubtle))
@@ -2295,17 +2319,19 @@ CollapsibleSection(
                         state = rightLazyListState,
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        item("layers") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandA), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { layersSectionBlock() } } }
-                        item("logo") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandB), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { logoSectionBlock() } } }
-                        item("frame") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandA), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { frameSectionBlock() } } }
-                        item("transition") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandB), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { transitionSectionBlock() } } }
-                        item("arabic") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandA), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { arabicSectionBlock() } } }
-                        item("english") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandB), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { englishSectionBlock() } } }
-                        item("textshadow") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandA), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { textShadowSectionBlock() } } }
-                        item("card") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandB), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { cardSectionBlock() } } }
-                        item("particles") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandA), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { particlesSectionBlock() } } }
-                        item("motion") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandB), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { motionSectionBlock() } } }
-                        item("glow") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandA), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { glowSectionBlock() } } }
+                        // 1.9.13 (item 7): "layers" left the right panel
+                        // for the left pane under the preview. Band
+                        // colors flip so the first card is bandA again.
+                        item("logo") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandA), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { logoSectionBlock() } } }
+                        item("frame") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandB), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { frameSectionBlock() } } }
+                        item("transition") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandA), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { transitionSectionBlock() } } }
+                        item("arabic") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandB), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { arabicSectionBlock() } } }
+                        item("english") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandA), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { englishSectionBlock() } } }
+                        item("textshadow") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandB), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { textShadowSectionBlock() } } }
+                        item("card") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandA), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { cardSectionBlock() } } }
+                        item("particles") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandB), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { particlesSectionBlock() } } }
+                        item("motion") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandA), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { motionSectionBlock() } } }
+                        item("glow") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandB), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { glowSectionBlock() } } }
                     }
                 }
             }

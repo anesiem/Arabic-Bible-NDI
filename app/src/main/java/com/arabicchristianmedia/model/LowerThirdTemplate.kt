@@ -645,8 +645,22 @@ data class LowerThirdTemplate(
      * migrates old saves by feed (Full -> TOP, Lower -> BOTTOM), so
      * no existing template changes how it renders.
      */
-    val verticalAlignmentArabic: VerticalAlignment = VerticalAlignment.TOP,
-    val verticalAlignmentEnglish: VerticalAlignment = VerticalAlignment.TOP,
+    /**
+     * 1.9.15 items 10 + 13: per-layer on/off flags. A layer is ON only when
+     * its Switch is on — setting a value to transparent/none/empty no longer
+     * turns the layer off by itself (that auto-close was a side effect of
+     * value-derived gating, 1.9.14 item 9). The Switch controls only on/off;
+     * values are independent. Constructor defaults derive from the value
+     * (Kotlin defaults referencing earlier params), so factory templates that
+     * set a value but omit the flag get the correct flag automatically, with
+     * no 20-site sweep. fromJson migrates old saves the same way. Renderer
+     * gates (NDI + HTTP) check the flag AND the value, so an enabled-but-
+     * empty layer renders nothing (value gates remain as a second guard).
+     */
+    val videoEnabled: Boolean = animatedBackground != AnimatedBackgroundType.NONE,
+    val particlesEnabled: Boolean = particleEffect != AnimatedBackgroundType.NONE,
+    val cardEnabled: Boolean = (!isPureTransparentBackground && bgOpacity > 0f) || gradientEnabled || cardGlowEnabled || showAccentBorder,
+    val logoEnabled: Boolean = logoUri.isNotEmpty(),
 )
 
 /** Auto-fit frozen-ratio math (one-update item 8), pure and unit-testable.

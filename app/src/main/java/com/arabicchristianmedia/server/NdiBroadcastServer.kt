@@ -1539,6 +1539,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             // Item 91: per-language vertical alignment of the verse block.
             put("verticalAlignmentArabic", tpl.verticalAlignmentArabic.name)
             put("verticalAlignmentEnglish", tpl.verticalAlignmentEnglish.name)
+            // 1.9.15 items 10 + 13: per-layer on/off flags — the renderers
+            // gate on these AND the value (enabled-but-empty renders nothing).
+            put("videoEnabled", tpl.videoEnabled)
+            put("particlesEnabled", tpl.particlesEnabled)
+            put("cardEnabled", tpl.cardEnabled)
+            put("logoEnabled", tpl.logoEnabled)
             put("boxLoopContinuous", tpl.boxLoopContinuous)
             put("trueFullscreen", tpl.trueFullscreen)
         }
@@ -8157,6 +8163,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             // Item 91: per-language vertical alignment of the verse block.
             o.put("verticalAlignmentArabic", t.verticalAlignmentArabic.name)
             o.put("verticalAlignmentEnglish", t.verticalAlignmentEnglish.name)
+            // 1.9.15 items 10 + 13: per-layer on/off flags.
+            o.put("videoEnabled", t.videoEnabled)
+            o.put("particlesEnabled", t.particlesEnabled)
+            o.put("cardEnabled", t.cardEnabled)
+            o.put("logoEnabled", t.logoEnabled)
             o.put("positionBottomPercent", t.positionBottomPercent)
             o.put("horizontalMarginPercent", t.horizontalMarginPercent)
             o.put("cornerRadiusDp", t.cornerRadiusDp)

@@ -2437,7 +2437,7 @@ class TemplateRepository(context: Context) {
             val obj = JSONObject(json)
             if (obj.optString("name", "").trim().isEmpty()) return null
             // Sanity: a real style carries several known keys.
-            val knownKeys = listOf("fontFamily", "bgColorHex", "textColorHex", "verseFontSize", "style", "showCrossEmblem", "emblem", "autoFitMinVerseSp", "autoFitMaxVerseSp", "boxHeightPercent", "isFullScreen", "id", "useSystemFontForBrackets", "gradientColorHex2", "gradientAngleDeg", "gradientAnimation", "autoFitMinCitationSp", "autoFitRatioLock", "clearMode", "lineSpacingArabic", "lineSpacingEnglish", "autoFitFrozenRatio", "verseCitationGapArabicDp", "verseCitationGapEnglishDp", "boxLoopContinuous", "trueFullscreen", "citationAlignmentArabic", "citationAlignmentEnglish", "verseAlignmentEnglish", "verticalAlignmentArabic", "verticalAlignmentEnglish", "textEffect", "textEffectDepthDp", "cardGlowRadiusDp", "showAccentBorderWidthDp", "cardGlowOpacity", "accentOpacity", "showArabic", "showEnglish", "particleOpacity", "particleEffect", "particleDensity", "particleColorHex", "logoUri", "logoPosition", "logoBoxSizePercent", "logoOffsetXPercent", "logoOffsetYPercent", "logoOpacity", "logoData")
+            val knownKeys = listOf("fontFamily", "bgColorHex", "textColorHex", "verseFontSize", "style", "showCrossEmblem", "emblem", "autoFitMinVerseSp", "autoFitMaxVerseSp", "boxHeightPercent", "isFullScreen", "id", "useSystemFontForBrackets", "gradientColorHex2", "gradientAngleDeg", "gradientAnimation", "autoFitMinCitationSp", "autoFitRatioLock", "clearMode", "lineSpacingArabic", "lineSpacingEnglish", "autoFitFrozenRatio", "verseCitationGapArabicDp", "verseCitationGapEnglishDp", "boxLoopContinuous", "trueFullscreen", "citationAlignmentArabic", "citationAlignmentEnglish", "verseAlignmentEnglish", "verticalAlignmentArabic", "verticalAlignmentEnglish", "textEffect", "textEffectDepthDp", "cardGlowRadiusDp", "showAccentBorderWidthDp", "cardGlowOpacity", "accentOpacity", "showArabic", "showEnglish", "particleOpacity", "particleEffect", "particleDensity", "particleColorHex", "logoUri", "logoPosition", "logoBoxSizePercent", "logoOffsetXPercent", "logoOffsetYPercent", "logoOpacity", "logoData", "videoEnabled", "particlesEnabled", "cardEnabled", "logoEnabled")
             if (knownKeys.none { obj.has(it) }) return null
             fromJson(obj)
         } catch (e: Exception) {
@@ -2483,6 +2483,11 @@ class TemplateRepository(context: Context) {
             // Item 91: per-language vertical alignment of the verse block.
             put("verticalAlignmentArabic", t.verticalAlignmentArabic.name)
             put("verticalAlignmentEnglish", t.verticalAlignmentEnglish.name)
+            // 1.9.15 items 10 + 13: per-layer on/off flags (see model).
+            put("videoEnabled", t.videoEnabled)
+            put("particlesEnabled", t.particlesEnabled)
+            put("cardEnabled", t.cardEnabled)
+            put("logoEnabled", t.logoEnabled)
             put("positionBottomPercent", t.positionBottomPercent)
             put("horizontalMarginPercent", t.horizontalMarginPercent)
             put("cornerRadiusDp", t.cornerRadiusDp)
@@ -2590,6 +2595,21 @@ class TemplateRepository(context: Context) {
             com.arabicchristianmedia.model.isParticleType(parsedAnimBg) -> parsedAnimBg
             else -> AnimatedBackgroundType.NONE
         }
+        // 1.9.15 items 10 + 13 migration: the four layer flags derive from
+        // the parsed values, so old saves keep exactly today's visible
+        // behavior (a layer that renders today loads enabled; a
+        // transparent/NONE one loads disabled). bgOpacity is the migrated
+        // value (0f when the legacy pure flag is set), and
+        // isPureTransparentBackground is always false after migration, so
+        // the card term reduces to bgOpacity > 0f.
+        val parsedBgOpacity = if (obj.optBoolean("isPureTransparentBackground", false)) 0f
+            else obj.optDouble("bgOpacity", 0.85).toFloat()
+        val parsedGradientEnabled = obj.optBoolean("gradientEnabled", false)
+        val parsedCardGlowEnabled = if (obj.has("cardGlowEnabled")) obj.optBoolean("cardGlowEnabled", true)
+            else safeGlowDefault
+        val parsedShowAccentBorder = obj.optBoolean("showAccentBorder", true)
+        val migratedCardEnabled = (parsedBgOpacity > 0f) || parsedGradientEnabled || parsedCardGlowEnabled || parsedShowAccentBorder
+        val parsedLogoUri = obj.optString("logoUri", "")
         return LowerThirdTemplate(
             id = obj.optString("id", "tpl_${System.currentTimeMillis()}"),
             name = obj.optString("name", "Custom Template"),
@@ -2600,8 +2620,7 @@ class TemplateRepository(context: Context) {
             // opacity 0 and the flag is cleared; every other field
             // (including bgColorHex) is preserved, so returning the
             // slider to 1 restores the exact old card.
-            bgOpacity = if (obj.optBoolean("isPureTransparentBackground", false)) 0f
-                        else obj.optDouble("bgOpacity", 0.85).toFloat(),
+            bgOpacity = parsedBgOpacity,
             accentColorHex = obj.optString("accentColorHex", "#E5A93C"),
             textColorHex = obj.optString("textColorHex", "#FFFFFF"),
             referenceColorHex = obj.optString("referenceColorHex", "#F4D06F"),
@@ -2771,7 +2790,14 @@ class TemplateRepository(context: Context) {
             } else if (parsedIsFullScreen) com.arabicchristianmedia.model.VerticalAlignment.TOP else com.arabicchristianmedia.model.VerticalAlignment.BOTTOM,
             verticalAlignmentEnglish = if (obj.has("verticalAlignmentEnglish")) {
                 try { com.arabicchristianmedia.model.VerticalAlignment.valueOf(obj.optString("verticalAlignmentEnglish")) } catch (e: Exception) { if (parsedIsFullScreen) com.arabicchristianmedia.model.VerticalAlignment.TOP else com.arabicchristianmedia.model.VerticalAlignment.BOTTOM }
-            } else if (parsedIsFullScreen) com.arabicchristianmedia.model.VerticalAlignment.TOP else com.arabicchristianmedia.model.VerticalAlignment.BOTTOM
+            } else if (parsedIsFullScreen) com.arabicchristianmedia.model.VerticalAlignment.TOP else com.arabicchristianmedia.model.VerticalAlignment.BOTTOM,
+            // 1.9.15 items 10 + 13: layer flags. An explicit key wins;
+            // old saves derive from the parsed value (see the migration
+            // vals above), so no live template changes how it renders.
+            videoEnabled = obj.optBoolean("videoEnabled", migratedAnimBg != AnimatedBackgroundType.NONE),
+            particlesEnabled = obj.optBoolean("particlesEnabled", migratedParticleEffect != AnimatedBackgroundType.NONE),
+            cardEnabled = obj.optBoolean("cardEnabled", migratedCardEnabled),
+            logoEnabled = obj.optBoolean("logoEnabled", parsedLogoUri.isNotEmpty())
         ).let { migrateLegacyVideo(it) }.let { migrateLogo(it, obj) }
     }
 

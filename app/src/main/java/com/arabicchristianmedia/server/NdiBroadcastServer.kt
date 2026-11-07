@@ -9406,6 +9406,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   </div>
   <!-- Recents popup with close button -->
   <div id="recentsPopup" hidden style="position:fixed;top:10px;left:10px;right:10px;bottom:10px;max-width:600px;margin:0 auto;background:var(--chrome-card,#fff);border:1px solid var(--chrome-border,#e2e8f0);border-radius:12px;z-index:90;overflow:hidden;">
+    <!-- 1.9.14 (item 30): drag handle — swipe down to close, like the
+         app's bottom-sheet handle. The × below still closes too. -->
+    <div id="recentsHandle" aria-hidden="true" style="display:flex;justify-content:center;padding:8px 0 2px;cursor:grab;touch-action:none;">
+      <span style="width:40px;height:5px;border-radius:3px;background:var(--chrome-textsec,#94a3b8);"></span>
+    </div>
     <div style="display:flex;justify-content:space-between;align-items:center;padding:12px;border-bottom:1px solid var(--chrome-border,#e2e8f0);position:sticky;top:0;background:var(--chrome-card,#fff);z-index:1;">
       <strong>Recent verses</strong>
       <button onclick="toggleRecents()" aria-label="Close" style="background:none;border:none;font-size:18px;cursor:pointer;">×</button>
@@ -9944,11 +9949,43 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     if (popup) {
       var willShow = popup.hidden;
       popup.hidden = !popup.hidden;
+      // 1.9.14 (item 30): clear any drag transform so the popup never
+      // reopens shifted after a drag-close.
+      popup.style.transform = '';
       // 2026-11-02 item 17: when opening, fetch fresh recents immediately
       // (don't wait for the next poll cycle).
       if (willShow && typeof pollNow === 'function') pollNow();
     }
   }
+
+  // 1.9.14 (item 30): drag handle on the Recents popup — swipe down to
+  // close, like the app's bottom-sheet handle. The popup follows the
+  // finger down (downward only, clamped at 0); past 80px it closes via
+  // the same toggleRecents() the × uses, otherwise it snaps back.
+  // The handle sits above the list, so list scrolling is untouched.
+  (function() {
+    var popup = document.getElementById('recentsPopup');
+    var handle = document.getElementById('recentsHandle');
+    if (!popup || !handle) return;
+    var startY = 0, dragging = false;
+    handle.addEventListener('touchstart', function(e) {
+      startY = e.touches[0].clientY;
+      dragging = true;
+    }, {passive: true});
+    handle.addEventListener('touchmove', function(e) {
+      if (!dragging) return;
+      var dy = e.touches[0].clientY - startY;
+      if (dy < 0) dy = 0;
+      popup.style.transform = 'translateY(' + dy + 'px)';
+    }, {passive: true});
+    handle.addEventListener('touchend', function(e) {
+      if (!dragging) return;
+      dragging = false;
+      var dy = e.changedTouches[0].clientY - startY;
+      popup.style.transform = '';
+      if (dy > 80) toggleRecents();
+    }, {passive: true});
+  })();
 
   // Item 6+7+10: recents mirrored from the master (persisted now, not
   // session-only). Re-renders only when the list actually changed, so

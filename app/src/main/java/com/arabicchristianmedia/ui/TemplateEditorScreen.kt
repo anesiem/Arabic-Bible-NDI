@@ -71,11 +71,16 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
 
-enum class PreviewBackground(val displayNameAr: String) {
-    CHECKERBOARD_TRANSPARENT("شفاف مفرغ (100% Transparent Alpha)"),
-    SIMULATED_STUDIO_CAMERA("استوديو داكن (Studio Dark)"),
-    PURE_BLACK("أسود معتم (Pure Black)"),
-    CHROMA_GREEN("كروما خضراء (Chroma Green)")
+/**
+ * 1.9.15 item 8: short Arabic label for a stream-background mode, shown
+ * under the preview-header dots. The mode's own displayNameAr is too long
+ * for the 10sp label.
+ */
+fun streamBackgroundShortNameAr(mode: StreamBackgroundMode): String = when (mode) {
+    StreamBackgroundMode.TRANSPARENT_ALPHA -> "شفاف (Transparent)"
+    StreamBackgroundMode.DARK_STUDIO -> "استوديو داكن (Dark Studio)"
+    StreamBackgroundMode.PURE_BLACK -> "أسود (Pure Black)"
+    StreamBackgroundMode.CHROMA_GREEN -> "كروما خضراء (Chroma Green)"
 }
 
 /**
@@ -226,7 +231,6 @@ fun TemplateEditorScreen(
     var templateToDelete by remember { mutableStateOf<LowerThirdTemplate?>(null) }
     var styleMenuTpl by remember { mutableStateOf<LowerThirdTemplate?>(null) } // long-press actions menu
     var newTemplateName by remember { mutableStateOf("") }
-    var previewBg by remember { mutableStateOf(PreviewBackground.SIMULATED_STUDIO_CAMERA) }
     // v1.9.1: visual text-box editing on the preview (drag the box edges).
     var boxEdit by remember { mutableStateOf(false) }
     // 1.9.14 (item 24): Framing collapsible state (the 4 box-geometry
@@ -414,18 +418,19 @@ fun TemplateEditorScreen(
         "arabic-citation" to "arabic", "arabic-verse" to "arabic",
         "english-citation" to "english", "english-verse" to "english",
         "bg-motion" to "motion",
-        "bg-transition" to "transition", "bg-stream" to "motion",
+        "bg-transition" to "transition",
         "transition-clear" to "transition",
         "shadow-text" to "textshadow", "shadow-glow" to "glow"
     )
-    // 1.9.14 (item 9): layer on/off, DERIVED from the existing template
-    // fields (same derivation as the Layers panel below — no new fields).
+    // 1.9.15 items 10 + 13: layer on/off is now a REAL flag on the template
+    // (videoEnabled / particlesEnabled / cardEnabled / logoEnabled) — the
+    // Switch controls only on/off; values are independent. Setting a value
+    // to transparent/none/empty no longer turns the layer off by itself.
     // Drives which right-pane sections + Jump-to chips are shown.
-    val videoLayerOn = editingTemplate.animatedBackground != AnimatedBackgroundType.NONE
-    val particlesLayerOn = editingTemplate.particleEffect != AnimatedBackgroundType.NONE
-    val cardLayerOn = (!editingTemplate.isPureTransparentBackground && editingTemplate.bgOpacity > 0f) ||
-        editingTemplate.gradientEnabled || editingTemplate.cardGlowEnabled || editingTemplate.showAccentBorder
-    val logoLayerOn = editingTemplate.logoUri.isNotEmpty()
+    val videoLayerOn = editingTemplate.videoEnabled
+    val particlesLayerOn = editingTemplate.particlesEnabled
+    val cardLayerOn = editingTemplate.cardEnabled
+    val logoLayerOn = editingTemplate.logoEnabled
     // Right-column item keys, in editing order (1.9.14 item 22: most-edited
     // first — Text, then Card + Glow, Particles, Motion Video, Frame, Logo,
     // Verse Transition last). A jump resolves its id to the parent section
@@ -740,28 +745,30 @@ fun TemplateEditorScreen(
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text(if (editorTab == 0) "معاينة البث (Lower Third Preview)" else "معاينة العرض (Full Show Preview)", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = bento.textPrimary)
                     
-                    // Background Mode Selector
+                    // 1.9.15 item 8: the 4 stream-background dots live here now
+                    // (merged from the Motion Video section). They iterate
+                    // StreamBackgroundMode and edit the ACTIVE tab's template
+                    // directly — the preview renders the template's mode, so
+                    // one tap changes the preview AND the stream background.
+                    // The template value is the source of truth.
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        PreviewBackground.entries.forEach { bg ->
+                        StreamBackgroundMode.entries.forEach { mode ->
+                            val dotColor = try {
+                                Color(android.graphics.Color.parseColor(mode.colorHex))
+                            } catch (e: Exception) { bento.textSecondary }
+                            val dotSelected = editingTemplate.streamBackgroundMode == mode
                             Box(
                                 modifier = Modifier
                                     .size(22.dp)
                                     .clip(CircleShape)
-                                    .background(
-                                        when (bg) {
-                                            PreviewBackground.CHECKERBOARD_TRANSPARENT -> Color.LightGray
-                                            PreviewBackground.SIMULATED_STUDIO_CAMERA -> Color(0xFF0F172A)
-                                            PreviewBackground.PURE_BLACK -> Color.Black
-                                            PreviewBackground.CHROMA_GREEN -> Color(0xFF00FF00)
-                                        }
-                                    )
-                                    .border(width = if (previewBg == bg) 2.dp else 1.dp, color = if (previewBg == bg) bento.primary else bento.border, shape = CircleShape)
-                                    .clickable { previewBg = bg }
+                                    .background(dotColor)
+                                    .border(width = if (dotSelected) 2.dp else 1.dp, color = if (dotSelected) bento.primary else bento.border, shape = CircleShape)
+                                    .clickable { onUpdate(editingTemplate.copy(streamBackgroundMode = mode)) }
                             )
                         }
                     }
                 }
-                Text(previewBg.displayNameAr, fontSize = 10.sp, color = bento.textSecondary, modifier = Modifier.padding(top = 2.dp))
+                Text(streamBackgroundShortNameAr(editingTemplate.streamBackgroundMode), fontSize = 10.sp, color = bento.textSecondary, modifier = Modifier.padding(top = 2.dp))
                 Spacer(Modifier.height(8.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     FilterChip(selected = boxEdit, onClick = { val next = !boxEdit; boxEdit = next; if (next) setSectionExpanded("frame", true) }, label = { Text("تعديل الصندوق (Edit Box)", fontSize = 10.sp) })
@@ -770,7 +777,7 @@ fun TemplateEditorScreen(
                     }
                 }
                 Spacer(Modifier.height(6.dp))
-                BroadcastPreviewViewport(editingTemplate, displayVerse, previewBg, boxEditEnabled = boxEdit, onTemplateChange = { onUpdate(it) })
+                BroadcastPreviewViewport(editingTemplate, displayVerse, boxEditEnabled = boxEdit, onTemplateChange = { onUpdate(it) })
 
             }
         }
@@ -778,18 +785,19 @@ fun TemplateEditorScreen(
     // 1.9.12 Layers panel — four layer cards (Video z-0, Particles z-1,
     // Card Color z-2, Logo z-4). One toggle per layer turns the whole layer
     // on/off (all its grouped fields, glow grouped with card color).
-    // Toggle ON restores the layer's fields from the STORED template (the
-    // template is the memory — switching templates and back reloads the
-    // stored values); if the stored template has the layer off too, a
-    // sensible default is used (logo has no default — nothing to invent).
-    // No new template fields, no renderer changes — toggles only set
-    // existing fields. Cards are collapsed by default when the layer is
-    // off, expanded when it is on; tapping the header toggles the card
-    // manually, and toggling the layer drives the card (on = expand).
-    val storedTemplateForLayers = templates.firstOrNull { it.id == editingTemplate.id }
-    var layersExpanded by remember(editingTemplate.id) { mutableStateOf(mapOf<String, Boolean>()) }
-    fun isLayerExpanded(layerId: String, isOn: Boolean): Boolean = layersExpanded[layerId] ?: isOn
-    fun setLayerExpanded(layerId: String, value: Boolean) { layersExpanded = layersExpanded + (layerId to value) }
+    // 1.9.15 items 10 + 13: the Switch controls ONLY the layer's on/off
+    // flag (videoEnabled / particlesEnabled / cardEnabled / logoEnabled) —
+    // values are independent and preserved. Toggling ON never invents a
+    // value and never restores from the stored template; toggling OFF never
+    // zeroes a value. (The old ON-restore-from-stored + OFF-zero-the-values
+    // are gone, and with them the ON auto-picks EMBERS / 0.85 /
+    // GOLDEN_DIVINE_RAYS. Toggling ON with a NONE/transparent value opens
+    // the section showing that empty value, and he then picks one.)
+    // 1.9.15 item 9: the card has NO per-card collapse any more — the
+    // header + one-line values summary are always shown. Tapping a card
+    // jumps to its section (only when the layer is enabled); an off card
+    // is dimmed and has no tap handler. The Switch stays the toggle and
+    // wins over the row tap.
     @Composable
     fun LayerCard(
         layerId: String,
@@ -800,17 +808,23 @@ fun TemplateEditorScreen(
         layerColor: Color,
         isOn: Boolean,
         valuesSummary: String,
+        // 1.9.15 item 9: the right-panel section this card jumps to
+        // (video's card is "video" but its section is "motion").
+        sectionId: String,
         onToggle: (Boolean) -> Unit
     ) {
-        val expanded = isLayerExpanded(layerId, isOn)
         Card(
             shape = RoundedCornerShape(12.dp),
             colors = CardDefaults.cardColors(containerColor = bento.card),
             modifier = Modifier.fillMaxWidth()
+                // 1.9.15 item 9: an off card is dimmed and not tappable;
+                // an on card taps to jump to its section.
+                .then(if (isOn) Modifier.clickable { jumpToAnchor(sectionId) } else Modifier)
+                .alpha(if (isOn) 1f else 0.55f)
         ) {
             Column(Modifier.padding(10.dp)) {
                 Row(
-                    modifier = Modifier.fillMaxWidth().clickable { setLayerExpanded(layerId, !expanded) },
+                    modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -822,28 +836,17 @@ fun TemplateEditorScreen(
                         Spacer(Modifier.width(6.dp))
                         Text("z-$zIndex", fontSize = 11.sp, color = bento.textSecondary)
                     }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = if (expanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
-                            contentDescription = null,
-                            tint = bento.textSecondary,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(Modifier.width(4.dp))
-                        // The Switch wins over the row clickable (inner
-                        // clickable), so tapping it toggles the layer
-                        // without collapsing the card.
-                        Switch(
-                            checked = isOn,
-                            onCheckedChange = { onToggle(it) },
-                            colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = bento.primary)
-                        )
-                    }
+                    // The Switch wins over the row clickable (inner
+                    // clickable), so tapping it toggles the layer
+                    // without jumping to the section.
+                    Switch(
+                        checked = isOn,
+                        onCheckedChange = { onToggle(it) },
+                        colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = bento.primary)
+                    )
                 }
-                if (expanded) {
-                    Spacer(Modifier.height(6.dp))
-                    Text(valuesSummary, fontSize = 11.sp, color = bento.textSecondary)
-                }
+                Spacer(Modifier.height(6.dp))
+                Text(valuesSummary, fontSize = 11.sp, color = bento.textSecondary)
             }
         }
     }
@@ -865,28 +868,17 @@ fun TemplateEditorScreen(
                     name = "الشعار (Logo)",
                     zIndex = 4,
                     isOn = logoLayerOn,
+                    sectionId = "logo",
                     onToggle = { on ->
-                        setLayerExpanded("logo", on)
-                        if (!on) {
-                            onUpdate(editingTemplate.copy(logoUri = ""))
-                        } else {
-                            // Restore the stored logo; if the stored
-                            // template has no logo there is nothing to
-                            // invent, so the layer stays off.
-                            val src = storedTemplateForLayers
-                            if (src != null && src.logoUri.isNotEmpty()) {
-                                onUpdate(
-                                    editingTemplate.copy(
-                                        logoUri = src.logoUri,
-                                        logoPosition = src.logoPosition,
-                                        logoBoxSizePercent = src.logoBoxSizePercent,
-                                        logoOffsetXPercent = src.logoOffsetXPercent,
-                                        logoOffsetYPercent = src.logoOffsetYPercent,
-                                        logoOpacity = src.logoOpacity
-                                    )
-                                )
-                            }
-                        }
+                        // 1.9.15 items 10 + 13: flag-only — the Switch sets
+                        // only logoEnabled; values are preserved. Toggling
+                        // ON with no logo opens the section showing no logo
+                        // yet, and he then picks one (never auto-picked).
+                        onUpdate(editingTemplate.copy(logoEnabled = on))
+                        // 1.9.15 item 11: enabling a layer jumps to its
+                        // section. The jump is delayed a frame so the
+                        // section is in rightColumnKeys after recomposition.
+                        if (on) anchorScope.launch { delay(120); jumpToAnchor("logo") }
                     },
                     valuesSummary = if (logoLayerOn) {
                         editingTemplate.logoPosition + " · " + editingTemplate.logoBoxSizePercent.toInt() + "% · " + (editingTemplate.logoOpacity * 100).toInt() + "%"
@@ -901,30 +893,15 @@ fun TemplateEditorScreen(
                     name = "الجسيمات (Particles)",
                     zIndex = 2,
                     isOn = particlesLayerOn,
+                    sectionId = "particles",
                     onToggle = { on ->
-                        setLayerExpanded("particles", on)
-                        onUpdate(
-                            if (!on) {
-                                editingTemplate.copy(particleEffect = AnimatedBackgroundType.NONE)
-                            } else {
-                                val src = storedTemplateForLayers
-                                if (src != null && src.particleEffect != AnimatedBackgroundType.NONE) {
-                                    editingTemplate.copy(
-                                        particleEffect = src.particleEffect,
-                                        particleOpacity = src.particleOpacity,
-                                        particleDensity = src.particleDensity,
-                                        particleColorHex = src.particleColorHex
-                                    )
-                                } else {
-                                    editingTemplate.copy(
-                                        particleEffect = AnimatedBackgroundType.EMBERS,
-                                        particleOpacity = 0.65f,
-                                        particleDensity = 1.0f,
-                                        particleColorHex = ""
-                                    )
-                                }
-                            }
-                        )
+                        // 1.9.15 items 10 + 13: flag-only — the Switch sets
+                        // only particlesEnabled; values are preserved. The
+                        // old ON auto-pick (EMBERS) is gone.
+                        onUpdate(editingTemplate.copy(particlesEnabled = on))
+                        // 1.9.15 item 11: enabling a layer jumps to its
+                        // section (delayed a frame for recomposition).
+                        if (on) anchorScope.launch { delay(120); jumpToAnchor("particles") }
                     },
                     valuesSummary = if (particlesLayerOn) {
                         editingTemplate.particleEffect.displayNameAr + " · " + (editingTemplate.particleOpacity * 100).toInt() + "% · density " + editingTemplate.particleDensity + if (editingTemplate.particleColorHex.isNotEmpty()) " · " + editingTemplate.particleColorHex else ""
@@ -939,52 +916,15 @@ fun TemplateEditorScreen(
                     name = "لون البطاقة (Card Color)",
                     zIndex = 1,
                     isOn = cardLayerOn,
+                    sectionId = "card",
                     onToggle = { on ->
-                        setLayerExpanded("card", on)
-                        if (!on) {
-                            onUpdate(
-                                editingTemplate.copy(
-                                    isPureTransparentBackground = true,
-                                    gradientEnabled = false,
-                                    cardGlowEnabled = false,
-                                    showAccentBorder = false
-                                )
-                            )
-                        } else {
-                            val src = storedTemplateForLayers
-                            val srcCardOn = src != null && ((!src.isPureTransparentBackground && src.bgOpacity > 0f) ||
-                                src.gradientEnabled || src.cardGlowEnabled || src.showAccentBorder)
-                            onUpdate(
-                                if (srcCardOn && src != null) {
-                                    editingTemplate.copy(
-                                        bgColorHex = src.bgColorHex,
-                                        bgOpacity = src.bgOpacity,
-                                        isPureTransparentBackground = src.isPureTransparentBackground,
-                                        gradientEnabled = src.gradientEnabled,
-                                        gradientColorHex2 = src.gradientColorHex2,
-                                        gradientAngleDeg = src.gradientAngleDeg,
-                                        gradientAnimation = src.gradientAnimation,
-                                        gradientSpeed = src.gradientSpeed,
-                                        cardGlowEnabled = src.cardGlowEnabled,
-                                        cardGlowColorHex = src.cardGlowColorHex,
-                                        cardGlowRadiusDp = src.cardGlowRadiusDp,
-                                        cardGlowOpacity = src.cardGlowOpacity,
-                                        showAccentBorder = src.showAccentBorder,
-                                        showAccentBorderWidthDp = src.showAccentBorderWidthDp,
-                                        accentOpacity = src.accentOpacity,
-                                        accentColorHex = src.accentColorHex
-                                    )
-                                } else {
-                                    editingTemplate.copy(
-                                        isPureTransparentBackground = false,
-                                        bgOpacity = 0.85f,
-                                        gradientEnabled = false,
-                                        cardGlowEnabled = false,
-                                        showAccentBorder = false
-                                    )
-                                }
-                            )
-                        }
+                        // 1.9.15 items 10 + 13: flag-only — the Switch sets
+                        // only cardEnabled; values are preserved. The old
+                        // ON auto-pick (0.85 opacity) is gone.
+                        onUpdate(editingTemplate.copy(cardEnabled = on))
+                        // 1.9.15 item 11: enabling a layer jumps to its
+                        // section (delayed a frame for recomposition).
+                        if (on) anchorScope.launch { delay(120); jumpToAnchor("card") }
                     },
                     valuesSummary = if (cardLayerOn) {
                         editingTemplate.bgColorHex + " · " + (editingTemplate.bgOpacity * 100).toInt() + "% · gradient " + (if (editingTemplate.gradientEnabled) "on" else "off") + " · glow " + (if (editingTemplate.cardGlowEnabled) "on" else "off") + " · border " + (if (editingTemplate.showAccentBorder) "on" else "off")
@@ -999,33 +939,15 @@ fun TemplateEditorScreen(
                     name = "الفيديو (Video)",
                     zIndex = 0,
                     isOn = videoLayerOn,
+                    sectionId = "motion",
                     onToggle = { on ->
-                        setLayerExpanded("video", on)
-                        onUpdate(
-                            if (!on) {
-                                editingTemplate.copy(animatedBackground = AnimatedBackgroundType.NONE)
-                            } else {
-                                val src = storedTemplateForLayers
-                                if (src != null && src.animatedBackground != AnimatedBackgroundType.NONE) {
-                                    editingTemplate.copy(
-                                        animatedBackground = src.animatedBackground,
-                                        animatedBackgroundOpacity = src.animatedBackgroundOpacity,
-                                        motionSpeed = src.motionSpeed,
-                                        videoLoopMode = src.videoLoopMode,
-                                        customVideoUrl = src.customVideoUrl,
-                                        customVideoId = src.customVideoId,
-                                        customVideoMuted = src.customVideoMuted
-                                    )
-                                } else {
-                                    editingTemplate.copy(
-                                        animatedBackground = AnimatedBackgroundType.GOLDEN_DIVINE_RAYS,
-                                        animatedBackgroundOpacity = 0.65f,
-                                        motionSpeed = 1.0f,
-                                        videoLoopMode = VideoLoopMode.FADE
-                                    )
-                                }
-                            }
-                        )
+                        // 1.9.15 items 10 + 13: flag-only — the Switch sets
+                        // only videoEnabled; values are preserved. The old
+                        // ON auto-pick (GOLDEN_DIVINE_RAYS) is gone.
+                        onUpdate(editingTemplate.copy(videoEnabled = on))
+                        // 1.9.15 item 11: enabling a layer jumps to its
+                        // section (delayed a frame for recomposition).
+                        if (on) anchorScope.launch { delay(120); jumpToAnchor("motion") }
                     },
                     valuesSummary = if (videoLayerOn) {
                         editingTemplate.animatedBackground.displayNameAr + " · speed " + editingTemplate.motionSpeed + " · " + editingTemplate.videoLoopMode.displayName
@@ -1915,38 +1837,15 @@ CollapsibleSection(
                         }
                     }
 
-                    Row(modifier = anchorModifier("bg-stream"), verticalAlignment = Alignment.CenterVertically) {
-                        Text("خلفية البث (Stream Background)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary, modifier = Modifier.weight(1f))
-                        InfoPopupButton("خلفية البث (Stream Background)", if (editorTab == 0) "تؤثر فقط في بث MJPEG ‏(/stream) حول تصميم الثلث السفلي — لا تؤثر في NDI ولا في صفحات /lower و/full." else "تُضبط خلفية البث من تبويب الثلث السفلي (Lower Third) — فبث MJPEG ‏(/stream) يعرض دائماً تصميم الثلث السفلي.")
-                    }
-                    Spacer(Modifier.height(4.dp))
-                    if (editorTab == 0) {
-                        // 1.9.13 (item 8): circular color dots, same as
-                        // the Setup tab — the dot IS the background.
-                        // Selected: 36dp + 3dp primary border;
-                        // unselected: 32dp + 1dp border. Transparent
-                        // renders as a bordered empty circle.
-                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically) {
-                            StreamBackgroundMode.entries.forEach { mode ->
-                                val dotColor = try {
-                                    Color(android.graphics.Color.parseColor(mode.colorHex))
-                                } catch (e: Exception) { bento.textSecondary }
-                                val dotSelected = editingTemplate.streamBackgroundMode == mode
-                                Surface(
-                                    shape = androidx.compose.foundation.shape.CircleShape,
-                                    color = dotColor,
-                                    border = androidx.compose.foundation.BorderStroke(
-                                        if (dotSelected) 3.dp else 1.dp,
-                                        if (dotSelected) bento.primary else bento.border
-                                    ),
-                                    modifier = Modifier
-                                        .size(if (dotSelected) 36.dp else 32.dp)
-                                        .clip(androidx.compose.foundation.shape.CircleShape)
-                                        .clickable { onUpdate(editingTemplate.copy(streamBackgroundMode = mode)) }
-                                ) {}
-                            }
-                        }
-                    }
+                    // 1.9.15 item 8: the Stream Background row + dots used to
+                    // live here at the end of the Motion Video section. They
+                    // moved to the preview header (above the preview) and
+                    // edit the ACTIVE tab's template directly — one tap
+                    // changes the preview AND the stream background. The
+                    // outdated info text ("does not affect NDI nor /lower
+                    // and /full") is NOT re-added anywhere: the mode drives
+                    // the /lower and /full page backgrounds (item 104, 1.9.12)
+                    // and MJPEG /stream (Lower template).
                     Spacer(Modifier.height(8.dp))                }
     }
 
@@ -2286,8 +2185,7 @@ CollapsibleSection(
         "glow" to ("التوهج (Glow)" to emptyList()),
         "particles" to ("الجسيمات (Particles)" to emptyList()),
         "motion" to ("الفيديو المتحرك (Motion Video)" to listOf(
-            "bg-motion" to "الخلفيات المتحركة (Motion Backgrounds)",
-            "bg-stream" to "خلفية البث (Stream Background)"
+            "bg-motion" to "الخلفيات المتحركة (Motion Backgrounds)"
         )),
         "frame" to ("الإطار والحشوة (Frame & Padding)" to listOf(
             "frame-framing" to "التأطير (Framing)",
@@ -3814,7 +3712,10 @@ fun BoxEditOverlay(template: LowerThirdTemplate, stageW: Int, stageH: Int, onTem
 }
 
 @Composable
-fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, previewBg: PreviewBackground, boxEditEnabled: Boolean = false, onTemplateChange: (LowerThirdTemplate) -> Unit = {}) {
+// 1.9.15 item 8: the preview renders the template's own streamBackgroundMode
+// directly (no local previewBg state any more) — the preview always shows
+// the active template's real stream background.
+fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, boxEditEnabled: Boolean = false, onTemplateChange: (LowerThirdTemplate) -> Unit = {}) {
     val bento = LocalBentoColors.current
     val context = LocalContext.current
     // v1.9.1: stage size (px) for the visual box editor overlay.
@@ -3833,8 +3734,14 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
             .border(1.5.dp, bento.border, RoundedCornerShape(14.dp))
             .onSizeChanged { stageSize = it }
     ) {
-        // Background Simulation
-        if (previewBg == PreviewBackground.CHECKERBOARD_TRANSPARENT) {
+        // Background Simulation — the template's stream background mode.
+        // TRANSPARENT_ALPHA renders as the checkerboard (the standard
+        // "this is transparent" visualization); DARK_STUDIO is #0A1128
+        // (was #0F172A — imperceptible); PURE_BLACK #000000; CHROMA_GREEN
+        // #00FF00. (MJPEG paints transparent as chroma green and HTTP
+        // leaves the stage truly transparent — those are per-output
+        // renderings of the same mode, not a preview difference.)
+        if (template.streamBackgroundMode == StreamBackgroundMode.TRANSPARENT_ALPHA) {
             Canvas(modifier = Modifier.fillMaxSize()) {
                 val squareSize = 20f
                 val cols = (size.width / squareSize).toInt() + 1
@@ -3851,17 +3758,17 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, pr
                 }
             }
         } else {
+            // The mode's own colorHex is the single source of truth
+            // (DARK_STUDIO #0A1128, PURE_BLACK #000000, CHROMA_GREEN
+            // #00FF00) — parsed, not hardcoded, so a mode change lands here
+            // automatically. The fallback is the dark studio color.
+            val streamBgColor = try {
+                Color(android.graphics.Color.parseColor(template.streamBackgroundMode.colorHex))
+            } catch (e: Exception) { Color(0xFF0A1128) }
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(
-                        when (previewBg) {
-                            PreviewBackground.SIMULATED_STUDIO_CAMERA -> Color(0xFF0F172A)
-                            PreviewBackground.PURE_BLACK -> Color(0xFF000000)
-                            PreviewBackground.CHROMA_GREEN -> Color(0xFF00FF00)
-                            else -> Color(0xFF0F172A)
-                        }
-                    )
+                    .background(streamBgColor)
             )
         }
         
@@ -4114,9 +4021,8 @@ fun PreviewLowerThirdDesign() {
     MyApplicationTheme {
         Box(modifier = Modifier.fillMaxSize().background(Color(0xFF0F172A))) {
             BroadcastPreviewViewport(
-                template = sampleTemplate.copy(showArabic = true, showEnglish = true),
-                verse = sampleVerse,
-                previewBg = PreviewBackground.SIMULATED_STUDIO_CAMERA
+                template = sampleTemplate.copy(showArabic = true, showEnglish = true, streamBackgroundMode = StreamBackgroundMode.DARK_STUDIO),
+                verse = sampleVerse
             )
         }
     }

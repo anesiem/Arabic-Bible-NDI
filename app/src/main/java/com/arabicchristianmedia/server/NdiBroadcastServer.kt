@@ -10273,6 +10273,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     L.textsize = TEXTSIZE_ORDER[ni];
     applyLayout();
     pushUrl();
+    // 1.9.14 (F1 fix): the font change alters row heights, so the
+    // list bottom padding (fitListPadding, item 27) must be
+    // re-measured now — no resize event fires on a font step.
+    fitListPadding();
   }
   function pushUrl() {
     var q = new URLSearchParams();

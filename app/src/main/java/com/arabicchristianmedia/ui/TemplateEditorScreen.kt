@@ -2339,13 +2339,24 @@ CollapsibleSection(
             // Each panel scrolls on its own; scrolling the right panel
             // never moves the preview.
             Column(Modifier.fillMaxSize()) {
-                Column(Modifier.padding(start = 14.dp, end = 14.dp, top = 14.dp)) { tabSwitcherBlock() }
-                Spacer(Modifier.height(12.dp))
-                Column(Modifier.padding(horizontal = 14.dp)) {
-                    // Batch item 6: the Save/Update buttons are gone — saving
-                    // lives in the Modified menu (tap the Modified chip in
-                    // the app-bar line).
-                    styleCardsRow()
+                // 1.9.14 item 20: tabs + style cards on one row (was two rows
+                // + a 12dp spacer) — same one-row pattern as the compact
+                // stageBlock since v1.9.5. The divider separates the switcher
+                // from the scrollable card list; each tab keeps its own
+                // styles (styleCardsRow filters by editorTab).
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    tabSwitcherBlock()
+                    VerticalDivider(color = bento.borderSubtle, modifier = Modifier.height(28.dp))
+                    Box(modifier = Modifier.weight(1f)) {
+                        // Batch item 6: the Save/Update buttons are gone — saving
+                        // lives in the Modified menu (tap the Modified chip in
+                        // the app-bar line).
+                        styleCardsRow()
+                    }
                 }
                 if (showHowItWorks) {
                     Column(Modifier.padding(start = 14.dp, end = 14.dp, top = 12.dp)) { tipsBlock() }

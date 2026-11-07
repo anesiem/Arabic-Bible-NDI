@@ -91,6 +91,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.arabicchristianmedia.data.ArabicTextFormatter
@@ -528,7 +529,8 @@ fun SermonListScreen(
                                                 canMoveUp = posInGroup > 0,
                                                 canMoveDown = posInGroup < groupSize - 1,
                                                 onMoveUp = { onMoveUp(entry) },
-                                                onMoveDown = { onMoveDown(entry) }
+                                                onMoveDown = { onMoveDown(entry) },
+                                                compactBodySize = sermonCompactBodySize
                                             )
                                         } else {
                                             SermonRow(
@@ -543,7 +545,9 @@ fun SermonListScreen(
                                                 canMoveUp = posInGroup > 0,
                                                 canMoveDown = posInGroup < groupSize - 1,
                                                 onMoveUp = { onMoveUp(entry) },
-                                                onMoveDown = { onMoveDown(entry) }
+                                                onMoveDown = { onMoveDown(entry) },
+                                                bodySize = sermonBodySize,
+                                                citationSize = sermonCitationSize
                                             )
                                         }
                                     }
@@ -864,7 +868,12 @@ private fun SermonRow(
     canMoveUp: Boolean = false,
     canMoveDown: Boolean = false,
     onMoveUp: () -> Unit = {},
-    onMoveDown: () -> Unit = {}
+    onMoveDown: () -> Unit = {},
+    // 1.9.15 item 12: verse font sizes, resolved in SermonListScreen
+    // (follow universal or the local override). SermonRow is a separate
+    // function, so the sizes arrive as params, not closure vals.
+    bodySize: TextUnit = 15.sp,
+    citationSize: TextUnit = 11.sp
 ) {
     val bento = LocalBentoColors.current
     val listColors = LocalListColors.current
@@ -943,7 +952,7 @@ private fun SermonRow(
                     ) {
                         Text(
                             text = verse.getFormattedArabicCitation(true),
-                            fontSize = sermonCitationSize,
+                            fontSize = citationSize,
                             fontWeight = FontWeight.Bold,
                             color = if (isLive) listColors.sermonLivePaleYellow else bento.primary
                         )
@@ -965,7 +974,7 @@ private fun SermonRow(
                     Spacer(modifier = Modifier.height(VerseRowSpec.CitationBodySpacing))
                     Text(
                         text = verse.arabicText,
-                        fontSize = sermonBodySize,
+                        fontSize = bodySize,
                         lineHeight = 24.sp,
                         color = if (isLive) listColors.sermonLivePaleYellow else bento.textPrimary,
                         textAlign = TextAlign.Right,
@@ -1042,7 +1051,10 @@ private fun SermonCompactRow(
     canMoveUp: Boolean = false,
     canMoveDown: Boolean = false,
     onMoveUp: () -> Unit = {},
-    onMoveDown: () -> Unit = {}
+    onMoveDown: () -> Unit = {},
+    // 1.9.15 item 12: verse font size, resolved in SermonListScreen.
+    // SermonCompactRow is a separate function, so it arrives as a param.
+    compactBodySize: TextUnit = 13.sp
 ) {
     val bento = LocalBentoColors.current
     val listColors = LocalListColors.current
@@ -1170,7 +1182,7 @@ private fun SermonCompactRow(
             Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = verse.arabicText,
-                fontSize = sermonCompactBodySize,
+                fontSize = compactBodySize,
                 color = if (isLive) listColors.sermonLivePaleYellow.copy(alpha = 0.9f) else bento.textSecondary,
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis,

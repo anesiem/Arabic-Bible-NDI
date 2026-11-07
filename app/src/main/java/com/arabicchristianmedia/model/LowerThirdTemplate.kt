@@ -646,6 +646,15 @@ data class LowerThirdTemplate(
      * no existing template changes how it renders.
      */
     /**
+     * Item 91: per-language vertical alignment of the verse block
+     * within the card (see [VerticalAlignment]). Model default is TOP;
+     * Lower factory templates set BOTTOM explicitly, and fromJson
+     * migrates old saves by feed (Full -> TOP, Lower -> BOTTOM), so
+     * no existing template changes how it renders.
+     */
+    val verticalAlignmentArabic: VerticalAlignment = VerticalAlignment.TOP,
+    val verticalAlignmentEnglish: VerticalAlignment = VerticalAlignment.TOP,
+    /**
      * 1.9.15 items 10 + 13: per-layer on/off flags. A layer is ON only when
      * its Switch is on — setting a value to transparent/none/empty no longer
      * turns the layer off by itself (that auto-close was a side effect of

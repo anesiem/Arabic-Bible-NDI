@@ -6247,7 +6247,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                         )
                     }
                     else -> null
-                }
+                } else null
 
                 if (shader != null) {
                     paint.shader = shader

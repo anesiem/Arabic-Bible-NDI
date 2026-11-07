@@ -6,11 +6,14 @@ import androidx.compose.ui.unit.sp
 /**
  * R4: ONE row spec for verse/sermon/recents rows (Library card, Sermon
  * row, recents sheet row). Body text size stays per-list by design: the
- * Library uses the reader's font-size setting, sermon rows 15sp, sheet
- * rows 14sp. The remote page follows the same structure through CSS
- * variables (R5); its absolute px sizes stay larger because the remote
- * page is read at a glance during services and CSS px do not scale with
- * the tablet's large system font the way sp does.
+ * Library uses the reader's font-size setting, sermon rows follow the
+ * sermon font setting (null = universal reader size; expanded body =
+ * that size, compact body 2sp smaller, citation = body x 11/14 min 9sp
+ * — 1.9.15 item 12), sheet rows 14sp. The remote page follows the same
+ * structure through CSS variables (R5); its absolute px sizes stay
+ * larger because the remote page is read at a glance during services
+ * and CSS px do not scale with the tablet's large system font the way
+ * sp does.
  */
 object VerseRowSpec {
     val RowPadding = 12.dp

@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Share
@@ -49,6 +50,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
@@ -150,11 +152,21 @@ fun SermonListScreen(
     onMoveUp: (SermonEntry) -> Unit = {},
     onMoveDown: (SermonEntry) -> Unit = {},
     // 1.9.3: Undo last delete callback.
-    onUndo: () -> Unit = {}
+    onUndo: () -> Unit = {},
+    // 1.9.15 item 12: sermon list font — null = follow universal.
+    // Defaults to a no-op so previews do not need it.
+    onSetSermonFontSize: (Int?) -> Unit = {}
 ) {
     val bento = LocalBentoColors.current
     val listColors = LocalListColors.current
     val playlist = uiState.sermonPlaylist
+    // 1.9.15 item 12: sermon font — follow universal (reader size) by
+    // default, or the local override. Citation keeps the 14->11
+    // body/citation ratio. Compact body is 2sp smaller (min 10sp).
+    val sermonBodySp = uiState.sermonFontSize ?: uiState.readerFontSize
+    val sermonBodySize = sermonBodySp.sp
+    val sermonCitationSize = (sermonBodySp * 11 / 14).coerceAtLeast(9).sp
+    val sermonCompactBodySize = (sermonBodySp - 2).coerceAtLeast(10).sp
     // Theme bands + recents marker (from the selected app theme).
     // Item 6: the same recents color marks recent verses here as in the
     // Library list (live still wins over the marker).
@@ -170,6 +182,7 @@ fun SermonListScreen(
     var renameInput by remember { mutableStateOf("") }
     var deleteTarget by remember { mutableStateOf<SavedSermon?>(null) }
     var showClearConfirm by remember { mutableStateOf(false) }
+    var sermonFontDialog by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     // Batch-3 sermon redesign: grouping mode (0=Original, 1=By Book, 2=OT/NT),
@@ -251,6 +264,16 @@ fun SermonListScreen(
                     Icon(
                         imageVector = Icons.Filled.Info,
                         contentDescription = "تلميحات (Hints)",
+                        tint = bento.textSecondary
+                    )
+                }
+                // 1.9.15 item 12: per-section font gear (same pattern as
+                // the recents sheet). Sits in the slim header row — no
+                // list space taken (sacred-screen-space rule).
+                IconButton(onClick = { sermonFontDialog = true }) {
+                    Icon(
+                        imageVector = Icons.Filled.Settings,
+                        contentDescription = "حجم خط آيات العظة",
                         tint = bento.textSecondary
                     )
                 }
@@ -577,6 +600,44 @@ fun SermonListScreen(
             )
         }
 
+        // 1.9.15 item 12: per-section font dialog — "Follow universal"
+        // (default) + local sizes. Same pattern as the recents sheet.
+        if (sermonFontDialog) {
+            AlertDialog(
+                onDismissRequest = { sermonFontDialog = false },
+                title = { Text("حجم خط آيات العظة", fontSize = 15.sp, fontWeight = FontWeight.Bold) },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        val followUniversal = uiState.sermonFontSize == null
+                        Row(
+                            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
+                                .clickable { onSetSermonFontSize(null); sermonFontDialog = false }
+                                .padding(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(selected = followUniversal, onClick = { onSetSermonFontSize(null); sermonFontDialog = false })
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("اتبع العام (Follow universal: ${uiState.readerFontSize}sp)", fontSize = 13.sp)
+                        }
+                        listOf(12, 14, 16, 18, 20, 24).forEach { size ->
+                            val selected = uiState.sermonFontSize == size
+                            Row(
+                                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
+                                    .clickable { onSetSermonFontSize(size); sermonFontDialog = false }
+                                    .padding(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                RadioButton(selected = selected, onClick = { onSetSermonFontSize(size); sermonFontDialog = false })
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("$size sp", fontSize = 13.sp)
+                            }
+                        }
+                    }
+                },
+                confirmButton = {}
+            )
+        }
+
         // ── Save dialog ─────────────────────────────────────────────────
         if (showSaveDialog) {
             AlertDialog(
@@ -882,7 +943,7 @@ private fun SermonRow(
                     ) {
                         Text(
                             text = verse.getFormattedArabicCitation(true),
-                            fontSize = VerseRowSpec.CitationSize,
+                            fontSize = sermonCitationSize,
                             fontWeight = FontWeight.Bold,
                             color = if (isLive) listColors.sermonLivePaleYellow else bento.primary
                         )
@@ -904,7 +965,7 @@ private fun SermonRow(
                     Spacer(modifier = Modifier.height(VerseRowSpec.CitationBodySpacing))
                     Text(
                         text = verse.arabicText,
-                        fontSize = 15.sp,
+                        fontSize = sermonBodySize,
                         lineHeight = 24.sp,
                         color = if (isLive) listColors.sermonLivePaleYellow else bento.textPrimary,
                         textAlign = TextAlign.Right,
@@ -1109,7 +1170,7 @@ private fun SermonCompactRow(
             Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = verse.arabicText,
-                fontSize = 13.sp,
+                fontSize = sermonCompactBodySize,
                 color = if (isLive) listColors.sermonLivePaleYellow.copy(alpha = 0.9f) else bento.textSecondary,
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis,

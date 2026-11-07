@@ -760,7 +760,9 @@ class MainActivity : ComponentActivity() {
                                 onMoveUp = { viewModel.moveSermonEntry(it, -1) },
                                 onMoveDown = { viewModel.moveSermonEntry(it, +1) },
                                 // 1.9.3: Undo last delete.
-                                onUndo = { viewModel.undoLastDelete() }
+                                onUndo = { viewModel.undoLastDelete() },
+                                // 1.9.15 item 12: sermon list font.
+                                onSetSermonFontSize = { viewModel.setSermonFontSize(it) }
                             )
                         }
                     }

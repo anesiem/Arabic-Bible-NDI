@@ -130,6 +130,10 @@ data class BibleNdiUiState(
     // universal readerFontSize; a value = local override for the recents
     // sheet only (persisted; "universal size later if he dislikes it").
     val recentsFontSize: Int? = null,
+    // 1.9.15 item 12: per-section sermon font size. Null = follow the
+    // universal readerFontSize; a value = local override for the sermon
+    // list only (persisted). Same pattern as recentsFontSize.
+    val sermonFontSize: Int? = null,
     // Item 92: Library grid direction — false = LTR (default, first
     // item top-left), true = RTL (first item top-right). Books +
     // chapters flip together. Persisted in ui_prefs.
@@ -920,6 +924,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         } catch (e: Exception) { AppThemeMode.SYSTEM }
         val keepOn = prefs?.getBoolean("keep_screen_on", true) ?: true
         val recentsFontRaw = prefs?.getInt("recents_font_size", -1) ?: -1
+        val sermonFontRaw = prefs?.getInt("sermon_font_size", -1) ?: -1
         val libraryGridRtl = prefs?.getBoolean("library_grid_rtl", false) ?: false
         _uiState.value = _uiState.value.copy(
             readerFontSize = fontSize,
@@ -927,6 +932,8 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             isKeepScreenOn = keepOn,
             // One-update item 3: -1 = follow universal (the default).
             recentsFontSize = if (recentsFontRaw < 0) null else recentsFontRaw.coerceIn(12, 36),
+            // 1.9.15 item 12: -1 = follow universal (the default).
+            sermonFontSize = if (sermonFontRaw < 0) null else sermonFontRaw.coerceIn(12, 36),
             // Item 92: default LTR.
             libraryGridRtl = libraryGridRtl
         )
@@ -939,6 +946,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             ?.putString("app_theme_mode", state.appThemeMode.name)
             ?.putBoolean("keep_screen_on", state.isKeepScreenOn)
             ?.putInt("recents_font_size", state.recentsFontSize ?: -1)
+            ?.putInt("sermon_font_size", state.sermonFontSize ?: -1)
             ?.putBoolean("library_grid_rtl", state.libraryGridRtl)
             ?.apply()
     }
@@ -949,6 +957,15 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
      */
     fun setRecentsFontSize(size: Int?) {
         _uiState.value = _uiState.value.copy(recentsFontSize = size?.coerceIn(12, 36))
+        persistUiPrefs()
+    }
+
+    /**
+     * 1.9.15 item 12: sermon list font — null follows the universal
+     * reader size, a value is the list's own local override. Persisted.
+     */
+    fun setSermonFontSize(size: Int?) {
+        _uiState.value = _uiState.value.copy(sermonFontSize = size?.coerceIn(12, 36))
         persistUiPrefs()
     }
 

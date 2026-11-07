@@ -1620,7 +1620,6 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       flex-direction: column;
       justify-content: flex-end;
     }
-    }
 
     /* Stage Container (Full Show Mode) */
     /* v1.9.2 (#7): the Full box is bottom-anchored and stretched like
@@ -9210,7 +9209,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
      language; they call POST /api/sermons/current/prev|next. */
   #controlBar #prevBtn, #controlBar #nextBtn { width: auto; flex: none; padding: 12px 14px; min-height: 48px; font-size: 14px; font-weight: 700; background: transparent; border: 1px solid var(--chrome-border, #334155); color: inherit; border-radius: 16px; cursor: pointer; }
   #controlBar #clearBtn:active { transform: scale(0.98); opacity: 0.9; }
-  .vlist { margin-top: 8px; max-height: 52vh; overflow-y: auto; min-height: 120px; transition: opacity 0.15s; }
+  .vlist { margin-top: 8px; max-height: 52dvh; overflow-y: auto; min-height: 120px; transition: opacity 0.15s; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
   /* v1.9.2 (#5): while a chapter loads, the current verses stay in place
      (dimmed) — the list no longer collapses to a Loading line and flashes. */
   .vlist.loading { opacity: 0.45; }
@@ -9229,7 +9228,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     #recentCard { grid-area: recent; display: flex; flex-direction: column; }
     #browseCard { grid-area: browse; display: flex; flex-direction: column; }
     .status { grid-area: status; }
-    .vlist { max-height: 66vh; flex: 1; }
+    .vlist { max-height: 66dvh; flex: 1; }
   }
   /* 1.9.13 (item 9): tighter verse rows — padding 12px → 8px, so
      more verses fit on a phone screen. The verse number (.vn)
@@ -9251,10 +9250,16 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   /* Item 30 (1.9.10): ON AIR at-a-glance signal — the live verse's text
      tints red while it is on air (the topRef already tints red; the row
      text is the second signal). Light red #FCA5A5 keeps 6.1:1 contrast
-     on the navy live background. Toggled via body.onair in renderOnAir. */
-  body.onair .vrow.live .va, body.onair .vrow.live .ve { color: #FCA5A5; }
-  /* Item 20 (1.9.8): persistent synced-verse highlight — high contrast. */
-  .vrow.synced-live { background: var(--live-bg, #1B3A5C); border: 3px solid var(--live-yellow, #F5D76E); border-radius: 10px; color: #FFFFFF; outline: 2px solid var(--live-yellow, #F5D76E); outline-offset: 2px; }
+     on the navy live background. Toggled via body.onair in renderOnAir.
+     1.9.15 item 1: the tint covers .synced-live too — the synced verse
+     is the live verse from the first paint (SSE), not only after the
+     3-second poll re-marks it .live. */
+  body.onair .vrow.live .va, body.onair .vrow.live .ve, body.onair .vrow.synced-live .va, body.onair .vrow.synced-live .ve { color: #FCA5A5; }
+  /* Item 20 (1.9.8): persistent synced-verse highlight — high contrast.
+     1.9.15 item 1: one highlight, not two — .synced-live is now identical
+     to .live (2px border, no outline halo), so the verse does not change
+     appearance when the poll re-marks it .live up to 3s later. */
+  .vrow.synced-live { background: var(--live-bg, #1B3A5C); border: 2px solid var(--live-yellow, #F5D76E); border-radius: 10px; color: #FFFFFF; }
   .vrow.recent { border-inline-start: 3px solid var(--recents, #0D9488); padding-inline-start: 9px; }
   /* 2026-10-28 remote redesign: tablet RTL control order (Clear
      rightmost, then smaller ON AIR, live pill, Arabic, book, chapter
@@ -9410,7 +9415,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   body.force-dark .livepill.on { background: rgba(220,38,38,0.22); border-color: rgba(220,38,38,0.7); color: #fecaca; }
   body.force-dark .livepill.disconnected { background: rgba(245,158,11,0.22); border-color: rgba(245,158,11,0.7); color: #fde68a; }
   /* 2026-11-02 item 19: single clean rule for browse-bar selects (was 18px/13px conflict). */
-  #browseBar select { font-size: 14px !important; padding: 8px 10px !important; max-width: 100%; }
+  #browseBar select { font-size: 16px !important; padding: 8px 10px !important; max-width: 100%; }
   /* 2026-11-02 item 32: big-screen layout — constrain width, fix ON AIR/status. */
   @media (min-width: 768px) {
     body { align-items: center; }
@@ -9421,25 +9426,26 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
      stylesheet, NOT inline. The inline display:flex used to override
      the collapse rule below (inline beats stylesheet), so the toggle
      flipped but the bars stayed visible. With display in the CSS,
-     body.controls-hidden wins (higher specificity) and the bars hide. */
+     body.ref-hidden wins (higher specificity) and the bar hides. */
   #refBar, #browseBar { display: flex; align-items: center; gap: 8px; }
   #refBar { flex-wrap: wrap; }
-  /* 1.9.13 (item 9): collapsible controls — hide the ref + browse
-     bars to give the verse list the full screen on a phone. The
-     header (live ref + ON AIR + the toggle itself) stays visible
-     so the toggle is always reachable. */
-  body.controls-hidden #refBar, body.controls-hidden #browseBar { display: none; }
+  /* 1.9.15 item 3: the Reference bar (quick-ref input) is collapsible —
+     it starts hidden and is toggled by the Reference icon in the browse
+     bar. The book + chapter (browse bar) are ALWAYS visible — collapsing
+     never hides them. (The old collapse chevron hid both bars and is gone.) */
+  body.ref-hidden #refBar { display: none; }
 </style>
 </head>
-<body>
+<body class="ref-hidden">
 <header id="topBar">
   <!-- v1.9.5: reworked top bar — [gear][sync][kbd] left, ref centered, ON AIR right. Info icon removed. -->
+  <!-- 1.9.15 item 3: the collapse chevron is gone (it hid the book +
+       chapter too, and its two glyphs jumped). The book + chapter live
+       in the browse bar below and are always visible; the Reference
+       icon there toggles the reference bar, and the Recents icon opens
+       the Recents popup. -->
   <button id="gearTop" aria-label="Settings" onclick="togglePanel()">&#9881;</button>
   <button id="syncBtn" aria-label="Toggle auto-sync" onclick="toggleSync()" style="font-size:18px;" title="Auto-sync with tablet">&#128279;</button>
-  <!-- 1.9.13 (item 9): collapse toggle — hides the ref + browse bars
-       so the verse list gets the full screen. ⌃ = controls shown,
-       ⌄ = controls hidden. -->
-  <button id="collapseBtn" aria-label="Hide controls" onclick="toggleControls()" style="font-size:18px;" title="Hide/show controls">&#8963;</button>
   <!-- Item 32: keyboard shortcuts moved into the gear panel (learn-once reference). -->
   <div id="topRef" dir="auto">—</div>
   <button class="onair off" id="onAirBtnTop" onclick="toggleOnAir()">OFF AIR</button>
@@ -9447,9 +9453,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 <!-- Item 71 (1.9.9): CONNECTION LOST banner — shown while the sync link is down. -->
 <div id="connBanner" hidden style="background:#dc2626;color:#fff;text-align:center;font-weight:bold;font-size:14px;padding:8px 12px;">⚠ CONNECTION LOST — reconnecting…</div>
 <main>
-  <!-- v1.9.5: Row 2 — [Recent] left, [ref input with Go inside] right -->
+  <!-- v1.9.5: Row 2 — [ref input with Go inside] (reference bar, starts
+       hidden — toggled by the Reference icon in the browse bar below). -->
+  <!-- 1.9.15 item 3: the Recents button moved to the browse bar (it is
+       an icon there); the reference bar holds only the quick-ref input. -->
   <div class="card" id="refBar" dir="rtl">
-    <button id="recentsBtn" onclick="toggleRecents()" aria-label="Recents">&#128341; Recent</button>
     <!-- 2026-11-02: flexbox layout (was absolute positioning, broke on narrow RTL screens). -->
     <div style="display:flex;flex:1;gap:4px;max-width:320px;min-width:0;">
       <input id="ref" type="text" inputmode="text" autocomplete="off"
@@ -9461,6 +9469,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     </div>
   </div>
   <!-- v1.9.5: Row 3 — [prev][next][chapter][book] (book rightmost) -->
+  <!-- 1.9.15 item 3: the browse bar is ALWAYS visible (book + chapter
+       never collapse). Two icons on the right: Recents (opens the
+       Recents popup) and Reference (expands/collapses the reference
+       bar above; starts collapsed/hidden). -->
   <div class="card" id="browseBar" dir="ltr">
     <!-- Item 29: RTL visual order — right arrow (previous) before left arrow (next). Actions unchanged. -->
     <button id="nextChBtn" onclick="stepChapter(1)" aria-label="Next chapter">&#9664;</button>
@@ -9468,6 +9480,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     <!-- Item 19 (1.9.8): RTL — arrows point in reading direction (previous=right, next=left). -->
     <select id="chSel" aria-label="Chapter"></select>
     <select id="bookSel" aria-label="Book"><option value="">Loading books…</option></select>
+    <button id="recentsBtn" onclick="toggleRecents()" aria-label="Recents" style="font-size:18px;" title="Recents">&#128341;</button>
+    <button id="refBtn" onclick="toggleRefBar()" aria-label="Reference" style="font-size:18px;" title="Show/hide reference bar">&#128221;</button>
   </div>
   <!-- Recents popup with close button -->
   <div id="recentsPopup" hidden style="position:fixed;top:10px;left:10px;right:10px;bottom:10px;max-width:600px;margin:0 auto;background:var(--chrome-card,#fff);border:1px solid var(--chrome-border,#e2e8f0);border-radius:12px;z-index:90;overflow:hidden;">
@@ -9616,17 +9630,17 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     updateSyncBtn();
   }
   updateSyncBtn();
-  // 1.9.13 (item 9): collapse/expand the ref + browse bars so the
-  // verse list gets the full screen on a phone. The header (live
-  // ref + ON AIR + this toggle) stays visible. State is kept in
-  // the body class; the chevron flips to show the action.
-  function toggleControls() {
-    var hidden = document.body.classList.toggle('controls-hidden');
-    var btn = document.getElementById('collapseBtn');
+  // 1.9.15 item 3: expand/collapse the reference bar (quick-ref input)
+  // only. The book + chapter (browse bar) are always visible — the old
+  // collapse chevron hid them too and is gone. The bar starts hidden
+  // (body.ref-hidden on load); the Reference icon toggles it. One glyph,
+  // no swap, so nothing jumps.
+  function toggleRefBar() {
+    var hidden = document.body.classList.toggle('ref-hidden');
+    var btn = document.getElementById('refBtn');
     if (btn) {
-      btn.innerHTML = hidden ? '&#8964;' : '&#8963;';
-      btn.setAttribute('aria-label', hidden ? 'Show controls' : 'Hide controls');
-      btn.setAttribute('title', hidden ? 'Show controls' : 'Hide controls');
+      btn.setAttribute('aria-label', hidden ? 'Show reference bar' : 'Hide reference bar');
+      btn.setAttribute('title', hidden ? 'Show reference bar' : 'Hide reference bar');
     }
   }
   // Shared helper: find book index by bookId (replaces 3 duplicated loops).
@@ -9716,16 +9730,37 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         if (!syncEnabled) return;
         try {
           var d = JSON.parse(e.data);
+          // 1.9.15 item 1: set the live verse BEFORE loading the chapter,
+          // so markLiveRow() (called at the end of loadChapter) marks the
+          // row .live immediately — with the red ON AIR tint from the first
+          // paint — instead of waiting up to 3s for the next poll.
+          live.bookId = d.bookId || '';
+          live.chapter = d.chapter || 0;
+          live.verse = d.verse || 0;
           // Find book index by bookId, update dropdowns, load chapter, scroll to verse.
           var bookIdx = findBookIndex(d.bookId);
           if (bookIdx >= 0) {
+            // 1.9.15 item 3: skip the full re-render when the book and
+            // chapter are unchanged — the verse list already shows this
+            // chapter, so just scroll + mark. Re-rendering rewrote the
+            // chapter dropdown and the whole list (scrollTop = 0,
+            // fitListPadding) on EVERY verse change, which pulsed the
+            // dropdown. fillChapters is skipped too when the book is
+            // unchanged (the chapter options are already correct).
+            var sameBook = (bookIdx === curBookIdx);
+            var sameChapter = (d.chapter === curChapter);
             curBookIdx = bookIdx;
             bookSel.value = String(bookIdx);
-            fillChapters(books[bookIdx]);
+            if (!sameBook) fillChapters(books[bookIdx]);
             chSel.value = String(d.chapter);
-            loadChapter(d.chapter, function() {
+            if (sameBook && sameChapter) {
+              markLiveRow();
               scrollToVerse(d.verse);
-            });
+            } else {
+              loadChapter(d.chapter, function() {
+                scrollToVerse(d.verse);
+              });
+            }
           }
         } catch (err) {}
       });

@@ -1977,9 +1977,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
              sparkle over the card, on both feeds. It used to sit at
              z-1 BELOW the card-fill overlay, so with an animated
              background on the overlay hid the particles entirely.
-             Item 2: the canvas is sized from the STAGE (see
-             startParticles), not the animated layer — Lower mode
-             zeroes the animated layer out, which sized it 1×1. -->
+             1.9.14 (item 4): the canvas STAYS in the card — NDI clips
+             particles to the card rect too (drawParticleEffectLayer),
+             so card-confined is parity. Its buffer is sized from its
+             OWN box (see startParticles), 1:1, so the field is not
+             squeezed: sizing it from the stage (1.9.13) made the
+             buffer stage-sized while the box stayed card-sized. -->
         <canvas id="particle-canvas" style="display:none; position:absolute; inset:0; width:100%; height:100%; pointer-events:none; z-index:2;"></canvas>
 
         <div class="card-inner-content">
@@ -2054,15 +2057,22 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       const spd = (speed === undefined || speed === null) ? 1 : parseFloat(speed);
       const canvas = particleCanvas;
       const ctx = canvas.getContext('2d');
-      // 1.9.13 (item 2): size the canvas from the STAGE, not the
-      // animated-bg layer. In Lower mode the animated layer is
-      // zeroed out (its gradient is moved onto the card), so its
-      // rect is 1×1 and the canvas stayed invisible. The stage
-      // always has the real viewport size.
-      const rect = stage.getBoundingClientRect();
+      // 1.9.14 (item 4): size the buffer from the canvas's OWN box,
+      // not the stage. The canvas lives inside #card-box (inset:0,
+      // 100%) so its box IS the card — and NDI draws particles
+      // clipped to the card rect too (drawParticleEffectLayer takes
+      // boxLeft/boxTop/boxRight/boxBottom), so card-confined is
+      // parity, not a bug. Sizing the buffer from the stage (1.9.13)
+      // made it stage-sized while the box stayed card-sized, so
+      // particles were drawn stage-wide then squeezed vertically
+      // into the card. Show it first (display:none measures 0×0),
+      // then read its own rect for a 1:1 buffer; fall back to the
+      // stage only if the card isn't laid out yet.
+      canvas.style.display = 'block';
+      let rect = canvas.getBoundingClientRect();
+      if (rect.width < 2 || rect.height < 2) rect = stage.getBoundingClientRect();
       canvas.width = Math.max(1, Math.floor(rect.width));
       canvas.height = Math.max(1, Math.floor(rect.height));
-      canvas.style.display = 'block';
       const ss = getStageScale() || 1;
       // Item 66 (1.9.9): density multiplier (1.0 = current count).
       // Item 76: clouds/doves are few big shapes, not a field.
@@ -2329,12 +2339,15 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       const spd = (speed === undefined || speed === null) ? 1 : parseFloat(speed);
       const canvas = particleCanvas;
       const ctx = canvas.getContext('2d');
-      // 1.9.13 (item 2): size from the STAGE (see startParticles) —
-      // the animated-bg layer is zeroed out in Lower mode.
-      const rect = stage.getBoundingClientRect();
+      // 1.9.14 (item 4): size from the canvas's OWN box (see
+      // startParticles) — the canvas is card-sized, and NDI clips
+      // particles to the card rect too, so the buffer must match
+      // the box 1:1 or the field is squeezed into the card.
+      canvas.style.display = 'block';
+      let rect = canvas.getBoundingClientRect();
+      if (rect.width < 2 || rect.height < 2) rect = stage.getBoundingClientRect();
       canvas.width = Math.max(1, Math.floor(rect.width));
       canvas.height = Math.max(1, Math.floor(rect.height));
-      canvas.style.display = 'block';
       const baseAlpha = Math.max(0, Math.min(255, Math.floor(opacity * 255)));
       // Item 66 (1.9.9): density multiplier (1.0 = 7 rays).
       const dens = (density === undefined || density === null || isNaN(parseFloat(density))) ? 1 : Math.max(0.25, Math.min(2, parseFloat(density)));
@@ -3936,14 +3949,28 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       if (grad && !data.isPureTransparentBackground) {
         if (data.gradientEnabled) {
           // Fix #11 (item 85): the template's explicit gradient wins
-          // (NDI parity — NDI's gradientEnabled branch skips the
-          // particle/video shader). Wipe the layer's effect gradient
-          // (class + inline) and leave the card on Section 6's template
-          // gradient. Particles still run — their canvas is a direct
-          // child of the card, not the layer.
-          animBgLayer.className = 'animated-bg-layer';
-          animBgLayer.style.opacity = '0';
-          clearGrad(animBgLayer);
+          // for the CARD (Section 6 paints it). 1.9.14 (item 1): but
+          // the animated background is a SEPARATE layer (video z-0,
+          // behind the card) — wiping the layer here discarded it
+          // entirely, so candle_glow never rendered on HTTP /lower
+          // when the template gradient was on. Keep the anim class +
+          // opacity set above for a procedural animated background;
+          // clear only the inline applyGrad state so the class
+          // background shows through. (No procedural background:
+          // the layer stays empty as before.)
+          if (animType !== 'none' && animType !== 'custom_video') {
+            animBgLayer.style.backgroundImage = '';
+            animBgLayer.style.backgroundSize = '';
+            animBgLayer.classList.remove('bg-flow');
+            animBgLayer.classList.remove('bg-breath');
+            animBgLayer.classList.remove('bg-pulse');
+            animBgLayer.style.animationDuration = '';
+            animBgLayer.style.animationPlayState = '';
+          } else {
+            animBgLayer.className = 'animated-bg-layer';
+            animBgLayer.style.opacity = '0';
+            clearGrad(animBgLayer);
+          }
           cardGradOn = false;
         } else if (isFull) {
           // The layer IS the frame background; the card goes clear so the
@@ -9279,6 +9306,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     body > .card, body > #refBar, body > #browseBar { max-width: 800px; width: 100%; }
     #topBar { max-width: 800px; width: 100%; }
   }
+  /* 1.9.14 (item 2): the ref + browse bars are flex rows — in the
+     stylesheet, NOT inline. The inline display:flex used to override
+     the collapse rule below (inline beats stylesheet), so the toggle
+     flipped but the bars stayed visible. With display in the CSS,
+     body.controls-hidden wins (higher specificity) and the bars hide. */
+  #refBar, #browseBar { display: flex; align-items: center; gap: 8px; }
+  #refBar { flex-wrap: wrap; }
   /* 1.9.13 (item 9): collapsible controls — hide the ref + browse
      bars to give the verse list the full screen on a phone. The
      header (live ref + ON AIR + the toggle itself) stays visible
@@ -9303,7 +9337,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 <div id="connBanner" hidden style="background:#dc2626;color:#fff;text-align:center;font-weight:bold;font-size:14px;padding:8px 12px;">⚠ CONNECTION LOST — reconnecting…</div>
 <main>
   <!-- v1.9.5: Row 2 — [Recent] left, [ref input with Go inside] right -->
-  <div class="card" id="refBar" dir="rtl" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+  <div class="card" id="refBar" dir="rtl">
     <button id="recentsBtn" onclick="toggleRecents()" aria-label="Recents">&#128341; Recent</button>
     <!-- 2026-11-02: flexbox layout (was absolute positioning, broke on narrow RTL screens). -->
     <div style="display:flex;flex:1;gap:4px;max-width:320px;min-width:0;">
@@ -9316,7 +9350,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     </div>
   </div>
   <!-- v1.9.5: Row 3 — [prev][next][chapter][book] (book rightmost) -->
-  <div class="card" id="browseBar" dir="ltr" style="display:flex;align-items:center;gap:8px;">
+  <div class="card" id="browseBar" dir="ltr">
     <!-- Item 29: RTL visual order — right arrow (previous) before left arrow (next). Actions unchanged. -->
     <button id="nextChBtn" onclick="stepChapter(1)" aria-label="Next chapter">&#9664;</button>
     <button id="prevChBtn" onclick="stepChapter(-1)" aria-label="Previous chapter">&#9654;</button>

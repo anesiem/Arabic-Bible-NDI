@@ -36,7 +36,13 @@ data class BentoColors(
     val warning: Color,
     // Item 96: the live-verse yellow, resolved from the active theme's
     // liveYellow token (same #F5D76E in every theme today).
-    val liveYellow: Color
+    val liveYellow: Color,
+    // 1.9.14 (item 8): fixed layer-code colors for the Editor Layers
+    // panel + section headers (same in every theme).
+    val layerLogo: Color,
+    val layerParticles: Color,
+    val layerCard: Color,
+    val layerVideo: Color
 )
 
 val LocalBentoColors = staticCompositionLocalOf {
@@ -59,7 +65,11 @@ val LocalBentoColors = staticCompositionLocalOf {
         liveRedBright = BentoLiveRedBright,
         green = BentoGreen,
         warning = Color(0xFFB45309),
-        liveYellow = Color(ColorThemes.CLASSIC.light.liveYellow)
+        liveYellow = Color(ColorThemes.CLASSIC.light.liveYellow),
+        layerLogo = Color(ColorThemes.CLASSIC.light.layerLogo),
+        layerParticles = Color(ColorThemes.CLASSIC.light.layerParticles),
+        layerCard = Color(ColorThemes.CLASSIC.light.layerCard),
+        layerVideo = Color(ColorThemes.CLASSIC.light.layerVideo)
     )
 }
 
@@ -132,7 +142,11 @@ private fun bentoColorsFromTheme(tokens: ColorThemeTokens, isDark: Boolean): Ben
         liveRedBright = BentoLiveRedBright,
         green = BentoGreen,
         warning = Color(tokens.warning),
-        liveYellow = Color(tokens.liveYellow)
+        liveYellow = Color(tokens.liveYellow),
+        layerLogo = Color(tokens.layerLogo),
+        layerParticles = Color(tokens.layerParticles),
+        layerCard = Color(tokens.layerCard),
+        layerVideo = Color(tokens.layerVideo)
     )
 }
 

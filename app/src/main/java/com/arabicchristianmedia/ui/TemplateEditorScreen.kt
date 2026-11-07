@@ -3325,18 +3325,28 @@ fun ColorGradeSpectrumModal(
         return if (opacityValue >= 0.999f) "#$rgb"
                else String.format("#%02X%s", (opacityValue * 255).toInt().coerceIn(0, 255), rgb)
     }
-    val bento = LocalBentoColors.current
-    // Seed the sliders from the current colour when it parses.
-    androidx.compose.runtime.LaunchedEffect(currentHex) {
+    // 1.9.14 item 17: one-way sync fix — the preset tap and the hex
+    // field used to write hexInput only, leaving the H/S/B/opacity
+    // sliders frozen at the old colour (and a later slider drag then
+    // rebuilt the hex from the stale values, discarding the preset).
+    // applyHex keeps hex AND sliders in sync from any hex source.
+    fun applyHex(hex: String) {
+        hexInput = hex
         try {
-            val parsed = android.graphics.Color.parseColor(currentHex)
+            val parsed = android.graphics.Color.parseColor(hex)
             val hsv = FloatArray(3)
             android.graphics.Color.colorToHSV(parsed, hsv)
             hueValue = hsv[0]; satValue = hsv[1]; valValue = hsv[2]
             opacityValue = android.graphics.Color.alpha(parsed) / 255f
         } catch (e: Exception) {
-            // Keep defaults; the hex field stays authoritative.
+            // Invalid/incomplete hex (mid-typing): keep the sliders;
+            // the hex field stays authoritative.
         }
+    }
+    val bento = LocalBentoColors.current
+    // Seed the sliders from the current colour when it parses.
+    androidx.compose.runtime.LaunchedEffect(currentHex) {
+        applyHex(currentHex)
     }
 
     val presetGrades = listOf(
@@ -3506,7 +3516,7 @@ fun ColorGradeSpectrumModal(
                                     .clip(CircleShape)
                                     .background(Color(android.graphics.Color.parseColor(hex)))
                                     .border(if (hexInput.equals(hex, true)) 3.dp else 1.dp, if (hexInput.equals(hex, true)) bento.primary else Color.Gray.copy(alpha = 0.3f), CircleShape)
-                                    .clickable { hexInput = withOpacity(hex) }
+                                    .clickable { applyHex(withOpacity(hex)) }
                             )
                         }
                     }
@@ -3565,7 +3575,7 @@ fun ColorGradeSpectrumModal(
 
                 OutlinedTextField(
                     value = hexInput,
-                    onValueChange = { input -> hexInput = input; hexError = false },
+                    onValueChange = { input -> applyHex(input); hexError = false },
                     label = { Text("رمز اللون (Hex Code e.g. #FBBF24)") },
                     singleLine = true,
                     shape = RoundedCornerShape(12.dp),

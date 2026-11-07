@@ -181,8 +181,11 @@ fun BroadcastControlScreen(
     var highlightedSetupAnchor by remember { mutableStateOf<String?>(null) }
     val setupAnchorScope = rememberCoroutineScope()
     // Column items in order, by anchor id.
-    val leftSetupKeys = listOf("broadcast", "lower", "full", "hdmi")
-    val rightSetupKeys = listOf("urls", "custom")
+    // 1.9.14 (items 31+32): regrouped — left = Broadcast (NDI) + HDMI;
+    // right = URLs + Integrations + Customizations. Lower/Full now live
+    // inside the Broadcast item, so their chips/keys are gone.
+    val leftSetupKeys = listOf("broadcast", "hdmi")
+    val rightSetupKeys = listOf("urls", "integrations", "custom")
     fun jumpToSetupAnchor(id: String) {
         highlightedSetupAnchor = id
         val rightIndex = rightSetupKeys.indexOf(id)
@@ -462,28 +465,34 @@ fun BroadcastControlScreen(
                         )
                     }
                 }
-                // Item 90 (1.9.10): moved INSIDE the card Column — it sat directly in the Surface (Box stacking) and overlapped the title/subtitle. 1.9.8: Full Show full-screen button (uses Full Show template via FullscreenOverlayActivity)
-                // 1.9.4: fixed overlap — use Column with proper spacing instead of
-                // compressed Row with weight.
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                // 1.9.14 (item 31): Full Show button now matches the Lower
+                // Show button above — same full-width Surface, same 12sp
+                // bold text, same 10dp vertical padding; the redundant
+                // label above it (same words as the button) is dropped.
+                // 1.9.8: Full Show full-screen button (uses Full Show
+                // template via FullscreenOverlayActivity).
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = bento.primary,
+                    onClick = onLaunchFullscreenShow,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("fullscreen_show_button")
                 ) {
-                    Text(
-                        text = "عرض كلي بملء الشاشة",
-                        fontSize = 12.sp,
-                        color = bento.textSecondary
-                    )
-                    Surface(
-                        shape = RoundedCornerShape(16.dp),
-                        color = bento.primary,
+                    Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(16.dp))
-                            .clickable(onClick = onLaunchFullscreenShow)
-                            .padding(horizontal = 14.dp, vertical = 8.dp)
-                            .testTag("fullscreen_show_button")
+                            .fillMaxWidth()
+                            .padding(vertical = 10.dp),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Text("عرض كلي بملء الشاشة", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.onPrimary)
+                        Text(
+                            "عرض كلي بملء الشاشة",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = bento.onPrimary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
                 }
                 // 1.9.3: 4 color dots moved here from old location. Controls HDMI/full-screen background.
@@ -1134,6 +1143,67 @@ fun BroadcastControlScreen(
         }
     }
 
+    // 1.9.14 (item 33): Keep Screen Awake — MOVED out of customBlock to
+    // the very top of the Setup tab (above the Broadcast header, both
+    // layouts). Same card, same toggle + info button + icon.
+    val keepAwakeBlock: @Composable () -> Unit = {
+        // Card: Keep Screen Awake
+        Surface(
+            shape = RoundedCornerShape(20.dp),
+            color = bento.card,
+            border = BorderStroke(1.dp, bento.border),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(14.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(CircleShape)
+                            .background(if (uiState.isKeepScreenOn) bento.primaryContainer else bento.surfaceVariant)
+                    ) {
+                        Icon(
+                            imageVector = if (uiState.isKeepScreenOn) Icons.Default.LiveTv else Icons.Default.Tv,
+                            contentDescription = null,
+                            tint = if (uiState.isKeepScreenOn) bento.primary else bento.textSecondary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        SplitLabel(
+                            parts = listOf("إبقاء الشاشة مفعلة ", "(Keep Screen Awake)"),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = bento.textPrimary
+                        )
+                        InfoPopupButton("إبقاء الشاشة مفعلة (Keep Screen Awake)", "يُبقي شاشة التطبيق مضاءة أثناء البث فقط عندما يكون التطبيق مفتوحاً في المقدمة؛ ولا يتحكم في بقاء البث عند تصغير التطبيق (ذلك من خدمة البث وأقفال الشبكة)")
+                    }
+                }
+
+                Switch(
+                    checked = uiState.isKeepScreenOn,
+                    onCheckedChange = { onToggleKeepScreenOn() },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Color.White,
+                        checkedTrackColor = bento.primary
+                    )
+                )
+            }
+        }
+    }
+
     val customBlock: @Composable () -> Unit = {
         SetupSection(
             title = "التخصيص (Customizations)",
@@ -1177,62 +1247,6 @@ fun BroadcastControlScreen(
                         Box(modifier = Modifier.size(22.dp).background(Color(selectedTheme.light.bandB), RoundedCornerShape(6.dp)))
                         Box(modifier = Modifier.size(22.dp).background(Color(selectedTheme.light.recents), RoundedCornerShape(6.dp)))
                     }
-                }
-            }
-            Spacer(modifier = Modifier.height(10.dp))
-            // Card: Keep Screen Awake
-            Surface(
-                shape = RoundedCornerShape(20.dp),
-                color = bento.card,
-                border = BorderStroke(1.dp, bento.border),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(14.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Box(
-                            contentAlignment = Alignment.Center,
-                            modifier = Modifier
-                                .size(38.dp)
-                                .clip(CircleShape)
-                                .background(if (uiState.isKeepScreenOn) bento.primaryContainer else bento.surfaceVariant)
-                        ) {
-                            Icon(
-                                imageVector = if (uiState.isKeepScreenOn) Icons.Default.LiveTv else Icons.Default.Tv,
-                                contentDescription = null,
-                                tint = if (uiState.isKeepScreenOn) bento.primary else bento.textSecondary,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            SplitLabel(
-                                parts = listOf("إبقاء الشاشة مفعلة ", "(Keep Screen Awake)"),
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = bento.textPrimary
-                            )
-                            InfoPopupButton("إبقاء الشاشة مفعلة (Keep Screen Awake)", "يُبقي شاشة التطبيق مضاءة أثناء البث فقط عندما يكون التطبيق مفتوحاً في المقدمة؛ ولا يتحكم في بقاء البث عند تصغير التطبيق (ذلك من خدمة البث وأقفال الشبكة)")
-                        }
-                    }
-
-                    Switch(
-                        checked = uiState.isKeepScreenOn,
-                        onCheckedChange = { onToggleKeepScreenOn() },
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = Color.White,
-                            checkedTrackColor = bento.primary
-                        )
-                    )
                 }
             }
         }
@@ -1775,6 +1789,9 @@ fun BroadcastControlScreen(
         val screenConfig = LocalConfiguration.current
         if (isWideLayout(screenConfig.screenWidthDp.dp, screenConfig.screenHeightDp.dp)) {
             Column(Modifier.fillMaxSize()) {
+                // 1.9.14 (item 33): Keep Screen Awake at the very top of
+                // the Setup tab (above the chip strip + both columns).
+                Box(Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 12.dp)) { keepAwakeBlock() }
                 // Setup anchors (wide only): fixed chip strip above the
                 // two scroll columns — same jump + flash as the Editor.
                 Row(
@@ -1784,10 +1801,9 @@ fun BroadcastControlScreen(
                 ) {
                     listOf(
                         "broadcast" to "البث (Broadcast)",
-                        "lower" to "الثلث السفلي (Lower Third)",
-                        "full" to "العرض الكامل (Full Show)",
                         "hdmi" to "HDMI (شاشة خارجية)",
                         "urls" to "الروابط (URLs)",
+                        "integrations" to "التكاملات (Integrations)",
                         "custom" to "التخصيص (Customizations)"
                     ).forEach { (id, label) ->
                         FilterChip(
@@ -1812,13 +1828,18 @@ fun BroadcastControlScreen(
                             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                 Box(setupAnchorModifier("broadcast")) { SetupSectionHeader("البث (Broadcast)") }
                                 broadcastStatusBlock()
-                                overlayBlock()
+                                lowerBlock()
+                                fullBlock()
                                 diagnosticsBlock()
                             }
                         }
-                        item("lower") { Box(setupAnchorModifier("lower")) { lowerBlock() } }
-                        item("full") { Box(setupAnchorModifier("full")) { fullBlock() } }
-                        item("hdmi") { Box(setupAnchorModifier("hdmi")) { hdmiBlock() } }
+                        item("hdmi") {
+                            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Box(setupAnchorModifier("hdmi")) { SetupSectionHeader("HDMI (شاشة خارجية)") }
+                                overlayBlock()
+                                hdmiBlock()
+                            }
+                        }
                     }
                     LazyColumn(
                         Modifier.weight(0.5f).fillMaxHeight().padding(start = 6.dp, end = 14.dp, top = 12.dp, bottom = 14.dp),
@@ -1833,6 +1854,11 @@ fun BroadcastControlScreen(
                                 allUrlsBlock()
                                 urlReferenceBlock()
                                 networkBlock()
+                            }
+                        }
+                        item("integrations") {
+                            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Box(setupAnchorModifier("integrations")) { SetupSectionHeader("التكاملات (Integrations)") }
                                 obsBlock()
                                 vmixBlock()
                                 propresenterBlock()
@@ -1855,20 +1881,23 @@ fun BroadcastControlScreen(
                 Modifier.fillMaxSize().padding(14.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                // 1.9.14 (item 33): Keep Screen Awake first, above Broadcast.
+                keepAwakeBlock()
                 SetupSectionHeader("البث (Broadcast)")
                 broadcastStatusBlock()
-                overlayBlock()
-                // Batch-4: Diagnostics after Lower/Full, not before.
                 lowerBlock()
                 fullBlock()
-                hdmiBlock()
                 diagnosticsBlock()
+                SetupSectionHeader("HDMI (شاشة خارجية)")
+                overlayBlock()
+                hdmiBlock()
                 SetupSectionHeader("الروابط (URLs)")
                 urlsCardBlock()
                 mjpegBlock()
                 allUrlsBlock()
                 urlReferenceBlock()
                 networkBlock()
+                SetupSectionHeader("التكاملات (Integrations)")
                 obsBlock()
                 vmixBlock()
                 propresenterBlock()

@@ -426,6 +426,9 @@ fun TemplateEditorScreen(
     // key (sub-links) or itself (sections), then scrolls by index — so this
     // list MUST match the LazyColumn items exactly. Sections whose layer is
     // off are omitted — their Jump-to chips are omitted too (anchorSections).
+    // 1.9.14 (item 23): Frame is ALWAYS visible — box geometry (position,
+    // margins, height, padding, auto-fit) shapes the text layout on every
+    // template, whether or not the card has a visible color.
     // 1.9.13 (item 7): "layers" moved OUT of the right panel into the
     // LEFT pane, directly under the preview (title → preview → Layers →
     // Jump-to). It is no longer a right-column item, so it leaves
@@ -435,7 +438,7 @@ fun TemplateEditorScreen(
         if (cardLayerOn) { add("card"); add("glow") }
         if (particlesLayerOn) add("particles")
         if (videoLayerOn) add("motion")
-        if (cardLayerOn) add("frame")
+        add("frame")
         if (logoLayerOn) add("logo")
         add("transition")
     }
@@ -1200,12 +1203,10 @@ fun TemplateEditorScreen(
         // padding, auto-fit) moved out of Background & Effects onto the stage -
         // these are the numbers judged against the preview.
         // One-update item 6: its own card, bandA (first of the alternation).
-        // 1.9.14 (item 9): hidden when the Card layer is off — it is the
-        // card's box, and the Layers panel Switch is the way back on.
-        if (cardLayerOn) {
-            Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandA), modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp)) { frameSectionBlock() }
-            }
+        // 1.9.14 (item 23): always visible — box geometry shapes the text
+        // layout on every template, whether or not the card has a color.
+        Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = listColors.bandA), modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp)) { frameSectionBlock() }
         }
 
         Spacer(Modifier.height(8.dp))
@@ -2245,7 +2246,7 @@ CollapsibleSection(
         when (sectionId) {
             "logo" -> logoLayerOn
             "particles" -> particlesLayerOn
-            "card", "glow", "frame" -> cardLayerOn
+            "card", "glow" -> cardLayerOn
             "motion" -> videoLayerOn
             else -> true
         }
@@ -2410,7 +2411,7 @@ CollapsibleSection(
                         if (cardLayerOn) item("glow") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = rightBand("glow")), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { glowSectionBlock() } } }
                         if (particlesLayerOn) item("particles") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = rightBand("particles")), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { particlesSectionBlock() } } }
                         if (videoLayerOn) item("motion") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = rightBand("motion")), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { motionSectionBlock() } } }
-                        if (cardLayerOn) item("frame") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = rightBand("frame")), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { frameSectionBlock() } } }
+                        item("frame") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = rightBand("frame")), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { frameSectionBlock() } } }
                         if (logoLayerOn) item("logo") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = rightBand("logo")), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { logoSectionBlock() } } }
                         item("transition") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = rightBand("transition")), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { transitionSectionBlock() } } }
                     }

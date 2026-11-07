@@ -1946,18 +1946,24 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 </head>
 <body>
   <div id="stage">
-    <!-- 1.9.13 (item 2): the animated-bg layer is a direct child of the
-         stage, so the video/gradient background covers the FULL stage
-         in Lower mode, not just the card box. It used to live inside
-         the card box, so on HTTP Lower the video only showed within
-         the card and the background outside it was solid chroma
-         green. NDI draws the video as a full-frame background; HTTP
-         now matches. z-0, behind the card (z-1+) and the logo (z-4). -->
-    <div id="animated-bg-layer" class="animated-bg-layer">
-      <video id="custom-video-bg" style="display:none;" autoplay loop muted playsinline></video>
-    </div>
     <div id="lowerthird-container" class="visible">
       <div id="card-box" class="card-content">
+        <!-- 1.9.14 (item 10, P1 fix): the animated-bg layer lives
+             INSIDE the card box, so the video/gradient background
+             is card-sized — matching NDI, which draws the video /
+             gradient into the card box only (videoRect =
+             Rect(boxLeft…boxBottom); no full-frame video draw
+             exists in NDI). 1.9.13 (item 2) had moved it out to a
+             direct child of the stage on the mistaken belief that
+             NDI draws full-frame; that made HTTP show the video
+             across the whole frame while NDI showed it only inside
+             the card. The area outside the card now shows the stream
+             background (chroma / transparent / black / studio) as
+             on NDI. z-0, behind the card fill (z-1), particles
+             (z-2), text (z-3) and logo (z-4). -->
+        <div id="animated-bg-layer" class="animated-bg-layer">
+          <video id="custom-video-bg" style="display:none;" autoplay loop muted playsinline></video>
+        </div>
         <!-- Combined batch, HTTP layer fix: card-color overlay, ABOVE
              the video layer and BELOW the text (card-inner-content,
              z-index 3). A card box background always paints BEHIND
@@ -3973,8 +3979,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
           }
           cardGradOn = false;
         } else if (isFull) {
-          // The layer IS the frame background; the card goes clear so the
-          // gradient is not buried under the flat fill.
+          // 1.9.14 (item 10): the layer is the CARD background (NDI
+          // paints the gradient as the card, not full-frame); the card
+          // goes clear so the gradient is not buried under the flat fill.
           animBgLayer.className = 'animated-bg-layer';
           applyGrad(animBgLayer, gradIsRadial, !gradIsRadial);
           animBgLayer.style.opacity = '1';

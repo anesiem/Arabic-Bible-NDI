@@ -2050,6 +2050,24 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     let particleAnimId = null;
     let particleColor = '#7DD3FC';
     let particleArgs = null; // v1.9.2 (#11): last start args, for resize restarts
+    let particleStartRafId = 0; // 1.9.14 (item 16): pending deferred-start frame
+    let particleStartRetries = 0; // 1.9.14 (item 16): bounded deferral count (~1s)
+    // 1.9.14 (item 16; sizing from item 4): size the particle canvas
+    // buffer 1:1 from its OWN box. The canvas lives inside #card-box
+    // (inset:0, 100%) so its box IS the card — and NDI draws particles
+    // clipped to the card rect too, so card-confined is parity. Show
+    // it first (display:none measures 0×0), then read its own rect.
+    // Returns false when the card isn't laid out yet — the caller
+    // defers the start instead of falling back to the stage size
+    // (which squeezed the field until a resize restart).
+    function sizeParticleCanvas() {
+      particleCanvas.style.display = 'block';
+      const rect = particleCanvas.getBoundingClientRect();
+      if (rect.width < 2 || rect.height < 2) return false;
+      particleCanvas.width = Math.max(1, Math.floor(rect.width));
+      particleCanvas.height = Math.max(1, Math.floor(rect.height));
+      return true;
+    }
     // Item 64 phase 1 (1.9.8): mode-aware particle field — 'float'
     // (rising dots, the original), 'snow' (falling flakes with sway),
     // 'feathers' (slow drifting rotating ellipses). 'rays' lives in
@@ -2063,22 +2081,22 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       const spd = (speed === undefined || speed === null) ? 1 : parseFloat(speed);
       const canvas = particleCanvas;
       const ctx = canvas.getContext('2d');
-      // 1.9.14 (item 4): size the buffer from the canvas's OWN box,
-      // not the stage. The canvas lives inside #card-box (inset:0,
-      // 100%) so its box IS the card — and NDI draws particles
-      // clipped to the card rect too (drawParticleEffectLayer takes
-      // boxLeft/boxTop/boxRight/boxBottom), so card-confined is
-      // parity, not a bug. Sizing the buffer from the stage (1.9.13)
-      // made it stage-sized while the box stayed card-sized, so
-      // particles were drawn stage-wide then squeezed vertically
-      // into the card. Show it first (display:none measures 0×0),
-      // then read its own rect for a 1:1 buffer; fall back to the
-      // stage only if the card isn't laid out yet.
-      canvas.style.display = 'block';
-      let rect = canvas.getBoundingClientRect();
-      if (rect.width < 2 || rect.height < 2) rect = stage.getBoundingClientRect();
-      canvas.width = Math.max(1, Math.floor(rect.width));
-      canvas.height = Math.max(1, Math.floor(rect.height));
+      // 1.9.14 (item 16): if the card isn't laid out yet, DEFER the
+      // start (retry on the next frame, bounded ~1s) instead of
+      // falling back to the stage size. A newer start cancels the
+      // pending retry via stopParticles; the resize restart picks it
+      // up if layout never happens here.
+      if (!sizeParticleCanvas()) {
+        if (particleStartRetries < 60) {
+          particleStartRetries++;
+          particleStartRafId = requestAnimationFrame(function() {
+            particleStartRafId = 0;
+            startParticles(colorHex, opacity, speed, m, density);
+          });
+        }
+        return;
+      }
+      particleStartRetries = 0;
       const ss = getStageScale() || 1;
       // Item 66 (1.9.9): density multiplier (1.0 = current count).
       // Item 76: clouds/doves are few big shapes, not a field.
@@ -2345,15 +2363,19 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       const spd = (speed === undefined || speed === null) ? 1 : parseFloat(speed);
       const canvas = particleCanvas;
       const ctx = canvas.getContext('2d');
-      // 1.9.14 (item 4): size from the canvas's OWN box (see
-      // startParticles) — the canvas is card-sized, and NDI clips
-      // particles to the card rect too, so the buffer must match
-      // the box 1:1 or the field is squeezed into the card.
-      canvas.style.display = 'block';
-      let rect = canvas.getBoundingClientRect();
-      if (rect.width < 2 || rect.height < 2) rect = stage.getBoundingClientRect();
-      canvas.width = Math.max(1, Math.floor(rect.width));
-      canvas.height = Math.max(1, Math.floor(rect.height));
+      // 1.9.14 (item 16): defer if the card isn't laid out yet
+      // (same as startParticles — no stage fallback).
+      if (!sizeParticleCanvas()) {
+        if (particleStartRetries < 60) {
+          particleStartRetries++;
+          particleStartRafId = requestAnimationFrame(function() {
+            particleStartRafId = 0;
+            startLightRays(colorHex, opacity, speed, density);
+          });
+        }
+        return;
+      }
+      particleStartRetries = 0;
       const baseAlpha = Math.max(0, Math.min(255, Math.floor(opacity * 255)));
       // Item 66 (1.9.9): density multiplier (1.0 = 7 rays).
       const dens = (density === undefined || density === null || isNaN(parseFloat(density))) ? 1 : Math.max(0.25, Math.min(2, parseFloat(density)));
@@ -2388,6 +2410,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     }
     function stopParticles() {
       if (particleAnimId) { cancelAnimationFrame(particleAnimId); particleAnimId = null; }
+      // 1.9.14 (item 16): cancel any pending deferred start so a
+      // stale retry can't override a newer start.
+      if (particleStartRafId) { cancelAnimationFrame(particleStartRafId); particleStartRafId = 0; }
       if (particleCanvas) particleCanvas.style.display = 'none';
     }
 
@@ -3011,9 +3036,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         const ss0 = getStageScale();
         // v1.9.1 (Ashraf's auto-fit model, mirrors the NDI renderer): the
         // size setting is a CAP — fitted text starts at min(selected, cap)
-        // and shrinks below the cap only to fit the box (hard floor 10sp).
+        // and shrinks below the cap only to fit the box (hard floor 12sp
+        // = 24px, NDI parity — 1.9.14 item 12; was 10sp/20px).
         const capVersePx = (data.autoFitMaxVerseSp || 48) * 2 * ss0;
-        const hardMinPx = 10 * 2 * ss0;
+        const hardMinPx = 12 * 2 * ss0;
         const baseVerse = (data.verseFontSize || 26) * 2 * ss0;
         const baseCite = (data.referenceFontSize || 18) * 2 * ss0;
         const baseEnV = (data.secondaryVerseFontSize || 18) * 2 * ss0;
@@ -3045,16 +3071,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         let ratio = capRatio;
         let citeRatio = capRatio;
         if (cH > maxContentH && maxContentH > 0) {
-          // One exact step (NDI's computeFitRatio), then one corrective
-          // pass because line wrapping makes height non-linear. The cap
-          // binds first; the box wins when both apply.
+          // One exact step (NDI's computeFitRatio) — no corrective
+          // second pass (removed 1.9.14 item 13; NDI does one step).
+          // The cap binds first; the box wins when both apply.
           ratio = Math.min(capRatio, Math.max(hardMinRatio, maxContentH / cH));
           applyRatio(ratio, ratio);
-          const cH2 = contentHeight();
-          if (cH2 > maxContentH && ratio > hardMinRatio) {
-            ratio = Math.max(hardMinRatio, ratio * (maxContentH / cH2));
-            applyRatio(ratio, ratio);
-          }
         } else if (ratio < 1) {
           // Fits at full size — the cap alone applies (short verse).
           applyRatio(ratio, ratio);
@@ -5158,7 +5179,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             StaticLayout.Builder.obtain(layoutVerseText, 0, layoutVerseText.length, verseTextPaint, contentWidth)
                 .setAlignment(alignment)
                 .setLineSpacing(0f, arLineMult)
-                .setIncludePad(true)
+                // 1.9.14 (items 11+14): includePad FALSE — the font's
+                // internal leading made the verse–citation gap
+                // font-dependent (P2) and the block height differ from
+                // HTTP's CSS line-height (P5). False = line heights
+                // only, first glyph starts exactly at the draw Y, so
+                // the slider is the single control for the gap.
+                .setIncludePad(false)
                 // v2.0: greedy line breaking like the browser (HTTP overlay).
                 // The default HIGH_QUALITY balances lines (breaks early), so
                 // the same verse took more, shorter lines on NDI than on HTTP.
@@ -5166,7 +5193,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 .build()
         } else {
             @Suppress("DEPRECATION")
-            StaticLayout(layoutVerseText, verseTextPaint, contentWidth, alignment, arLineMult, 0f, true)
+            StaticLayout(layoutVerseText, verseTextPaint, contentWidth, alignment, arLineMult, 0f, false)
         }
         } else null
 
@@ -5237,12 +5264,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 StaticLayout.Builder.obtain(fullSecondaryText, 0, fullSecondaryText.length, secondaryTextPaint, contentWidth)
                     .setAlignment(secAlignment)
                     .setLineSpacing(0f, enLineMult)
-                    .setIncludePad(true)
+                    .setIncludePad(false)
                     .setBreakStrategy(Layout.BREAK_STRATEGY_SIMPLE)
                     .build()
             } else {
                 @Suppress("DEPRECATION")
-                StaticLayout(fullSecondaryText, secondaryTextPaint, contentWidth, secAlignment, tpl.lineSpacingEnglish, 0f, true)
+                StaticLayout(fullSecondaryText, secondaryTextPaint, contentWidth, secAlignment, tpl.lineSpacingEnglish, 0f, false)
             }
 
             if (!isEnglishOnly) {
@@ -5266,12 +5293,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                     StaticLayout.Builder.obtain(secCitationText, 0, secCitationText.length, secCitationPaint, contentWidth)
                         .setAlignment(secCiteAlignment)
                         .setLineSpacing(0f, tpl.lineSpacingEnglish)
-                        .setIncludePad(true)
+                        .setIncludePad(false)
                         .setBreakStrategy(Layout.BREAK_STRATEGY_SIMPLE)
                         .build()
                 } else {
                     @Suppress("DEPRECATION")
-                    StaticLayout(secCitationText, secCitationPaint, contentWidth, secCiteAlignment, tpl.lineSpacingEnglish, 0f, true)
+                    StaticLayout(secCitationText, secCitationPaint, contentWidth, secCiteAlignment, tpl.lineSpacingEnglish, 0f, false)
                 }
             }
         }
@@ -5629,10 +5656,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // edge-to-edge — no horizontal margins, no card padding, no card
         // chrome (fill/glow/border), no box transitions. The text block
         // still honors positionBottomPercent/boxHeightPercent.
-        // Item 35: fullBleed removed — the fullscreen macro sets template values
-        // (margins 0, etc.); the renderer just uses what the template says.
-        // Defined as false to disable the legacy branches below (to be removed).
-        val fullBleed = false
+        // 1.9.14 (item 15): fullBleed dead code removed — it was
+        // hardcoded false (item 35 left it to disable the legacy
+        // branches); the branches below are now unconditional. The
+        // fullscreen macro sets template values (margins 0, etc.);
+        // the renderer just uses what the template says.
         val marginH = width * (tpl.horizontalMarginPercent / 100f)
         val marginB = height * (tpl.positionBottomPercent / 100f)
         val boxWidth = width - (2 * marginH)
@@ -5653,10 +5681,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
         // v1.9: per-side card padding from the style (was hardcoded 36/32).
         // Follow-up: true fullscreen ignores the padding (edge-to-edge).
-        val padL = if (fullBleed) 0f else tpl.cardPaddingLeftDp * scale
-        val padR = if (fullBleed) 0f else tpl.cardPaddingRightDp * scale
-        val padT = if (fullBleed) 0f else tpl.cardPaddingTopDp * scale
-        val padB = if (fullBleed) 0f else tpl.cardPaddingBottomDp * scale
+        val padL = tpl.cardPaddingLeftDp * scale
+        val padR = tpl.cardPaddingRightDp * scale
+        val padT = tpl.cardPaddingTopDp * scale
+        val padB = tpl.cardPaddingBottomDp * scale
         val contentWidth = (boxWidth - padL - padR).toInt().coerceAtLeast(200)
 
         // Audit fix (perf): the fitted layouts (incl. the auto-fit search)
@@ -5725,7 +5753,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         var boxSaveCount = -1
         var boxFadeLayer = -1
         // Follow-up (trueFullscreen): no box transitions — the card is bypassed.
-        val boxChangeActive = !isTransitionSnapshot && !textOnly && !fullBleed && isBoxTransitionActiveFor(isFull)
+        val boxChangeActive = !isTransitionSnapshot && !textOnly && isBoxTransitionActiveFor(isFull)
         val boxP = if (boxChangeActive) boxProgressFor(isFull) else 1f
         val boxVerseDurMs = if (tpl.transition == TransitionType.CUT || tpl.transition == TransitionType.NONE) 0L else tpl.transitionDurationMs.toLong()
         val boxBoxDurMs = if (tpl.boxTransition == TransitionType.CUT || tpl.boxTransition == TransitionType.NONE) 0L else tpl.boxTransitionDurationMs.toLong()
@@ -5797,7 +5825,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // behind video/card, under the visible-card rule (not !pure).
         // Follow-up (trueFullscreen): no card glow — the card is bypassed.
         // Item 16 (1.9.8): respect glow on transparent background too.
-        if (!textOnly && !fullBleed && tpl.cardGlowEnabled && cardHasVisibleEdge) {
+        if (!textOnly && tpl.cardGlowEnabled && cardHasVisibleEdge) {
             val shadowBlurCss = tpl.cardGlowRadiusDp * 2.5f
             val shadowDyCss = tpl.cardGlowRadiusDp * 0.75f
             val shadowAlphaF = tpl.cardGlowOpacity
@@ -6186,7 +6214,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 // after the whole background chain below — not here. (It used
                 // to live only in this branch and the glow branch, so a
                 // gradient background skipped it entirely.)
-            } else if (!fullBleed) {
+            } else {
                 // Follow-up (trueFullscreen): no card fill — the card is bypassed.
                 paint.color = Color.argb(bgAlpha, Color.red(baseBgCol), Color.green(baseBgCol), Color.blue(baseBgCol))
                 canvas.drawRoundRect(rect, radius, radius, paint)
@@ -6259,7 +6287,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // Was drawn only inside the animated-background branch, so plain and
         // video styles never showed a border on NDI.
         // Follow-up (trueFullscreen): no border — the card is bypassed.
-        if (!textOnly && !fullBleed && !tpl.isPureTransparentBackground && tpl.showAccentBorder) {
+        if (!textOnly && !tpl.isPureTransparentBackground && tpl.showAccentBorder) {
             val accColBase = try { Color.parseColor(tpl.accentColorHex) } catch (e: Exception) { Color.YELLOW }
             val accCol = Color.argb(
                 (255 * tpl.accentOpacity).toInt().coerceIn(0, 255),

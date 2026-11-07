@@ -559,6 +559,9 @@ fun BroadcastControlScreen(
     val urlsCardBlock: @Composable () -> Unit = {
         // Output URLs card (expanded by default for immediate accessibility)
         var showOutputUrls by remember { mutableStateOf(true) }
+        // 1.9.15 item 7: per-row QR dialog state (Lower / Full).
+        var showQrLower by remember { mutableStateOf(false) }
+        var showQrFull by remember { mutableStateOf(false) }
 
         Surface(
             shape = RoundedCornerShape(14.dp),
@@ -729,8 +732,25 @@ fun BroadcastControlScreen(
                                             modifier = Modifier.size(14.dp)
                                         )
                                     }
+
+                                    // 1.9.15 item 7: QR code for the Lower URL
+                                    // (same icon/16dp/textSecondary tint as
+                                    // the All-URLs list). No-Wi-Fi guard +
+                                    // toast, same as Copy/Open.
+                                    androidx.compose.material3.IconButton(onClick = {
+                                        if (uiState.serverUrl.isBlank()) {
+                                            Toast.makeText(context, "لا يوجد اتصال شبكة محلية (Wi-Fi) — الرابط غير متاح", Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            showQrLower = true
+                                        }
+                                    }) {
+                                        Icon(Icons.Default.QrCode, contentDescription = "QR Lower", tint = bento.textSecondary, modifier = Modifier.size(16.dp))
+                                    }
                                 }
                             }
+                        }
+                        if (showQrLower) {
+                            QrCodeDialog(url = uiState.serverUrl, label = "Lower Third", onDismiss = { showQrLower = false })
                         }
 
                         // Broadcast URL 2: Full Show Projector URL
@@ -741,13 +761,15 @@ fun BroadcastControlScreen(
                             color = bento.textPrimary
                         )
 
+                        // 1.9.15 item 7: showUrl hoisted to the column level
+                        // so the QR dialog below the row can use it too.
+                        val showUrl = uiState.serverUrl.replace("/lower", "/full")
                         Surface(
                             shape = RoundedCornerShape(10.dp),
                             color = bento.card,
                             border = BorderStroke(1.dp, bento.border),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            val showUrl = uiState.serverUrl.replace("/lower", "/full")
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -827,8 +849,25 @@ fun BroadcastControlScreen(
                                             modifier = Modifier.size(14.dp)
                                         )
                                     }
+
+                                    // 1.9.15 item 7: QR code for the Full URL
+                                    // (same icon/16dp/textSecondary tint as
+                                    // the All-URLs list). No-Wi-Fi guard +
+                                    // toast, same as Copy/Open.
+                                    androidx.compose.material3.IconButton(onClick = {
+                                        if (showUrl.isBlank()) {
+                                            Toast.makeText(context, "لا يوجد اتصال شبكة محلية (Wi-Fi) — الرابط غير متاح", Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            showQrFull = true
+                                        }
+                                    }) {
+                                        Icon(Icons.Default.QrCode, contentDescription = "QR Full", tint = bento.textSecondary, modifier = Modifier.size(16.dp))
+                                    }
                                 }
                             }
+                        }
+                        if (showQrFull) {
+                            QrCodeDialog(url = showUrl, label = "Full Show", onDismiss = { showQrFull = false })
                         }
 
 
@@ -1099,12 +1138,14 @@ fun BroadcastControlScreen(
         }
     }
 
-    // Item 72 (1.9.9): HDMI presentation — toggle + live status. The
-    // Presentation mirrors /full on a secondary display (ThinkPad HDMI;
-    // the FireTab has no video-out — see the HDMI correction in the
-    // plan file). State flows from HdmiPresentationManager via
-    // MainActivity -> ViewModel -> server fields (/api/debug).
-    val hdmiBlock: @Composable () -> Unit = {
+    // 1.9.15 item 5: ONE HDMI section (was three pieces — a static
+    // non-collapsible group header + the always-visible overlayBlock +
+    // the collapsible hdmiBlock whose title duplicated the header).
+    // A single SetupSection, title "HDMI (شاشة خارجية)", sectionId
+    // "hdmi" (reuses the "setup:hdmi" expand key), default collapsed.
+    // Content: the presentation toggle FIRST, then the status text,
+    // then the overlay block nested below, unchanged.
+    val hdmiSection: @Composable () -> Unit = {
         SetupSection(
             title = "HDMI (شاشة خارجية)",
             sectionId = "hdmi",
@@ -1140,16 +1181,23 @@ fun BroadcastControlScreen(
                 fontSize = 11.sp,
                 color = bento.textSecondary
             )
+            Spacer(modifier = Modifier.height(12.dp))
+            overlayBlock()
         }
     }
 
     // 1.9.14 (item 33): Keep Screen Awake — MOVED out of customBlock to
     // the very top of the Setup tab (above the Broadcast header, both
     // layouts). Same card, same toggle + info button + icon.
+    // 1.9.15 item 6: slim row now (was a full ~66dp card). It lives
+    // directly above the URLs header (wide: first child of the urls
+    // column; compact: above the URLs header) — a plain slim row, NOT
+    // a SetupSection. Padding 8dp vert / 12dp horiz, icon box 28dp,
+    // icon 16dp, radius 14dp — about 40-44dp tall.
     val keepAwakeBlock: @Composable () -> Unit = {
         // Card: Keep Screen Awake
         Surface(
-            shape = RoundedCornerShape(20.dp),
+            shape = RoundedCornerShape(14.dp),
             color = bento.card,
             border = BorderStroke(1.dp, bento.border),
             modifier = Modifier.fillMaxWidth()
@@ -1157,7 +1205,7 @@ fun BroadcastControlScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(14.dp),
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -1169,7 +1217,7 @@ fun BroadcastControlScreen(
                     Box(
                         contentAlignment = Alignment.Center,
                         modifier = Modifier
-                            .size(38.dp)
+                            .size(28.dp)
                             .clip(CircleShape)
                             .background(if (uiState.isKeepScreenOn) bento.primaryContainer else bento.surfaceVariant)
                     ) {
@@ -1177,7 +1225,7 @@ fun BroadcastControlScreen(
                             imageVector = if (uiState.isKeepScreenOn) Icons.Default.LiveTv else Icons.Default.Tv,
                             contentDescription = null,
                             tint = if (uiState.isKeepScreenOn) bento.primary else bento.textSecondary,
-                            modifier = Modifier.size(20.dp)
+                            modifier = Modifier.size(16.dp)
                         )
                     }
 
@@ -1789,9 +1837,6 @@ fun BroadcastControlScreen(
         val screenConfig = LocalConfiguration.current
         if (isWideLayout(screenConfig.screenWidthDp.dp, screenConfig.screenHeightDp.dp)) {
             Column(Modifier.fillMaxSize()) {
-                // 1.9.14 (item 33): Keep Screen Awake at the very top of
-                // the Setup tab (above the chip strip + both columns).
-                Box(Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 12.dp)) { keepAwakeBlock() }
                 // Setup anchors (wide only): fixed chip strip above the
                 // two scroll columns — same jump + flash as the Editor.
                 Row(
@@ -1835,9 +1880,9 @@ fun BroadcastControlScreen(
                         }
                         item("hdmi") {
                             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                Box(setupAnchorModifier("hdmi")) { SetupSectionHeader("HDMI (شاشة خارجية)") }
-                                overlayBlock()
-                                hdmiBlock()
+                                // 1.9.15 item 5: one HDMI section (the
+                                // SetupSection carries its own title).
+                                Box(setupAnchorModifier("hdmi")) { hdmiSection() }
                             }
                         }
                     }
@@ -1848,6 +1893,10 @@ fun BroadcastControlScreen(
                     ) {
                         item("urls") {
                             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                // 1.9.15 item 6: Keep Screen Awake is the
+                                // first child of the urls column (a slim
+                                // row above the URLs header).
+                                keepAwakeBlock()
                                 Box(setupAnchorModifier("urls")) { SetupSectionHeader("الروابط (URLs)") }
                                 urlsCardBlock()
                                 mjpegBlock()
@@ -1881,16 +1930,17 @@ fun BroadcastControlScreen(
                 Modifier.fillMaxSize().padding(14.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // 1.9.14 (item 33): Keep Screen Awake first, above Broadcast.
-                keepAwakeBlock()
                 SetupSectionHeader("البث (Broadcast)")
                 broadcastStatusBlock()
                 lowerBlock()
                 fullBlock()
                 diagnosticsBlock()
-                SetupSectionHeader("HDMI (شاشة خارجية)")
-                overlayBlock()
-                hdmiBlock()
+                // 1.9.15 item 5: one HDMI section (the SetupSection
+                // carries its own title).
+                hdmiSection()
+                // 1.9.15 item 6: Keep Screen Awake is a slim row directly
+                // above the URLs header.
+                keepAwakeBlock()
                 SetupSectionHeader("الروابط (URLs)")
                 urlsCardBlock()
                 mjpegBlock()

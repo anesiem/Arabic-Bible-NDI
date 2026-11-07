@@ -9269,6 +9269,17 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     width: auto; max-width: 132px;
   }
   #panel .prow { display: flex; gap: 6px; margin: 10px 0; }
+  /* 1.9.14 (item 29): − / + verse-text stepper — same row pattern as the
+     labels above (label left, control right); buttons reuse the panel's
+     border styling, disabled at the end stops. */
+  #panel .stepper { display: flex; align-items: center; gap: 4px; }
+  #panel .stepper button {
+    cursor: pointer; padding: 4px 10px; font-size: 15px; line-height: 1;
+    border-radius: 6px; background: transparent;
+    border: 1px solid var(--chrome-border, #cbd5e1); color: inherit;
+  }
+  #panel .stepper button:disabled { opacity: 0.35; cursor: default; }
+  #panel .stepper span { min-width: 52px; text-align: center; font-size: 13px; }
   #panel .prow button {
     flex: 1; cursor: pointer; padding: 6px 8px; font-size: 13px;
     border-radius: 6px; background: transparent;
@@ -9432,11 +9443,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 <!-- Batch-3: gear moved to top bar (gearTop) -->
 <div id="panel" hidden>
   <h3>Remote layout</h3>
-  <label>Verse text <select id="p-textsize">
-    <option value="sm">Small</option>
-    <option value="md">Medium</option>
-    <option value="lg">Large</option>
-  </select></label>
+  <label>Verse text <span class="stepper"><button id="p-textsize-minus" type="button" aria-label="Smaller verse text">&#8722;</button><span id="p-textsize-label">Medium</span><button id="p-textsize-plus" type="button" aria-label="Larger verse text">+</button></span></label>
   <label>Recents <select id="p-recents">
     <option value="shown">Shown</option>
     <option value="hidden">Hidden</option>
@@ -10198,6 +10205,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   //   theme=auto|light|dark  force light/dark regardless of the device
   //   preset=default|director|compact
   var DEF = { textsize: 'md', recents: 'shown', hints: 'shown', theme: 'auto' };
+  // 1.9.14 (item 29): − / + stepper labels for the three textsize steps.
+  var TEXTSIZE_LABELS = { sm: 'Small', md: 'Medium', lg: 'Large' };
+  var TEXTSIZE_ORDER = ['sm', 'md', 'lg'];
   var PRESETS = {
     default: { textsize: 'md', recents: 'shown', hints: 'shown', theme: 'auto' },
     director: { textsize: 'lg', recents: 'hidden', hints: 'hidden', theme: 'dark' },
@@ -10241,8 +10251,28 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     pollNow(); // re-apply the tablet's theme tokens under the new theme
   }
   function syncPanel() {
-    var map = { textsize: 'p-textsize', recents: 'p-recents', hints: 'p-hints', theme: 'p-theme' };
+    var map = { recents: 'p-recents', hints: 'p-hints', theme: 'p-theme' };
     for (var k in map) { var c = document.getElementById(map[k]); if (c) { c.value = L[k]; } }
+    // 1.9.14 (item 29): textsize is a − / + stepper, not a select — sync
+    // its label and the end stops from the same L.textsize.
+    var lbl = document.getElementById('p-textsize-label');
+    if (lbl) lbl.textContent = TEXTSIZE_LABELS[L.textsize] || 'Medium';
+    var mn = document.getElementById('p-textsize-minus');
+    if (mn) mn.disabled = L.textsize === 'sm';
+    var pl = document.getElementById('p-textsize-plus');
+    if (pl) pl.disabled = L.textsize === 'lg';
+  }
+  // 1.9.14 (item 29): step the verse-text size one step (−1 / +1) through
+  // the same textsize values the old select offered, via the same
+  // L + applyLayout + pushUrl — clamps at the ends, no-op past them.
+  function stepTextsize(dir) {
+    var i = TEXTSIZE_ORDER.indexOf(L.textsize);
+    if (i < 0) i = 1;
+    var ni = i + dir;
+    if (ni < 0 || ni >= TEXTSIZE_ORDER.length) return;
+    L.textsize = TEXTSIZE_ORDER[ni];
+    applyLayout();
+    pushUrl();
   }
   function pushUrl() {
     var q = new URLSearchParams();
@@ -10264,6 +10294,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         pushUrl();
       });
     }
+    // 1.9.14 (item 29): − / + verse-text stepper buttons.
+    var tsMinus = document.getElementById('p-textsize-minus');
+    if (tsMinus) tsMinus.addEventListener('click', function () { stepTextsize(-1); });
+    var tsPlus = document.getElementById('p-textsize-plus');
+    if (tsPlus) tsPlus.addEventListener('click', function () { stepTextsize(1); });
     var pbs = document.querySelectorAll('#panel [data-preset]');
     for (var j = 0; j < pbs.length; j++) {
       pbs[j].addEventListener('click', function () {

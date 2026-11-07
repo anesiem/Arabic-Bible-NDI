@@ -420,25 +420,24 @@ fun TemplateEditorScreen(
     val cardLayerOn = (!editingTemplate.isPureTransparentBackground && editingTemplate.bgOpacity > 0f) ||
         editingTemplate.gradientEnabled || editingTemplate.cardGlowEnabled || editingTemplate.showAccentBorder
     val logoLayerOn = editingTemplate.logoUri.isNotEmpty()
-    // Right-column item keys, in top-down z-order. A jump resolves its
-    // id to the parent section key (sub-links) or itself (sections),
-    // then scrolls by index — so this list MUST match the LazyColumn
-    // items exactly. 1.9.14 (items 8+9): Logo (z-4) first, then the
-    // Text sections (z-3), Particles (z-2), the Card group (z-1:
-    // card + glow + frame), Verse Transition (text, never hidden),
-    // Motion Video (z-0) last. Sections whose layer is off are
-    // omitted — their Jump-to chips are omitted too (anchorSections).
+    // Right-column item keys, in editing order (1.9.14 item 22: most-edited
+    // first — Text, then Card + Glow, Particles, Motion Video, Frame, Logo,
+    // Verse Transition last). A jump resolves its id to the parent section
+    // key (sub-links) or itself (sections), then scrolls by index — so this
+    // list MUST match the LazyColumn items exactly. Sections whose layer is
+    // off are omitted — their Jump-to chips are omitted too (anchorSections).
     // 1.9.13 (item 7): "layers" moved OUT of the right panel into the
     // LEFT pane, directly under the preview (title → preview → Layers →
     // Jump-to). It is no longer a right-column item, so it leaves
     // rightColumnKeys; the compact sheet still lists it first.
     val rightColumnKeys = buildList {
-        if (logoLayerOn) add("logo")
         add("arabic"); add("english"); add("textshadow")
+        if (cardLayerOn) { add("card"); add("glow") }
         if (particlesLayerOn) add("particles")
-        if (cardLayerOn) { add("card"); add("glow"); add("frame") }
-        add("transition")
         if (videoLayerOn) add("motion")
+        if (cardLayerOn) add("frame")
+        if (logoLayerOn) add("logo")
+        add("transition")
     }
     // 1.9.14 (item 9): band (alternating card tint) for a right-pane
     // section, from its index among the VISIBLE sections — the
@@ -458,6 +457,8 @@ fun TemplateEditorScreen(
     // re-seeded on every template change) and so anchor jumps can expand
     // a section before scrolling to it. First view still uses each
     // section's initiallyExpanded; manual toggles stick after that.
+    // 1.9.14 (item 22): every section starts collapsed (all defaults
+    // false); Jump-to and Edit Box still open their target explicitly.
     val collapsibleSectionIds = setOf("layers", "logo", "frame", "arabic", "english", "card", "particles", "motion", "transition", "textshadow", "glow")
     // Batch-3: per-tab per-section expand memory — the map lives in the
     // ViewModel (survives tab switches, cleared on app close = all
@@ -838,8 +839,9 @@ fun TemplateEditorScreen(
         CollapsibleSection(
             modifier = anchorModifier("layers"),
             title = "الطبقات (Layers)",
-            initiallyExpanded = true,
-            expanded = isSectionExpanded("layers", true),
+            // 1.9.14 (item 22): all sections start collapsed.
+            initiallyExpanded = false,
+            expanded = isSectionExpanded("layers", false),
             onExpandedChange = { setSectionExpanded("layers", it) },
             summary = "Video " + (if (videoLayerOn) "on" else "off") + " · Particles " + (if (particlesLayerOn) "on" else "off") + " · Card " + (if (cardLayerOn) "on" else "off") + " · Logo " + (if (logoLayerOn) "on" else "off")
         ) {
@@ -1026,11 +1028,13 @@ fun TemplateEditorScreen(
         CollapsibleSection(
             modifier = anchorModifier("frame"),
             title = "الإطار والحشوة (Frame & Padding)",
-            // v1.9.2 (#10b): the section opens itself while Edit Box is on —
+            // v1.9.2 (#10b): Edit Box opens this section explicitly
+            // (setSectionExpanded("frame", true) at the Edit Box chip) —
             // the drag handles and these sliders are two forms of the same
-            // three numbers, so they belong open together.
-            initiallyExpanded = boxEdit,
-            expanded = isSectionExpanded("frame", boxEdit),
+            // three numbers, so they belong open together. 1.9.14 (item 22):
+            // the section starts collapsed like the rest.
+            initiallyExpanded = false,
+            expanded = isSectionExpanded("frame", false),
             onExpandedChange = { setSectionExpanded("frame", it) },
             summary = "Box " + editingTemplate.boxHeightPercent + "% \u00b7 bottom " + editingTemplate.positionBottomPercent + "% \u00b7 margin " + editingTemplate.horizontalMarginPercent + "% \u00b7 clear " + (if (editingTemplate.clearMode == com.arabicchristianmedia.model.ClearMode.CLEAR_VERSE_ONLY) "verse only" else "all")
         ) {
@@ -1217,9 +1221,9 @@ fun TemplateEditorScreen(
     val arabicSectionBlock: @Composable () -> Unit = {
 CollapsibleSection(
                     modifier = anchorModifier("arabic"),
-                    title = "I — تنسيق الخط العربي (Verse Text · Arabic)",
-                    initiallyExpanded = true,
-                    expanded = isSectionExpanded("arabic", true),
+                    title = "تنسيق الخط العربي (Verse Text · Arabic)",
+                    initiallyExpanded = false,
+                    expanded = isSectionExpanded("arabic", false),
                     onExpandedChange = { setSectionExpanded("arabic", it) },
                     summary = if (!editingTemplate.showArabic) "مخفي (Hidden)" else editingTemplate.fontFamily + " \u00b7 verse " + editingTemplate.verseFontSize + " \u00b7 citation " + editingTemplate.referenceFontSize
                 ) {
@@ -1380,9 +1384,9 @@ CollapsibleSection(
     val englishSectionBlock: @Composable () -> Unit = {
 CollapsibleSection(
                     modifier = anchorModifier("english"),
-                    title = "I — تنسيق الخط الإنجليزي (Verse Text · English)",
-                    initiallyExpanded = editingTemplate.showEnglish,
-                    expanded = isSectionExpanded("english", editingTemplate.showEnglish),
+                    title = "تنسيق الخط الإنجليزي (Verse Text · English)",
+                    initiallyExpanded = false,
+                    expanded = isSectionExpanded("english", false),
                     onExpandedChange = { setSectionExpanded("english", it) },
                     summary = if (!editingTemplate.showEnglish) "مخفي (Hidden)" else editingTemplate.secondaryFontFamily + " \u00b7 verse " + editingTemplate.secondaryVerseFontSize + " \u00b7 citation " + editingTemplate.secondaryReferenceFontSize
                 ) {
@@ -1495,10 +1499,10 @@ CollapsibleSection(
     val cardSectionBlock: @Composable () -> Unit = {
 CollapsibleSection(
                     modifier = anchorModifier("card"),
-                    title = "II — لون البطاقة (Card Color)",
+                    title = "لون البطاقة (Card Color)",
                     accentColor = bento.layerCard,
-                    initiallyExpanded = true,
-                    expanded = isSectionExpanded("card", true),
+                    initiallyExpanded = false,
+                    expanded = isSectionExpanded("card", false),
                     onExpandedChange = { setSectionExpanded("card", it) },
                     summary = "Card " + (editingTemplate.bgOpacity * 100).toInt() + "%" + (if (editingTemplate.gradientEnabled) " · gradient" else "")
                 ) {
@@ -1647,8 +1651,8 @@ CollapsibleSection(
                     modifier = anchorModifier("particles"),
                     title = "الجسيمات (Particles)",
                     accentColor = bento.layerParticles,
-                    initiallyExpanded = isParticleType(editingTemplate.particleEffect),
-                    expanded = isSectionExpanded("particles", isParticleType(editingTemplate.particleEffect)),
+                    initiallyExpanded = false,
+                    expanded = isSectionExpanded("particles", false),
                     onExpandedChange = { setSectionExpanded("particles", it) },
                     summary = if (isParticleType(editingTemplate.particleEffect)) editingTemplate.particleEffect.displayNameAr + " \u00b7 " + (editingTemplate.particleOpacity * 100).toInt() + "%" else "بدون (None)"
                 ) {
@@ -1704,10 +1708,10 @@ CollapsibleSection(
     val motionSectionBlock: @Composable () -> Unit = {
 CollapsibleSection(
                     modifier = anchorModifier("motion"),
-                    title = "III — الفيديو المتحرك (Motion Video)",
+                    title = "الفيديو المتحرك (Motion Video)",
                     accentColor = bento.layerVideo,
-                    initiallyExpanded = editingTemplate.animatedBackground != AnimatedBackgroundType.NONE || editingTemplate.customVideoId.isNotEmpty(),
-                    expanded = isSectionExpanded("motion", editingTemplate.animatedBackground != AnimatedBackgroundType.NONE || editingTemplate.customVideoId.isNotEmpty()),
+                    initiallyExpanded = false,
+                    expanded = isSectionExpanded("motion", false),
                     onExpandedChange = { setSectionExpanded("motion", it) },
                     summary = "Motion: " + editingTemplate.animatedBackground.displayNameAr + " · video " + (editingTemplate.animatedBackgroundOpacity * 100).toInt() + "%"
                 ) {
@@ -1908,8 +1912,8 @@ CollapsibleSection(
 CollapsibleSection(
                     modifier = anchorModifier("transition"),
                     title = "الانتقال — الآية (Verse Transition)",
-                    initiallyExpanded = true,
-                    expanded = isSectionExpanded("transition", true),
+                    initiallyExpanded = false,
+                    expanded = isSectionExpanded("transition", false),
                     onExpandedChange = { setSectionExpanded("transition", it) },
                     summary = editingTemplate.transition.displayName
                 ) {
@@ -1945,8 +1949,8 @@ CollapsibleSection(
                     modifier = anchorModifier("logo"),
                     title = "الشعار (Logo)",
                     accentColor = bento.layerLogo,
-                    initiallyExpanded = editingTemplate.logoUri.isNotEmpty(),
-                    expanded = isSectionExpanded("logo", editingTemplate.logoUri.isNotEmpty()),
+                    initiallyExpanded = false,
+                    expanded = isSectionExpanded("logo", false),
                     onExpandedChange = { setSectionExpanded("logo", it) },
                     summary = if (editingTemplate.logoUri.isEmpty()) "بدون شعار (none)" else "شعار مضبوط (logo set)"
                 ) {
@@ -2042,9 +2046,9 @@ CollapsibleSection(
     val textShadowSectionBlock: @Composable () -> Unit = {
 CollapsibleSection(
                     modifier = anchorModifier("textshadow"),
-                    title = "I — ظل النص (Text Shadow)",
-                    initiallyExpanded = editingTemplate.textShadowEnabled,
-                    expanded = isSectionExpanded("textshadow", editingTemplate.textShadowEnabled),
+                    title = "ظل النص (Text Shadow)",
+                    initiallyExpanded = false,
+                    expanded = isSectionExpanded("textshadow", false),
                     onExpandedChange = { setSectionExpanded("textshadow", it) },
                     summary = "Shadow " + (if (editingTemplate.textShadowEnabled) "on" else "off")
                 ) {
@@ -2138,7 +2142,7 @@ CollapsibleSection(
     val glowSectionBlock: @Composable () -> Unit = {
         CollapsibleSection(
             modifier = anchorModifier("glow"),
-            title = "IV — التوهج (Glow)",
+            title = "التوهج (Glow)",
             accentColor = bento.layerCard,
             // Batch-4: Glow never auto-expands — only manual tap or anchor.
             initiallyExpanded = false,
@@ -2188,15 +2192,15 @@ CollapsibleSection(
         }
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             CompactSectionCard(listColors.bandA, "layers") { layersSectionBlock() }
-            if (logoLayerOn) CompactSectionCard(compactBand("logo"), "logo") { logoSectionBlock() }
             CompactSectionCard(compactBand("arabic"), "arabic") { arabicSectionBlock() }
             CompactSectionCard(compactBand("english"), "english") { englishSectionBlock() }
             CompactSectionCard(compactBand("textshadow"), "textshadow") { textShadowSectionBlock() }
-            if (particlesLayerOn) CompactSectionCard(compactBand("particles"), "particles") { particlesSectionBlock() }
             if (cardLayerOn) CompactSectionCard(compactBand("card"), "card") { cardSectionBlock() }
             if (cardLayerOn) CompactSectionCard(compactBand("glow"), "glow") { glowSectionBlock() }
-            CompactSectionCard(compactBand("transition"), "transition") { transitionSectionBlock() }
+            if (particlesLayerOn) CompactSectionCard(compactBand("particles"), "particles") { particlesSectionBlock() }
             if (videoLayerOn) CompactSectionCard(compactBand("motion"), "motion") { motionSectionBlock() }
+            if (logoLayerOn) CompactSectionCard(compactBand("logo"), "logo") { logoSectionBlock() }
+            CompactSectionCard(compactBand("transition"), "transition") { transitionSectionBlock() }
             Spacer(Modifier.height(100.dp))
         }
     }
@@ -2205,37 +2209,38 @@ CollapsibleSection(
     // flashes it. 1.9.14 (item 9): sections whose layer is off are
     // hidden from the right panel AND from this list, so no chip jumps
     // to nothing.
-    // 1.9.14 (items 8+9): Jump-to anchors in the same top-down z-order
-    // as the right pane (Logo z-4 → Text z-3 → Particles z-2 → Card
-    // group z-1 → Transition → Motion Video z-0). A section whose layer
-    // is off is filtered out — its chip hides too (item 9), so no chip
-    // jumps to nothing. Sub-anchors ride with their parent.
+    // 1.9.14 (item 22): Jump-to anchors in the same editing order as
+    // the right pane (Arabic → English → Text Shadow → Card → Glow →
+    // Particles → Motion Video → Frame → Logo → Verse Transition;
+    // Layers first). A section whose layer is off is filtered out —
+    // its chip hides too (item 9), so no chip jumps to nothing.
+    // Sub-anchors ride with their parent.
     val anchorSections: List<Pair<String, Pair<String, List<Pair<String, String>>>>> = listOf(
         "layers" to ("الطبقات (Layers)" to emptyList()),
-        "logo" to ("الشعار (Logo)" to emptyList()),
-        "arabic" to ("I — تنسيق الخط العربي (Verse Text · Arabic)" to listOf(
+        "arabic" to ("تنسيق الخط العربي (Verse Text · Arabic)" to listOf(
             "arabic-citation" to "الشاهد (Citation)",
             "arabic-verse" to "الآية (Verse)"
         )),
-        "english" to ("I — تنسيق الخط الإنجليزي (Verse Text · English)" to listOf(
+        "english" to ("تنسيق الخط الإنجليزي (Verse Text · English)" to listOf(
             "english-citation" to "الشاهد الإنجليزي (English Citation)",
             "english-verse" to "الآية الإنجليزية (English Verse)"
         )),
-        "textshadow" to ("I — ظل النص (Text Shadow)" to emptyList()),
+        "textshadow" to ("ظل النص (Text Shadow)" to emptyList()),
+        "card" to ("لون البطاقة (Card Color)" to emptyList()),
+        "glow" to ("التوهج (Glow)" to emptyList()),
         "particles" to ("الجسيمات (Particles)" to emptyList()),
-        "card" to ("II — لون البطاقة (Card Color)" to emptyList()),
-        "glow" to ("IV — التوهج (Glow)" to emptyList()),
+        "motion" to ("الفيديو المتحرك (Motion Video)" to listOf(
+            "bg-motion" to "الخلفيات المتحركة (Motion Backgrounds)",
+            "bg-stream" to "خلفية البث (Stream Background)"
+        )),
         "frame" to ("الإطار والحشوة (Frame & Padding)" to listOf(
             "frame-position" to "الموضع والهوامش (Position & Margins)",
             "frame-padding" to "حشوة البطاقة (Card Padding)",
             "frame-autofit" to "ملاءمة تلقائية (Auto-fit)",
             "frame-clear" to "عند المسح (Clear mode)"
         )),
-        "transition" to ("انتقال الآية (Verse Transition)" to emptyList()),
-        "motion" to ("III — الفيديو المتحرك (Motion Video)" to listOf(
-            "bg-motion" to "الخلفيات المتحركة (Motion Backgrounds)",
-            "bg-stream" to "خلفية البث (Stream Background)"
-        ))
+        "logo" to ("الشعار (Logo)" to emptyList()),
+        "transition" to ("انتقال الآية (Verse Transition)" to emptyList())
     ).filter { (sectionId, _) ->
         when (sectionId) {
             "logo" -> logoLayerOn
@@ -2270,9 +2275,9 @@ CollapsibleSection(
                 ) {
                     anchorSections.forEach { (sectionId, section) ->
                         // Batch-3: descriptive Jump-to labels — the layer
-                        // sections show "I — Verse Text · Arabic" etc.
-                        // instead of bare numerals; Frame/Language/
-                        // Transition keep their Arabic names.
+                        // sections show "Verse Text · Arabic" etc. (1.9.14
+                        // item 22: numerals dropped from the titles).
+                        // Frame/Language/Transition keep their Arabic names.
                         val shortLabel = run {
                             val full = section.first
                             val layerSections = setOf(
@@ -2280,9 +2285,7 @@ CollapsibleSection(
                                 "card", "motion", "glow"
                             )
                             if (sectionId in layerSections && full.contains(" (")) {
-                                val numeral = full.substringBefore(" —")
-                                val english = full.substringAfter(" (").substringBefore(")")
-                                "$numeral — $english"
+                                full.substringAfter(" (").substringBefore(")")
                             } else {
                                 full.substringBefore(" (").substringBefore(" —")
                             }
@@ -2390,25 +2393,26 @@ CollapsibleSection(
                     // gets its own card (same 20dp shape, card color,
                     // 16dp padding as the old shared sheet card); the
                     // compact layout uses the shared sheetBlock().
-                    // 1.9.14 (items 8+9): top-down z-order (Logo z-4 →
-                    // Text z-3 → Particles z-2 → Card group z-1 → Transition
-                    // → Motion Video z-0); sections whose layer is off are
-                    // omitted, and the band follows the visible order.
+                    // 1.9.14 (item 22): editing order (Arabic → English →
+                    // Text Shadow → Card → Glow → Particles → Motion Video
+                    // → Frame → Logo → Verse Transition); sections whose
+                    // layer is off are omitted, and the band follows the
+                    // visible order.
                     LazyColumn(
                         Modifier.weight(0.56f).fillMaxHeight().padding(14.dp),
                         state = rightLazyListState,
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        if (logoLayerOn) item("logo") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = rightBand("logo")), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { logoSectionBlock() } } }
                         item("arabic") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = rightBand("arabic")), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { arabicSectionBlock() } } }
                         item("english") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = rightBand("english")), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { englishSectionBlock() } } }
                         item("textshadow") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = rightBand("textshadow")), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { textShadowSectionBlock() } } }
-                        if (particlesLayerOn) item("particles") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = rightBand("particles")), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { particlesSectionBlock() } } }
                         if (cardLayerOn) item("card") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = rightBand("card")), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { cardSectionBlock() } } }
                         if (cardLayerOn) item("glow") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = rightBand("glow")), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { glowSectionBlock() } } }
-                        if (cardLayerOn) item("frame") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = rightBand("frame")), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { frameSectionBlock() } } }
-                        item("transition") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = rightBand("transition")), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { transitionSectionBlock() } } }
+                        if (particlesLayerOn) item("particles") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = rightBand("particles")), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { particlesSectionBlock() } } }
                         if (videoLayerOn) item("motion") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = rightBand("motion")), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { motionSectionBlock() } } }
+                        if (cardLayerOn) item("frame") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = rightBand("frame")), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { frameSectionBlock() } } }
+                        if (logoLayerOn) item("logo") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = rightBand("logo")), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { logoSectionBlock() } } }
+                        item("transition") { Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = rightBand("transition")), modifier = Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { transitionSectionBlock() } } }
                     }
                 }
             }

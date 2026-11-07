@@ -326,6 +326,17 @@ fun BibleReaderScreen(
                             IconButton(onClick = { searchExpanded = !searchExpanded }) {
                                 Icon(Icons.Default.Search, "بحث (Search)", tint = bento.textPrimary)
                             }
+                            // 1.9.14 item 19: grid direction as a single
+                            // icon-only toggle at the far end of the search
+                            // row (the old grid row + spacer are gone).
+                            Spacer(Modifier.weight(1f))
+                            IconButton(onClick = { onSetLibraryGridRtl(!uiState.libraryGridRtl) }) {
+                                Icon(
+                                    if (uiState.libraryGridRtl) Icons.Default.FormatTextdirectionRToL else Icons.Default.FormatTextdirectionLToR,
+                                    "اتجاه الشبكة (Grid direction)",
+                                    tint = bento.textPrimary
+                                )
+                            }
                         }
                         // Batch-4: expandable search field below the OT/NT row.
                         if (searchExpanded) {
@@ -341,27 +352,6 @@ fun BibleReaderScreen(
                                         Icon(Icons.Default.Close, "إغلاق", tint = bento.textSecondary)
                                     }
                                 }
-                            )
-                        }
-                        Spacer(Modifier.height(8.dp))
-
-                        // Item 92: grid direction control (LTR/RTL, default
-                        // LTR, persisted) — books + chapters flip together.
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Text("اتجاه الشبكة (Grid direction)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
-                            FilterChip(
-                                selected = !uiState.libraryGridRtl,
-                                onClick = { onSetLibraryGridRtl(false) },
-                                label = { Text("LTR", fontSize = 12.sp) }
-                            )
-                            FilterChip(
-                                selected = uiState.libraryGridRtl,
-                                onClick = { onSetLibraryGridRtl(true) },
-                                label = { Text("RTL", fontSize = 12.sp) }
                             )
                         }
                         Spacer(Modifier.height(8.dp))

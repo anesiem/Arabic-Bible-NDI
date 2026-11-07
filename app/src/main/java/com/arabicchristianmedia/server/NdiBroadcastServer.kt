@@ -9565,22 +9565,44 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   // Defined once here so both the SSE verseSelected handler and the
   // poll-based fallback share it — the fallback's call was a no-op
   // because this function did not exist (only a guarded typeof check).
+  // 1.9.14 (item 27): bottom padding on the verse list so the LAST
+  // verse of a chapter can also scroll to the top — without it the
+  // list cannot scroll past (scrollHeight - clientHeight) and the
+  // last rows stay pinned at the bottom. Padding = visible height
+  // minus one row; recomputed after every chapter load and on
+  // resize/orientation (debounced). Trade-off: a manual scroll to
+  // the very end leaves an empty gap below the last verse.
+  var listPadTimer = null;
+  function fitListPadding() {
+    var row = vList.querySelector('.vrow');
+    var rowH = row ? row.offsetHeight : 48;
+    var pad = vList.clientHeight - rowH;
+    vList.style.paddingBottom = (pad > 0 ? pad : 0) + 'px';
+  }
+  function scheduleFitListPadding() {
+    if (listPadTimer) clearTimeout(listPadTimer);
+    listPadTimer = setTimeout(fitListPadding, 150);
+  }
+  window.addEventListener('resize', scheduleFitListPadding);
   function scrollToVerse(verseNum) {
     var attempts = 0;
     function tryScroll() {
       var verseEl = document.querySelector('[data-v="' + verseNum + '"]');
       if (verseEl) {
-        // Scroll ONLY the verse list (never the page). The old
-        // scrollIntoView({block:'center'}) centred the verse in the
-        // VIEWPORT, scrolling the whole page on mobile (list felt
-        // unscrollable while live) and jumping on every verse change
-        // even when visible.
+        // Scroll ONLY the verse list (never the page). 1.9.14
+        // (item 27): the synced verse goes to the TOP of the list
+        // on every sync — the old code centred it, and only when
+        // out of view, so a verse near the bottom of a chapter
+        // ended up at the bottom edge (or below it on mobile).
+        // No out-of-view guard: a verse already visible at the
+        // bottom must still move to the top. fitListPadding
+        // (above) gives the list the scroll room for the last
+        // verse to reach the top; the scroll clamps at max
+        // scroll otherwise.
         var listRect = vList.getBoundingClientRect();
         var rowRect = verseEl.getBoundingClientRect();
-        if (rowRect.top < listRect.top || rowRect.bottom > listRect.bottom) {
-          var target = vList.scrollTop + (rowRect.top - listRect.top) - (vList.clientHeight - rowRect.height) / 2;
-          vList.scrollTo({ top: target, behavior: 'smooth' });
-        }
+        var target = vList.scrollTop + (rowRect.top - listRect.top);
+        vList.scrollTo({ top: target, behavior: 'smooth' });
         // Item 20 (1.9.8): persistent highlight — stays until another verse syncs.
         var prevLive = vList.querySelector('.vrow.synced-live');
         if (prevLive) prevLive.classList.remove('synced-live');
@@ -9773,6 +9795,16 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                   '<div>' + textDiv + '</div></div>';
         }
         vList.innerHTML = html;
+        // 1.9.14 (item 28): a new chapter always starts at the top —
+        // the list kept the old scroll position, so a swipe from the
+        // bottom landed at the bottom of the new chapter. Instant,
+        // not smooth (a content swap, not a navigation). The SSE
+        // sync callback below still runs after this and scrolls to
+        // the synced verse (item 27).
+        vList.scrollTop = 0;
+        // 1.9.14 (item 27): size the bottom padding now that the
+        // rows exist (see fitListPadding).
+        fitListPadding();
         var rows = vList.querySelectorAll('.vrow');
         for (var k = 0; k < rows.length; k++) {
           rows[k].addEventListener('click', function() {

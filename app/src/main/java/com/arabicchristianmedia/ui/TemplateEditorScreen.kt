@@ -2366,8 +2366,12 @@ CollapsibleSection(
                         Modifier.weight(0.44f).fillMaxHeight().padding(14.dp)
                             .verticalScroll(rememberScrollState())
                     ) {
-                        editorTitleBlock()
-                        Spacer(Modifier.height(12.dp))
+                        // 1.9.14 item 21: the wide title block above the preview
+                        // is gone — on wide the title + ⓘ + ↻ already live in
+                        // the top bar (MainActivity), so this row was a duplicate.
+                        // The editorTitleBlock composable itself is kept for the
+                        // compact headerBlock() (phone/portrait), which still
+                        // shows the full row.
                         previewBlock(onPreviewClick = { jumpToAnchor("frame") })
                         Spacer(Modifier.height(16.dp))
                         // 1.9.13 (item 7): Layers lives here now — directly

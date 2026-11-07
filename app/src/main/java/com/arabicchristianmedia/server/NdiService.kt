@@ -235,6 +235,17 @@ class NdiService : Service() {
                 val tpl = if (isFullScreen) srv.currentShowTemplate else srv.currentTemplate
                 tpl.gradientEnabled && tpl.gradientAnimation != com.arabicchristianmedia.model.GradientAnimationType.NONE
             }
+            // 1.9.14 item 18: a box continuous effect is motion
+            // content on its own — ticks run for it even with no
+            // video, no particles and no gradient animation, and
+            // even when the Setup Motion (video-only) toggle is off.
+            // Before this, Glow Pulse / Zoom / Float / Sway froze
+            // on NDI (cached bitmap, no motion ticks).
+            snd.setBoxMotionContentProvider { isFullScreen ->
+                val srv = server ?: return@setBoxMotionContentProvider false
+                val tpl = if (isFullScreen) srv.currentShowTemplate else srv.currentTemplate
+                tpl.boxZoomEnabled || tpl.boxFloatEnabled || tpl.boxSwayEnabled || tpl.boxGlowPulseEnabled
+            }
             // v2.0: verse-change transitions always pump (like the HTTP
             // overlay), independent of the feed's Motion toggle.
             snd.setTransitionProvider { isFullScreen ->

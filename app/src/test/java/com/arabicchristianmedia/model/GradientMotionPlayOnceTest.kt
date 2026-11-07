@@ -139,8 +139,10 @@ class GradientMotionPlayOnceTest {
         assertEquals(0f, BoxMotion.floatDp((2 * Math.PI).toFloat(), 1f), 0.0001f)
         assertEquals(8f, BoxMotion.swayDp((Math.PI / 2).toFloat(), 1f), 0.0001f)
         assertEquals(1.0f, BoxMotion.glowFactor(0f, 1f), 0.0001f)
-        assertEquals(1.3f, BoxMotion.glowFactor((Math.PI / 2).toFloat(), 1f), 0.0001f)
-        assertEquals(0.7f, BoxMotion.glowFactor((3 * Math.PI / 2).toFloat(), 1f), 0.0001f)
+        // 1.9.14 item 18: glow amplitude raised 0.3 -> 0.5, so the
+        // swing is 0.5..1.5 (was 0.7..1.3).
+        assertEquals(1.5f, BoxMotion.glowFactor((Math.PI / 2).toFloat(), 1f), 0.0001f)
+        assertEquals(0.5f, BoxMotion.glowFactor((3 * Math.PI / 2).toFloat(), 1f), 0.0001f)
         assertEquals(0f, BoxMotion.floatDp((Math.PI / 2).toFloat(), 0f), 0.0001f)
     }
 

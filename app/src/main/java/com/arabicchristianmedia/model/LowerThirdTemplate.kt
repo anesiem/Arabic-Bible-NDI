@@ -330,7 +330,7 @@ val LowerThirdTemplate.isPureDerived: Boolean
  *   exactly neutral (scale 1), unlike a raw sin which starts mid-swing.
  * - Float: translateY = +/-8dp * sin(phase); Sway: translateX = +/-8dp
  *   * sin(phase); both start at 0 (neutral) at phase 0.
- * - Glow Pulse: shadow intensity factor 0.7..1.3 * sin(phase); no scale,
+ * - Glow Pulse: shadow intensity factor 0.5..1.5 * sin(phase); no scale,
  *   no position change, so it never moves text.
  * - ramp: 0 while the verse/box transition is still running, then a
  *   smoothstep (f*f*(3-2f)) over 600 ms to 1, so effects fade in
@@ -349,7 +349,7 @@ object BoxMotion {
     fun swayDp(phase: Float, ramp: Float): Float =
         8f * kotlin.math.sin(phase) * ramp
     fun glowFactor(phase: Float, ramp: Float): Float =
-        1f + 0.3f * kotlin.math.sin(phase) * ramp
+        1f + 0.5f * kotlin.math.sin(phase) * ramp
     fun ramp(elapsedMs: Long, transitionEndMs: Long): Float {
         if (elapsedMs <= transitionEndMs) return 0f
         val f = ((elapsedMs - transitionEndMs) / 600f).coerceIn(0f, 1f)

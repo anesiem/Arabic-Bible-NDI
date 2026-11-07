@@ -3560,7 +3560,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       // 2*PI * boxMotionSpeed * seconds since the longer of the
       // verse/box transitions ended; Zoom = 1 + 0.05*(1-cos)/2 (1.0 to
       // 1.05, neutral at phase 0); Float = +/-8px * sin; Sway =
-      // +/-8px * sin; Glow Pulse = shadow alpha * (1 + 0.3*sin), no
+      // +/-8px * sin; Glow Pulse = shadow alpha * (1 + 0.5*sin), no
       // scale, no position change. During the transition window the
       // transform is cleared (neutral) so the entry transition owns
       // the box, then the effects ramp in over 600ms (smoothstep) —
@@ -3607,7 +3607,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
           if (zoom !== 1) t += 'scale(' + zoom.toFixed(4) + ')';
           cardBox.style.transform = t;
           if (glowOn && shadowRgb !== null) {
-            var ga = Math.max(0, Math.min(1, shadowAlpha * (1 + 0.3 * sn * ramp)));
+            var ga = Math.max(0, Math.min(1, shadowAlpha * (1 + 0.5 * sn * ramp)));
             cardBox.style.boxShadow = baseShadow.replace(/rgba\([\d,\s]+,\s*[\d.]+\)/, 'rgba(' + shadowRgb + ', ' + ga.toFixed(3) + ')');
           }
         }, 50);

@@ -106,6 +106,12 @@ class NdiNativeSender {
      * video). Ticks for this must run even when the Setup Motion
      * toggle (video only) is off. */
     private var gradientMotionContentProvider: ((Boolean) -> Boolean)? = null
+    /** 1.9.14 item 18: box continuous effects (Zoom / Float / Sway /
+     * Glow Pulse) are motion content on their own — ticks must run
+     * for them even with no video, no particles and no gradient
+     * animation, or they freeze on NDI (cached bitmap). Mirrors the
+     * gradient-motion provider above. */
+    private var boxMotionContentProvider: ((Boolean) -> Boolean)? = null
 
     /** Recent NDI error events for the Advanced diagnostics panel (capped, oldest dropped). */
     private val errorEvents = Collections.synchronizedList(mutableListOf<NdiErrorEvent>())
@@ -254,14 +260,26 @@ class NdiNativeSender {
         gradientMotionContentProvider = provider
     }
 
+    /** 1.9.14 item 18: reports whether the feed's current template
+     * has a box continuous effect on (Zoom / Float / Sway / Glow
+     * Pulse). When true, motion ticks run for it like gradient
+     * motion — independent of the video Motion toggle. */
+    fun setBoxMotionContentProvider(provider: (Boolean) -> Boolean) {
+        boxMotionContentProvider = provider
+    }
+
     /** True when this session should render motion ticks right now.
      * Combined batch, motion split: transitions pump regardless;
      * VIDEO motion needs the Setup toggle AND video content;
      * GRADIENT motion needs only a gradient animation, and runs
-     * even when the video toggle is off. */
+     * even when the video toggle is off.
+     * 1.9.14 item 18: BOX motion needs only a box continuous effect
+     * (Zoom / Float / Sway / Glow Pulse), and runs even when the
+     * video toggle is off — same split as gradient motion. */
     private fun isMotionActive(session: SenderSession): Boolean {
         if (transitionProvider?.invoke(session.isFullScreen) == true) return true
         if (gradientMotionContentProvider?.invoke(session.isFullScreen) == true) return true
+        if (boxMotionContentProvider?.invoke(session.isFullScreen) == true) return true
         return session.spec.motionEnabled &&
             (motionContentProvider?.invoke(session.isFullScreen) == true)
     }

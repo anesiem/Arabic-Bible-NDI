@@ -3026,14 +3026,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       // metrics and swapping the font in afterwards was one of the visible
       // size jumps. Base sizes were just reset above (section 5).
       const doFit = function() {
-        // Item 74 (1.9.9): auto-fit OFF no longer skips the fit. The
-        // Text Box Height slider is a MAX height: the box grows with
-        // the verse up to the slider, and the text shrinks only when
-        // the verse would need more room. autoFit ON keeps its cap
-        // (capRatio); OFF starts at full size — the selected size is
-        // the size until the cap binds. The citation floor / ratio
-        // lock below stays autoFit-only (NDI parity: autoFitBoosts
-        // returns early when autoFit is off).
+        // 1.9.16 Part 1 (Fit): when autoFit is OFF, skip the fit
+        // entirely — the text stays at its SET size (ratio 1, no cap,
+        // no shrink-to-fit). Auto fit ON keeps the cap (capRatio) +
+        // shrink-to-fit. The box growth that makes OFF text visible is
+        // Part 2; the ratio locks are Part 3.
         const isAutoFit = data.autoFitText !== false;
         // v1.9.1 (#11): base sizes come from the PAYLOAD, not from the
         // current DOM styles. The old code read them back from the styles
@@ -3078,7 +3075,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         const cH = contentHeight();
         let ratio = capRatio;
         let citeRatio = capRatio;
-        if (cH > maxContentH && maxContentH > 0) {
+        // 1.9.16 Part 1: shrink-to-fit runs only when autoFit is ON.
+        // OFF keeps ratio 1 (full set size) even when the content is
+        // taller than the box — the box grows instead (Part 2).
+        if (isAutoFit && cH > maxContentH && maxContentH > 0) {
           // One exact step (NDI's computeFitRatio) — no corrective
           // second pass (removed 1.9.14 item 13; NDI does one step).
           // The cap binds first; the box wins when both apply.
@@ -5083,13 +5083,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             shadowBlur, shadowDx, shadowDy, showArabic, showEnglish, 1f
         ) ?: return null
         var r = 1f
-        // Item 74 (1.9.9): the fit budget is the slider box on BOTH
-        // paths. autoFit ON: existing behavior (capRatio + shrink to
-        // fit). autoFit OFF: the Text Box Height slider is a MAX height
-        // — text stays full-size unless the verse would exceed the box,
-        // then it shrinks just enough (no capRatio: the selected size
-        // is the size until the cap binds). The drawn box then hugs the
-        // (possibly shrunk) content, so it never grows past the slider.
+        // 1.9.16 Part 1 (Fit): when autoFit is OFF, skip the fit
+        // entirely — ratio stays 1 (full set size), no cap, no
+        // computeFitRatio. The box grows with the text instead
+        // (Part 2). autoFit ON keeps the cap + shrink-to-fit.
         // Follow-up: true fullscreen ignores card padding (edge-to-edge).
         // Item 35: fullBleed removed — macro sets template values directly.
         val padT = tpl.cardPaddingTopDp * scale
@@ -5110,8 +5107,6 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             if (layouts.contentH > maxContentH && maxContentH > 0) {
                 r = minOf(computeFitRatio(layouts.contentH, maxContentH, hardFloorRatio), capRatio)
             }
-        } else if (layouts.contentH > maxContentH && maxContentH > 0) {
-            r = computeFitRatio(layouts.contentH, maxContentH, hardFloorRatio)
         }
         if (r < 1f) {
             layouts = buildFittedTextLayouts(

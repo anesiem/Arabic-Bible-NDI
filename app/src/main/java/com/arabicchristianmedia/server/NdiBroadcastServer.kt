@@ -1539,9 +1539,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             put("citationAlignmentArabic", tpl.citationAlignmentArabic.name)
             put("citationAlignmentEnglish", tpl.citationAlignmentEnglish.name)
             put("verseAlignmentEnglish", tpl.verseAlignmentEnglish.name)
-            // Item 91: per-language vertical alignment of the verse block.
-            put("verticalAlignmentArabic", tpl.verticalAlignmentArabic.name)
-            put("verticalAlignmentEnglish", tpl.verticalAlignmentEnglish.name)
+            // 1.9.16: ONE vertical alignment for the whole verse block.
+            put("verticalAlignment", tpl.verticalAlignment.name)
             // 1.9.15 items 10 + 13: per-layer on/off flags — the renderers
             // gate on these AND the value (enabled-but-empty renders nothing).
             put("videoEnabled", tpl.videoEnabled)
@@ -2799,7 +2798,15 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         container.style.marginRight = (data.horizontalMarginPercent ?? 6) + 'vw';
         container.style.width = '';
         // v1.9.2 (#7): clamped like the renderers — box top stays in frame.
-        container.style.height = Math.min(data.boxHeightPercent || 100, 100 - (data.positionBottomPercent ?? 0)) + '%';
+        // 1.9.16 Part 2: auto-fit ON draws the slider box (fixed height).
+        // OFF hugs the full-size content with NO height cap (like NDI).
+        if (data.autoFitText !== false) {
+          container.style.height = Math.min(data.boxHeightPercent || 100, 100 - (data.positionBottomPercent ?? 0)) + '%';
+          container.style.maxHeight = '';
+        } else {
+          container.style.height = '';
+          container.style.maxHeight = '';
+        }
 
         cardBox.style.display = 'flex';
         cardBox.style.flexDirection = 'column';
@@ -2862,19 +2869,14 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
           cardBox.style.minHeight = '';
           cardBox.style.flex = '';
         } else {
-          // 1.9.13 (item 5): hug content like NDI — the card is exactly
-          // as tall as its verse, and boxHeightPercent is a CAP
-          // (max-height), not a floor. The old Item-101 floor forced
-          // the card to be at least the slider box (57%) even when the
-          // verse was short, so the HTTP card sat taller and higher
-          // than the NDI card for the same verse. The split vertical
-          // alignment (section 4b) now has no free space to distribute
-          // — it positions the two language blocks independently,
-          // matching NDI. doFit (item 74) still shrinks the text when
-          // a verse would need more room than the cap.
+          // 1.9.13 (item 5) + 1.9.16 Part 2: hug content like NDI — the
+          // card is exactly as tall as its verse. 1.9.16 removes the
+          // boxHeightPercent CAP (max-height) when OFF: the box grows
+          // past the slider with the full-size text (Part 1 removed
+          // the shrink), and the alignment anchors the box (section 4b).
           container.style.height = '';
           container.style.minHeight = '';
-          container.style.maxHeight = Math.min(data.boxHeightPercent || 45, 100 - (data.positionBottomPercent ?? 0)) + '%';
+          container.style.maxHeight = '';
           container.style.display = 'flex';
           container.style.flexDirection = 'column';
           cardBox.style.height = '';
@@ -2935,19 +2937,17 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         }
       }
 
-      // 4b. Vertical alignment (Item 91): where the verse text sits
-      // vertically in the card. Both fields equal: the whole block
-      // anchors as one (TOP/CENTER/BOTTOM). TOP/BOTTOM split: the
-      // Arabic block (citation + verse) and the English block anchor
-      // independently. CENTER mixed with TOP/BOTTOM: the anchored value
-      // wins for the whole block (NDI does the same — render parity).
-      // The inner content is a flex column filling the card, so the
-      // justification and auto margins have free space to work with.
-      // justify-content needs 'important': the Full CSS centers it with
-      // !important. Reset the split-case margins/orders first —
-      // applyData runs on every verse/template change.
-      var vAlignAr = data.verticalAlignmentArabic || (isFull ? 'TOP' : 'BOTTOM');
-      var vAlignEn = data.verticalAlignmentEnglish || (isFull ? 'TOP' : 'BOTTOM');
+      // 4b. Vertical alignment (1.9.16 Part 2): ONE alignment for the
+      // whole verse block — Arabic + English always chain as one
+      // block (no split). The alignment positions the TEXT inside
+      // the fixed box (auto-fit ON, justify-content below); when
+      // auto-fit is OFF the BOX itself is anchored by the same field
+      // (auto margins, below). The inner content is a flex column
+      // filling the card, so the justification has free space to
+      // work with. justify-content needs 'important': the Full CSS
+      // centers it with !important. Reset the split-case margins /
+      // orders first — applyData runs on every verse/template change.
+      var vAlign = data.verticalAlignment || (isFull ? 'TOP' : 'BOTTOM');
       var innerContent = document.querySelector('.card-inner-content');
       innerContent.style.display = 'flex';
       innerContent.style.flexDirection = 'column';
@@ -2958,33 +2958,35 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       englishSection.style.marginBottom = '';
       englishSection.style.order = '';
       // Item 98: the bilingual spacing (set on englishSection at line 2646)
-      // is wiped by the reset above. Re-apply it whenever the alignments are
-      // NOT split — equal, or CENTER-mixed where the whole block anchors —
-      // so HTTP keeps the Arabic→English gap like NDI does. In the split
-      // TOP/BOTTOM case the gap is the free space (marginTop:'auto'), so no
-      // bilingual spacing there — matching NDI, which also excludes it.
+      // is wiped by the reset above. Re-apply it — the English section
+      // always chains below Arabic now (no split), so HTTP keeps the
+      // Arabic→English gap like NDI does.
       var bilSpacingPx = (data.showBilingualSpacing ? (data.bilingualSpacing || 20) : 0) * getStageScale();
-      var vJustify = 'center';
-      if (vAlignAr === vAlignEn) {
-        vJustify = vAlignAr === 'TOP' ? 'flex-start' : (vAlignAr === 'BOTTOM' ? 'flex-end' : 'center');
-        englishSection.style.marginTop = bilSpacingPx + 'px';
-      } else if (vAlignAr === 'CENTER') {
-        vJustify = vAlignEn === 'TOP' ? 'flex-start' : 'flex-end';
-        englishSection.style.marginTop = bilSpacingPx + 'px';
-      } else if (vAlignEn === 'CENTER') {
-        vJustify = vAlignAr === 'TOP' ? 'flex-start' : 'flex-end';
-        englishSection.style.marginTop = bilSpacingPx + 'px';
-      } else if (vAlignAr === 'TOP') {
-        // Arabic top, English bottom: push the English block down.
-        vJustify = 'flex-start';
-        englishSection.style.marginTop = 'auto';
-      } else {
-        // Arabic bottom, English top: English first, Arabic block down.
-        vJustify = 'flex-start';
-        englishSection.style.order = '-1';
-        citationRow.style.marginTop = 'auto';
-      }
+      var vJustify = vAlign === 'TOP' ? 'flex-start' : (vAlign === 'BOTTOM' ? 'flex-end' : 'center');
+      englishSection.style.marginTop = bilSpacingPx + 'px';
       innerContent.style.setProperty('justify-content', vJustify, 'important');
+      // 1.9.16 Part 2: when auto-fit is OFF, the ALIGNMENT positions
+      // the BOX on the stage via auto margins — the one mechanism
+      // that works on both stages (Full is flex-start !important,
+      // Lower is flex-end, so the stage's justify-content cannot be
+      // overridden inline). ON: the box is fixed and the feed anchors
+      // it, so clear any auto margin (marginBottom is set by the
+      // feed branch in section 4).
+      var posMarginVh = (data.positionBottomPercent ?? 6) + 'vh';
+      if (data.autoFitText === false) {
+        if (vAlign === 'TOP') {
+          container.style.marginTop = posMarginVh;
+          container.style.marginBottom = isFull ? '' : 'auto';
+        } else if (vAlign === 'BOTTOM') {
+          container.style.marginTop = isFull ? 'auto' : '';
+          container.style.marginBottom = posMarginVh;
+        } else {
+          container.style.marginTop = 'auto';
+          container.style.marginBottom = 'auto';
+        }
+      } else {
+        container.style.marginTop = '';
+      }
 
       // 5. Typography & Font Styling (bundled webfonts served from the tablet; fully offline)
       const rawFont = String(data.fontFamily || 'Amiri').replace(/['"\\]/g, '');
@@ -5736,30 +5738,44 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // Editor preview. Full Show no longer forces the box to the full
         // frame: margin and bottom position the card, and the height slider
         // sets its height (clamped so the top never leaves the frame).
-        // Drawn height: Full always draws the slider box; Lower draws the
-        // slider box when auto-fit is ON (his contract: with auto-fit the
-        // box dimensions never change and the text fits inside), and keeps
-        // its content-hugging card when auto-fit is OFF — but item 74 caps
-        // the content at the slider (text shrinks when the verse would
-        // need more room), so the hugging box never grows past it either.
+        // 1.9.16 Part 2 (Box anchor): auto-fit ON draws the slider box
+        // (fixed height, both feeds). Auto-fit OFF hugs the full-size
+        // content (Part 1 removed the shrink, so the hug box can grow
+        // past the slider) on BOTH feeds — the box does not respect the
+        // height slider when OFF.
         val sliderBoxH = (height * (tpl.boxHeightPercent / 100f))
             .coerceIn(0f, height - marginB)
         val boxHeight = when {
-            tpl.isFullScreen -> sliderBoxH
             tpl.autoFitText -> sliderBoxH
             else -> (layouts.contentH + padT + padB + 16f * scale).coerceAtLeast(140f * scale)
         }
-        // 1.9.13 (item 5): growth direction — Lower grows bottom→top
-        // (bottom-anchored, boxBottom fixed at the position margin),
-        // Full grows top→bottom (top-anchored, boxTop fixed at the
-        // same position margin, measured from the top). For a
-        // fullscreen Full the anchor is moot (the box fills the frame).
-        val (boxTop, boxBottom) = if (isFull) {
-            val top = marginB
-            top to (top + boxHeight)
-        } else {
-            val bottom = height - marginB
-            (bottom - boxHeight) to bottom
+        // 1.9.13 (item 5) + 1.9.16 Part 2: growth direction.
+        // Auto-fit ON: the anchor follows the FEED (Full top-anchored,
+        // Lower bottom-anchored) and the box is fixed, so the anchor is
+        // only where the fixed box sits. Auto-fit OFF: the anchor
+        // follows the ALIGNMENT — Top top-anchored (grows down, overflow
+        // off the bottom), Bottom bottom-anchored (grows up, overflow
+        // off the top), Center centered (grows both ways).
+        val (boxTop, boxBottom) = when {
+            tpl.autoFitText -> if (isFull) {
+                val top = marginB
+                top to (top + boxHeight)
+            } else {
+                val bottom = height - marginB
+                (bottom - boxHeight) to bottom
+            }
+            tpl.verticalAlignment == VerticalAlignment.TOP -> {
+                val top = marginB
+                top to (top + boxHeight)
+            }
+            tpl.verticalAlignment == VerticalAlignment.BOTTOM -> {
+                val bottom = height - marginB
+                (bottom - boxHeight) to bottom
+            }
+            else -> {
+                val top = (height - boxHeight) / 2f
+                top to (top + boxHeight)
+            }
         }
         val boxLeft = marginH
         val boxRight = width - marginH
@@ -6371,40 +6387,18 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         }
 
         val contentTotalHeight = primaryLayout.height + citationHeight + secHeight
-        // Item 91: vertical alignment — where the text block sits in the
-        // box. Both fields equal: the whole block anchors as one (the
-        // common case; Full defaults TOP, Lower defaults BOTTOM via the
-        // fromJson migration). TOP/BOTTOM split: the Arabic block
-        // (citation + verse) and the English block anchor independently
-        // (secY below is computed from its own field, not chained).
-        // CENTER mixed with TOP/BOTTOM: the anchored value wins for the
-        // whole block (HTTP does the same — render parity; the
-        // CENTER-mixed split is a rare edge case). Single-language
-        // (no English section): the shown language's field drives it.
-        val vAlignAr = tpl.verticalAlignmentArabic
-        val vAlignEn = tpl.verticalAlignmentEnglish
-        val splitAlign = bilingualSecondary != null &&
-            vAlignAr != vAlignEn &&
-            vAlignAr != VerticalAlignment.CENTER && vAlignEn != VerticalAlignment.CENTER
-        val blockAlign = when {
-            bilingualSecondary == null && tpl.languageMode == LanguageMode.ENGLISH_ONLY -> vAlignEn
-            bilingualSecondary == null -> vAlignAr
-            splitAlign -> null
-            vAlignAr == vAlignEn -> vAlignAr
-            vAlignAr == VerticalAlignment.CENTER -> vAlignEn
-            else -> vAlignAr
-        }
+        // 1.9.16 Part 2: ONE alignment for the whole verse block.
+        // Arabic + English always chain as one block (no split). The
+        // alignment positions the TEXT inside the fixed box (auto-fit
+        // ON, anchorTop below); when auto-fit is OFF the BOX itself is
+        // anchored by the same field (see the box anchor above) and the
+        // text fills it, so anchorTop here is the ON-mode placement.
         fun anchorTop(align: VerticalAlignment, blockHeight: Float): Float = when (align) {
             VerticalAlignment.TOP -> boxTop + padT
             VerticalAlignment.CENTER -> boxTop + (boxHeight - blockHeight) / 2f
             VerticalAlignment.BOTTOM -> boxTop + boxHeight - padB - blockHeight
         }
-        val arabicBlockHeight = citationHeight + primaryLayout.height
-        val startY = when {
-            blockAlign != null -> anchorTop(blockAlign, contentTotalHeight)
-            vAlignAr == VerticalAlignment.TOP -> boxTop + padT
-            else -> boxTop + boxHeight - padB - arabicBlockHeight
-        }
+        val startY = anchorTop(tpl.verticalAlignment, contentTotalHeight)
 
         val citationY = startY + (refPaint.textSize * 0.9f)
 
@@ -6496,18 +6490,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // Draw Bilingual Section if active (BOTH mode only)
         if (bilingualSecondary != null) {
             val bilSpacing = if (tpl.showBilingualSpacing) tpl.bilingualSpacing * scale else 0f
-            // Item 91: TOP/BOTTOM split — the English block anchors by
-            // its own field (no bilSpacing: there is no chain when the
-            // blocks are at opposite ends). Otherwise chained below the
-            // Arabic verse, exactly as before.
-            val secY = if (splitAlign) {
-                // English content height without the leading bilSpacing
-                // (secHeight bundles it in).
-                val englishContentHeight = secHeight - bilSpacing
-                anchorTop(vAlignEn, englishContentHeight)
-            } else {
-                textY + primaryLayout.height + bilSpacing
-            }
+            // 1.9.16 Part 2: no split — the English block always chains
+            // below the Arabic verse (Arabic + English are one block).
+            val secY = textY + primaryLayout.height + bilSpacing
             canvas.save()
             canvas.translate(translateX, secY)
             drawLayoutWithEffect(canvas, bilingualSecondary, tpl, scale)
@@ -8208,9 +8193,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             o.put("citationAlignmentArabic", t.citationAlignmentArabic.name)
             o.put("citationAlignmentEnglish", t.citationAlignmentEnglish.name)
             o.put("verseAlignmentEnglish", t.verseAlignmentEnglish.name)
-            // Item 91: per-language vertical alignment of the verse block.
-            o.put("verticalAlignmentArabic", t.verticalAlignmentArabic.name)
-            o.put("verticalAlignmentEnglish", t.verticalAlignmentEnglish.name)
+            // 1.9.16: ONE vertical alignment for the whole verse block.
+            o.put("verticalAlignment", t.verticalAlignment.name)
             // 1.9.15 items 10 + 13: per-layer on/off flags.
             o.put("videoEnabled", t.videoEnabled)
             o.put("particlesEnabled", t.particlesEnabled)

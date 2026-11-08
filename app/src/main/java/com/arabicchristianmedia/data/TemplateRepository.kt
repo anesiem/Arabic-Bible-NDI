@@ -99,8 +99,7 @@ class TemplateRepository(context: Context) {
                 secondaryReferenceFontSize = 22,
                 secondaryFontFamily = "System",
                 isFullScreen = true,
-                verticalAlignmentArabic = VerticalAlignment.TOP,
-                verticalAlignmentEnglish = VerticalAlignment.TOP,
+                verticalAlignment = VerticalAlignment.TOP,
                 bilingualSpacing = 18,
                 showBilingualSpacing = true,
                 verseIsBold = false,
@@ -208,8 +207,7 @@ class TemplateRepository(context: Context) {
                 secondaryReferenceFontSize = 22,
                 secondaryFontFamily = "System",
                 isFullScreen = true,
-                verticalAlignmentArabic = VerticalAlignment.TOP,
-                verticalAlignmentEnglish = VerticalAlignment.TOP,
+                verticalAlignment = VerticalAlignment.TOP,
                 bilingualSpacing = 18,
                 showBilingualSpacing = true,
                 verseIsBold = false,
@@ -317,8 +315,7 @@ class TemplateRepository(context: Context) {
                 secondaryReferenceFontSize = 22,
                 secondaryFontFamily = "System",
                 isFullScreen = true,
-                verticalAlignmentArabic = VerticalAlignment.TOP,
-                verticalAlignmentEnglish = VerticalAlignment.TOP,
+                verticalAlignment = VerticalAlignment.TOP,
                 bilingualSpacing = 18,
                 showBilingualSpacing = true,
                 verseIsBold = false,
@@ -426,8 +423,7 @@ class TemplateRepository(context: Context) {
                 secondaryReferenceFontSize = 22,
                 secondaryFontFamily = "System",
                 isFullScreen = true,
-                verticalAlignmentArabic = VerticalAlignment.TOP,
-                verticalAlignmentEnglish = VerticalAlignment.TOP,
+                verticalAlignment = VerticalAlignment.TOP,
                 bilingualSpacing = 18,
                 showBilingualSpacing = true,
                 verseIsBold = false,
@@ -535,8 +531,7 @@ class TemplateRepository(context: Context) {
                 secondaryReferenceFontSize = 24,
                 secondaryFontFamily = "System",
                 isFullScreen = true,
-                verticalAlignmentArabic = VerticalAlignment.TOP,
-                verticalAlignmentEnglish = VerticalAlignment.TOP,
+                verticalAlignment = VerticalAlignment.TOP,
                 bilingualSpacing = 18,
                 showBilingualSpacing = true,
                 verseIsBold = true,
@@ -644,8 +639,7 @@ class TemplateRepository(context: Context) {
                 secondaryReferenceFontSize = 22,
                 secondaryFontFamily = "System",
                 isFullScreen = true,
-                verticalAlignmentArabic = VerticalAlignment.TOP,
-                verticalAlignmentEnglish = VerticalAlignment.TOP,
+                verticalAlignment = VerticalAlignment.TOP,
                 bilingualSpacing = 18,
                 showBilingualSpacing = true,
                 verseIsBold = false,
@@ -753,8 +747,7 @@ class TemplateRepository(context: Context) {
                 secondaryReferenceFontSize = 22,
                 secondaryFontFamily = "System",
                 isFullScreen = true,
-                verticalAlignmentArabic = VerticalAlignment.TOP,
-                verticalAlignmentEnglish = VerticalAlignment.TOP,
+                verticalAlignment = VerticalAlignment.TOP,
                 bilingualSpacing = 18,
                 showBilingualSpacing = true,
                 verseIsBold = false,
@@ -862,8 +855,7 @@ class TemplateRepository(context: Context) {
                 secondaryReferenceFontSize = 22,
                 secondaryFontFamily = "System",
                 isFullScreen = true,
-                verticalAlignmentArabic = VerticalAlignment.TOP,
-                verticalAlignmentEnglish = VerticalAlignment.TOP,
+                verticalAlignment = VerticalAlignment.TOP,
                 bilingualSpacing = 18,
                 showBilingualSpacing = true,
                 verseIsBold = false,
@@ -971,8 +963,7 @@ class TemplateRepository(context: Context) {
                 secondaryReferenceFontSize = 22,
                 secondaryFontFamily = "System",
                 isFullScreen = true,
-                verticalAlignmentArabic = VerticalAlignment.TOP,
-                verticalAlignmentEnglish = VerticalAlignment.TOP,
+                verticalAlignment = VerticalAlignment.TOP,
                 bilingualSpacing = 18,
                 showBilingualSpacing = true,
                 verseIsBold = false,
@@ -1080,8 +1071,7 @@ class TemplateRepository(context: Context) {
                 secondaryReferenceFontSize = 22,
                 secondaryFontFamily = "System",
                 isFullScreen = true,
-                verticalAlignmentArabic = VerticalAlignment.TOP,
-                verticalAlignmentEnglish = VerticalAlignment.TOP,
+                verticalAlignment = VerticalAlignment.TOP,
                 bilingualSpacing = 18,
                 showBilingualSpacing = true,
                 verseIsBold = false,
@@ -1189,8 +1179,7 @@ class TemplateRepository(context: Context) {
                 secondaryReferenceFontSize = 14,
                 secondaryFontFamily = "System",
                 isFullScreen = false,
-                verticalAlignmentArabic = VerticalAlignment.BOTTOM,
-                verticalAlignmentEnglish = VerticalAlignment.BOTTOM,
+                verticalAlignment = VerticalAlignment.BOTTOM,
                 bilingualSpacing = 18,
                 showBilingualSpacing = true,
                 verseIsBold = false,
@@ -1298,8 +1287,7 @@ class TemplateRepository(context: Context) {
                 secondaryReferenceFontSize = 14,
                 secondaryFontFamily = "System",
                 isFullScreen = false,
-                verticalAlignmentArabic = VerticalAlignment.BOTTOM,
-                verticalAlignmentEnglish = VerticalAlignment.BOTTOM,
+                verticalAlignment = VerticalAlignment.BOTTOM,
                 bilingualSpacing = 18,
                 showBilingualSpacing = true,
                 verseIsBold = false,
@@ -1407,8 +1395,7 @@ class TemplateRepository(context: Context) {
                 secondaryReferenceFontSize = 14,
                 secondaryFontFamily = "System",
                 isFullScreen = false,
-                verticalAlignmentArabic = VerticalAlignment.BOTTOM,
-                verticalAlignmentEnglish = VerticalAlignment.BOTTOM,
+                verticalAlignment = VerticalAlignment.BOTTOM,
                 bilingualSpacing = 18,
                 showBilingualSpacing = true,
                 verseIsBold = false,
@@ -1516,8 +1503,7 @@ class TemplateRepository(context: Context) {
                 secondaryReferenceFontSize = 14,
                 secondaryFontFamily = "System",
                 isFullScreen = false,
-                verticalAlignmentArabic = VerticalAlignment.BOTTOM,
-                verticalAlignmentEnglish = VerticalAlignment.BOTTOM,
+                verticalAlignment = VerticalAlignment.BOTTOM,
                 bilingualSpacing = 18,
                 showBilingualSpacing = true,
                 verseIsBold = false,
@@ -1625,8 +1611,7 @@ class TemplateRepository(context: Context) {
                 secondaryReferenceFontSize = 14,
                 secondaryFontFamily = "System",
                 isFullScreen = false,
-                verticalAlignmentArabic = VerticalAlignment.BOTTOM,
-                verticalAlignmentEnglish = VerticalAlignment.BOTTOM,
+                verticalAlignment = VerticalAlignment.BOTTOM,
                 bilingualSpacing = 18,
                 showBilingualSpacing = true,
                 verseIsBold = false,
@@ -1734,8 +1719,7 @@ class TemplateRepository(context: Context) {
                 secondaryReferenceFontSize = 14,
                 secondaryFontFamily = "System",
                 isFullScreen = false,
-                verticalAlignmentArabic = VerticalAlignment.BOTTOM,
-                verticalAlignmentEnglish = VerticalAlignment.BOTTOM,
+                verticalAlignment = VerticalAlignment.BOTTOM,
                 bilingualSpacing = 18,
                 showBilingualSpacing = true,
                 verseIsBold = false,
@@ -1843,8 +1827,7 @@ class TemplateRepository(context: Context) {
                 secondaryReferenceFontSize = 14,
                 secondaryFontFamily = "System",
                 isFullScreen = false,
-                verticalAlignmentArabic = VerticalAlignment.BOTTOM,
-                verticalAlignmentEnglish = VerticalAlignment.BOTTOM,
+                verticalAlignment = VerticalAlignment.BOTTOM,
                 bilingualSpacing = 18,
                 showBilingualSpacing = true,
                 verseIsBold = false,
@@ -1952,8 +1935,7 @@ class TemplateRepository(context: Context) {
                 secondaryReferenceFontSize = 14,
                 secondaryFontFamily = "System",
                 isFullScreen = false,
-                verticalAlignmentArabic = VerticalAlignment.BOTTOM,
-                verticalAlignmentEnglish = VerticalAlignment.BOTTOM,
+                verticalAlignment = VerticalAlignment.BOTTOM,
                 bilingualSpacing = 18,
                 showBilingualSpacing = true,
                 verseIsBold = false,
@@ -2061,8 +2043,7 @@ class TemplateRepository(context: Context) {
                 secondaryReferenceFontSize = 14,
                 secondaryFontFamily = "System",
                 isFullScreen = false,
-                verticalAlignmentArabic = VerticalAlignment.BOTTOM,
-                verticalAlignmentEnglish = VerticalAlignment.BOTTOM,
+                verticalAlignment = VerticalAlignment.BOTTOM,
                 bilingualSpacing = 18,
                 showBilingualSpacing = true,
                 verseIsBold = false,
@@ -2170,8 +2151,7 @@ class TemplateRepository(context: Context) {
                 secondaryReferenceFontSize = 14,
                 secondaryFontFamily = "System",
                 isFullScreen = false,
-                verticalAlignmentArabic = VerticalAlignment.BOTTOM,
-                verticalAlignmentEnglish = VerticalAlignment.BOTTOM,
+                verticalAlignment = VerticalAlignment.BOTTOM,
                 bilingualSpacing = 18,
                 showBilingualSpacing = true,
                 verseIsBold = false,
@@ -2437,7 +2417,7 @@ class TemplateRepository(context: Context) {
             val obj = JSONObject(json)
             if (obj.optString("name", "").trim().isEmpty()) return null
             // Sanity: a real style carries several known keys.
-            val knownKeys = listOf("fontFamily", "bgColorHex", "textColorHex", "verseFontSize", "style", "showCrossEmblem", "emblem", "autoFitMinVerseSp", "autoFitMaxVerseSp", "boxHeightPercent", "isFullScreen", "id", "useSystemFontForBrackets", "gradientColorHex2", "gradientAngleDeg", "gradientAnimation", "autoFitMinCitationSp", "autoFitRatioLock", "clearMode", "lineSpacingArabic", "lineSpacingEnglish", "autoFitFrozenRatio", "verseCitationGapArabicDp", "verseCitationGapEnglishDp", "boxLoopContinuous", "trueFullscreen", "citationAlignmentArabic", "citationAlignmentEnglish", "verseAlignmentEnglish", "verticalAlignmentArabic", "verticalAlignmentEnglish", "textEffect", "textEffectDepthDp", "cardGlowRadiusDp", "showAccentBorderWidthDp", "cardGlowOpacity", "accentOpacity", "showArabic", "showEnglish", "particleOpacity", "particleEffect", "particleDensity", "particleColorHex", "logoUri", "logoPosition", "logoBoxSizePercent", "logoOffsetXPercent", "logoOffsetYPercent", "logoOpacity", "logoData", "videoEnabled", "particlesEnabled", "cardEnabled", "logoEnabled")
+            val knownKeys = listOf("fontFamily", "bgColorHex", "textColorHex", "verseFontSize", "style", "showCrossEmblem", "emblem", "autoFitMinVerseSp", "autoFitMaxVerseSp", "boxHeightPercent", "isFullScreen", "id", "useSystemFontForBrackets", "gradientColorHex2", "gradientAngleDeg", "gradientAnimation", "autoFitMinCitationSp", "autoFitRatioLock", "clearMode", "lineSpacingArabic", "lineSpacingEnglish", "autoFitFrozenRatio", "verseCitationGapArabicDp", "verseCitationGapEnglishDp", "boxLoopContinuous", "trueFullscreen", "citationAlignmentArabic", "citationAlignmentEnglish", "verseAlignmentEnglish", "verticalAlignment", "verticalAlignmentArabic", "verticalAlignmentEnglish", "textEffect", "textEffectDepthDp", "cardGlowRadiusDp", "showAccentBorderWidthDp", "cardGlowOpacity", "accentOpacity", "showArabic", "showEnglish", "particleOpacity", "particleEffect", "particleDensity", "particleColorHex", "logoUri", "logoPosition", "logoBoxSizePercent", "logoOffsetXPercent", "logoOffsetYPercent", "logoOpacity", "logoData", "videoEnabled", "particlesEnabled", "cardEnabled", "logoEnabled")
             if (knownKeys.none { obj.has(it) }) return null
             fromJson(obj)
         } catch (e: Exception) {
@@ -2480,9 +2460,10 @@ class TemplateRepository(context: Context) {
             put("citationAlignmentArabic", t.citationAlignmentArabic.name)
             put("citationAlignmentEnglish", t.citationAlignmentEnglish.name)
             put("verseAlignmentEnglish", t.verseAlignmentEnglish.name)
-            // Item 91: per-language vertical alignment of the verse block.
-            put("verticalAlignmentArabic", t.verticalAlignmentArabic.name)
-            put("verticalAlignmentEnglish", t.verticalAlignmentEnglish.name)
+            // 1.9.16: ONE vertical alignment for the whole verse block
+            // (the two per-language keys are legacy; fromJson still
+            // reads them for migration).
+            put("verticalAlignment", t.verticalAlignment.name)
             // 1.9.15 items 10 + 13: per-layer on/off flags (see model).
             put("videoEnabled", t.videoEnabled)
             put("particlesEnabled", t.particlesEnabled)
@@ -2780,16 +2761,26 @@ class TemplateRepository(context: Context) {
             autoFitFrozenRatio = if (obj.has("autoFitFrozenRatio")) obj.optDouble("autoFitFrozenRatio", 0.0).toFloat().takeIf { it > 0f } else null,
             cardGlowRadiusDp = obj.optDouble("cardGlowRadiusDp", 16.0).toFloat().coerceIn(0f, 100f),
             showAccentBorderWidthDp = obj.optDouble("showAccentBorderWidthDp", 2.0).toFloat().coerceIn(0f, 30f),
-            // Item 91 migration: old saves have no vertical-alignment
-            // keys. Default by feed — Full -> TOP (the first line always
-            // starts at the same position), Lower -> BOTTOM (the
-            // lower-third look, text expanding upward) — so no existing
-            // template changes how it renders.
-            verticalAlignmentArabic = if (obj.has("verticalAlignmentArabic")) {
-                try { com.arabicchristianmedia.model.VerticalAlignment.valueOf(obj.optString("verticalAlignmentArabic")) } catch (e: Exception) { if (parsedIsFullScreen) com.arabicchristianmedia.model.VerticalAlignment.TOP else com.arabicchristianmedia.model.VerticalAlignment.BOTTOM }
-            } else if (parsedIsFullScreen) com.arabicchristianmedia.model.VerticalAlignment.TOP else com.arabicchristianmedia.model.VerticalAlignment.BOTTOM,
-            verticalAlignmentEnglish = if (obj.has("verticalAlignmentEnglish")) {
-                try { com.arabicchristianmedia.model.VerticalAlignment.valueOf(obj.optString("verticalAlignmentEnglish")) } catch (e: Exception) { if (parsedIsFullScreen) com.arabicchristianmedia.model.VerticalAlignment.TOP else com.arabicchristianmedia.model.VerticalAlignment.BOTTOM }
+            // 1.9.16 migration: the new single key wins. Old saves
+            // carry the two per-language keys — resolve them with the
+            // old collapse rule (both equal -> that; Arabic CENTER ->
+            // English; else Arabic). No key at all -> default by feed
+            // (Full -> TOP, Lower -> BOTTOM), so no existing template
+            // changes how it renders.
+            verticalAlignment = if (obj.has("verticalAlignment")) {
+                try { com.arabicchristianmedia.model.VerticalAlignment.valueOf(obj.optString("verticalAlignment")) } catch (e: Exception) { if (parsedIsFullScreen) com.arabicchristianmedia.model.VerticalAlignment.TOP else com.arabicchristianmedia.model.VerticalAlignment.BOTTOM }
+            } else if (obj.has("verticalAlignmentArabic") || obj.has("verticalAlignmentEnglish")) {
+                val ar = if (obj.has("verticalAlignmentArabic")) {
+                    try { com.arabicchristianmedia.model.VerticalAlignment.valueOf(obj.optString("verticalAlignmentArabic")) } catch (e: Exception) { if (parsedIsFullScreen) com.arabicchristianmedia.model.VerticalAlignment.TOP else com.arabicchristianmedia.model.VerticalAlignment.BOTTOM }
+                } else if (parsedIsFullScreen) com.arabicchristianmedia.model.VerticalAlignment.TOP else com.arabicchristianmedia.model.VerticalAlignment.BOTTOM
+                val en = if (obj.has("verticalAlignmentEnglish")) {
+                    try { com.arabicchristianmedia.model.VerticalAlignment.valueOf(obj.optString("verticalAlignmentEnglish")) } catch (e: Exception) { if (parsedIsFullScreen) com.arabicchristianmedia.model.VerticalAlignment.TOP else com.arabicchristianmedia.model.VerticalAlignment.BOTTOM }
+                } else if (parsedIsFullScreen) com.arabicchristianmedia.model.VerticalAlignment.TOP else com.arabicchristianmedia.model.VerticalAlignment.BOTTOM
+                when {
+                    ar == en -> ar
+                    ar == com.arabicchristianmedia.model.VerticalAlignment.CENTER -> en
+                    else -> ar
+                }
             } else if (parsedIsFullScreen) com.arabicchristianmedia.model.VerticalAlignment.TOP else com.arabicchristianmedia.model.VerticalAlignment.BOTTOM,
             // 1.9.15 items 10 + 13: layer flags. An explicit key wins;
             // old saves derive from the parsed value (see the migration

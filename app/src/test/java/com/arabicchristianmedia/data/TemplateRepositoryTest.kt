@@ -256,14 +256,12 @@ class TemplateRepositoryTest {
         // Golden Light, Midnight Clarity, Desert Dawn, Royal Proclamation).
         val retiredNames = setOf("Classic Banner", "Modern Minimal", "Elegant Serif", "Bold Contrast", "Soft Light")
         assertTrue(defaults.none { it.name in retiredNames })
-        // Vertical alignment by feed (item 91): Full TOP, Lower BOTTOM.
+        // Vertical alignment by feed (1.9.16: one field): Full TOP, Lower BOTTOM.
         defaults.filter { it.isFullScreen }.forEach { tpl ->
-            assertEquals(VerticalAlignment.TOP, tpl.verticalAlignmentArabic)
-            assertEquals(VerticalAlignment.TOP, tpl.verticalAlignmentEnglish)
+            assertEquals(VerticalAlignment.TOP, tpl.verticalAlignment)
         }
         defaults.filter { !it.isFullScreen }.forEach { tpl ->
-            assertEquals(VerticalAlignment.BOTTOM, tpl.verticalAlignmentArabic)
-            assertEquals(VerticalAlignment.BOTTOM, tpl.verticalAlignmentEnglish)
+            assertEquals(VerticalAlignment.BOTTOM, tpl.verticalAlignment)
         }
         // Item 95 part 2: every Full style bakes the macro values.
         defaults.filter { it.isFullScreen }.forEach { tpl ->
@@ -453,22 +451,34 @@ class TemplateRepositoryTest {
         val full = repo.templateFromJsonString("{\"id\":\"va2\",\"name\":\"F\",\"isFullScreen\":true}")
         assertNotNull(lower)
         assertNotNull(full)
-        assertEquals(VerticalAlignment.BOTTOM, lower!!.verticalAlignmentArabic)
-        assertEquals(VerticalAlignment.BOTTOM, lower.verticalAlignmentEnglish)
-        assertEquals(VerticalAlignment.TOP, full!!.verticalAlignmentArabic)
-        assertEquals(VerticalAlignment.TOP, full.verticalAlignmentEnglish)
+        assertEquals(VerticalAlignment.BOTTOM, lower!!.verticalAlignment)
+        assertEquals(VerticalAlignment.TOP, full!!.verticalAlignment)
     }
 
     @Test
     fun `v1_9_10 vertical alignment round-trips through JSON`() {
         val tpl = baseTemplate("va3", false).copy(
-            verticalAlignmentArabic = VerticalAlignment.BOTTOM,
-            verticalAlignmentEnglish = VerticalAlignment.CENTER
+            verticalAlignment = VerticalAlignment.BOTTOM
         )
         val imported = repo.templateFromJsonString(repo.templateToJsonString(tpl))
         assertNotNull(imported)
-        assertEquals(VerticalAlignment.BOTTOM, imported!!.verticalAlignmentArabic)
-        assertEquals(VerticalAlignment.CENTER, imported.verticalAlignmentEnglish)
+        assertEquals(VerticalAlignment.BOTTOM, imported!!.verticalAlignment)
+    }
+
+    @Test
+    fun `v1_9_16 old per-language alignment keys migrate to the single field`() {
+        // Old save with the two per-language keys (split): Arabic wins
+        // unless it is CENTER, when English wins — the old collapse rule.
+        val split = repo.templateFromJsonString("{\"id\":\"va4\",\"name\":\"S\",\"verticalAlignmentArabic\":\"BOTTOM\",\"verticalAlignmentEnglish\":\"CENTER\"}")
+        assertNotNull(split)
+        assertEquals(VerticalAlignment.BOTTOM, split!!.verticalAlignment)
+        val centerFirst = repo.templateFromJsonString("{\"id\":\"va5\",\"name\":\"C\",\"verticalAlignmentArabic\":\"CENTER\",\"verticalAlignmentEnglish\":\"BOTTOM\"}")
+        assertNotNull(centerFirst)
+        assertEquals(VerticalAlignment.BOTTOM, centerFirst!!.verticalAlignment)
+        // New single key wins over the old keys when both are present.
+        val both = repo.templateFromJsonString("{\"id\":\"va6\",\"name\":\"B\",\"verticalAlignment\":\"CENTER\",\"verticalAlignmentArabic\":\"BOTTOM\",\"verticalAlignmentEnglish\":\"BOTTOM\"}")
+        assertNotNull(both)
+        assertEquals(VerticalAlignment.CENTER, both!!.verticalAlignment)
     }
 
     @Test

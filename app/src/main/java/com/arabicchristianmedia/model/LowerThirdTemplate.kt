@@ -639,21 +639,16 @@ data class LowerThirdTemplate(
     /** Accent border width (dp) — default 2dp. */
     val showAccentBorderWidthDp: Float = 2f,
     /**
-     * Item 91: per-language vertical alignment of the verse block
-     * within the card (see [VerticalAlignment]). Model default is TOP;
-     * Lower factory templates set BOTTOM explicitly, and fromJson
-     * migrates old saves by feed (Full -> TOP, Lower -> BOTTOM), so
-     * no existing template changes how it renders.
+     * 1.9.16: ONE vertical alignment for the whole verse block (see
+     * [VerticalAlignment]). The container holds all texts in fixed
+     * order (Arabic citation, verse, English verse, citation) and
+     * Top/Center/Bottom moves the whole container on the stage.
+     * Model default is TOP; Lower factory templates set BOTTOM
+     * explicitly, and fromJson migrates old saves (the two
+     * per-language keys) by the old collapse rule, so no existing
+     * template changes how it renders.
      */
-    /**
-     * Item 91: per-language vertical alignment of the verse block
-     * within the card (see [VerticalAlignment]). Model default is TOP;
-     * Lower factory templates set BOTTOM explicitly, and fromJson
-     * migrates old saves by feed (Full -> TOP, Lower -> BOTTOM), so
-     * no existing template changes how it renders.
-     */
-    val verticalAlignmentArabic: VerticalAlignment = VerticalAlignment.TOP,
-    val verticalAlignmentEnglish: VerticalAlignment = VerticalAlignment.TOP,
+    val verticalAlignment: VerticalAlignment = VerticalAlignment.TOP,
     /**
      * 1.9.15 items 10 + 13: per-layer on/off flags. A layer is ON only when
      * its Switch is on — setting a value to transparent/none/empty no longer

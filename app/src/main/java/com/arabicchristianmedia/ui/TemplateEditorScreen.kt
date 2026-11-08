@@ -1293,9 +1293,10 @@ CollapsibleSection(
                         }
                     }
                     Spacer(Modifier.height(8.dp))
-                    // Item 91: vertical alignment of the Arabic verse block
-                    // within the card (Top / Center / Bottom).
-                    VerticalAlignmentChoiceRow("المحاذاة العمودية للنص العربي (Arabic Vertical Alignment)", editingTemplate.verticalAlignmentArabic) { onUpdate(editingTemplate.copy(verticalAlignmentArabic = it)) }
+                    // 1.9.16: ONE vertical alignment for the whole verse
+                    // block (Top / Center / Bottom) — it moves the full
+                    // container on the stage, Arabic + English together.
+                    VerticalAlignmentChoiceRow("المحاذاة العمودية (Vertical Alignment)", editingTemplate.verticalAlignment) { onUpdate(editingTemplate.copy(verticalAlignment = it)) }
                     SliderWithLabel("حجم النص العربي", editingTemplate.verseFontSize.toFloat(), 10f..180f) {
                         val newVerse = it.toInt()
                         // One-update item 8: once the ratio is frozen, a
@@ -1445,9 +1446,9 @@ CollapsibleSection(
                             }
                         }
                         Spacer(Modifier.height(8.dp))
-                        // Item 91: vertical alignment of the English verse block
-                        // within the card (Top / Center / Bottom).
-                        VerticalAlignmentChoiceRow("المحاذاة العمودية للنص الإنجليزي (English Vertical Alignment)", editingTemplate.verticalAlignmentEnglish) { onUpdate(editingTemplate.copy(verticalAlignmentEnglish = it)) }
+                        // 1.9.16: the English vertical-alignment row is
+                        // gone — one alignment (above, Arabic section)
+                        // moves the whole verse block, both languages.
                         SliderWithLabel("حجم النص الإنجليزي", editingTemplate.secondaryVerseFontSize.toFloat(), 8f..120f) { onUpdate(editingTemplate.copy(secondaryVerseFontSize = it.toInt())) }
                         // One-update item 7: per-language line spacing.
                         SliderWithLabel("تباعد أسطر الإنجليزي (English line spacing)", editingTemplate.lineSpacingEnglish, 1f..5f) { onUpdate(editingTemplate.copy(lineSpacingEnglish = it)) }

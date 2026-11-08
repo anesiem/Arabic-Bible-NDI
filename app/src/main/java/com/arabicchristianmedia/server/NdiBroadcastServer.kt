@@ -762,6 +762,20 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         }
         invalidateBitmapCache()
         broadcastStateToClients()
+        // 1.9.16 item 19: updateVerse is the SINGLE funnel — whenever
+        // the live verse actually changes, broadcast verseSelected
+        // to all SSE clients (every /remote page moves to it). The
+        // sermon path (and the Library tap) used to reach the remote
+        // page only via the 3s poll because they never emitted
+        // verseSelected. Gated on a real change (prev != null and a
+        // different id) while going live, so toggling live with the
+        // same verse — and the startup restore (prev == null) — do
+        // not re-fire. The explicit broadcast in /api/trigger is
+        // removed (it now double-fires); onSearchResultClicked keeps
+        // its own (that path does not call updateVerse).
+        if (live && prev != null && prev.id != verse.id) {
+            broadcastVerseSelected(verse.bookId, verse.chapter, verse.verse)
+        }
         persistVerseState()
     }
 
@@ -7305,11 +7319,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         statTrigger.record((System.nanoTime() - trigT0) / 1_000_000.0)
 
         if (ok) {
-            // Items 105+107: /api/trigger never told the /remote page a verse
-            // was picked — only Library/Recents taps (ViewModel) broadcast
-            // verseSelected. Emit it here too so API triggers (remote page
-            // taps, sermon-listener, any LAN caller) sync the /remote list.
-            broadcastVerseSelected(bookId!!, chapter!!, verseNum!!)
+            // 1.9.16 item 19: no explicit verseSelected here — the
+            // /api/trigger callback (onTriggerVerse) funnels through
+            // updateVerse, which now broadcasts it on a real verse
+            // change (removing this avoids firing it twice).
             sendJson(out, 200, """{"ok":true,"bookId":"${jsonEscape(bookId!!)}","chapter":$chapter,"verse":$verseNum,"target":"$target"}""")
         } else {
             sendJson(out, 400, """{"ok":false,"error":"Verse not found: bookId=$bookId $chapter:$verseNum"}""")
@@ -9102,7 +9115,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     margin: 0; padding: 0;
     font-family: system-ui, -apple-system, sans-serif;
     background: Canvas; color: CanvasText;
-    min-height: 100vh; min-height: 100dvh;
+    /* 1.9.16 item 15: the page is viewport-sized (fixed height, no
+       page scroll) so the verse list fills the freed space and
+       scrolls internally. Fixed overlays (#panel, popups) are
+       position: fixed, so they are unaffected. */
+    height: 100vh; height: 100dvh; overflow: hidden;
     display: flex; flex-direction: column;
   }
   @media (prefers-color-scheme: light) {
@@ -9166,7 +9183,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   }
   @media (max-width: 480px) { .livepill { max-width: 100%; } }
   header .sub { font-size: 13px; font-weight: 400; opacity: 0.7; margin-top: 2px; }
-  main { flex: 1; padding: 8px 16px 16px; display: flex; flex-direction: column; gap: 12px; max-width: 640px; width: 100%; margin: 0 auto; }
+  main { flex: 1; padding: 8px 16px 16px; display: flex; flex-direction: column; gap: 12px; max-width: 640px; width: 100%; margin: 0 auto; min-height: 0; }
   .card { border: 1px solid; border-radius: 16px; padding: 16px; }
   label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 8px; opacity: 0.8; }
   input, select {
@@ -9224,7 +9241,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
      language; they call POST /api/sermons/current/prev|next. */
   #controlBar #prevBtn, #controlBar #nextBtn { width: auto; flex: none; padding: 12px 14px; min-height: 48px; font-size: 14px; font-weight: 700; background: transparent; border: 1px solid var(--chrome-border, #334155); color: inherit; border-radius: 16px; cursor: pointer; }
   #controlBar #clearBtn:active { transform: scale(0.98); opacity: 0.9; }
-  .vlist { margin-top: 8px; max-height: 52dvh; overflow-y: auto; min-height: 120px; transition: opacity 0.15s; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+  .vlist { margin-top: 8px; max-height: 52dvh; overflow-y: auto; min-height: 0; flex: 1; transition: opacity 0.15s; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+  /* 1.9.16 items 14-15: the browse card is a flex column (so the
+     verse list can fill it) and the VERSE list has no dvh cap on
+     any screen — it fills the card and scrolls internally. The
+     Recents list keeps the .vlist cap above. */
+  #browseCard { display: flex; flex-direction: column; min-height: 0; }
+  #vList { max-height: none; }
   /* v1.9.2 (#5): while a chapter loads, the current verses stay in place
      (dimmed) — the list no longer collapses to a Loading line and flashes. */
   .vlist.loading { opacity: 0.45; }
@@ -9236,14 +9259,25 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       max-width: 1180px;
       display: grid;
       grid-template-columns: 340px 1fr;
-      grid-template-areas: "control control" "recent browse" "status status";
+      /* 1.9.16 item 13: the picker bars get their own full-width rows
+         ABOVE the library (the old grid had no area for them, so they
+         auto-placed into implicit rows squeezed in the 340px column).
+         The dead "control" row is gone — #controlBar does not exist
+         (the controls live in the topBar header). #refBar is hidden
+         by default, so its row collapses until shown. */
+      grid-template-areas: "refbar refbar" "browsebar browsebar" "recent browse" "status status";
       align-items: stretch;
     }
-    #controlBar { grid-area: control; }
+    #refBar { grid-area: refbar; }
+    #browseBar { grid-area: browsebar; }
     #recentCard { grid-area: recent; display: flex; flex-direction: column; }
-    #browseCard { grid-area: browse; display: flex; flex-direction: column; }
+    #browseCard { grid-area: browse; display: flex; flex-direction: column; min-height: 0; }
     .status { grid-area: status; }
     .vlist { max-height: 66dvh; flex: 1; }
+    /* 1.9.16 item 15: the VERSE list (#vList) uses the full screen —
+       no dvh cap (it fills the stretched card via flex: 1). The
+       Recents list (#recentList) keeps its cap. */
+    #vList { max-height: none; }
   }
   /* 1.9.13 (item 9): tighter verse rows — padding 12px → 8px, so
      more verses fit on a phone screen. The verse number (.vn)
@@ -9262,14 +9296,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   }
   .vrow.kbd-focus { outline: 3px solid var(--live-yellow, #F5D76E); outline-offset: -3px; border-radius: 10px; }
   .vrow.live { background: var(--live-bg, #1B3A5C); border: 2px solid var(--live-yellow, #F5D76E); border-radius: 10px; color: var(--live-text, #FFFFFF); }
-  /* Item 30 (1.9.10): ON AIR at-a-glance signal — the live verse's text
-     tints red while it is on air (the topRef already tints red; the row
-     text is the second signal). Light red #FCA5A5 keeps 6.1:1 contrast
-     on the navy live background. Toggled via body.onair in renderOnAir.
-     1.9.15 item 1: the tint covers .synced-live too — the synced verse
-     is the live verse from the first paint (SSE), not only after the
-     3-second poll re-marks it .live. */
-  body.onair .vrow.live .va, body.onair .vrow.live .ve, body.onair .vrow.synced-live .va, body.onair .vrow.synced-live .ve { color: #FCA5A5; }
+  /* 1.9.16 item 17: the ON AIR red TEXT tint on live rows is gone
+     (it was added by 1.9.15 item 1 and changed the verse color).
+     The live verse is white text on navy + the yellow border from
+     the theme variable (--live-yellow), exactly like the app's
+     Library live verse. The ON AIR signal stays on the topRef and
+     the ON AIR button (both already tint red). */
   /* Item 20 (1.9.8): persistent synced-verse highlight — high contrast.
      1.9.15 item 1: one highlight, not two — .synced-live is now identical
      to .live (2px border, no outline halo), so the verse does not change
@@ -9740,43 +9772,47 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       syncEs.onopen = function() { syncLastSeen = Date.now(); hideConnBanner(); };
       syncEs.addEventListener('ping', function() { syncLastSeen = Date.now(); });
       // SSE listener for verseSelected events from tablet.
+      // 1.9.16 items 16 + 18: ONE function that shows a verse — the
+      // pickers, the chapter, the scroll, and the highlight, all in
+      // one place. Both the SSE verseSelected handler and the poll
+      // call it, so every source (API, app tap, sermon, recents)
+      // produces the same result: library at the verse on top,
+      // pickers correct, row live. Item 16: a verse JUST tapped in
+      // THIS page's library does NOT scroll (the user is already
+      // looking at it — the smooth scroll to top was the flash); it
+      // is only marked live. Every other source scrolls to the top.
+      var _localTap = null;
+      function showVerse(bookId, chapter, verse) {
+        live.bookId = bookId || '';
+        live.chapter = chapter || 0;
+        live.verse = verse || 0;
+        var bookIdx = findBookIndex(bookId);
+        if (bookIdx < 0) { markLiveRow(); return; }
+        var sameBook = (bookIdx === curBookIdx);
+        var sameChapter = (chapter === curChapter);
+        curBookIdx = bookIdx;
+        bookSel.value = String(bookIdx);
+        if (!sameBook) fillChapters(books[bookIdx]);
+        chSel.value = String(chapter);
+        // Item 16: skip the scroll for a verse just tapped in this
+        // page's own library (within 3s, same book/chapter/verse).
+        var isLocalTap = _localTap && _localTap.bookId === bookId && _localTap.chapter === chapter && _localTap.verse === verse && (Date.now() - _localTap.at) < 3000;
+        function afterLoad() {
+          markLiveRow();
+          if (!isLocalTap) scrollToVerse(verse);
+        }
+        if (sameBook && sameChapter) {
+          afterLoad();
+        } else {
+          loadChapter(chapter, afterLoad);
+        }
+      }
       syncEs.addEventListener('verseSelected', function(e) {
         syncLastSeen = Date.now();
         if (!syncEnabled) return;
         try {
           var d = JSON.parse(e.data);
-          // 1.9.15 item 1: set the live verse BEFORE loading the chapter,
-          // so markLiveRow() (called at the end of loadChapter) marks the
-          // row .live immediately — with the red ON AIR tint from the first
-          // paint — instead of waiting up to 3s for the next poll.
-          live.bookId = d.bookId || '';
-          live.chapter = d.chapter || 0;
-          live.verse = d.verse || 0;
-          // Find book index by bookId, update dropdowns, load chapter, scroll to verse.
-          var bookIdx = findBookIndex(d.bookId);
-          if (bookIdx >= 0) {
-            // 1.9.15 item 3: skip the full re-render when the book and
-            // chapter are unchanged — the verse list already shows this
-            // chapter, so just scroll + mark. Re-rendering rewrote the
-            // chapter dropdown and the whole list (scrollTop = 0,
-            // fitListPadding) on EVERY verse change, which pulsed the
-            // dropdown. fillChapters is skipped too when the book is
-            // unchanged (the chapter options are already correct).
-            var sameBook = (bookIdx === curBookIdx);
-            var sameChapter = (d.chapter === curChapter);
-            curBookIdx = bookIdx;
-            bookSel.value = String(bookIdx);
-            if (!sameBook) fillChapters(books[bookIdx]);
-            chSel.value = String(d.chapter);
-            if (sameBook && sameChapter) {
-              markLiveRow();
-              scrollToVerse(d.verse);
-            } else {
-              loadChapter(d.chapter, function() {
-                scrollToVerse(d.verse);
-              });
-            }
-          }
+          showVerse(d.bookId, d.chapter, d.verse);
         } catch (err) {}
       });
       syncEs.onerror = function() {
@@ -9983,6 +10019,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
   function triggerVerse(verseNum) {
     if (curBookIdx < 0) return;
+    // 1.9.16 item 16: remember this tap so the SSE/poll echo of our
+    // own trigger does NOT scroll the list (the flash). The verse is
+    // already visible — just mark it live.
+    var tapBook = books[curBookIdx];
+    _localTap = { bookId: tapBook ? tapBook.id : '', chapter: curChapter, verse: verseNum, at: Date.now() };
     setStatus('Sending…', '');
     fetch('/api/trigger?book=' + (curBookIdx + 1) + '&chapter=' + curChapter + '&verse=' + verseNum)
       .then(function(r) { return r.json(); })
@@ -10164,11 +10205,24 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   }
 
   function triggerRecent(ref) {
+    // 1.9.16 item 18: close the Recents popup on selection — it used
+    // to stay open covering the library, so the move was invisible.
+    // (The #recentCard mobile sheet is closed by the row click
+    // handler removing 'recents-open' from the body.)
+    var popup = document.getElementById('recentsPopup');
+    if (popup) popup.hidden = true;
     setStatus('Sending…', '');
     fetch('/api/trigger?ref=' + encodeURIComponent(ref))
       .then(function(r) { return r.json(); })
       .then(function(j) {
-        if (j.ok) { setStatus('✓ ' + ref, 'ok'); pollNow(); }
+        if (j.ok) {
+          setStatus('✓ ' + ref, 'ok');
+          // Move the library to the picked verse immediately (do not
+          // wait for the SSE/poll echo) — showVerse is idempotent, so
+          // the echo is a harmless no-op. Works even with sync off.
+          if (j.bookId && j.chapter && j.verse) showVerse(j.bookId, j.chapter, j.verse);
+          pollNow();
+        }
         else setStatus('✗ ' + (j.error || 'failed'), 'err');
       })
       .catch(function() { setStatus('✗ Network error', 'err'); });
@@ -10247,27 +10301,17 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         markLiveRow();
         markRecentRows();
       });
-      // 2026-11-02 item 18: poll-based fallback for dropdown sync (if SSE verseSelected
-      // didn't fire). When sync is on and the live verse changed, update book/chapter dropdowns.
-      if (syncEnabled && j.bookId && j.chapterNum) {
-        var syncKey = j.bookId + ':' + j.chapterNum;
-        if (window._lastSyncKey !== syncKey) {
-          window._lastSyncKey = syncKey;
-          var sbIdx = findBookIndex(j.bookId);
-          // 2026-11-03: update dropdowns on ANY book/chapter change, not just book change
-          // (was skipping when book stayed same but chapter changed).
-          if (sbIdx >= 0) {
-            var bookChanged = (sbIdx !== curBookIdx);
-            curBookIdx = sbIdx;
-            var bookSelEl = document.getElementById('bookSel');
-            var chSelEl = document.getElementById('chSel');
-            if (bookSelEl && bookChanged) bookSelEl.value = String(sbIdx);
-            if (bookChanged && typeof fillChapters === 'function') fillChapters(books[sbIdx]);
-            if (chSelEl) chSelEl.value = String(j.chapterNum);
-            if (typeof loadChapter === 'function') loadChapter(j.chapterNum, function() {
-              if (typeof scrollToVerse === 'function' && j.verseNum) scrollToVerse(j.verseNum);
-            });
-          }
+      // 1.9.16 item 18: the poll calls the same showVerse as the SSE
+      // handler, so a verse change is caught even when the SSE event
+      // is missed (sync off, dropped stream) — including a
+      // same-chapter verse change, which the old book:chapter
+      // syncKey never scrolled to. The verse key (book:chapter:
+      // verse) dedupes: showVerse runs only when the verse changed.
+      if (syncEnabled && j.bookId && j.chapterNum && j.verseNum) {
+        var verseKey = j.bookId + ':' + j.chapterNum + ':' + j.verseNum;
+        if (window._lastVerseKey !== verseKey) {
+          window._lastVerseKey = verseKey;
+          if (typeof showVerse === 'function') showVerse(j.bookId, j.chapterNum, j.verseNum);
         }
       }
       // A poll that succeeds after failures restores the normal state

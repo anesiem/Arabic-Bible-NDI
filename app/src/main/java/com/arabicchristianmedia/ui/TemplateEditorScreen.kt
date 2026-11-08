@@ -454,6 +454,14 @@ fun TemplateEditorScreen(
         if (logoLayerOn) add("logo")
         add("transition")
     }
+    // 1.9.16 item 20: the auto-jump after enabling a layer reads the
+    // CURRENT key list. The onToggle coroutine (delay 120ms) captured
+    // the PRE-toggle list — the new layer's section was absent, so
+    // indexOf was -1 and the jump was silently skipped (tap-to-jump
+    // worked because it ran during composition, on the fresh list).
+    // rememberUpdatedState keeps a stable State whose value follows
+    // every recomposition, so the delayed jump sees the new section.
+    val latestRightColumnKeys = rememberUpdatedState(rightColumnKeys)
     // 1.9.14 (item 9): band (alternating card tint) for a right-pane
     // section, from its index among the VISIBLE sections — the
     // bandA/bandB alternation stays perfect when an off layer hides
@@ -498,7 +506,11 @@ fun TemplateEditorScreen(
         // Framing collapsible (the sliders live inside it now).
         if (id == "frame-position" || id == "frame-framing") framingExpanded = true
         highlightedAnchor = id
-        val index = rightColumnKeys.indexOf(sectionId)
+        // 1.9.16 item 20: read the CURRENT key list (via the
+        // rememberUpdatedState above), not the list captured when the
+        // jump was launched — a newly enabled layer's section only
+        // exists in the post-toggle list.
+        val index = latestRightColumnKeys.value.indexOf(sectionId)
         if (index >= 0) anchorScope.launch { rightLazyListState.scrollToItem(index) }
         anchorScope.launch {
             try {

@@ -71,6 +71,21 @@ enum class ClearMode(val displayName: String) {
     CLEAR_VERSE_ONLY("Clear verse only")
 }
 
+/**
+ * 1.9.17: glow mode — where the card glow draws.
+ * - OUTLINE: outer halo around the card (current behaviour; invisible in
+ *   trueFullscreen because the card edge is the frame edge).
+ * - INNER: soft light bleeding inward from the card's inner edge (visible
+ *   in trueFullscreen, at the frame edges).
+ * - BOTH: inner + outer combined.
+ * Default OUTLINE so existing templates keep their current look.
+ */
+enum class CardGlowMode(val displayName: String) {
+    OUTLINE("Outline"),
+    INNER("Inner"),
+    BOTH("Both")
+}
+
 /** Pure off-air frame decision, unit-testable without Android.
  * LIVE: render normally. CLEAR_ALL_TRANSPARENT: blank every output
  * (NDI transparent / HTTP hidden). CLEAR_VERSE_BACKGROUND: render
@@ -468,6 +483,8 @@ data class LowerThirdTemplate(
     val cardGlowEnabled: Boolean = true,
     val cardGlowColorHex: String = "#000000",
     val cardGlowOpacity: Float = 1.0f,
+    /** 1.9.17: glow mode — Outline (outer halo), Inner (inward light), or Both. */
+    val cardGlowMode: CardGlowMode = CardGlowMode.OUTLINE,
     val accentOpacity: Float = 1.0f,
     /**
      * User emblem: any emoji/symbol typed via the system keyboard (empty = none).

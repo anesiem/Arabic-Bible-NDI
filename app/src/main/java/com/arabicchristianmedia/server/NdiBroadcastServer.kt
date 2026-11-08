@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.LinearGradient
@@ -39,6 +40,7 @@ import com.arabicchristianmedia.model.BundledFonts
 import com.arabicchristianmedia.model.BackupImportResult
 import com.arabicchristianmedia.model.BibleVerse
 import com.arabicchristianmedia.model.BroadcastTextAlignment
+import com.arabicchristianmedia.model.CardGlowMode
 import com.arabicchristianmedia.model.SermonCreateResult
 import com.arabicchristianmedia.model.SermonEntry
 import com.arabicchristianmedia.model.SermonStepOutcome
@@ -1492,6 +1494,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             put("cardGlowRadiusDp", tpl.cardGlowRadiusDp.toDouble())
             put("showAccentBorderWidthDp", tpl.showAccentBorderWidthDp.toDouble())
             put("cardGlowOpacity", tpl.cardGlowOpacity.toDouble())
+            put("cardGlowMode", tpl.cardGlowMode.name)
             put("accentOpacity", tpl.accentOpacity.toDouble())
             put("emblem", tpl.emblem)
             // Combined batch: pure is derived from opacity 0 (toggle
@@ -3296,13 +3299,23 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       }
       function cardGlowShadow(alpha) {
         if (!data.cardGlowEnabled) return 'none';
-        if (isFull && !(data.horizontalMarginPercent > 0 || data.positionBottomPercent > 0 || (data.boxHeightPercent ?? 100) < 100)) return 'none';
         var c = hexToRgb(data.cardGlowColorHex);
         if (!c) return 'none';
         var rad = (data.cardGlowRadiusDp !== undefined) ? data.cardGlowRadiusDp : 16;
         var blur = (rad * 2.5 * getStageScale()) + 'px';
         var dy = (rad * 0.75 * getStageScale()) + 'px';
-        return '0 ' + dy + ' ' + blur + ' rgba(' + c.r + ',' + c.g + ',' + c.b + ',' + alpha + ')';
+        var col = 'rgba(' + c.r + ',' + c.g + ',' + c.b + ',' + alpha + ')';
+        var mode = data.cardGlowMode || 'OUTLINE';
+        var isFullBleed = isFull && !(data.horizontalMarginPercent > 0 || data.positionBottomPercent > 0 || (data.boxHeightPercent ?? 100) < 100);
+        var outer = '0 ' + dy + ' ' + blur + ' ' + col;
+        var inner = 'inset 0 0 ' + blur + ' ' + col;
+        // 1.9.17 item 3: glow mode. Outline is an outer halo (invisible when
+        // the card fills the frame, so it is dropped there); Inner is an
+        // inward light (visible at the frame edges even in trueFullscreen);
+        // Both is both.
+        if (mode === 'INNER') return inner;
+        if (mode === 'BOTH') return isFullBleed ? inner : (outer + ', ' + inner);
+        return isFullBleed ? 'none' : outer;
       }
       function textShadowCss() {
         // v1.8: directional shadow from the style's thickness (blur),
@@ -3386,6 +3399,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       // render; the text and the video/particle layers still show.
       if (!data.cardEnabled) {
         cardBox.classList.remove('bg-flow','bg-pulse'); cardBox.style.background=''; cardBox.style.backgroundSize='';
+        // 1.9.17 item 2: also clear backgroundImage — the design gradient
+        // is painted via backgroundImage, so clearing only the shorthand
+        // and backgroundColor left it showing when the Card layer is off.
+        cardBox.style.backgroundImage = 'none';
         cardBox.style.backgroundColor = 'transparent';
         cardBox.style.backdropFilter = 'none';
         cardBox.style.webkitBackdropFilter = 'none';
@@ -3396,7 +3413,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // background — don't force it off.
         // Item 55 (1.9.8): clear any stale gradient from a previous render
         // (the background shorthand outranks backgroundColor).
+        // 1.9.17 item 2: also clear backgroundImage (same leak as card-off).
         cardBox.classList.remove('bg-flow','bg-pulse'); cardBox.style.background=''; cardBox.style.backgroundSize='';
+        cardBox.style.backgroundImage = 'none';
         cardBox.style.backgroundColor = 'transparent';
         cardBox.style.backdropFilter = 'none';
         cardBox.style.webkitBackdropFilter = 'none';
@@ -5913,21 +5932,26 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // OUTSIDE the card rect: only the shadow survives, the card's own
         // fill (drawn after) covers the interior exactly. Drawn first,
         // behind video/card, under the visible-card rule (not !pure).
-        // Follow-up (trueFullscreen): no card glow — the card is bypassed.
         // Item 16 (1.9.8): respect glow on transparent background too.
         // 1.9.15 items 10 + 13: the glow draws only when the Card layer is on.
-        if (!textOnly && tpl.cardEnabled && tpl.cardGlowEnabled && cardHasVisibleEdge) {
-            val shadowBlurCss = tpl.cardGlowRadiusDp * 2.5f
-            val shadowDyCss = tpl.cardGlowRadiusDp * 0.75f
-            val shadowAlphaF = tpl.cardGlowOpacity
-            val glowCol = try { Color.parseColor(tpl.cardGlowColorHex) } catch (e: Exception) { Color.BLACK }
-            val shadowCol = Color.argb(
-                (255 * shadowAlphaF * boxGlowFactor).toInt().coerceIn(0, 255),
-                Color.red(glowCol), Color.green(glowCol), Color.blue(glowCol)
-            )
+        // 1.9.17 item 3: glow mode — OUTLINE is the outer halo (invisible in
+        // trueFullscreen, where the card edge is the frame edge, so it is
+        // gated on cardHasVisibleEdge); INNER is a soft light bleeding inward
+        // from the card's inner edge (visible in trueFullscreen, drawn after
+        // the card fill below); BOTH draws both. Shared values are computed
+        // once here and reused by the inner glow below.
+        val cardGlowBlurCss = tpl.cardGlowRadiusDp * 2.5f
+        val cardGlowDyCss = tpl.cardGlowRadiusDp * 0.75f
+        val cardGlowCol = try { Color.parseColor(tpl.cardGlowColorHex) } catch (e: Exception) { Color.BLACK }
+        val cardGlowShadowCol = Color.argb(
+            (255 * tpl.cardGlowOpacity * boxGlowFactor).toInt().coerceIn(0, 255),
+            Color.red(cardGlowCol), Color.green(cardGlowCol), Color.blue(cardGlowCol)
+        )
+        if (!textOnly && tpl.cardEnabled && tpl.cardGlowEnabled && cardHasVisibleEdge &&
+            (tpl.cardGlowMode == CardGlowMode.OUTLINE || tpl.cardGlowMode == CardGlowMode.BOTH)) {
             val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = shadowCol
-                setShadowLayer(shadowBlurCss * scale, 0f, shadowDyCss * scale, shadowCol)
+                color = cardGlowShadowCol
+                setShadowLayer(cardGlowBlurCss * scale, 0f, cardGlowDyCss * scale, cardGlowShadowCol)
             }
             canvas.save()
             canvas.clipOutPath(Path().apply {
@@ -6016,20 +6040,225 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         }
 
         // Combined batch: pure is opacity 0 (or the legacy flag).
-        // Item 51 (1.9.8): fill draws over video when trueFullscreen is
-        // OFF; still skipped when trueFullscreen is ON (video shows fully).
-        // (Was item 14: skipped whenever video was active on Full.)
+        // 1.9.17 item 1a: trueFullscreen is a layout mode, not a layer
+        // bypass — the card block runs on Full in trueFullscreen too
+        // (the card IS the full-frame background there). Was item 51
+        // (1.9.8): skipped when trueFullscreen was ON (video shows fully).
         val isPureDerived = tpl.bgOpacity <= 0f || tpl.isPureTransparentBackground
         // 1.9.15 items 10 + 13: the card fill runs when the Card layer is on,
         // OR when the Video layer is on with a procedural background (the
         // shader IS the video's appearance — it must draw even if the card
         // is off). The individual branches below gate on their own layer.
-        if (!textOnly && !isPureDerived && !(isFull && tpl.trueFullscreen) && (tpl.cardEnabled || (tpl.videoEnabled && tpl.animatedBackground != AnimatedBackgroundType.NONE))) {
+        if (!textOnly && !isPureDerived && (tpl.cardEnabled || (tpl.videoEnabled && tpl.animatedBackground != AnimatedBackgroundType.NONE))) {
             val bgAlpha = (tpl.bgOpacity * 255).toInt().coerceIn(0, 255)
             val baseBgCol = try { Color.parseColor(tpl.bgColorHex) } catch (e: Exception) { Color.DKGRAY }
 
             // 1.9.15 items 10 + 13: the design gradient is the Card layer —
             // it draws only when the Card layer is on.
+            // 1.9.17 item 1b: procedural shader, computed once so it can layer
+            // UNDER the design gradient instead of being replaced by it.
+            // (The shader is the Video layer; the gradient is the Card layer;
+            // both draw, video underneath.) Custom video is already drawn
+            // above, so its branch stays null here (else -> null).
+            val timeSec = (System.currentTimeMillis() % 12000L) / 1000f
+            // v1.9: motion speed scales procedural animations too (was fixed speed;
+            // only custom video responded). 0 = paused (frozen mid-phase).
+            val phase = (sin(timeSec.toDouble() * 1.5 * tpl.motionSpeed).toFloat() + 1f) / 2f
+            // Item 75 (1.9.9): the card gradient base follows the video
+            // when one is set (video is the background layer); otherwise
+            // the particle effect, so a particle-only style keeps its
+            // gradient base (e.g. Royal stays gold). CUSTOM_VIDEO counts
+            // as a video (its branch is null, so the fill falls back to
+            // the plain card color, as before).
+            // Item 100: the card fill comes ONLY from the animated
+            // background (a procedural background IS the card). A particle
+            // effect is an OVERLAY, never the card fill — when only a
+            // particle effect is set, the shader below is null and the
+            // fallback draws the user's bgColorHex, with the particles
+            // drawn on top by the hoisted layer below.
+            val gradientBg = tpl.animatedBackground
+            // 1.9.15 items 10 + 13: the procedural shader is the Video
+            // layer's appearance — compute it only when the Video layer
+            // is on. When the video is off, the shader is null and the
+            // branch falls back to the plain card color (below).
+            val procShader: Shader? = if (tpl.videoEnabled) when (gradientBg) {
+                AnimatedBackgroundType.GOLDEN_DIVINE_RAYS -> {
+                    val c1 = Color.argb(bgAlpha, 217, 119, 6)
+                    val c2 = Color.argb(bgAlpha, 251, 191, 36)
+                    LinearGradient(
+                        boxLeft + (boxWidth * phase), boxTop,
+                        boxRight - (boxWidth * (1f - phase)), boxBottom,
+                        intArrayOf(c1, c2, c1), null, Shader.TileMode.CLAMP
+                    )
+                }
+                AnimatedBackgroundType.ETHEREAL_BLUE_WAVES -> {
+                    val c1 = Color.argb(bgAlpha, 30, 58, 138)
+                    val c2 = Color.argb(bgAlpha, 14, 165, 233)
+                    LinearGradient(
+                        boxLeft, boxTop + (boxHeight * phase),
+                        boxRight, boxBottom - (boxHeight * (1f - phase)),
+                        intArrayOf(c1, c2, c1), null, Shader.TileMode.CLAMP
+                    )
+                }
+                AnimatedBackgroundType.CANDLE_LITURGICAL_GLOW -> {
+                    val c1 = Color.argb(bgAlpha, 120, 53, 15)
+                    val c2 = Color.argb(bgAlpha, 245, 158, 11)
+                    RadialGradient(
+                        boxRight - (padR * 2f), boxTop + (boxHeight / 2f),
+                        (boxHeight * 1.4f) * (0.8f + 0.3f * phase),
+                        intArrayOf(c2, c1), floatArrayOf(0f, 1f), Shader.TileMode.CLAMP
+                    )
+                }
+                AnimatedBackgroundType.ROYAL_PURPLE_SILK -> {
+                    val c1 = Color.argb(bgAlpha, 88, 28, 135)
+                    val c2 = Color.argb(bgAlpha, 192, 132, 252)
+                    LinearGradient(
+                        boxLeft + (boxWidth * phase), boxTop,
+                        boxRight, boxBottom,
+                        intArrayOf(c1, c2, c1), null, Shader.TileMode.CLAMP
+                    )
+                }
+                AnimatedBackgroundType.EMERALD_GARDEN_WAVES -> {
+                    val c1 = Color.argb(bgAlpha, 6, 78, 59)
+                    val c2 = Color.argb(bgAlpha, 52, 211, 153)
+                    LinearGradient(
+                        boxLeft, boxTop + (boxHeight * phase),
+                        boxRight, boxBottom,
+                        intArrayOf(c1, c2, c1), null, Shader.TileMode.CLAMP
+                    )
+                }
+                AnimatedBackgroundType.ROSE_DAWN_GLOW -> {
+                    val c1 = Color.argb(bgAlpha, 136, 19, 55)
+                    val c2 = Color.argb(bgAlpha, 251, 113, 133)
+                    RadialGradient(
+                        boxLeft + (boxWidth / 2f), boxTop + (boxHeight / 2f),
+                        (boxHeight * 1.2f) * (0.8f + 0.3f * phase),
+                        intArrayOf(c2, c1), floatArrayOf(0f, 1f), Shader.TileMode.CLAMP
+                    )
+                }
+                AnimatedBackgroundType.GOLDEN_PARTICLES -> {
+                    val c1 = Color.argb(bgAlpha, 120, 53, 15)
+                    val c2 = Color.argb(bgAlpha, 252, 211, 77)
+                    LinearGradient(
+                        boxLeft + (boxWidth * (1f - phase)), boxTop,
+                        boxRight, boxBottom,
+                        intArrayOf(c1, c2, c1), null, Shader.TileMode.CLAMP
+                    )
+                }
+                AnimatedBackgroundType.PARTICLE_STARS -> {
+                    val c1 = Color.argb(bgAlpha, 15, 23, 42)
+                    val c2 = Color.argb(bgAlpha, 56, 189, 248)
+                    LinearGradient(
+                        boxLeft + (boxWidth * phase), boxTop,
+                        boxRight, boxBottom,
+                        intArrayOf(c1, c2, c1), null, Shader.TileMode.CLAMP
+                    )
+                }
+                // Item 64 phase 1 (1.9.8): gradient bases for the new
+                // worship particle effects (matches the HTTP CSS
+                // classes .anim-snow / .anim-light-rays /
+                // .anim-dove-feathers — NDI/HTTP render parity).
+                AnimatedBackgroundType.SNOW -> {
+                    val c1 = Color.argb(bgAlpha, 15, 23, 42)
+                    val c2 = Color.argb(bgAlpha, 30, 58, 138)
+                    LinearGradient(
+                        boxLeft, boxTop,
+                        boxRight, boxBottom,
+                        intArrayOf(c1, c2, c1), null, Shader.TileMode.CLAMP
+                    )
+                }
+                AnimatedBackgroundType.LIGHT_RAYS -> {
+                    val c1 = Color.argb(bgAlpha, 120, 53, 15)
+                    val c2 = Color.argb(bgAlpha, 253, 230, 138)
+                    LinearGradient(
+                        boxLeft + (boxWidth * phase), boxTop,
+                        boxRight - (boxWidth * (1f - phase)), boxBottom,
+                        intArrayOf(c1, c2, c1), null, Shader.TileMode.CLAMP
+                    )
+                }
+                AnimatedBackgroundType.DOVE_FEATHERS -> {
+                    val c1 = Color.argb(bgAlpha, 226, 232, 240)
+                    val c2 = Color.argb(bgAlpha, 147, 197, 253)
+                    LinearGradient(
+                        boxLeft, boxTop,
+                        boxRight, boxBottom,
+                        intArrayOf(c1, c2, c1), null, Shader.TileMode.CLAMP
+                    )
+                }
+                // Item 76 (1.9.9): gradient bases for the phase-2
+                // effects (match the HTTP CSS classes — NDI/HTTP parity).
+                AnimatedBackgroundType.EMBERS -> {
+                    val c1 = Color.argb(bgAlpha, 28, 10, 0)
+                    val c2 = Color.argb(bgAlpha, 124, 45, 18)
+                    LinearGradient(
+                        boxLeft + (boxWidth * (1f - phase)), boxTop,
+                        boxRight, boxBottom,
+                        intArrayOf(c1, c2, c1), null, Shader.TileMode.CLAMP
+                    )
+                }
+                AnimatedBackgroundType.PETALS -> {
+                    val c1 = Color.argb(bgAlpha, 131, 24, 67)
+                    val c2 = Color.argb(bgAlpha, 249, 168, 212)
+                    LinearGradient(
+                        boxLeft, boxTop,
+                        boxRight, boxBottom,
+                        intArrayOf(c1, c2, c1), null, Shader.TileMode.CLAMP
+                    )
+                }
+                AnimatedBackgroundType.BUBBLES -> {
+                    val c1 = Color.argb(bgAlpha, 12, 74, 110)
+                    val c2 = Color.argb(bgAlpha, 56, 189, 248)
+                    LinearGradient(
+                        boxLeft, boxTop + (boxHeight * phase),
+                        boxRight, boxBottom - (boxHeight * (1f - phase)),
+                        intArrayOf(c1, c2, c1), null, Shader.TileMode.CLAMP
+                    )
+                }
+                AnimatedBackgroundType.CROSS_SPARKLES -> {
+                    val c1 = Color.argb(bgAlpha, 30, 27, 75)
+                    val c2 = Color.argb(bgAlpha, 252, 211, 77)
+                    LinearGradient(
+                        boxLeft + (boxWidth * phase), boxTop,
+                        boxRight, boxBottom,
+                        intArrayOf(c1, c2, c1), null, Shader.TileMode.CLAMP
+                    )
+                }
+                AnimatedBackgroundType.CLOUDS_MIST -> {
+                    val c1 = Color.argb(bgAlpha, 51, 65, 85)
+                    val c2 = Color.argb(bgAlpha, 203, 213, 225)
+                    LinearGradient(
+                        boxLeft, boxTop,
+                        boxRight, boxBottom,
+                        intArrayOf(c1, c2, c1), null, Shader.TileMode.CLAMP
+                    )
+                }
+                AnimatedBackgroundType.FIREFLIES -> {
+                    val c1 = Color.argb(bgAlpha, 20, 83, 45)
+                    val c2 = Color.argb(bgAlpha, 190, 242, 100)
+                    LinearGradient(
+                        boxLeft + (boxWidth * (1f - phase)), boxTop,
+                        boxRight, boxBottom,
+                        intArrayOf(c1, c2, c1), null, Shader.TileMode.CLAMP
+                    )
+                }
+                AnimatedBackgroundType.DOVES -> {
+                    val c1 = Color.argb(bgAlpha, 30, 58, 138)
+                    val c2 = Color.argb(bgAlpha, 219, 234, 254)
+                    LinearGradient(
+                        boxLeft, boxTop,
+                        boxRight, boxBottom,
+                        intArrayOf(c1, c2, c1), null, Shader.TileMode.CLAMP
+                    )
+                }
+                else -> null
+            } else null
+            // Draw the shader FIRST (underneath). The design gradient (below)
+            // draws over it at bgOpacity when the Card layer has a gradient.
+            if (procShader != null) {
+                paint.shader = procShader
+                canvas.drawRoundRect(rect, radius, radius, paint)
+                paint.shader = null
+            }
             if (tpl.cardEnabled && tpl.gradientEnabled) {
                 // Item 23 (1.9.8): allow gradient in true fullscreen too.
                 // Design-gradient card (2026-10-28 batch): two colors at
@@ -6114,222 +6343,19 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 // above) — skip the normal fill so it stays visible.
                 // 1.9.15: skip only when the video is actually drawing; when
                 // the Video layer is off, the card fill draws normally.
-            } else if ((tpl.videoEnabled && tpl.animatedBackground != AnimatedBackgroundType.NONE) || tpl.particleEffect != AnimatedBackgroundType.NONE) {
-                val timeSec = (System.currentTimeMillis() % 12000L) / 1000f
-                // v1.9: motion speed scales procedural animations too (was fixed speed;
-                // only custom video responded). 0 = paused (frozen mid-phase).
-                val phase = (sin(timeSec.toDouble() * 1.5 * tpl.motionSpeed).toFloat() + 1f) / 2f
-                // Item 75 (1.9.9): the card gradient base follows the video
-                // when one is set (video is the background layer); otherwise
-                // the particle effect, so a particle-only style keeps its
-                // gradient base (e.g. Royal stays gold). CUSTOM_VIDEO counts
-                // as a video (its branch is null, so the fill falls back to
-                // the plain card color, as before).
-                // Item 100: the card fill comes ONLY from the animated
-                // background (a procedural background IS the card). A particle
-                // effect is an OVERLAY, never the card fill — when only a
-                // particle effect is set, the shader below is null and the
-                // fallback draws the user's bgColorHex, with the particles
-                // drawn on top by the hoisted layer below.
-                val gradientBg = tpl.animatedBackground
-                // 1.9.15 items 10 + 13: the procedural shader is the Video
-                // layer's appearance — compute it only when the Video layer
-                // is on. When the video is off, the shader is null and the
-                // branch falls back to the plain card color (below).
-                val shader: Shader? = if (tpl.videoEnabled) when (gradientBg) {
-                    AnimatedBackgroundType.GOLDEN_DIVINE_RAYS -> {
-                        val c1 = Color.argb(bgAlpha, 217, 119, 6)
-                        val c2 = Color.argb(bgAlpha, 251, 191, 36)
-                        LinearGradient(
-                            boxLeft + (boxWidth * phase), boxTop,
-                            boxRight - (boxWidth * (1f - phase)), boxBottom,
-                            intArrayOf(c1, c2, c1), null, Shader.TileMode.CLAMP
-                        )
-                    }
-                    AnimatedBackgroundType.ETHEREAL_BLUE_WAVES -> {
-                        val c1 = Color.argb(bgAlpha, 30, 58, 138)
-                        val c2 = Color.argb(bgAlpha, 14, 165, 233)
-                        LinearGradient(
-                            boxLeft, boxTop + (boxHeight * phase),
-                            boxRight, boxBottom - (boxHeight * (1f - phase)),
-                            intArrayOf(c1, c2, c1), null, Shader.TileMode.CLAMP
-                        )
-                    }
-                    AnimatedBackgroundType.CANDLE_LITURGICAL_GLOW -> {
-                        val c1 = Color.argb(bgAlpha, 120, 53, 15)
-                        val c2 = Color.argb(bgAlpha, 245, 158, 11)
-                        RadialGradient(
-                            boxRight - (padR * 2f), boxTop + (boxHeight / 2f),
-                            (boxHeight * 1.4f) * (0.8f + 0.3f * phase),
-                            intArrayOf(c2, c1), floatArrayOf(0f, 1f), Shader.TileMode.CLAMP
-                        )
-                    }
-                    AnimatedBackgroundType.ROYAL_PURPLE_SILK -> {
-                        val c1 = Color.argb(bgAlpha, 88, 28, 135)
-                        val c2 = Color.argb(bgAlpha, 192, 132, 252)
-                        LinearGradient(
-                            boxLeft + (boxWidth * phase), boxTop,
-                            boxRight, boxBottom,
-                            intArrayOf(c1, c2, c1), null, Shader.TileMode.CLAMP
-                        )
-                    }
-                    AnimatedBackgroundType.EMERALD_GARDEN_WAVES -> {
-                        val c1 = Color.argb(bgAlpha, 6, 78, 59)
-                        val c2 = Color.argb(bgAlpha, 52, 211, 153)
-                        LinearGradient(
-                            boxLeft, boxTop + (boxHeight * phase),
-                            boxRight, boxBottom,
-                            intArrayOf(c1, c2, c1), null, Shader.TileMode.CLAMP
-                        )
-                    }
-                    AnimatedBackgroundType.ROSE_DAWN_GLOW -> {
-                        val c1 = Color.argb(bgAlpha, 136, 19, 55)
-                        val c2 = Color.argb(bgAlpha, 251, 113, 133)
-                        RadialGradient(
-                            boxLeft + (boxWidth / 2f), boxTop + (boxHeight / 2f),
-                            (boxHeight * 1.2f) * (0.8f + 0.3f * phase),
-                            intArrayOf(c2, c1), floatArrayOf(0f, 1f), Shader.TileMode.CLAMP
-                        )
-                    }
-                    AnimatedBackgroundType.GOLDEN_PARTICLES -> {
-                        val c1 = Color.argb(bgAlpha, 120, 53, 15)
-                        val c2 = Color.argb(bgAlpha, 252, 211, 77)
-                        LinearGradient(
-                            boxLeft + (boxWidth * (1f - phase)), boxTop,
-                            boxRight, boxBottom,
-                            intArrayOf(c1, c2, c1), null, Shader.TileMode.CLAMP
-                        )
-                    }
-                    AnimatedBackgroundType.PARTICLE_STARS -> {
-                        val c1 = Color.argb(bgAlpha, 15, 23, 42)
-                        val c2 = Color.argb(bgAlpha, 56, 189, 248)
-                        LinearGradient(
-                            boxLeft + (boxWidth * phase), boxTop,
-                            boxRight, boxBottom,
-                            intArrayOf(c1, c2, c1), null, Shader.TileMode.CLAMP
-                        )
-                    }
-                    // Item 64 phase 1 (1.9.8): gradient bases for the new
-                    // worship particle effects (matches the HTTP CSS
-                    // classes .anim-snow / .anim-light-rays /
-                    // .anim-dove-feathers — NDI/HTTP render parity).
-                    AnimatedBackgroundType.SNOW -> {
-                        val c1 = Color.argb(bgAlpha, 15, 23, 42)
-                        val c2 = Color.argb(bgAlpha, 30, 58, 138)
-                        LinearGradient(
-                            boxLeft, boxTop,
-                            boxRight, boxBottom,
-                            intArrayOf(c1, c2, c1), null, Shader.TileMode.CLAMP
-                        )
-                    }
-                    AnimatedBackgroundType.LIGHT_RAYS -> {
-                        val c1 = Color.argb(bgAlpha, 120, 53, 15)
-                        val c2 = Color.argb(bgAlpha, 253, 230, 138)
-                        LinearGradient(
-                            boxLeft + (boxWidth * phase), boxTop,
-                            boxRight - (boxWidth * (1f - phase)), boxBottom,
-                            intArrayOf(c1, c2, c1), null, Shader.TileMode.CLAMP
-                        )
-                    }
-                    AnimatedBackgroundType.DOVE_FEATHERS -> {
-                        val c1 = Color.argb(bgAlpha, 226, 232, 240)
-                        val c2 = Color.argb(bgAlpha, 147, 197, 253)
-                        LinearGradient(
-                            boxLeft, boxTop,
-                            boxRight, boxBottom,
-                            intArrayOf(c1, c2, c1), null, Shader.TileMode.CLAMP
-                        )
-                    }
-                    // Item 76 (1.9.9): gradient bases for the phase-2
-                    // effects (match the HTTP CSS classes — NDI/HTTP parity).
-                    AnimatedBackgroundType.EMBERS -> {
-                        val c1 = Color.argb(bgAlpha, 28, 10, 0)
-                        val c2 = Color.argb(bgAlpha, 124, 45, 18)
-                        LinearGradient(
-                            boxLeft + (boxWidth * (1f - phase)), boxTop,
-                            boxRight, boxBottom,
-                            intArrayOf(c1, c2, c1), null, Shader.TileMode.CLAMP
-                        )
-                    }
-                    AnimatedBackgroundType.PETALS -> {
-                        val c1 = Color.argb(bgAlpha, 131, 24, 67)
-                        val c2 = Color.argb(bgAlpha, 249, 168, 212)
-                        LinearGradient(
-                            boxLeft, boxTop,
-                            boxRight, boxBottom,
-                            intArrayOf(c1, c2, c1), null, Shader.TileMode.CLAMP
-                        )
-                    }
-                    AnimatedBackgroundType.BUBBLES -> {
-                        val c1 = Color.argb(bgAlpha, 12, 74, 110)
-                        val c2 = Color.argb(bgAlpha, 56, 189, 248)
-                        LinearGradient(
-                            boxLeft, boxTop + (boxHeight * phase),
-                            boxRight, boxBottom - (boxHeight * (1f - phase)),
-                            intArrayOf(c1, c2, c1), null, Shader.TileMode.CLAMP
-                        )
-                    }
-                    AnimatedBackgroundType.CROSS_SPARKLES -> {
-                        val c1 = Color.argb(bgAlpha, 30, 27, 75)
-                        val c2 = Color.argb(bgAlpha, 252, 211, 77)
-                        LinearGradient(
-                            boxLeft + (boxWidth * phase), boxTop,
-                            boxRight, boxBottom,
-                            intArrayOf(c1, c2, c1), null, Shader.TileMode.CLAMP
-                        )
-                    }
-                    AnimatedBackgroundType.CLOUDS_MIST -> {
-                        val c1 = Color.argb(bgAlpha, 51, 65, 85)
-                        val c2 = Color.argb(bgAlpha, 203, 213, 225)
-                        LinearGradient(
-                            boxLeft, boxTop,
-                            boxRight, boxBottom,
-                            intArrayOf(c1, c2, c1), null, Shader.TileMode.CLAMP
-                        )
-                    }
-                    AnimatedBackgroundType.FIREFLIES -> {
-                        val c1 = Color.argb(bgAlpha, 20, 83, 45)
-                        val c2 = Color.argb(bgAlpha, 190, 242, 100)
-                        LinearGradient(
-                            boxLeft + (boxWidth * (1f - phase)), boxTop,
-                            boxRight, boxBottom,
-                            intArrayOf(c1, c2, c1), null, Shader.TileMode.CLAMP
-                        )
-                    }
-                    AnimatedBackgroundType.DOVES -> {
-                        val c1 = Color.argb(bgAlpha, 30, 58, 138)
-                        val c2 = Color.argb(bgAlpha, 219, 234, 254)
-                        LinearGradient(
-                            boxLeft, boxTop,
-                            boxRight, boxBottom,
-                            intArrayOf(c1, c2, c1), null, Shader.TileMode.CLAMP
-                        )
-                    }
-                    else -> null
-                } else null
-
-                if (shader != null) {
-                    paint.shader = shader
-                    canvas.drawRoundRect(rect, radius, radius, paint)
-                    paint.shader = null
-                } else if (tpl.cardEnabled) {
-                    // 1.9.15 items 10 + 13: the plain card color draws only
-                    // when the Card layer is on (shader null = no video, so
-                    // this is the card's own fill, not the video's).
-                    paint.color = Color.argb(bgAlpha, Color.red(baseBgCol), Color.green(baseBgCol), Color.blue(baseBgCol))
-                    canvas.drawRoundRect(rect, radius, radius, paint)
-                }
-                // Item 99: the particle layer is drawn ONCE, independently,
-                // after the whole background chain below — not here. (It used
-                // to live only in this branch and the glow branch, so a
-                // gradient background skipped it entirely.)
-            } else if (tpl.cardEnabled) {
-                // Follow-up (trueFullscreen): no card fill — the card is bypassed.
+            } else if (tpl.cardEnabled && procShader == null) {
+                // 1.9.17 item 1b: plain card color only when no shader drew
+                // (the shader IS the card appearance when it drew; the
+                // design gradient, above, replaces the plain fill).
                 // 1.9.15 items 10 + 13: the plain card color draws only when
                 // the Card layer is on.
                 paint.color = Color.argb(bgAlpha, Color.red(baseBgCol), Color.green(baseBgCol), Color.blue(baseBgCol))
                 canvas.drawRoundRect(rect, radius, radius, paint)
             }
+                // Item 99: the particle layer is drawn ONCE, independently,
+                // after the whole background chain below — not here. (It used
+                // to live only in this branch and the glow branch, so a
+                // gradient background skipped it entirely.)
 
         } else if ((tpl.videoEnabled && tpl.animatedBackground != AnimatedBackgroundType.NONE && tpl.animatedBackground != AnimatedBackgroundType.CUSTOM_VIDEO) || (tpl.particlesEnabled && tpl.particleEffect != AnimatedBackgroundType.NONE)) {
             // If Pure Transparent background with animated motion background is selected:
@@ -6383,6 +6409,30 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             // after the whole background chain below — not here. (It used
             // to live only in this branch and the card-fill branch, so a
             // gradient background skipped it entirely.)
+        }
+
+        // 1.9.17 item 3: INNER glow — soft light bleeding inward from the
+        // card's inner edge. A stroked ring on the card edge, blurred,
+        // clipped to inside the card so only the inner half shows. Centered
+        // (no dy) so it glows evenly on all edges. Drawn AFTER the card
+        // fill (above it, or the fill would cover it) and BEFORE particles.
+        // Visible in trueFullscreen (at the frame edges) where the outer
+        // glow is not, so it is NOT gated on cardHasVisibleEdge.
+        if (!textOnly && tpl.cardEnabled && tpl.cardGlowEnabled &&
+            (tpl.cardGlowMode == CardGlowMode.INNER || tpl.cardGlowMode == CardGlowMode.BOTH)) {
+            val innerBlur = cardGlowBlurCss * scale
+            val innerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = cardGlowShadowCol
+                style = Paint.Style.STROKE
+                strokeWidth = innerBlur * 2f
+                maskFilter = BlurMaskFilter(innerBlur, BlurMaskFilter.Blur.NORMAL)
+            }
+            canvas.save()
+            canvas.clipPath(Path().apply {
+                addRoundRect(rect, radius, radius, Path.Direction.CW)
+            })
+            canvas.drawRoundRect(rect, radius, radius, innerPaint)
+            canvas.restore()
         }
 
         // Item 99: the particle layer, drawn independently AFTER the
@@ -8273,6 +8323,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             o.put("cardGlowRadiusDp", t.cardGlowRadiusDp.toDouble())
             o.put("showAccentBorderWidthDp", t.showAccentBorderWidthDp.toDouble())
             o.put("cardGlowOpacity", t.cardGlowOpacity.toDouble())
+            o.put("cardGlowMode", t.cardGlowMode.name)
             o.put("accentOpacity", t.accentOpacity.toDouble())
             o.put("emblem", t.emblem)
             o.put("languageMode", t.languageMode.name)

@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import com.arabicchristianmedia.model.AnimatedBackgroundType
 import com.arabicchristianmedia.model.BroadcastTextAlignment
+import com.arabicchristianmedia.model.CardGlowMode
 import com.arabicchristianmedia.model.ClearMode
 import com.arabicchristianmedia.model.LanguageMode
 import com.arabicchristianmedia.model.GradientAnimationType
@@ -2437,7 +2438,7 @@ class TemplateRepository(context: Context) {
             val obj = JSONObject(json)
             if (obj.optString("name", "").trim().isEmpty()) return null
             // Sanity: a real style carries several known keys.
-            val knownKeys = listOf("fontFamily", "bgColorHex", "textColorHex", "verseFontSize", "style", "showCrossEmblem", "emblem", "autoFitMinVerseSp", "autoFitMaxVerseSp", "boxHeightPercent", "isFullScreen", "id", "useSystemFontForBrackets", "gradientColorHex2", "gradientAngleDeg", "gradientAnimation", "autoFitMinCitationSp", "autoFitRatioLockArabic", "autoFitRatioLockEnglish", "autoFitRatioLock", "clearMode", "lineSpacingArabic", "lineSpacingEnglish", "autoFitFrozenRatio", "verseCitationGapArabicDp", "verseCitationGapEnglishDp", "boxLoopContinuous", "trueFullscreen", "citationAlignmentArabic", "citationAlignmentEnglish", "verseAlignmentEnglish", "verticalAlignment", "verticalAlignmentArabic", "verticalAlignmentEnglish", "textEffect", "textEffectDepthDp", "cardGlowRadiusDp", "showAccentBorderWidthDp", "cardGlowOpacity", "accentOpacity", "showArabic", "showEnglish", "particleOpacity", "particleEffect", "particleDensity", "particleColorHex", "logoUri", "logoPosition", "logoBoxSizePercent", "logoOffsetXPercent", "logoOffsetYPercent", "logoOpacity", "logoData", "videoEnabled", "particlesEnabled", "cardEnabled", "logoEnabled")
+            val knownKeys = listOf("fontFamily", "bgColorHex", "textColorHex", "verseFontSize", "style", "showCrossEmblem", "emblem", "autoFitMinVerseSp", "autoFitMaxVerseSp", "boxHeightPercent", "isFullScreen", "id", "useSystemFontForBrackets", "gradientColorHex2", "gradientAngleDeg", "gradientAnimation", "autoFitMinCitationSp", "autoFitRatioLockArabic", "autoFitRatioLockEnglish", "autoFitRatioLock", "clearMode", "lineSpacingArabic", "lineSpacingEnglish", "autoFitFrozenRatio", "verseCitationGapArabicDp", "verseCitationGapEnglishDp", "boxLoopContinuous", "trueFullscreen", "citationAlignmentArabic", "citationAlignmentEnglish", "verseAlignmentEnglish", "verticalAlignment", "verticalAlignmentArabic", "verticalAlignmentEnglish", "textEffect", "textEffectDepthDp", "cardGlowRadiusDp", "showAccentBorderWidthDp", "cardGlowOpacity", "cardGlowMode", "accentOpacity", "showArabic", "showEnglish", "particleOpacity", "particleEffect", "particleDensity", "particleColorHex", "logoUri", "logoPosition", "logoBoxSizePercent", "logoOffsetXPercent", "logoOffsetYPercent", "logoOpacity", "logoData", "videoEnabled", "particlesEnabled", "cardEnabled", "logoEnabled")
             if (knownKeys.none { obj.has(it) }) return null
             fromJson(obj)
         } catch (e: Exception) {
@@ -2513,6 +2514,7 @@ class TemplateRepository(context: Context) {
             put("cardGlowEnabled", t.cardGlowEnabled)
             put("cardGlowColorHex", t.cardGlowColorHex)
             put("cardGlowOpacity", t.cardGlowOpacity.toDouble())
+            put("cardGlowMode", t.cardGlowMode.name)
             put("accentOpacity", t.accentOpacity.toDouble())
             put("emblem", t.emblem)
             put("bilingualMode", t.bilingualMode)
@@ -2691,6 +2693,8 @@ class TemplateRepository(context: Context) {
                               else safeGlowDefault,
             cardGlowColorHex = obj.optString("cardGlowColorHex", "#000000"),
             cardGlowOpacity = obj.optDouble("cardGlowOpacity", 1.0).toFloat(),
+            // 1.9.17: glow mode — old templates without the key default to OUTLINE.
+            cardGlowMode = try { CardGlowMode.valueOf(obj.optString("cardGlowMode")) } catch (e: Exception) { CardGlowMode.OUTLINE },
             accentOpacity = obj.optDouble("accentOpacity", 1.0).toFloat(),
             // v1.7 migration: the legacy showCrossEmblem boolean becomes a
             // free emblem string; old "true" styles get the cross glyph.

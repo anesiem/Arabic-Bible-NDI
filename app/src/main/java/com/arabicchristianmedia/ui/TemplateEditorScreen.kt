@@ -2128,6 +2128,8 @@ CollapsibleSection(
         ) {
             FeatureToggleRow("توهج الكارت (Card Glow)", editingTemplate.cardGlowEnabled, modifier = anchorModifier("shadow-glow")) { onUpdate(editingTemplate.copy(cardGlowEnabled = it)) }
             if (editingTemplate.cardGlowEnabled) {
+                // 1.9.17: glow mode — Outline (outer halo), Inner (inward light), Both.
+                CardGlowModeChoiceRow("نمط التوهج (Glow Mode)", editingTemplate.cardGlowMode) { onUpdate(editingTemplate.copy(cardGlowMode = it)) }
                 ColorGradePickerRow("لون توهج الكارت (Card Glow Color)", editingTemplate.cardGlowColorHex, { onUpdate(editingTemplate.copy(cardGlowColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor, previewTemplate = editingTemplate, previewField = "cardGlowColorHex")
                 SliderWithLabel("حجم نطاق التوهج (Glow Radius)", editingTemplate.cardGlowRadiusDp, 0f..48f) {
                     onUpdate(editingTemplate.copy(cardGlowRadiusDp = it))
@@ -3095,6 +3097,24 @@ fun VerticalAlignmentChoiceRow(
     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         VerticalAlignment.entries.forEach { align ->
             FilterChip(selected = selected == align, onClick = { onSelect(align) }, label = { Text(align.displayName, fontSize = 10.sp) })
+        }
+    }
+    Spacer(Modifier.height(8.dp))
+}
+
+// 1.9.17: glow mode choice — Outline (outer halo), Inner (inward light), Both.
+@Composable
+fun CardGlowModeChoiceRow(
+    label: String,
+    selected: CardGlowMode,
+    onSelect: (CardGlowMode) -> Unit
+) {
+    val bento = LocalBentoColors.current
+    Text(label, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
+    Spacer(Modifier.height(4.dp))
+    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        CardGlowMode.entries.forEach { mode ->
+            FilterChip(selected = selected == mode, onClick = { onSelect(mode) }, label = { Text(mode.displayName, fontSize = 10.sp) })
         }
     }
     Spacer(Modifier.height(8.dp))

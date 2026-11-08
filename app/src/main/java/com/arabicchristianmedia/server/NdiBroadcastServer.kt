@@ -1539,14 +1539,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             put("cardPaddingLeftDp", tpl.cardPaddingLeftDp.toDouble())
             put("cardPaddingRightDp", tpl.cardPaddingRightDp.toDouble())
             put("autoFitText", tpl.autoFitText)
-            put("autoFitMaxVerseSp", tpl.autoFitMaxVerseSp)
             put("boxHeightPercent", tpl.boxHeightPercent)
             put("gradientEnabled", tpl.gradientEnabled)
             put("gradientColorHex2", tpl.gradientColorHex2)
             put("gradientAngleDeg", tpl.gradientAngleDeg)
             put("gradientAnimation", tpl.gradientAnimation.id)
             put("gradientSpeed", tpl.gradientSpeed)
-            put("autoFitMinCitationSp", tpl.autoFitMinCitationSp)
             // 1.9.16 Part 3: two per-language ratio locks.
             put("autoFitRatioLockArabic", tpl.autoFitRatioLockArabic)
             put("autoFitRatioLockEnglish", tpl.autoFitRatioLockEnglish)
@@ -1721,7 +1719,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     .card-content {
       position: relative;
       display: inline-block;
-      min-width: 450px;
+      /* 1.9.18 Item 5: clamp the 450px floor to the viewport — on a
+         412px Pixel the old min-width forced the card 450px wide
+         (boxLeft −38 /full, −63 /lower, overflowing the stage).
+         min-width wins over max-width in CSS, so the 92vw cap must
+         be inside the min, not only in max-width below. */
+      min-width: min(450px, 92vw);
       max-width: 92vw;
       overflow: hidden;
       box-sizing: border-box;
@@ -2063,6 +2066,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     const englishSection = document.getElementById('english-section');
     const englishText = document.getElementById('english-text');
     const englishCitation = document.getElementById('english-citation');
+    // 1.9.18 Item 12: off-screen measurement element for the
+    // data-driven fit (created once, reused by every doFit call).
+    var fitMeasureEl = null;
 
     // v2.0: Real particle field on HTTP (mirrors NDI drawParticleField).
     // Previously HTTP only pulsed a CSS glow; now draws actual particles.
@@ -3048,10 +3054,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       // size jumps. Base sizes were just reset above (section 5).
       const doFit = function() {
         // 1.9.16 Part 1 (Fit): when autoFit is OFF, skip the fit
-        // entirely — the text stays at its SET size (ratio 1, no cap,
-        // no shrink-to-fit). Auto fit ON keeps the cap (capRatio) +
-        // shrink-to-fit. The box growth that makes OFF text visible is
-        // Part 2; the ratio locks are Part 3.
+        // entirely — the text stays at its SET size (ratio 1, no
+        // shrink-to-fit). Auto fit ON: ratio 1 (the selected size is
+        // the ceiling, 1.9.18 Item 4) + shrink-to-fit. The box growth
+        // that makes OFF text visible is Part 2; the ratio locks are
+        // Part 3.
         const isAutoFit = data.autoFitText !== false;
         // v1.9.1 (#11): base sizes come from the PAYLOAD, not from the
         // current DOM styles. The old code read them back from the styles
@@ -3060,17 +3067,17 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // sections 3/5 use) make the fit exact and safe to run
         // synchronously the moment the text changes.
         const ss0 = getStageScale();
-        // v1.9.1 (Ashraf's auto-fit model, mirrors the NDI renderer): the
-        // size setting is a CAP — fitted text starts at min(selected, cap)
-        // and shrinks below the cap only to fit the box (hard floor 12sp
-        // = 24px, NDI parity — 1.9.14 item 12; was 10sp/20px).
-        const capVersePx = (data.autoFitMaxVerseSp || 48) * 2 * ss0;
+        // 1.9.18 Item 4: the SELECTED font size is the ceiling — the
+        // separate autoFitMaxVerseSp cap is REMOVED (field deleted).
+        // Fitted text starts at the selected size (ratio 1) and shrinks
+        // below it only to fit the box (hard floor 12sp = 24px, NDI
+        // parity). A short verse now renders at the full selected size
+        // instead of being held below it by the old cap.
         const hardMinPx = 12 * 2 * ss0;
         const baseVerse = (data.verseFontSize || 26) * 2 * ss0;
         const baseCite = (data.referenceFontSize || 18) * 2 * ss0;
         const baseEnV = (data.secondaryVerseFontSize || 18) * 2 * ss0;
         const baseEnC = (data.secondaryReferenceFontSize || 14) * 2 * ss0;
-        const capRatio = isAutoFit ? Math.min(1, capVersePx / baseVerse) : 1;
         const hardMinRatio = Math.min(1, hardMinPx / baseVerse);
         // SAME budget as the NDI renderer, measured the SAME way — content
         // only (card padding excluded). The box height is the template's
@@ -3078,7 +3085,47 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         const ss = getStageScale();
         const padTopPx = parseFloat(padT) || 0;
         const padBotPx = parseFloat(padB) || 0;
-        function contentHeight() { return cardBox.scrollHeight - padTopPx - padBotPx; }
+        // 1.9.18 Item 12: DATA-DRIVEN fit. The content height is computed
+        // from the PAYLOAD (font sizes, line spacing, text, box width) by
+        // laying the text out fresh at BASE sizes in an off-screen
+        // measurement element — never from the live cardBox. The old
+        // cardBox.scrollHeight had two defects: (a) it reflects the
+        // ALREADY-FITTED sizes, so a re-apply (fonts.ready re-fit, or any
+        // slider drag) measured the shrunk text and shrank it again
+        // (the ~2% re-apply drift); (b) it misses text that overflows
+        // out the TOP on a bottom-aligned template, so a long verse
+        // never shrank and its Arabic clipped at the top edge. The
+        // measurement below is built fresh from the payload on every
+        // call, so the result is identical on first apply and every
+        // re-apply, by construction. This is the HTTP analogue of
+        // NDI's StaticLayout fit (Item 13): both lay the text out
+        // from the template data at base size and measure it.
+        function contentHeight() {
+          if (!fitMeasureEl) {
+            fitMeasureEl = document.createElement('div');
+            fitMeasureEl.style.cssText = 'position:absolute;left:-10000px;top:0;visibility:hidden;pointer-events:none;';
+            document.body.appendChild(fitMeasureEl);
+          }
+          var contentW = Math.max(1, cardBox.clientWidth - (parseFloat(padL) || 0) - (parseFloat(padR) || 0));
+          fitMeasureEl.style.width = contentW + 'px';
+          var inner = document.querySelector('.card-inner-content');
+          if (!inner) return cardBox.scrollHeight - padTopPx - padBotPx;
+          var clone = inner.cloneNode(true);
+          clone.style.height = 'auto';
+          clone.style.justifyContent = 'flex-start';
+          // Reset the clone's text to BASE sizes (payload), so the
+          // measurement never sees a previously fitted size.
+          var setBase = function(id, px) { var e = clone.querySelector('#' + id); if (e) e.style.fontSize = px + 'px'; };
+          setBase('citation-text', baseCite);
+          setBase('verse-text', baseVerse);
+          setBase('english-text', baseEnV);
+          setBase('english-citation', baseEnC);
+          fitMeasureEl.innerHTML = '';
+          fitMeasureEl.appendChild(clone);
+          var h = clone.offsetHeight;
+          fitMeasureEl.innerHTML = '';
+          return h;
+        }
         // v1.9.2 (#7): the budget is the DRAWN box height — clamped so
         // the box top stays in the frame, exactly as the native fit does.
         const effBoxPct = Math.min(isFull ? (data.boxHeightPercent ?? 100) : (data.boxHeightPercent ?? 45), 100 - (data.positionBottomPercent ?? 0));
@@ -3094,53 +3141,37 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
           englishCitation.style.fontSize = (baseEnC * (citeREn !== undefined ? citeREn : r)) + 'px';
         }
         const cH = contentHeight();
-        let ratio = capRatio;
+        let ratio = 1;
         // 1.9.16 Part 1: shrink-to-fit runs only when autoFit is ON.
         // OFF keeps ratio 1 (full set size) even when the content is
         // taller than the box — the box grows instead (Part 2).
+        // 1.9.18 Item 4: no cap — the selected size IS the ceiling, so
+        // ratio starts at 1 and only shrinks to fit (hard floor above).
         if (isAutoFit && cH > maxContentH && maxContentH > 0) {
           // One exact step (NDI's computeFitRatio) — no corrective
           // second pass (removed 1.9.14 item 13; NDI does one step).
-          // The cap binds first; the box wins when both apply.
-          ratio = Math.min(capRatio, Math.max(hardMinRatio, maxContentH / cH));
-          applyRatio(ratio, ratio, ratio, ratio);
-        } else if (ratio < 1) {
-          // Fits at full size — the cap alone applies (short verse).
+          ratio = Math.max(hardMinRatio, maxContentH / cH);
           applyRatio(ratio, ratio, ratio, ratio);
         }
         // 1.9.16 Part 3: TWO per-language ratio locks, decoupled from
         // auto-fit (mirrors NDI autoFitBoosts — per-element ratios on
         // top of the shared fit ratio, so one pair's lift never moves
         // the other pair). Each pair's citation scales with its own
-        // verse when its lock is ON (LIVE ratio — the current
-        // proportion); when OFF, that citation stays at its set size
-        // (clamped to the floor) while only its verse shrinks.
+        // verse when its lock is ON; when OFF, that citation stays at
+        // its set size while only its verse shrinks.
+        // 1.9.18 Item 4: the separate min-citation floor
+        // (autoFitMinCitationSp) is REMOVED — no floor lift. The
+        // citation ALWAYS follows its verse's ratio when locked, and
+        // stays at its set size when unlocked.
         (function() {
-          var floorSp = (data.autoFitMinCitationSp !== undefined) ? data.autoFitMinCitationSp : 10;
-          var refSp = (data.referenceFontSize || 18);
-          var refSpEn = (data.secondaryReferenceFontSize || 14);
           var verseR = ratio, citeR = ratio, enR = ratio, citeREn = ratio;
           // Arabic pair.
           if (data.autoFitRatioLockArabic === false) {
-            citeR = Math.max(1, floorSp / refSp);
-          } else {
-            var fittedCiteSp = refSp * ratio;
-            if (fittedCiteSp < floorSp && fittedCiteSp > 0) {
-              var lift = floorSp / fittedCiteSp;
-              verseR = ratio * lift;
-              citeR = ratio * lift;
-            }
+            citeR = 1;
           }
           // English pair.
           if (data.autoFitRatioLockEnglish === false) {
-            citeREn = Math.max(1, floorSp / refSpEn);
-          } else {
-            var fittedCiteSpEn = refSpEn * ratio;
-            if (fittedCiteSpEn < floorSp && fittedCiteSpEn > 0) {
-              var liftEn = floorSp / fittedCiteSpEn;
-              enR = ratio * liftEn;
-              citeREn = ratio * liftEn;
-            }
+            citeREn = 1;
           }
           applyRatio(verseR, citeR, enR, citeREn);
         })();
@@ -3381,7 +3412,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       // rotate timer, then the gradient branch below (re)starts it.
       // Section 7 re-adds its own animated-background classes after
       // this section, so clearing here cannot strand a style.
-      if (window.__gradRotateTimer) { clearInterval(window.__gradRotateTimer); window.__gradRotateTimer = null; }
+      // 1.9.18 Item 11: the gradient timer is now a rAF loop, so it
+      // is cancelled with cancelAnimationFrame (the box-motion timer
+      // below is still a setInterval and keeps clearInterval).
+      if (window.__gradRotateTimer) { cancelAnimationFrame(window.__gradRotateTimer); window.__gradRotateTimer = null; }
       if (window.__boxMotionTimer) { clearInterval(window.__boxMotionTimer); window.__boxMotionTimer = null; }
       cardBox.classList.remove('bg-flow'); cardBox.classList.remove('bg-pulse');
       cardBox.classList.remove('bg-breath');
@@ -3460,12 +3494,20 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
           cardBox.style.animationDuration = (5 / gSpeed) + 's';
         } else if (gAnim === 'rotate' && gSpeed > 0) {
           // Item 23 (1.9.8): allow in true fullscreen too.
+          // 1.9.18 Item 11: rAF loop (replaces the 50ms setInterval).
+          // Time-based math (Date.now) is unchanged, so the rotation
+          // speed is identical; rAF syncs to the display refresh and
+          // pauses while the tab is hidden. (Already gated on the
+          // Card layer: this branch only runs when cardEnabled is
+          // true — the card-off branch above skips it.)
           (function() {
             var base = gAngle, start = Date.now();
-            window.__gradRotateTimer = setInterval(function() {
+            var tickRotate = function() {
               var a = (base + (Date.now() - start) / 1000 * 30 * gSpeed) % 360;
               cardBox.style.background = 'linear-gradient(' + a + 'deg, ' + gA + ' 0%, ' + gB + ' 50%, ' + gA + ' 100%)';
-            }, 50);
+              window.__gradRotateTimer = requestAnimationFrame(tickRotate);
+            };
+            window.__gradRotateTimer = requestAnimationFrame(tickRotate);
           })();
         }
       } else if (data.style === 'CLASSIC_BANNER') {
@@ -3544,7 +3586,15 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       // animation would be invisible, while the overlay's copied fill
       // would sit frozen. It also drives SLIDE/PULSE/ROTATE on the
       // overlay, whose CSS classes and old timer target the box only.
+      // 1.9.18 Item 1: the timer MUST respect the Card toggle — when
+      // the Card layer is off, never re-paint the gradient (this IIFE
+      // used to overwrite the card-off clear 20x/second).
+      // 1.9.18 Item 11: the repaint runs on requestAnimationFrame,
+      // not a 50ms setInterval — it pauses when the tab is hidden
+      // (no wasted work) and syncs to the display refresh, like NDI's
+      // per-frame draw. Same gradient math, same cadence when visible.
       (function() {
+        if (!data.cardEnabled) return;
         if (!data.gradientEnabled) return;
         var anim = data.gradientAnimation || 'none';
         if (anim === 'none') return;
@@ -3568,9 +3618,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // active the box classes are stripped, so the timer must own
         // slide/rotate too (on the overlay).
         if (!showCardFillOverlay && (anim === 'slide' || anim === 'rotate')) return;
-        if (window.__gradRotateTimer) { clearInterval(window.__gradRotateTimer); window.__gradRotateTimer = null; }
+        if (window.__gradRotateTimer) { cancelAnimationFrame(window.__gradRotateTimer); window.__gradRotateTimer = null; }
         target.style.backgroundSize = '200% 200%';
-        window.__gradRotateTimer = setInterval(function() {
+        // 1.9.18 Item 11: rAF loop (replaces the 50ms setInterval).
+        // Time-based math (Date.now) is unchanged, so the animation
+        // speed is identical; rAF just syncs the repaint to the
+        // display refresh and pauses while the tab is hidden.
+        var tickGrad = function() {
           var phase = 2 * Math.PI * spd * (Date.now() / 1000);
           var s = Math.sin(phase);
           // Fix #10 (item 84, 1.9.9): the background shorthand in the
@@ -3620,7 +3674,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
           // flow/slide only — position-based anims need 200% for the
           // position to have a visual effect.
           if (anim === 'flow' || anim === 'slide') target.style.backgroundSize = '200% 200%';
-        }, 50);
+          // 1.9.18 Item 11: schedule the next frame (rAF loop).
+          window.__gradRotateTimer = requestAnimationFrame(tickGrad);
+        };
+        window.__gradRotateTimer = requestAnimationFrame(tickGrad);
       })();
 
       // Split transitions + continuous box effects (combined batch,
@@ -5030,46 +5087,34 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
      * One boost per text element (Arabic verse, Arabic citation,
      * English verse, English citation). Each language pair has its
      * own ratio lock (LIVE — the ratio is always the current
-     * proportion, so a lock ON lifts both elements of its pair by
-     * one shared factor, preserving the current ratio; lock OFF
-     * lifts only that pair's citation to the floor while its verse
-     * keeps shrinking). The locks are decoupled from auto-fit: they
+     * proportion, so a lock ON keeps both elements of its pair at
+     * the same ratio, preserving the current ratio; lock OFF keeps
+     * that pair's citation at its set size while its verse keeps
+     * shrinking). The locks are decoupled from auto-fit: they
      * apply whenever text is scaled, even when auto-fit is OFF
-     * (fitRatio is 1 then, so the boosts are 1 unless a citation
-     * sits below the floor). Default floor 10sp = old behaviour.
+     * (fitRatio is 1 then, so the boosts are 1).
+     * 1.9.18 Item 4: the separate min-citation floor
+     * (autoFitMinCitationSp) is REMOVED — no floor lift. The
+     * citation ALWAYS follows its verse's ratio when locked.
      */
     private data class FitBoosts(val arVerse: Float, val arCite: Float, val enVerse: Float, val enCite: Float)
 
     private fun autoFitBoosts(tpl: LowerThirdTemplate, scale: Float, fitRatio: Float): FitBoosts {
         val base = fitFloorBoost(tpl, scale, fitRatio)
         if (fitRatio <= 0f) return FitBoosts(base, base, base, base)
-        val floor = tpl.autoFitMinCitationSp.toFloat()
-        // Arabic pair.
+        // Arabic pair. Lock ON: citation scales with its verse.
+        // Lock OFF: citation stays at its set size (boost 1/fitRatio
+        // cancels the fit shrink for the citation only).
         val (arVerse, arCite) = if (tpl.autoFitRatioLockArabic) {
-            val fittedCiteSp = tpl.referenceFontSize * fitRatio * base
-            if (fittedCiteSp >= floor || fittedCiteSp <= 0f) base to base
-            else {
-                val lift = floor / fittedCiteSp
-                (base * lift) to (base * lift)
-            }
+            base to base
         } else {
-            // Unlocked: citation stays at its set size (clamped up to
-            // the floor) while only the verse shrinks. The citation
-            // boost does NOT include the verse floor boost.
-            val citeSize = maxOf(tpl.referenceFontSize.toFloat(), floor)
-            base to (citeSize / (tpl.referenceFontSize * fitRatio))
+            base to (1f / fitRatio)
         }
-        // English pair (mirror of the Arabic pair, own lock + own sizes).
+        // English pair (mirror of the Arabic pair).
         val (enVerse, enCite) = if (tpl.autoFitRatioLockEnglish) {
-            val fittedCiteSp = tpl.secondaryReferenceFontSize * fitRatio * base
-            if (fittedCiteSp >= floor || fittedCiteSp <= 0f) base to base
-            else {
-                val lift = floor / fittedCiteSp
-                (base * lift) to (base * lift)
-            }
+            base to base
         } else {
-            val citeSize = maxOf(tpl.secondaryReferenceFontSize.toFloat(), floor)
-            base to (citeSize / (tpl.secondaryReferenceFontSize * fitRatio))
+            base to (1f / fitRatio)
         }
         return FitBoosts(arVerse, arCite, enVerse, enCite)
     }
@@ -5130,22 +5175,21 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             showArabic, showEnglish, isFull, isForStream
         )
         synchronized(fittedLayoutsCache) { fittedLayoutsCache[key]?.let { return it } }
-        // v1.9 auto-fit: build layouts at full size, then rebuild once at a
-        // reduced scale when the content exceeds its height budget, so long
-        // verses reflow into the card (lower third) or screen (full show)
-        // instead of overflowing. v1.9.1: the rebuild ratio also applies the
-        // autoFitMaxVerseSp CAP, so short verses render at min(selected, cap).
-        // v1.9.1 (Ashraf's auto-fit model): the size setting is a CAP, not a
-        // floor. The fitted text starts at min(selected size, cap) - a short
-        // verse no longer blows up huge on a full screen - and long content
-        // shrinks below the cap until it fits the box, down to a hard 10sp
-        // floor. The box height is the template's boxHeightPercent of the
-        // frame (Lower's budget was a hardcoded 45% before).
-        val capRatio = if (tpl.verseFontSize > 0)
-            (tpl.autoFitMaxVerseSp.toFloat() / tpl.verseFontSize).coerceIn(0.05f, 1f)
-        else 1f
+        // 1.9.18 Item 4: the SELECTED font size is the ceiling — the
+        // separate autoFitMaxVerseSp cap is REMOVED (field deleted).
+        // Fitted text starts at the selected size (ratio 1) and shrinks
+        // below it only to fit the box. A short verse now renders at
+        // the full selected size instead of being held below it by the
+        // old cap. (The capRatio variable is gone; ratio starts at 1.)
+        // 1.9.18 Item 13: SHARED fit model — NDI and HTTP use the same
+        // data-driven fit (Item 12), identical inputs and results. The
+        // hard floor is 12sp on both renderers (HTTP already used 12sp;
+        // NDI used 10sp — aligned here so a long verse bottoms out at
+        // the same size on both feeds). The content height is measured
+        // from the template data at base size (StaticLayout here, the
+        // off-screen clone on HTTP), never from a fitted/live state.
         val hardFloorRatio = if (tpl.verseFontSize > 0)
-            (10f / tpl.verseFontSize).coerceIn(0.05f, 1f)
+            (12f / tpl.verseFontSize).coerceIn(0.05f, 1f)
         else 1f
         var layouts = buildFittedTextLayouts(
             tpl, verseText, activeVerse, contentWidth, scale,
@@ -5172,9 +5216,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             frameHeight * effBoxPct / 100f - padT - padB - tpl.verseCitationGapArabicDp * scale
         }
         if (tpl.autoFitText) {
-            r = capRatio
+            r = 1f
             if (layouts.contentH > maxContentH && maxContentH > 0) {
-                r = minOf(computeFitRatio(layouts.contentH, maxContentH, hardFloorRatio), capRatio)
+                r = computeFitRatio(layouts.contentH, maxContentH, hardFloorRatio)
             }
         }
         if (r < 1f) {
@@ -6343,10 +6387,15 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 // above) — skip the normal fill so it stays visible.
                 // 1.9.15: skip only when the video is actually drawing; when
                 // the Video layer is off, the card fill draws normally.
-            } else if (tpl.cardEnabled && procShader == null) {
-                // 1.9.17 item 1b: plain card color only when no shader drew
-                // (the shader IS the card appearance when it drew; the
-                // design gradient, above, replaces the plain fill).
+            } else if (tpl.cardEnabled) {
+                // 1.9.18 Item 7: the plain card color draws OVER a
+                // procedural video shader (the shader is the Video
+                // layer; the card color is the Card layer above it),
+                // matching HTTP, which paints the flat card color over
+                // the video. (The design gradient, above, already
+                // wins over the shader the same way.) The custom-video
+                // skip (isVideoActive, above) is unchanged — a custom
+                // video IS the card background, so it stays visible.
                 // 1.9.15 items 10 + 13: the plain card color draws only when
                 // the Card layer is on.
                 paint.color = Color.argb(bgAlpha, Color.red(baseBgCol), Color.green(baseBgCol), Color.blue(baseBgCol))
@@ -8353,14 +8402,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             o.put("cardPaddingLeftDp", t.cardPaddingLeftDp.toDouble())
             o.put("cardPaddingRightDp", t.cardPaddingRightDp.toDouble())
             o.put("autoFitText", t.autoFitText)
-            o.put("autoFitMaxVerseSp", t.autoFitMaxVerseSp)
             o.put("boxHeightPercent", t.boxHeightPercent)
             o.put("gradientEnabled", t.gradientEnabled)
             o.put("gradientColorHex2", t.gradientColorHex2)
             o.put("gradientAngleDeg", t.gradientAngleDeg)
             o.put("gradientAnimation", t.gradientAnimation.id)
             o.put("gradientSpeed", t.gradientSpeed)
-            o.put("autoFitMinCitationSp", t.autoFitMinCitationSp)
             // 1.9.16 Part 3: two per-language ratio locks.
             o.put("autoFitRatioLockArabic", t.autoFitRatioLockArabic)
             o.put("autoFitRatioLockEnglish", t.autoFitRatioLockEnglish)
@@ -8612,7 +8659,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
           ['100% transparent', t.pureTransparent],
           ['Transition', t.transition + ' · ' + t.transitionDurationMs + ' ms' + transHint],
           ['Verse / citation size', t.verseFontSize + ' / ' + t.referenceFontSize],
-          ['Auto-fit', t.autoFitText + ' · max verse ' + t.autoFitMaxVerseSp + ' · box H ' + t.boxHeightPercent + '%' + ' · cite floor ' + (t.autoFitMinCitationSp || 10) + ' · ratio locks Ar ' + (t.autoFitRatioLockArabic !== false) + ' / En ' + (t.autoFitRatioLockEnglish !== false)],
+          ['Auto-fit', t.autoFitText + ' · box H ' + t.boxHeightPercent + '%' + ' · ratio locks Ar ' + (t.autoFitRatioLockArabic !== false) + ' / En ' + (t.autoFitRatioLockEnglish !== false)],
           ['Gradient card', (t.gradientEnabled ? 'on · ' + t.gradientColorHex2 + ' @ ' + t.gradientAngleDeg + '° · ' + (t.gradientAnimation || 'none') + ' x' + (t.gradientSpeed || 1) : 'off')],
           ['Language / font', t.languageMode + ' / ' + t.fontFamily]
         ];
@@ -9296,8 +9343,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   /* 1.9.16 items 14-15: the browse card is a flex column (so the
      verse list can fill it) and the VERSE list has no dvh cap on
      any screen — it fills the card and scrolls internally. The
-     Recents list keeps the .vlist cap above. */
-  #browseCard { display: flex; flex-direction: column; min-height: 0; }
+     Recents list keeps the .vlist cap above.
+     1.9.18 Item 2: flex: 1 so the browse card grows to fill the
+     /remote screen (it used to size to content, leaving dead space
+     below the verse list on tall screens). */
+  #browseCard { display: flex; flex-direction: column; min-height: 0; flex: 1; }
   #vList { max-height: none; }
   /* v1.9.2 (#5): while a chapter loads, the current verses stay in place
      (dimmed) — the list no longer collapses to a Loading line and flashes. */
@@ -9539,11 +9589,15 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   <!-- v1.9.5: reworked top bar — [gear][sync][kbd] left, ref centered, ON AIR right. Info icon removed. -->
   <!-- 1.9.15 item 3: the collapse chevron is gone (it hid the book +
        chapter too, and its two glyphs jumped). The book + chapter live
-       in the browse bar below and are always visible; the Reference
-       icon there toggles the reference bar, and the Recents icon opens
-       the Recents popup. -->
+       in the browse bar below and are always visible; the Recents icon
+       there opens the Recents popup. (1.9.18 Item 10: the Reference
+       icon moved to this top bar, beside Sync.) -->
   <button id="gearTop" aria-label="Settings" onclick="togglePanel()">&#9881;</button>
   <button id="syncBtn" aria-label="Toggle auto-sync" onclick="toggleSync()" style="font-size:18px;" title="Auto-sync with tablet">&#128279;</button>
+  <!-- 1.9.18 Item 10: the Reference icon (📋) moved here from the
+       browse bar — beside Sync, so it is always visible (the browse
+       bar is for book/chapter navigation). Same id, function, style. -->
+  <button id="refBtn" onclick="toggleRefBar()" aria-label="Reference" style="font-size:18px;" title="Show/hide reference bar">&#128221;</button>
   <!-- Item 32: keyboard shortcuts moved into the gear panel (learn-once reference). -->
   <div id="topRef" dir="auto">—</div>
   <button class="onair off" id="onAirBtnTop" onclick="toggleOnAir()">OFF AIR</button>
@@ -9579,7 +9633,6 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     <select id="chSel" aria-label="Chapter"></select>
     <select id="bookSel" aria-label="Book"><option value="">Loading books…</option></select>
     <button id="recentsBtn" onclick="toggleRecents()" aria-label="Recents" style="font-size:18px;" title="Recents">&#128341;</button>
-    <button id="refBtn" onclick="toggleRefBar()" aria-label="Reference" style="font-size:18px;" title="Show/hide reference bar">&#128221;</button>
   </div>
   <!-- Recents popup with close button -->
   <div id="recentsPopup" hidden style="position:fixed;top:10px;left:10px;right:10px;bottom:10px;max-width:600px;margin:0 auto;background:var(--chrome-card,#fff);border:1px solid var(--chrome-border,#e2e8f0);border-radius:12px;z-index:90;overflow:hidden;">
@@ -9671,6 +9724,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   if (browseLang !== 'en') browseLang = 'ar';
   langSel.value = browseLang;
   var vList = document.getElementById('vList');
+  // 1.9.18 Item 3: browsing flag — set when the user manually
+  // scrolls/touches the verse list (they are looking at something
+  // else), so an incoming sync does NOT yank the list away. The
+  // live row still highlights; only the auto-scroll is gated.
+  // Cleared when the user taps a verse to send it (triggerVerse) —
+  // they have chosen a verse, so auto-scroll resumes.
+  var isBrowsing = false;
   // Batch-3: swipe left/right on verse list for chapter navigation
   (function() {
     var startX = 0, startY = 0;
@@ -9687,6 +9747,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       }
     }, {passive: true});
   })();
+  // 1.9.18 Item 3: any manual interaction with the verse list
+  // (touch, pointer, wheel) means the user is browsing — set the
+  // flag so the next sync highlights but does not scroll. Passive:
+  // these never call preventDefault, so scrolling stays smooth.
+  vList.addEventListener('touchstart', function() { isBrowsing = true; }, {passive: true});
+  vList.addEventListener('pointerdown', function() { isBrowsing = true; }, {passive: true});
+  vList.addEventListener('wheel', function() { isBrowsing = true; }, {passive: true});
   var refInput = document.getElementById('ref');
   refInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') triggerRef(); });
   refInput.addEventListener('focus', function() { refInput.select(); });
@@ -9774,8 +9841,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   }
   window.addEventListener('resize', scheduleFitListPadding);
   function scrollToVerse(verseNum) {
+    // 1.9.18 Item 9: sequence the scroll — a stale retry (an older
+    // scrollToVerse whose timer fired after a newer one) must not
+    // scroll back to its older verse or re-highlight it.
+    var myScrollSeq = ++scrollSeq;
     var attempts = 0;
     function tryScroll() {
+      if (myScrollSeq !== scrollSeq) return;
       var verseEl = document.querySelector('[data-v="' + verseNum + '"]');
       if (verseEl) {
         // Scroll ONLY the verse list (never the page). 1.9.14
@@ -9834,6 +9906,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       // is only marked live. Every other source scrolls to the top.
       var _localTap = null;
       function showVerse(bookId, chapter, verse) {
+        // 1.9.18 Item 9: sequence the sync — only the latest
+        // showVerse may scroll. A stale afterLoad (an older chapter
+        // load finishing late) still re-marks the live row below
+        // (markLiveRow reads the CURRENT live state, so it is
+        // correct), but it must not scroll back to its older verse.
+        var mySyncSeq = ++syncSeq;
         live.bookId = bookId || '';
         live.chapter = chapter || 0;
         live.verse = verse || 0;
@@ -9850,7 +9928,16 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         var isLocalTap = _localTap && _localTap.bookId === bookId && _localTap.chapter === chapter && _localTap.verse === verse && (Date.now() - _localTap.at) < 3000;
         function afterLoad() {
           markLiveRow();
-          if (!isLocalTap) scrollToVerse(verse);
+          // 1.9.18 Item 9: only the latest showVerse scrolls — a
+          // stale afterLoad must not scroll back to its older verse.
+          // (markLiveRow above still runs: it reads the CURRENT
+          // live state, so a stale call marks the right row.)
+          if (mySyncSeq !== syncSeq) return;
+          // 1.9.18 Item 3: skip the scroll while the user is browsing
+          // (they touched/scrolled the list) — the live row still
+          // highlights above, but the list is not yanked away from
+          // what they are looking at. A local tap already skips it.
+          if (!isLocalTap && !isBrowsing) scrollToVerse(verse);
         }
         if (sameBook && sameChapter) {
           afterLoad();
@@ -9976,6 +10063,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   }
 
   var loadSeq = 0;
+  // 1.9.18 Item 9: sync/scroll sequence — only the latest showVerse
+  // may scroll, and only the latest scrollToVerse retry may fire.
+  // (Two phones racing: a stale afterLoad or a stale retry must not
+  // yank the list back to an older verse or re-highlight it.)
+  var syncSeq = 0;
+  var scrollSeq = 0;
   // v1.9.5: accepts optional callback run after chapter renders
   // (fixes SSE sync where callback was silently ignored).
   function loadChapter(ch, callback) {
@@ -10028,6 +10121,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         markLiveRow();
         // v1.9.5: run callback after render (for SSE sync scroll).
         if (typeof callback === 'function') callback();
+        // 1.9.18 Item 9: re-assert the live highlight after the
+        // chapter settles — the callback may have scrolled, and the
+        // highlight must match the CURRENT live verse, not a stale
+        // one (two-phone race: a late callback must not leave the
+        // wrong row lit).
+        markLiveRow();
         markRecentRows();
       })
       .catch(function() {
@@ -10070,6 +10169,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
   function triggerVerse(verseNum) {
     if (curBookIdx < 0) return;
+    // 1.9.18 Item 3: the user tapped a verse to send it — they are
+    // no longer browsing, so clear the flag and let the next sync
+    // auto-scroll again. (The tap's own touchstart set the flag;
+    // clearing here is what resumes the scroll.)
+    isBrowsing = false;
     // 1.9.16 item 16: remember this tap so the SSE/poll echo of our
     // own trigger does NOT scroll the list (the flash). The verse is
     // already visible — just mark it live.

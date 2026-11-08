@@ -1106,49 +1106,22 @@ fun TemplateEditorScreen(
                     // and English section) to fit the text box instead of
                     // overflowing the card or screen. Short verses are untouched.
                     FeatureToggleRow("ملاءمة تلقائية للنص (Auto-fit text)", editingTemplate.autoFitText, modifier = anchorModifier("frame-autofit")) { onUpdate(editingTemplate.copy(autoFitText = it)) }
-                    if (editingTemplate.autoFitText) {
-                        SliderWithLabel("أكبر حجم للنص (Max size)", editingTemplate.autoFitMaxVerseSp.toFloat(), 10f..120f) { onUpdate(editingTemplate.copy(autoFitMaxVerseSp = it.toInt())) }
-                        // 2026-10-28 auto-fit: citation floor + ratio lock.
-                        // Floor = smallest size the citation may shrink to
-                        // (default 10sp = old behaviour); each lock ON
-                        // (default) shrinks its verse + citation together
-                        // by one shared ratio, so raising a size never
-                        // makes the citation smaller — the complaint that
-                        // led here. Lock OFF keeps that citation at its
-                        // set size (or the floor) while only its verse
-                        // shrinks. 1.9.16: two locks (Arabic + English),
-                        // LIVE, settable whether auto-fit is on or off.
-                        SliderWithLabel("أصغر حجم للمرجع (Citation floor)", editingTemplate.autoFitMinCitationSp.toFloat(), 10f..60f) { onUpdate(editingTemplate.copy(autoFitMinCitationSp = it.toInt())) }
-                        // Live readout, labelled honestly: these are the
-                        // at-cap sizes before box shrink (the box-fitted
-                        // size depends on verse length and the preview
-                        // shows it live). "Rendering at X, capped at Y"
-                        // in the user's words: at-cap verse, cap, and
-                        // the citation size that follows from the lock.
-                        val atCapVerse = minOf(editingTemplate.verseFontSize, editingTemplate.autoFitMaxVerseSp)
-                        val atCapCitation = if (editingTemplate.autoFitRatioLockArabic) {
-                            if (editingTemplate.verseFontSize > 0) maxOf(editingTemplate.autoFitMinCitationSp, (editingTemplate.referenceFontSize * atCapVerse / editingTemplate.verseFontSize)) else editingTemplate.referenceFontSize
-                        } else {
-                            maxOf(editingTemplate.referenceFontSize, editingTemplate.autoFitMinCitationSp)
-                        }
-                        Text("عند الحد الأقصى: النص $atCapVerse، المرجع $atCapCitation (قبل ملاءمة الصندوق — المعاينة تعرض الحجم النهائي)", fontSize = 11.sp, color = bento.textSecondary)
-                    }
+                    // 1.9.18 Item 4: no separate max-size or citation-floor
+                    // sliders — the selected font size is the maximum and
+                    // the citation follows the verse ratio (see locks below).
                     // 1.9.16 Part 3: the two ratio locks live OUTSIDE the
                     // auto-fit block — they are settable whether auto-fit
                     // is on or off (decoupled), and apply whenever text
                     // is scaled. Each lock scales its pair together.
                     FeatureToggleRow("قفل النسبة العربي (Arabic verse + citation together)", editingTemplate.autoFitRatioLockArabic) { onUpdate(editingTemplate.copy(autoFitRatioLockArabic = it)) }
                     FeatureToggleRow("قفل النسبة الإنجليزي (English verse + citation together)", editingTemplate.autoFitRatioLockEnglish) { onUpdate(editingTemplate.copy(autoFitRatioLockEnglish = it)) }
-                    // Audit fix (D): a WARNING, never a block - the fit obeys
-                    // destructive combinations silently (Ashraf's Midnight
-                    // Psalm: cap 16 under a 58sp verse in a 10% box), so say
-                    // so right where the numbers are set.
-                    if (editingTemplate.autoFitText && (editingTemplate.autoFitMaxVerseSp < editingTemplate.verseFontSize || editingTemplate.boxHeightPercent < 20)) {
-                        val warnParts = mutableListOf<String>()
-                        if (editingTemplate.autoFitMaxVerseSp < editingTemplate.verseFontSize) warnParts.add("سقف الحجم (" + editingTemplate.autoFitMaxVerseSp + ") أصغر من حجم الآية (" + editingTemplate.verseFontSize + ")")
-                        if (editingTemplate.boxHeightPercent < 20) warnParts.add("ارتفاع الصندوق " + editingTemplate.boxHeightPercent + "% صغير جداً")
+                    // Audit fix (D): a WARNING, never a block — a very
+                    // short box shrinks verses tiny, so say so right
+                    // where the numbers are set. (1.9.18 Item 4: the
+                    // old cap-vs-verse-size warning went with the cap.)
+                    if (editingTemplate.autoFitText && editingTemplate.boxHeightPercent < 20) {
                         Text(
-                            "⚠ " + warnParts.joinToString(" · ") + " — ستظهر الآيات صغيرة (verses will render tiny)",
+                            "⚠ " + "ارتفاع الصندوق " + editingTemplate.boxHeightPercent + "% صغير جداً" + " — ستظهر الآيات صغيرة (verses will render tiny)",
                             fontSize = 11.sp,
                             color = bento.warning,
                             modifier = Modifier.padding(top = 6.dp)
@@ -3836,13 +3809,13 @@ fun BroadcastPreviewViewport(template: LowerThirdTemplate, verse: BibleVerse, bo
         // doubles the chars per line AND halves the line height), so the
         // fitting scale is sqrt(available / height-at-scale-1) — the old
         // linear estimate (fixed 45 chars/line, 6/10 line budget) shrank
-        // verses far below what NDI/HTTP actually render. The CAP applies
-        // first (short verse renders at min(size, cap)); overflow shrinks
-        // below the cap toward the same 10sp hard floor.
+        // verses far below what NDI/HTTP actually render. 1.9.18 Item 4:
+        // the selected size IS the max (no separate cap); overflow shrinks
+        // below it toward the same 10sp hard floor.
         val previewFitScale = remember(template, verse, stageSize) {
             if (!template.autoFitText || template.verseFontSize <= 0) 1f
             else {
-                val capRatio = (template.autoFitMaxVerseSp.toFloat() / template.verseFontSize).coerceIn(0.05f, 1f)
+                val capRatio = 1f
                 val hardFloor = (10f / template.verseFontSize).coerceIn(0.05f, 1f)
                 val verseDp = template.verseFontSize * stageUnit
                 val contentWDp = (stageWDp * (1f - 2f * template.horizontalMarginPercent / 100f) -

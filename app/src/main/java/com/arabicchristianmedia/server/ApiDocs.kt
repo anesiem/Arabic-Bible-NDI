@@ -269,6 +269,38 @@ object ApiDocs {
           "200": { "description": "RSS 2.0 XML with live verse items (or zero items when OFF AIR)." }
         }
       }
+    },
+    "/lower/snapshot.png": {
+      "get": {
+        "summary": "Live NDI Lower frame as PNG",
+        "description": "Native render of the current live Lower frame as a 1920x1080 PNG — the same drawFrameInto/renderFrameOwned code that draws the NDI feed, NOT an HTML screenshot. Use it to compare the NDI Lower render against the HTTP /lower page.",
+        "responses": {
+          "200": { "description": "1920x1080 PNG of the live Lower frame.", "content": { "image/png": { "schema": { "type": "string", "format": "binary" } } } }
+        }
+      }
+    },
+    "/full/snapshot.png": {
+      "get": {
+        "summary": "Live NDI Full frame as PNG",
+        "description": "Native render of the current live Full frame as a 1920x1080 PNG — the same drawFrameInto/renderFrameOwned code that draws the NDI feed, NOT an HTML screenshot. Use it to compare the NDI Full render against the HTTP /full page.",
+        "responses": {
+          "200": { "description": "1920x1080 PNG of the live Full frame.", "content": { "image/png": { "schema": { "type": "string", "format": "binary" } } } }
+        }
+      }
+    },
+    "/api/verse/card.png": {
+      "get": {
+        "summary": "Verse card as PNG",
+        "description": "A single verse rendered natively as a 1920x1080 PNG — the same drawFrameInto code as the NDI feed, with a verse override (not the live feed), NOT an HTML screenshot.",
+        "parameters": [
+          { "name": "ref", "in": "query", "required": false, "schema": { "type": "string" }, "description": "Verse reference to render, e.g. John 3:16. Defaults to the current live verse; 404 if no verse is given and nothing is live." },
+          { "name": "template", "in": "query", "required": false, "schema": { "type": "string", "enum": ["full", "lower"] }, "description": "Template to render with. full = Full template; anything else = Lower template." }
+        ],
+        "responses": {
+          "200": { "description": "1920x1080 PNG of the verse card.", "content": { "image/png": { "schema": { "type": "string", "format": "binary" } } } },
+          "404": { "description": "No verse (JSON error) — no ref given and nothing live." }
+        }
+      }
     }
   }
 }

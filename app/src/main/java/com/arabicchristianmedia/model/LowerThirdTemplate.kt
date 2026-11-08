@@ -583,20 +583,12 @@ data class LowerThirdTemplate(
     val trueFullscreen: Boolean = false,
     /**
      * v1.9: shrink-to-fit. When true, verse + citation + English section
-     * (preserving their ratio) are capped at [autoFitMaxVerseSp] and shrink
-     * together until they fit the text box ([boxHeightPercent] of the frame,
-     * width from the horizontal margins). Off = text renders at the selected
-     * sizes and may overflow.
+     * (preserving their ratio) shrink together until they fit the text box
+     * ([boxHeightPercent] of the frame, width from the horizontal margins).
+     * 1.9.18 Item 4: the selected font size is the maximum — there is no
+     * separate cap. Off = text renders at the selected sizes and may overflow.
      */
     val autoFitText: Boolean = true,
-    /**
-     * v1.9.1 (Ashraf's model, replaces the v1.9 floor autoFitMinVerseSp):
-     * the MAXIMUM size (sp, verse) the fitted text may reach under
-     * [autoFitText] — a short verse must not blow up huge on a full screen.
-     * Long content shrinks below it to fit the box (hard floor 10sp).
-     * Inert when autoFitText is off. Legacy saves migrate value-for-value.
-     */
-    val autoFitMaxVerseSp: Int = 48,
     /**
      * v1.9.1: the text box height as % of the frame height — the region
      * auto-fit fits into. Lower default 45 (the pre-v1.9.1 hardcoded
@@ -618,13 +610,6 @@ data class LowerThirdTemplate(
     val gradientAnimation: GradientAnimationType = GradientAnimationType.NONE,
     val gradientSpeed: Float = 1.0f,
     /**
-     * Auto-fit citation floor (2026-10-28 batch): the primary citation
-     * never renders below this size (sp) under auto-fit. Default 10
-     * preserves the old hard floor; raising it is the fix for
-     * "increasing the citation makes it smaller".
-     */
-    val autoFitMinCitationSp: Int = 10,
-    /**
      * 1.9.16 Part 3: TWO per-language ratio locks (LIVE — the ratio
      * is always the current proportion, so a lock ON scales a pair
      * together during fitting; the second the lock is enabled is the
@@ -632,8 +617,7 @@ data class LowerThirdTemplate(
      * English verse↔citation, each on by default. The locks are
      * decoupled from auto-fit: settable while auto-fit is OFF, and
      * applied whenever text is scaled. Off: that pair's citation
-     * stays at its set size (clamped to the floor above) while only
-     * its verse shrinks to fit the box.
+     * stays at its set size while only its verse shrinks to fit the box.
      */
     val autoFitRatioLockArabic: Boolean = true,
     val autoFitRatioLockEnglish: Boolean = true,

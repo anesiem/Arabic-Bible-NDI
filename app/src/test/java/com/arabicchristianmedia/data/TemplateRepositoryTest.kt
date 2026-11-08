@@ -386,7 +386,6 @@ class TemplateRepositoryTest {
             cardPaddingLeftDp = 30f,
             cardPaddingRightDp = 40f,
             autoFitText = false,
-            autoFitMaxVerseSp = 36,
             boxHeightPercent = 60
         )
         val imported = repo.templateFromJsonString(repo.templateToJsonString(tpl))
@@ -396,7 +395,6 @@ class TemplateRepositoryTest {
         assertEquals(30f, imported.cardPaddingLeftDp, 0.001f)
         assertEquals(40f, imported.cardPaddingRightDp, 0.001f)
         assertFalse(imported.autoFitText)
-        assertEquals(36, imported.autoFitMaxVerseSp)
         assertEquals(60, imported.boxHeightPercent)
     }
 
@@ -411,27 +409,28 @@ class TemplateRepositoryTest {
         assertEquals(36f, imported.cardPaddingLeftDp, 0.001f)
         assertEquals(36f, imported.cardPaddingRightDp, 0.001f)
         assertTrue(imported.autoFitText)
-        assertEquals(48, imported.autoFitMaxVerseSp)
         assertEquals(45, imported.boxHeightPercent)
     }
 
     @Test
-    fun `v1_9_1 legacy autoFitMinVerseSp migrates as the cap`() {
-        // v1.9 saves carry only the old floor key; its value becomes the cap
-        // (the meaning changed on Ashraf's ruling, the number carries over).
+    fun `v1_9_18 legacy autoFitMinVerseSp key is ignored (no cap)`() {
+        // 1.9.18 Item 4: the cap field is gone, so the legacy floor key
+        // has nothing to migrate to — it is ignored (still in knownKeys
+        // so the old JSON parses). The verse renders at its selected
+        // size (the fromJson default here, 26).
         val imported = repo.templateFromJsonString("{\"id\":\"leg3\",\"name\":\"Legacy\",\"autoFitMinVerseSp\":42}")
         assertNotNull(imported)
-        assertEquals(42, imported!!.autoFitMaxVerseSp)
+        assertEquals(26, imported!!.verseFontSize)
     }
 
     @Test
-    fun `v1_9_1 legacy floor below verse size migrates up to the verse size`() {
-        // Round-2 guard: floor 16 with verse 58 was harmless as a floor;
-        // as a cap it would crush every verse (Ashraf's Midnight Psalm).
-        // The migrated cap rises to the style's own verse size.
+    fun `v1_9_18 legacy floor key is ignored, verse size stays selected`() {
+        // 1.9.18 Item 4: the old floor (16) no longer migrates to a cap
+        // (no cap exists) — the verse size stays 58, the selected size,
+        // which is the max. The legacy key is ignored.
         val imported = repo.templateFromJsonString("{\"id\":\"leg4\",\"name\":\"Legacy2\",\"verseFontSize\":58,\"autoFitMinVerseSp\":16}")
         assertNotNull(imported)
-        assertEquals(58, imported!!.autoFitMaxVerseSp)
+        assertEquals(58, imported!!.verseFontSize)
     }
 
     @Test
@@ -513,7 +512,9 @@ class TemplateRepositoryTest {
             assertTrue(tpl.id, tpl.cardPaddingBottomDp >= 0f)
             assertTrue(tpl.id, tpl.cardPaddingLeftDp >= 0f)
             assertTrue(tpl.id, tpl.cardPaddingRightDp >= 0f)
-            assertTrue(tpl.id, tpl.autoFitMaxVerseSp > 0)
+            // 1.9.18 Item 4: no cap field — the selected verse size IS
+            // the max, so the factory templates must carry a valid one.
+            assertTrue(tpl.id, tpl.verseFontSize > 0)
             assertTrue(tpl.id, tpl.boxHeightPercent in 10..100)
         }
     }

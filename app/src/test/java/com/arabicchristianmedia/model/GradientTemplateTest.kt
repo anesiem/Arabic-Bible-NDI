@@ -31,9 +31,10 @@ class GradientTemplateTest {
     }
 
     @Test
-    fun autoFitCitationFloorAndRatioLockDefaults() {
+    fun autoFitRatioLockDefaults() {
+        // 1.9.18 Item 4: the citation floor field is gone (no floor
+        // lift); the per-language ratio locks remain and default on.
         val tpl = LowerThirdTemplate(id = "test", name = "Test")
-        assertEquals(10, tpl.autoFitMinCitationSp)
         assertTrue(tpl.autoFitRatioLockArabic)
         assertTrue(tpl.autoFitRatioLockEnglish)
     }

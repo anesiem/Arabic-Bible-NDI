@@ -1098,14 +1098,15 @@ fun TemplateEditorScreen(
                         SliderWithLabel("أكبر حجم للنص (Max size)", editingTemplate.autoFitMaxVerseSp.toFloat(), 10f..120f) { onUpdate(editingTemplate.copy(autoFitMaxVerseSp = it.toInt())) }
                         // 2026-10-28 auto-fit: citation floor + ratio lock.
                         // Floor = smallest size the citation may shrink to
-                        // (default 10sp = old behaviour); lock ON (default)
-                        // shrinks verse + citation together by one shared
-                        // ratio, so raising a size never makes the
-                        // citation smaller — the complaint that led here.
-                        // Lock OFF keeps the citation at its set size
-                        // (or the floor) while only the verse shrinks.
+                        // (default 10sp = old behaviour); each lock ON
+                        // (default) shrinks its verse + citation together
+                        // by one shared ratio, so raising a size never
+                        // makes the citation smaller — the complaint that
+                        // led here. Lock OFF keeps that citation at its
+                        // set size (or the floor) while only its verse
+                        // shrinks. 1.9.16: two locks (Arabic + English),
+                        // LIVE, settable whether auto-fit is on or off.
                         SliderWithLabel("أصغر حجم للمرجع (Citation floor)", editingTemplate.autoFitMinCitationSp.toFloat(), 10f..60f) { onUpdate(editingTemplate.copy(autoFitMinCitationSp = it.toInt())) }
-                        FeatureToggleRow("قفل النسبة (verse + citation together)", editingTemplate.autoFitRatioLock) { onUpdate(editingTemplate.copy(autoFitRatioLock = it)) }
                         // Live readout, labelled honestly: these are the
                         // at-cap sizes before box shrink (the box-fitted
                         // size depends on verse length and the preview
@@ -1113,13 +1114,19 @@ fun TemplateEditorScreen(
                         // in the user's words: at-cap verse, cap, and
                         // the citation size that follows from the lock.
                         val atCapVerse = minOf(editingTemplate.verseFontSize, editingTemplate.autoFitMaxVerseSp)
-                        val atCapCitation = if (editingTemplate.autoFitRatioLock) {
+                        val atCapCitation = if (editingTemplate.autoFitRatioLockArabic) {
                             if (editingTemplate.verseFontSize > 0) maxOf(editingTemplate.autoFitMinCitationSp, (editingTemplate.referenceFontSize * atCapVerse / editingTemplate.verseFontSize)) else editingTemplate.referenceFontSize
                         } else {
                             maxOf(editingTemplate.referenceFontSize, editingTemplate.autoFitMinCitationSp)
                         }
                         Text("عند الحد الأقصى: النص $atCapVerse، المرجع $atCapCitation (قبل ملاءمة الصندوق — المعاينة تعرض الحجم النهائي)", fontSize = 11.sp, color = bento.textSecondary)
                     }
+                    // 1.9.16 Part 3: the two ratio locks live OUTSIDE the
+                    // auto-fit block — they are settable whether auto-fit
+                    // is on or off (decoupled), and apply whenever text
+                    // is scaled. Each lock scales its pair together.
+                    FeatureToggleRow("قفل النسبة العربي (Arabic verse + citation together)", editingTemplate.autoFitRatioLockArabic) { onUpdate(editingTemplate.copy(autoFitRatioLockArabic = it)) }
+                    FeatureToggleRow("قفل النسبة الإنجليزي (English verse + citation together)", editingTemplate.autoFitRatioLockEnglish) { onUpdate(editingTemplate.copy(autoFitRatioLockEnglish = it)) }
                     // Audit fix (D): a WARNING, never a block - the fit obeys
                     // destructive combinations silently (Ashraf's Midnight
                     // Psalm: cap 16 under a 58sp verse in a 10% box), so say

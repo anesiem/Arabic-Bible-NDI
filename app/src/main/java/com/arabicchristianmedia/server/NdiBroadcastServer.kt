@@ -1530,7 +1530,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             put("gradientAnimation", tpl.gradientAnimation.id)
             put("gradientSpeed", tpl.gradientSpeed)
             put("autoFitMinCitationSp", tpl.autoFitMinCitationSp)
-            put("autoFitRatioLock", tpl.autoFitRatioLock)
+            // 1.9.16 Part 3: two per-language ratio locks.
+            put("autoFitRatioLockArabic", tpl.autoFitRatioLockArabic)
+            put("autoFitRatioLockEnglish", tpl.autoFitRatioLockEnglish)
             // Follow-up: verse-citation gap, box loop mode, true fullscreen.
             put("verseCitationGapArabicDp", tpl.verseCitationGapArabicDp.toDouble())
             put("verseCitationGapEnglishDp", tpl.verseCitationGapEnglishDp.toDouble())
@@ -3068,15 +3070,14 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
           // Follow-up: the trailing term is the verse-citation gap
           // (was a hardcoded 16*ss), matching the NDI budget.
           : (stage.clientHeight * (effBoxPct / 100) - padTopPx - padBotPx - ((data.verseCitationGapArabicDp ?? 12) * ss));
-        function applyRatio(r, citeR) {
+        function applyRatio(r, citeR, enR, citeREn) {
           verseText.style.fontSize = (baseVerse * r) + 'px';
           citationText.style.fontSize = (baseCite * (citeR !== undefined ? citeR : r)) + 'px';
-          englishText.style.fontSize = (baseEnV * r) + 'px';
-          englishCitation.style.fontSize = (baseEnC * r) + 'px';
+          englishText.style.fontSize = (baseEnV * (enR !== undefined ? enR : r)) + 'px';
+          englishCitation.style.fontSize = (baseEnC * (citeREn !== undefined ? citeREn : r)) + 'px';
         }
         const cH = contentHeight();
         let ratio = capRatio;
-        let citeRatio = capRatio;
         // 1.9.16 Part 1: shrink-to-fit runs only when autoFit is ON.
         // OFF keeps ratio 1 (full set size) even when the content is
         // taller than the box — the box grows instead (Part 2).
@@ -3085,33 +3086,46 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
           // second pass (removed 1.9.14 item 13; NDI does one step).
           // The cap binds first; the box wins when both apply.
           ratio = Math.min(capRatio, Math.max(hardMinRatio, maxContentH / cH));
-          applyRatio(ratio, ratio);
+          applyRatio(ratio, ratio, ratio, ratio);
         } else if (ratio < 1) {
           // Fits at full size — the cap alone applies (short verse).
-          applyRatio(ratio, ratio);
+          applyRatio(ratio, ratio, ratio, ratio);
         }
-        // Item 74 (1.9.9): citation floor / ratio lock stays
-        // autoFit-only (NDI parity) — with autoFit off the fit above
-        // already shrank the verse to the cap; the citation keeps its
-        // set size.
-        if (!isAutoFit) return;
-        // 2026-10-28: citation floor / ratio lock (mirrors NDI
-        // autoFitBoosts). Lock ON (default): citation and verse share
-        // the ratio, and a citation below the floor lifts BOTH.
-        // Lock OFF: citation stays at its set size (clamped to the
-        // floor) while only the verse shrinks to fit the box.
+        // 1.9.16 Part 3: TWO per-language ratio locks, decoupled from
+        // auto-fit (mirrors NDI autoFitBoosts — per-element ratios on
+        // top of the shared fit ratio, so one pair's lift never moves
+        // the other pair). Each pair's citation scales with its own
+        // verse when its lock is ON (LIVE ratio — the current
+        // proportion); when OFF, that citation stays at its set size
+        // (clamped to the floor) while only its verse shrinks.
         (function() {
           var floorSp = (data.autoFitMinCitationSp !== undefined) ? data.autoFitMinCitationSp : 10;
           var refSp = (data.referenceFontSize || 18);
-          if (data.autoFitRatioLock === false) {
-            citeRatio = Math.max(1, floorSp / refSp);
-            applyRatio(ratio, citeRatio);
-            return;
+          var refSpEn = (data.secondaryReferenceFontSize || 14);
+          var verseR = ratio, citeR = ratio, enR = ratio, citeREn = ratio;
+          // Arabic pair.
+          if (data.autoFitRatioLockArabic === false) {
+            citeR = Math.max(1, floorSp / refSp);
+          } else {
+            var fittedCiteSp = refSp * ratio;
+            if (fittedCiteSp < floorSp && fittedCiteSp > 0) {
+              var lift = floorSp / fittedCiteSp;
+              verseR = ratio * lift;
+              citeR = ratio * lift;
+            }
           }
-          var fittedCiteSp = refSp * ratio;
-          if (fittedCiteSp >= floorSp || fittedCiteSp <= 0) { return; }
-          ratio = ratio * (floorSp / fittedCiteSp);
-          applyRatio(ratio, ratio);
+          // English pair.
+          if (data.autoFitRatioLockEnglish === false) {
+            citeREn = Math.max(1, floorSp / refSpEn);
+          } else {
+            var fittedCiteSpEn = refSpEn * ratio;
+            if (fittedCiteSpEn < floorSp && fittedCiteSpEn > 0) {
+              var liftEn = floorSp / fittedCiteSpEn;
+              enR = ratio * liftEn;
+              citeREn = ratio * liftEn;
+            }
+          }
+          applyRatio(verseR, citeR, enR, citeREn);
         })();
       };
 
@@ -4979,19 +4993,26 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     }
 
     /**
-     * 2026-10-28 batch: verse / citation auto-fit boosts. Returns
-     * (verseBoost, citationBoost), each replacing fitFloorBoost for
-     * its element. When the fitted citation would fall below
-     * [LowerThirdTemplate.autoFitMinCitationSp]: ratio lock ON lifts
-     * BOTH elements by one shared factor (ratio preserved); lock OFF
-     * lifts ONLY the citation to the floor while the verse keeps
-     * shrinking to fit the box. Default floor 10sp = old behaviour.
+     * 1.9.16 Part 3: per-language verse / citation auto-fit boosts.
+     * One boost per text element (Arabic verse, Arabic citation,
+     * English verse, English citation). Each language pair has its
+     * own ratio lock (LIVE — the ratio is always the current
+     * proportion, so a lock ON lifts both elements of its pair by
+     * one shared factor, preserving the current ratio; lock OFF
+     * lifts only that pair's citation to the floor while its verse
+     * keeps shrinking). The locks are decoupled from auto-fit: they
+     * apply whenever text is scaled, even when auto-fit is OFF
+     * (fitRatio is 1 then, so the boosts are 1 unless a citation
+     * sits below the floor). Default floor 10sp = old behaviour.
      */
-    private fun autoFitBoosts(tpl: LowerThirdTemplate, scale: Float, fitRatio: Float): Pair<Float, Float> {
+    private data class FitBoosts(val arVerse: Float, val arCite: Float, val enVerse: Float, val enCite: Float)
+
+    private fun autoFitBoosts(tpl: LowerThirdTemplate, scale: Float, fitRatio: Float): FitBoosts {
         val base = fitFloorBoost(tpl, scale, fitRatio)
-        if (!tpl.autoFitText || fitRatio <= 0f) return base to base
+        if (fitRatio <= 0f) return FitBoosts(base, base, base, base)
         val floor = tpl.autoFitMinCitationSp.toFloat()
-        return if (tpl.autoFitRatioLock) {
+        // Arabic pair.
+        val (arVerse, arCite) = if (tpl.autoFitRatioLockArabic) {
             val fittedCiteSp = tpl.referenceFontSize * fitRatio * base
             if (fittedCiteSp >= floor || fittedCiteSp <= 0f) base to base
             else {
@@ -5005,6 +5026,19 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             val citeSize = maxOf(tpl.referenceFontSize.toFloat(), floor)
             base to (citeSize / (tpl.referenceFontSize * fitRatio))
         }
+        // English pair (mirror of the Arabic pair, own lock + own sizes).
+        val (enVerse, enCite) = if (tpl.autoFitRatioLockEnglish) {
+            val fittedCiteSp = tpl.secondaryReferenceFontSize * fitRatio * base
+            if (fittedCiteSp >= floor || fittedCiteSp <= 0f) base to base
+            else {
+                val lift = floor / fittedCiteSp
+                (base * lift) to (base * lift)
+            }
+        } else {
+            val citeSize = maxOf(tpl.secondaryReferenceFontSize.toFloat(), floor)
+            base to (citeSize / (tpl.secondaryReferenceFontSize * fitRatio))
+        }
+        return FitBoosts(arVerse, arCite, enVerse, enCite)
     }
 
     // Audit fix (perf): fitted-layout cache. StaticLayouts are immutable
@@ -5150,14 +5184,14 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         fitRatio: Float,
     ): FittedTextLayouts? {
         // v1.9.1 F3: shared ratio-preserving floor boost (see fitFloorBoost).
-        // 2026-10-28: citation floor / ratio lock (see autoFitBoosts).
-        // floorBoost = verse boost; citationBoost = citation boost
-        // (same as verse when locked, citation-only lift when unlocked).
-        val (floorBoost, citationBoost) = autoFitBoosts(tpl, scale, fitRatio)
+        // 1.9.16 Part 3: per-language citation floor / ratio locks (see
+        // autoFitBoosts) — one boost per text element, each pair with
+        // its own lock.
+        val boosts = autoFitBoosts(tpl, scale, fitRatio)
         // Setup TextPaint for multi-line wrapped text
         val verseTextPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
             color = try { Color.parseColor(tpl.textColorHex) } catch (e: Exception) { Color.WHITE }
-            textSize = tpl.verseFontSize * 2f * scale * fitRatio * floorBoost
+            textSize = tpl.verseFontSize * 2f * scale * fitRatio * boosts.arVerse
             
             var textStyle = Typeface.NORMAL
             if (tpl.verseIsBold && tpl.verseIsItalic) textStyle = Typeface.BOLD_ITALIC
@@ -5235,10 +5269,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // side starts the verse at baseline + descent + gap, so the budget
         // counts the same descent or the centered block drifts.
         val citationDescent = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            textSize = tpl.referenceFontSize * 2f * scale * fitRatio * citationBoost
+            textSize = tpl.referenceFontSize * 2f * scale * fitRatio * boosts.arCite
             typeface = citationTypeface(tpl)
         }.fontMetrics.descent
-        val citationHeight = (tpl.referenceFontSize * 2f * scale * fitRatio * citationBoost) * 0.9f + citationDescent + tpl.verseCitationGapArabicDp * scale
+        val citationHeight = (tpl.referenceFontSize * 2f * scale * fitRatio * boosts.arCite) * 0.9f + citationDescent + tpl.verseCitationGapArabicDp * scale
 
         // Calculate bilingual secondary text if needed
         var secondaryLayout: StaticLayout? = null
@@ -5252,7 +5286,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             
             val secondaryTextPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = try { Color.parseColor(tpl.secondaryTextColorHex) } catch (e: Exception) { Color.LTGRAY }
-                textSize = tpl.secondaryVerseFontSize * 2f * scale * fitRatio * floorBoost
+                textSize = tpl.secondaryVerseFontSize * 2f * scale * fitRatio * boosts.enVerse
                 
                 var secStyle = Typeface.NORMAL
                 if (tpl.secondaryVerseIsBold && tpl.secondaryVerseIsItalic) secStyle = Typeface.BOLD_ITALIC
@@ -5302,7 +5336,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 val secCitationText = "(" + activeVerse.getFormattedEnglishCitation() + ")"
                 val secCitationPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
                     color = try { Color.parseColor(tpl.secondaryReferenceColorHex) } catch (e: Exception) { Color.GRAY }
-                    textSize = tpl.secondaryReferenceFontSize * 2f * scale * fitRatio * floorBoost
+                    textSize = tpl.secondaryReferenceFontSize * 2f * scale * fitRatio * boosts.enCite
                     var citStyle = Typeface.NORMAL
                     if (tpl.secondaryReferenceIsBold && tpl.secondaryReferenceIsItalic) citStyle = Typeface.BOLD_ITALIC
                     else if (tpl.secondaryReferenceIsBold) citStyle = Typeface.BOLD
@@ -6375,7 +6409,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             // v1.8: In ENGLISH_ONLY, use the English citation color for clear design.
             val refColorHex = if (tpl.languageMode == LanguageMode.ENGLISH_ONLY) tpl.secondaryReferenceColorHex else tpl.referenceColorHex
             color = try { Color.parseColor(refColorHex) } catch (e: Exception) { Color.YELLOW }
-            textSize = tpl.referenceFontSize * 2f * scale * fitRatio * autoFitBoosts(tpl, scale, fitRatio).second
+            textSize = tpl.referenceFontSize * 2f * scale * fitRatio * autoFitBoosts(tpl, scale, fitRatio).arCite
 
             typeface = citationTypeface(tpl)
             if (tpl.textShadowEnabled) {
@@ -8263,7 +8297,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             o.put("gradientAnimation", t.gradientAnimation.id)
             o.put("gradientSpeed", t.gradientSpeed)
             o.put("autoFitMinCitationSp", t.autoFitMinCitationSp)
-            o.put("autoFitRatioLock", t.autoFitRatioLock)
+            // 1.9.16 Part 3: two per-language ratio locks.
+            o.put("autoFitRatioLockArabic", t.autoFitRatioLockArabic)
+            o.put("autoFitRatioLockEnglish", t.autoFitRatioLockEnglish)
             // Follow-up: verse-citation gap, box loop mode, true fullscreen.
             o.put("verseCitationGapArabicDp", t.verseCitationGapArabicDp.toDouble())
             o.put("verseCitationGapEnglishDp", t.verseCitationGapEnglishDp.toDouble())
@@ -8512,7 +8548,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
           ['100% transparent', t.pureTransparent],
           ['Transition', t.transition + ' · ' + t.transitionDurationMs + ' ms' + transHint],
           ['Verse / citation size', t.verseFontSize + ' / ' + t.referenceFontSize],
-          ['Auto-fit', t.autoFitText + ' · max verse ' + t.autoFitMaxVerseSp + ' · box H ' + t.boxHeightPercent + '%' + ' · cite floor ' + (t.autoFitMinCitationSp || 10) + ' · ratio lock ' + (t.autoFitRatioLock !== false)],
+          ['Auto-fit', t.autoFitText + ' · max verse ' + t.autoFitMaxVerseSp + ' · box H ' + t.boxHeightPercent + '%' + ' · cite floor ' + (t.autoFitMinCitationSp || 10) + ' · ratio locks Ar ' + (t.autoFitRatioLockArabic !== false) + ' / En ' + (t.autoFitRatioLockEnglish !== false)],
           ['Gradient card', (t.gradientEnabled ? 'on · ' + t.gradientColorHex2 + ' @ ' + t.gradientAngleDeg + '° · ' + (t.gradientAnimation || 'none') + ' x' + (t.gradientSpeed || 1) : 'off')],
           ['Language / font', t.languageMode + ' / ' + t.fontFamily]
         ];

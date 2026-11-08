@@ -608,12 +608,18 @@ data class LowerThirdTemplate(
      */
     val autoFitMinCitationSp: Int = 10,
     /**
-     * Auto-fit ratio lock (on by default): verse and citation shrink
-     * by one shared ratio, preserving their designed ratio. Off: the
-     * citation stays at its set size (clamped to the floor above)
-     * while only the verse shrinks to fit the box.
+     * 1.9.16 Part 3: TWO per-language ratio locks (LIVE — the ratio
+     * is always the current proportion, so a lock ON scales a pair
+     * together during fitting; the second the lock is enabled is the
+     * starting point, not a freeze). Arabic verse↔citation and
+     * English verse↔citation, each on by default. The locks are
+     * decoupled from auto-fit: settable while auto-fit is OFF, and
+     * applied whenever text is scaled. Off: that pair's citation
+     * stays at its set size (clamped to the floor above) while only
+     * its verse shrinks to fit the box.
      */
-    val autoFitRatioLock: Boolean = true,
+    val autoFitRatioLockArabic: Boolean = true,
+    val autoFitRatioLockEnglish: Boolean = true,
     /**
      * Verse line spacing multipliers (one-update item 7): line height
      * within a wrapped verse, separate for Arabic and English. 1.5

@@ -34,6 +34,7 @@ class GradientTemplateTest {
     fun autoFitCitationFloorAndRatioLockDefaults() {
         val tpl = LowerThirdTemplate(id = "test", name = "Test")
         assertEquals(10, tpl.autoFitMinCitationSp)
-        assertTrue(tpl.autoFitRatioLock)
+        assertTrue(tpl.autoFitRatioLockArabic)
+        assertTrue(tpl.autoFitRatioLockEnglish)
     }
 }

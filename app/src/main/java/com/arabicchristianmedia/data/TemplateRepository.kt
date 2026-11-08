@@ -184,7 +184,8 @@ class TemplateRepository(context: Context) {
                 gradientAnimation = GradientAnimationType.NONE,
                 gradientSpeed = 1.0f,
                 autoFitMinCitationSp = 10,
-                autoFitRatioLock = true,
+                autoFitRatioLockArabic = true,
+                autoFitRatioLockEnglish = true,
                 lineSpacingArabic = 1.8f,
                 lineSpacingEnglish = 1.6f,
                 autoFitFrozenRatio = null
@@ -292,7 +293,8 @@ class TemplateRepository(context: Context) {
                 gradientAnimation = GradientAnimationType.SLIDE,
                 gradientSpeed = 1.0f,
                 autoFitMinCitationSp = 10,
-                autoFitRatioLock = true,
+                autoFitRatioLockArabic = true,
+                autoFitRatioLockEnglish = true,
                 lineSpacingArabic = 1.8f,
                 lineSpacingEnglish = 1.6f,
                 autoFitFrozenRatio = null
@@ -400,7 +402,8 @@ class TemplateRepository(context: Context) {
                 gradientAnimation = GradientAnimationType.FLOW,
                 gradientSpeed = 1.0f,
                 autoFitMinCitationSp = 10,
-                autoFitRatioLock = true,
+                autoFitRatioLockArabic = true,
+                autoFitRatioLockEnglish = true,
                 lineSpacingArabic = 1.8f,
                 lineSpacingEnglish = 1.6f,
                 autoFitFrozenRatio = null
@@ -508,7 +511,8 @@ class TemplateRepository(context: Context) {
                 gradientAnimation = GradientAnimationType.SLIDE,
                 gradientSpeed = 1.0f,
                 autoFitMinCitationSp = 10,
-                autoFitRatioLock = true,
+                autoFitRatioLockArabic = true,
+                autoFitRatioLockEnglish = true,
                 lineSpacingArabic = 1.8f,
                 lineSpacingEnglish = 1.6f,
                 autoFitFrozenRatio = null
@@ -616,7 +620,8 @@ class TemplateRepository(context: Context) {
                 gradientAnimation = GradientAnimationType.FLOW,
                 gradientSpeed = 1.0f,
                 autoFitMinCitationSp = 10,
-                autoFitRatioLock = true,
+                autoFitRatioLockArabic = true,
+                autoFitRatioLockEnglish = true,
                 lineSpacingArabic = 1.8f,
                 lineSpacingEnglish = 1.6f,
                 autoFitFrozenRatio = null
@@ -724,7 +729,8 @@ class TemplateRepository(context: Context) {
                 gradientAnimation = GradientAnimationType.FLOW,
                 gradientSpeed = 1.0f,
                 autoFitMinCitationSp = 10,
-                autoFitRatioLock = true,
+                autoFitRatioLockArabic = true,
+                autoFitRatioLockEnglish = true,
                 lineSpacingArabic = 1.8f,
                 lineSpacingEnglish = 1.6f,
                 autoFitFrozenRatio = null
@@ -832,7 +838,8 @@ class TemplateRepository(context: Context) {
                 gradientAnimation = GradientAnimationType.FLOW,
                 gradientSpeed = 1.0f,
                 autoFitMinCitationSp = 10,
-                autoFitRatioLock = true,
+                autoFitRatioLockArabic = true,
+                autoFitRatioLockEnglish = true,
                 lineSpacingArabic = 1.8f,
                 lineSpacingEnglish = 1.6f,
                 autoFitFrozenRatio = null
@@ -940,7 +947,8 @@ class TemplateRepository(context: Context) {
                 gradientAnimation = GradientAnimationType.FLOW,
                 gradientSpeed = 1.0f,
                 autoFitMinCitationSp = 10,
-                autoFitRatioLock = true,
+                autoFitRatioLockArabic = true,
+                autoFitRatioLockEnglish = true,
                 lineSpacingArabic = 1.8f,
                 lineSpacingEnglish = 1.6f,
                 autoFitFrozenRatio = null
@@ -1048,7 +1056,8 @@ class TemplateRepository(context: Context) {
                 gradientAnimation = GradientAnimationType.FLOW,
                 gradientSpeed = 1.0f,
                 autoFitMinCitationSp = 10,
-                autoFitRatioLock = true,
+                autoFitRatioLockArabic = true,
+                autoFitRatioLockEnglish = true,
                 lineSpacingArabic = 1.8f,
                 lineSpacingEnglish = 1.6f,
                 autoFitFrozenRatio = null
@@ -1156,7 +1165,8 @@ class TemplateRepository(context: Context) {
                 gradientAnimation = GradientAnimationType.NONE,
                 gradientSpeed = 1.0f,
                 autoFitMinCitationSp = 10,
-                autoFitRatioLock = true,
+                autoFitRatioLockArabic = true,
+                autoFitRatioLockEnglish = true,
                 lineSpacingArabic = 1.8f,
                 lineSpacingEnglish = 1.6f,
                 autoFitFrozenRatio = null
@@ -1264,7 +1274,8 @@ class TemplateRepository(context: Context) {
                 gradientAnimation = GradientAnimationType.NONE,
                 gradientSpeed = 1.0f,
                 autoFitMinCitationSp = 10,
-                autoFitRatioLock = true,
+                autoFitRatioLockArabic = true,
+                autoFitRatioLockEnglish = true,
                 lineSpacingArabic = 1.8f,
                 lineSpacingEnglish = 1.6f,
                 autoFitFrozenRatio = null
@@ -1372,7 +1383,8 @@ class TemplateRepository(context: Context) {
                 gradientAnimation = GradientAnimationType.FLOW,
                 gradientSpeed = 1.0f,
                 autoFitMinCitationSp = 10,
-                autoFitRatioLock = true,
+                autoFitRatioLockArabic = true,
+                autoFitRatioLockEnglish = true,
                 lineSpacingArabic = 1.8f,
                 lineSpacingEnglish = 1.6f,
                 autoFitFrozenRatio = null
@@ -1480,7 +1492,8 @@ class TemplateRepository(context: Context) {
                 gradientAnimation = GradientAnimationType.FLOW,
                 gradientSpeed = 1.0f,
                 autoFitMinCitationSp = 10,
-                autoFitRatioLock = true,
+                autoFitRatioLockArabic = true,
+                autoFitRatioLockEnglish = true,
                 lineSpacingArabic = 1.8f,
                 lineSpacingEnglish = 1.6f,
                 autoFitFrozenRatio = null
@@ -1588,7 +1601,8 @@ class TemplateRepository(context: Context) {
                 gradientAnimation = GradientAnimationType.FLOW,
                 gradientSpeed = 1.0f,
                 autoFitMinCitationSp = 10,
-                autoFitRatioLock = true,
+                autoFitRatioLockArabic = true,
+                autoFitRatioLockEnglish = true,
                 lineSpacingArabic = 1.8f,
                 lineSpacingEnglish = 1.6f,
                 autoFitFrozenRatio = null
@@ -1696,7 +1710,8 @@ class TemplateRepository(context: Context) {
                 gradientAnimation = GradientAnimationType.FLOW,
                 gradientSpeed = 1.0f,
                 autoFitMinCitationSp = 10,
-                autoFitRatioLock = true,
+                autoFitRatioLockArabic = true,
+                autoFitRatioLockEnglish = true,
                 lineSpacingArabic = 1.8f,
                 lineSpacingEnglish = 1.6f,
                 autoFitFrozenRatio = null
@@ -1804,7 +1819,8 @@ class TemplateRepository(context: Context) {
                 gradientAnimation = GradientAnimationType.FLOW,
                 gradientSpeed = 1.0f,
                 autoFitMinCitationSp = 10,
-                autoFitRatioLock = true,
+                autoFitRatioLockArabic = true,
+                autoFitRatioLockEnglish = true,
                 lineSpacingArabic = 1.8f,
                 lineSpacingEnglish = 1.6f,
                 autoFitFrozenRatio = null
@@ -1912,7 +1928,8 @@ class TemplateRepository(context: Context) {
                 gradientAnimation = GradientAnimationType.FLOW,
                 gradientSpeed = 1.0f,
                 autoFitMinCitationSp = 10,
-                autoFitRatioLock = true,
+                autoFitRatioLockArabic = true,
+                autoFitRatioLockEnglish = true,
                 lineSpacingArabic = 1.8f,
                 lineSpacingEnglish = 1.6f,
                 autoFitFrozenRatio = null
@@ -2020,7 +2037,8 @@ class TemplateRepository(context: Context) {
                 gradientAnimation = GradientAnimationType.FLOW,
                 gradientSpeed = 1.0f,
                 autoFitMinCitationSp = 10,
-                autoFitRatioLock = true,
+                autoFitRatioLockArabic = true,
+                autoFitRatioLockEnglish = true,
                 lineSpacingArabic = 1.8f,
                 lineSpacingEnglish = 1.6f,
                 autoFitFrozenRatio = null
@@ -2128,7 +2146,8 @@ class TemplateRepository(context: Context) {
                 gradientAnimation = GradientAnimationType.FLOW,
                 gradientSpeed = 1.0f,
                 autoFitMinCitationSp = 10,
-                autoFitRatioLock = true,
+                autoFitRatioLockArabic = true,
+                autoFitRatioLockEnglish = true,
                 lineSpacingArabic = 1.8f,
                 lineSpacingEnglish = 1.6f,
                 autoFitFrozenRatio = null
@@ -2236,7 +2255,8 @@ class TemplateRepository(context: Context) {
                 gradientAnimation = GradientAnimationType.NONE,
                 gradientSpeed = 1.0f,
                 autoFitMinCitationSp = 10,
-                autoFitRatioLock = true,
+                autoFitRatioLockArabic = true,
+                autoFitRatioLockEnglish = true,
                 lineSpacingArabic = 1.8f,
                 lineSpacingEnglish = 1.6f,
                 autoFitFrozenRatio = null
@@ -2417,7 +2437,7 @@ class TemplateRepository(context: Context) {
             val obj = JSONObject(json)
             if (obj.optString("name", "").trim().isEmpty()) return null
             // Sanity: a real style carries several known keys.
-            val knownKeys = listOf("fontFamily", "bgColorHex", "textColorHex", "verseFontSize", "style", "showCrossEmblem", "emblem", "autoFitMinVerseSp", "autoFitMaxVerseSp", "boxHeightPercent", "isFullScreen", "id", "useSystemFontForBrackets", "gradientColorHex2", "gradientAngleDeg", "gradientAnimation", "autoFitMinCitationSp", "autoFitRatioLock", "clearMode", "lineSpacingArabic", "lineSpacingEnglish", "autoFitFrozenRatio", "verseCitationGapArabicDp", "verseCitationGapEnglishDp", "boxLoopContinuous", "trueFullscreen", "citationAlignmentArabic", "citationAlignmentEnglish", "verseAlignmentEnglish", "verticalAlignment", "verticalAlignmentArabic", "verticalAlignmentEnglish", "textEffect", "textEffectDepthDp", "cardGlowRadiusDp", "showAccentBorderWidthDp", "cardGlowOpacity", "accentOpacity", "showArabic", "showEnglish", "particleOpacity", "particleEffect", "particleDensity", "particleColorHex", "logoUri", "logoPosition", "logoBoxSizePercent", "logoOffsetXPercent", "logoOffsetYPercent", "logoOpacity", "logoData", "videoEnabled", "particlesEnabled", "cardEnabled", "logoEnabled")
+            val knownKeys = listOf("fontFamily", "bgColorHex", "textColorHex", "verseFontSize", "style", "showCrossEmblem", "emblem", "autoFitMinVerseSp", "autoFitMaxVerseSp", "boxHeightPercent", "isFullScreen", "id", "useSystemFontForBrackets", "gradientColorHex2", "gradientAngleDeg", "gradientAnimation", "autoFitMinCitationSp", "autoFitRatioLockArabic", "autoFitRatioLockEnglish", "autoFitRatioLock", "clearMode", "lineSpacingArabic", "lineSpacingEnglish", "autoFitFrozenRatio", "verseCitationGapArabicDp", "verseCitationGapEnglishDp", "boxLoopContinuous", "trueFullscreen", "citationAlignmentArabic", "citationAlignmentEnglish", "verseAlignmentEnglish", "verticalAlignment", "verticalAlignmentArabic", "verticalAlignmentEnglish", "textEffect", "textEffectDepthDp", "cardGlowRadiusDp", "showAccentBorderWidthDp", "cardGlowOpacity", "accentOpacity", "showArabic", "showEnglish", "particleOpacity", "particleEffect", "particleDensity", "particleColorHex", "logoUri", "logoPosition", "logoBoxSizePercent", "logoOffsetXPercent", "logoOffsetYPercent", "logoOpacity", "logoData", "videoEnabled", "particlesEnabled", "cardEnabled", "logoEnabled")
             if (knownKeys.none { obj.has(it) }) return null
             fromJson(obj)
         } catch (e: Exception) {
@@ -2535,7 +2555,10 @@ class TemplateRepository(context: Context) {
             put("gradientAnimation", t.gradientAnimation.id)
             put("gradientSpeed", t.gradientSpeed)
             put("autoFitMinCitationSp", t.autoFitMinCitationSp)
-            put("autoFitRatioLock", t.autoFitRatioLock)
+            // 1.9.16 Part 3: two per-language ratio locks (the single
+            // key is legacy; fromJson still reads it for migration).
+            put("autoFitRatioLockArabic", t.autoFitRatioLockArabic)
+            put("autoFitRatioLockEnglish", t.autoFitRatioLockEnglish)
             put("lineSpacingArabic", t.lineSpacingArabic.toDouble())
             put("lineSpacingEnglish", t.lineSpacingEnglish.toDouble())
             if (t.autoFitFrozenRatio != null) put("autoFitFrozenRatio", t.autoFitFrozenRatio.toDouble())
@@ -2755,7 +2778,11 @@ class TemplateRepository(context: Context) {
             gradientAnimation = GradientAnimationType.fromId(obj.optString("gradientAnimation", "none")),
             gradientSpeed = obj.optDouble("gradientSpeed", 1.0).toFloat().coerceIn(0f, 3.0f),
             autoFitMinCitationSp = obj.optInt("autoFitMinCitationSp", 10).coerceIn(10, 120),
-            autoFitRatioLock = obj.optBoolean("autoFitRatioLock", true),
+            // 1.9.16 Part 3 migration: a new key wins; an old save
+            // with the single key gives both locks its value; no key
+            // at all -> both on (the old default).
+            autoFitRatioLockArabic = if (obj.has("autoFitRatioLockArabic")) obj.optBoolean("autoFitRatioLockArabic", true) else obj.optBoolean("autoFitRatioLock", true),
+            autoFitRatioLockEnglish = if (obj.has("autoFitRatioLockEnglish")) obj.optBoolean("autoFitRatioLockEnglish", true) else obj.optBoolean("autoFitRatioLock", true),
             lineSpacingArabic = obj.optDouble("lineSpacingArabic", 1.5).toFloat().coerceIn(1f, 5f),
             lineSpacingEnglish = obj.optDouble("lineSpacingEnglish", 1.5).toFloat().coerceIn(1f, 5f),
             autoFitFrozenRatio = if (obj.has("autoFitFrozenRatio")) obj.optDouble("autoFitFrozenRatio", 0.0).toFloat().takeIf { it > 0f } else null,

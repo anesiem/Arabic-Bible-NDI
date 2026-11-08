@@ -466,6 +466,31 @@ class TemplateRepositoryTest {
     }
 
     @Test
+    fun `v1_9_16 old single ratio lock migrates to the two per-language locks`() {
+        // Old save with the single key: both locks take its value.
+        val off = repo.templateFromJsonString("{\"id\":\"rl1\",\"name\":\"R\",\"autoFitRatioLock\":false}")
+        assertNotNull(off)
+        assertFalse(off!!.autoFitRatioLockArabic)
+        assertFalse(off.autoFitRatioLockEnglish)
+        // New keys win over the old key when both are present.
+        val mixed = repo.templateFromJsonString("{\"id\":\"rl2\",\"name\":\"M\",\"autoFitRatioLock\":false,\"autoFitRatioLockArabic\":true,\"autoFitRatioLockEnglish\":false}")
+        assertNotNull(mixed)
+        assertTrue(mixed!!.autoFitRatioLockArabic)
+        assertFalse(mixed.autoFitRatioLockEnglish)
+        // No key at all: both on (the old default).
+        val def = repo.templateFromJsonString("{\"id\":\"rl3\",\"name\":\"D\"}")
+        assertNotNull(def)
+        assertTrue(def!!.autoFitRatioLockArabic)
+        assertTrue(def.autoFitRatioLockEnglish)
+        // Round-trip: the two locks survive JSON.
+        val tpl = baseTemplate("rl4", false).copy(autoFitRatioLockArabic = false, autoFitRatioLockEnglish = true)
+        val imported = repo.templateFromJsonString(repo.templateToJsonString(tpl))
+        assertNotNull(imported)
+        assertFalse(imported!!.autoFitRatioLockArabic)
+        assertTrue(imported.autoFitRatioLockEnglish)
+    }
+
+    @Test
     fun `v1_9_16 old per-language alignment keys migrate to the single field`() {
         // Old save with the two per-language keys (split): Arabic wins
         // unless it is CENTER, when English wins — the old collapse rule.

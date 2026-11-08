@@ -9242,11 +9242,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
        won and the dark colors were dead (near-black text on the gray pill
        in dark mode). They now sit AFTER the base rules, below. */
   }
-  header { padding: 16px 20px 8px; font-size: 20px; font-weight: 700; display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;  flex-wrap: wrap; }
+  header { padding: 8px 12px; font-size: 18px; font-weight: 700; display: flex; align-items: center; justify-content: space-between; gap: 6px; flex-wrap: nowrap; height: 50px; min-height: 50px; }
   /* Batch-3: new top bar layout */
-  #topBar { align-items: center; }
-  #topBar button { background: none; border: 1px solid; border-radius: 10px; font-size: 20px; width: 44px; height: 44px; cursor: pointer; }
-  #topRef { flex: 1; text-align: center; font-size: 16px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #topBar { align-items: center; flex-wrap: nowrap; height: 50px; min-height: 50px; }
+  #topBar button { background: none; border: 1px solid; border-radius: 10px; font-size: 18px; width: 38px; height: 38px; cursor: pointer; flex: none; display: inline-flex; align-items: center; justify-content: center; padding: 0; }
+  #topRef { flex: 1; min-width: 0; text-align: center; font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 4px; }
   #infoPopup { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 100; display: flex; align-items: center; justify-content: center; }
   #infoPopup[hidden] { display: none; }
   #infoPopup .card { max-width: 320px; text-align: center; }
@@ -9297,14 +9297,14 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   }
   /* Item 18 (1.9.8): green button max-width — prevent overflow on mobile. */
   .btn:active { transform: scale(0.98); opacity: 0.9; }
-  .onair {
+  button.onair {
     width: 100%; padding: 16px; font-size: 18px; font-weight: 800;
     border: none; border-radius: 16px; cursor: pointer; min-height: 60px;
     letter-spacing: 0.4px;
   }
-  .onair.on { background: var(--onair-on, #dc2626); color: #fff; }
-  .onair.off { background: var(--onair-off, #6b7280); color: #fff; }
-  .onair:active { transform: scale(0.98); opacity: 0.9; }
+  button.onair.on { background: var(--onair-on, #dc2626); color: #fff; }
+  button.onair.off { background: var(--onair-off, #6b7280); color: #fff; }
+  button.onair:active { transform: scale(0.98); opacity: 0.9; }
   .status { text-align: center; font-size: 14px; min-height: 22px; font-weight: 600; }
   .status.ok { color: #16a34a; }
   .status.err { color: #dc2626; }
@@ -9324,12 +9324,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   #controlBar #ref { flex: 2 1 140px; height: 44px; padding: 10px 12px; font-size: 15px; }
   #controlBar #goBtn { width: auto; flex: none; height: 44px; min-height: 44px; padding: 8px 14px; font-size: 14px; font-weight: 700; border-radius: 12px; margin: 0; display: inline-flex; align-items: center; justify-content: center; }
   #controlBar .onair { width: auto; flex: none; height: 44px; min-height: 44px; padding: 8px 14px; font-size: 14px; max-width: 110px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-  /* Item 108: the top-bar ON AIR button (#onAirBtnTop) wears the full-width .onair
-     class (width:100%, min-height:60px, padding:16px) in a 44px top bar, so it
-     overflows and clips at the screen edge. Compact override, same values as
-     #controlBar .onair — scoped to this button only, the global .onair class
-     (full-width button) is unchanged. */
-  #topBar #onAirBtnTop { width: auto; flex: none; height: 44px; min-height: 44px; padding: 8px 12px; font-size: 14px; max-width: 110px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  /* Item 108: top-bar ON AIR button compact styling. */
+  #topBar #onAirBtnTop { width: auto; flex: none; height: 36px; min-height: 36px; padding: 4px 8px; font-size: 13px; max-width: 95px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; border-radius: 10px; }
   /* Item 17 (1.9.8): ON AIR button sizing — prevent overflow on mobile. */
   #controlBar .livepill { max-width: none; flex: 1 1 140px; margin-top: 0; }
   /* Item 28: small neutral Clear button beside the ON AIR toggle. */
@@ -9339,7 +9335,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
      language; they call POST /api/sermons/current/prev|next. */
   #controlBar #prevBtn, #controlBar #nextBtn { width: auto; flex: none; padding: 12px 14px; min-height: 48px; font-size: 14px; font-weight: 700; background: transparent; border: 1px solid var(--chrome-border, #334155); color: inherit; border-radius: 16px; cursor: pointer; }
   #controlBar #clearBtn:active { transform: scale(0.98); opacity: 0.9; }
-  .vlist { margin-top: 8px; max-height: 52dvh; overflow-y: auto; min-height: 0; flex: 1; transition: opacity 0.15s; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+  .vlist { margin-top: 8px; max-height: 52dvh; overflow-y: auto; min-height: 0; flex: 1; transition: opacity 0.15s; touch-action: pan-y; overscroll-behavior-y: auto; }
   /* 1.9.16 items 14-15: the browse card is a flex column (so the
      verse list can fill it) and the VERSE list has no dvh cap on
      any screen — it fills the card and scrolls internally. The
@@ -9724,26 +9720,30 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   if (browseLang !== 'en') browseLang = 'ar';
   langSel.value = browseLang;
   var vList = document.getElementById('vList');
-  // 1.9.18 Item 3: browsing flag — set when the user manually
-  // scrolls/touches the verse list (they are looking at something
-  // else), so an incoming sync does NOT yank the list away. The
-  // live row still highlights; only the auto-scroll is gated.
-  // Cleared when the user taps a verse to send it (triggerVerse) —
-  // they have chosen a verse, so auto-scroll resumes.
   var isBrowsing = false;
+  var browseTimer = null;
+  function markBrowsing() {
+    isBrowsing = true;
+    if (browseTimer) clearTimeout(browseTimer);
+    browseTimer = setTimeout(function() { isBrowsing = false; }, 4000);
+  }
   // Batch-3: swipe left/right on verse list for chapter navigation
   (function() {
     var startX = 0, startY = 0;
     vList.addEventListener('touchstart', function(e) {
-      startX = e.touches[0].clientX; startY = e.touches[0].clientY;
+      if (e.touches && e.touches.length === 1) {
+        startX = e.touches[0].clientX; startY = e.touches[0].clientY;
+      }
     }, {passive: true});
     vList.addEventListener('touchend', function(e) {
-      var dx = e.changedTouches[0].clientX - startX;
-      var dy = e.changedTouches[0].clientY - startY;
-      if (Math.abs(dx) > 80 && Math.abs(dx) > Math.abs(dy) * 1.5) {
-        // Item 28: RTL swipe — right-to-left = previous, left-to-right = next.
-        // (Page is <html lang="en"> so dir detection fails; Arabic Bible app = RTL always.)
-        stepChapter(dx < 0 ? -1 : 1);
+      if (e.changedTouches && e.changedTouches.length === 1) {
+        var dx = e.changedTouches[0].clientX - startX;
+        var dy = e.changedTouches[0].clientY - startY;
+        if (Math.abs(dx) > 90 && Math.abs(dx) > Math.abs(dy) * 2.5) {
+          // Item 28: RTL swipe — right-to-left = previous, left-to-right = next.
+          // (Page is <html lang="en"> so dir detection fails; Arabic Bible app = RTL always.)
+          stepChapter(dx < 0 ? -1 : 1);
+        }
       }
     }, {passive: true});
   })();
@@ -9751,9 +9751,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   // (touch, pointer, wheel) means the user is browsing — set the
   // flag so the next sync highlights but does not scroll. Passive:
   // these never call preventDefault, so scrolling stays smooth.
-  vList.addEventListener('touchstart', function() { isBrowsing = true; }, {passive: true});
-  vList.addEventListener('pointerdown', function() { isBrowsing = true; }, {passive: true});
-  vList.addEventListener('wheel', function() { isBrowsing = true; }, {passive: true});
+  vList.addEventListener('touchstart', markBrowsing, {passive: true});
+  vList.addEventListener('pointerdown', markBrowsing, {passive: true});
+  vList.addEventListener('wheel', markBrowsing, {passive: true});
   var refInput = document.getElementById('ref');
   refInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') triggerRef(); });
   refInput.addEventListener('focus', function() { refInput.select(); });
@@ -9863,7 +9863,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         var listRect = vList.getBoundingClientRect();
         var rowRect = verseEl.getBoundingClientRect();
         var target = vList.scrollTop + (rowRect.top - listRect.top);
-        vList.scrollTo({ top: target, behavior: 'smooth' });
+        var isMobileIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        vList.scrollTo({ top: target, behavior: isMobileIOS ? 'auto' : 'smooth' });
         // Item 20 (1.9.8): persistent highlight — stays until another verse syncs.
         var prevLive = vList.querySelector('.vrow.synced-live');
         if (prevLive) prevLive.classList.remove('synced-live');
@@ -10240,10 +10241,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 
   function renderOnAir() {
     var btn = document.getElementById('onAirBtnTop');
-    // Item 30 (1.9.10): body.onair drives the live-verse red text tint
-    // (CSS: body.onair .vrow.live .va/.ve). One toggle covers both the
-    // chapter list and the recents list.
-    document.body.classList.toggle('onair', !!live.onAir);
+    document.body.classList.toggle('body-onair', !!live.onAir);
     if (live.onAir) {
       btn.className = 'onair on';
       btn.textContent = '🔴 ON AIR';

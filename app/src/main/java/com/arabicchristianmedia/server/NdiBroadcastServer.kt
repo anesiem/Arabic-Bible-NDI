@@ -9242,11 +9242,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
        won and the dark colors were dead (near-black text on the gray pill
        in dark mode). They now sit AFTER the base rules, below. */
   }
-  header { padding: 8px 12px; font-size: 18px; font-weight: 700; display: flex; align-items: center; justify-content: space-between; gap: 6px; flex-wrap: nowrap; height: 50px; min-height: 50px; }
+  header { padding: 12px 16px 8px; font-size: 18px; font-weight: 700; display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: nowrap; }
   /* Batch-3: new top bar layout */
-  #topBar { align-items: center; flex-wrap: nowrap; height: 50px; min-height: 50px; }
-  #topBar button { background: none; border: 1px solid; border-radius: 10px; font-size: 18px; width: 38px; height: 38px; cursor: pointer; flex: none; display: inline-flex; align-items: center; justify-content: center; padding: 0; }
-  #topRef { flex: 1; min-width: 0; text-align: center; font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 4px; }
+  #topBar { align-items: center; flex-wrap: nowrap; }
+  #topBar button { background: none; border: 1px solid; border-radius: 10px; font-size: 20px; width: 44px; height: 44px; cursor: pointer; flex: none; display: inline-flex; align-items: center; justify-content: center; padding: 0; }
+  #topRef { flex: 1; min-width: 0; text-align: center; font-size: 16px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 6px; }
   #infoPopup { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 100; display: flex; align-items: center; justify-content: center; }
   #infoPopup[hidden] { display: none; }
   #infoPopup .card { max-width: 320px; text-align: center; }
@@ -9325,7 +9325,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   #controlBar #goBtn { width: auto; flex: none; height: 44px; min-height: 44px; padding: 8px 14px; font-size: 14px; font-weight: 700; border-radius: 12px; margin: 0; display: inline-flex; align-items: center; justify-content: center; }
   #controlBar .onair { width: auto; flex: none; height: 44px; min-height: 44px; padding: 8px 14px; font-size: 14px; max-width: 110px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   /* Item 108: top-bar ON AIR button compact styling. */
-  #topBar #onAirBtnTop { width: auto; flex: none; height: 36px; min-height: 36px; padding: 4px 8px; font-size: 13px; max-width: 95px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; border-radius: 10px; }
+  #topBar #onAirBtnTop { width: auto; flex: none; height: 44px; min-height: 44px; padding: 8px 12px; font-size: 14px; max-width: 110px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; border-radius: 12px; }
   /* Item 17 (1.9.8): ON AIR button sizing — prevent overflow on mobile. */
   #controlBar .livepill { max-width: none; flex: 1 1 140px; margin-top: 0; }
   /* Item 28: small neutral Clear button beside the ON AIR toggle. */

@@ -17,7 +17,7 @@ class BibleDatabaseHelper(private val context: Context) {
          * Bump when the bundled database assets in assets/bible change: stale on-device
          * copies are recopied on the next launch.
          */
-        const val DATA_VERSION = 7 // N3: split merged tashkeelWord at Exo 35:35 (contained 36:1 with "(36:1)" marker); 36:1 tashkeelWord now has the vocalized text — bump REQUIRED so upgraded installs recopy. Prev v6: removed stray ")" at ASV John 18:40. Prev v5: search-only searchWord column.
+        const val DATA_VERSION = 8 // v1.9.19: searchWord rebuilt with the full variant-insensitive normalizeForSearch (13 tiered groups — ى→ي, ة→ه, ٱ→ا, hamza Policy B, dagger alef →ا, Farsi yeh/keheh, NFKC) — bump REQUIRED so upgraded installs recopy. Prev v7: split merged tashkeelWord at Exo 35:35 (contained 36:1 with "(36:1)" marker); 36:1 tashkeelWord now has the vocalized text. Prev v6: removed stray ")" at ASV John 18:40. Prev v5: search-only searchWord column.
         private const val PREFS = "bible_db_prefs"
     }
 

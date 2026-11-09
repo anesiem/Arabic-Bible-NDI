@@ -66,6 +66,9 @@ data class BibleNdiUiState(
     val displayedVerses: List<BibleVerse> = emptyList(),
     val searchQuery: String = "",
     val searchResults: List<BibleVerse> = emptyList(),
+    // v1.9.19 item 4: live result count (true total, not the 100 listed).
+    // Null when no count applies (empty query or under 4 characters).
+    val searchResultCount: Int? = null,
     val isSearching: Boolean = false,
     val activeVerse: BibleVerse? = null,
     val isLiveOnAir: Boolean = true,
@@ -1262,6 +1265,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             _uiState.value = _uiState.value.copy(
                 searchQuery = "",
                 searchResults = emptyList(),
+                searchResultCount = null,
                 isSearching = false
             )
             return
@@ -1274,9 +1278,19 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             val results = withContext(Dispatchers.IO) {
                 BibleRepository.searchVerses(query)
             }
+            // v1.9.19 item 4: live result count (true total, not the
+            // 100 listed). Only at 4+ NORMALIZED characters — shorter
+            // queries match thousands of verses and the number is
+            // meaningless. Runs in the same debounced job, so there is
+            // no extra cost per keystroke.
+            val count = withContext(Dispatchers.IO) {
+                val normalized = BibleRepository.normalizeForSearch(query.trim())
+                if (normalized.length >= 4) BibleRepository.searchVersesCount(query) else null
+            }
             _uiState.value = _uiState.value.copy(
                 searchQuery = query,
                 searchResults = results,
+                searchResultCount = count,
                 isSearching = true
             )
         }
@@ -1289,6 +1303,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         _uiState.value = _uiState.value.copy(
             searchQuery = "",
             searchResults = emptyList(),
+            searchResultCount = null,
             isSearching = false
         )
     }

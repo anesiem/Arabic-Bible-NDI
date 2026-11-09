@@ -9360,12 +9360,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
          ABOVE the library (the old grid had no area for them, so they
          auto-placed into implicit rows squeezed in the 340px column).
          The dead "control" row is gone — #controlBar does not exist
-         (the controls live in the topBar header). #refBar is hidden
-         by default, so its row collapses until shown. */
-      grid-template-areas: "refbar refbar" "browsebar browsebar" "recent browse" "status status";
+         (the controls live in the topBar header). 1.9.19 item 2: the
+         #refBar is gone — its input lives inline in #navRow, whose
+         row is always visible (arrows + recents + search). */
+      grid-template-areas: "navrow navrow" "browsebar browsebar" "recent browse" "status status";
       align-items: stretch;
     }
-    #refBar { grid-area: refbar; }
+    #navRow { grid-area: navrow; }
     #browseBar { grid-area: browsebar; }
     #recentCard { grid-area: recent; display: flex; flex-direction: column; }
     #browseCard { grid-area: browse; display: flex; flex-direction: column; min-height: 0; }
@@ -9563,37 +9564,43 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   /* 2026-11-02 item 32: big-screen layout — constrain width, fix ON AIR/status. */
   @media (min-width: 768px) {
     body { align-items: center; }
-    body > .card, body > #refBar, body > #browseBar { max-width: 800px; width: 100%; }
+    body > .card, body > #navRow, body > #browseBar { max-width: 800px; width: 100%; }
     #topBar { max-width: 800px; width: 100%; }
   }
-  /* 1.9.14 (item 2): the ref + browse bars are flex rows — in the
+  /* 1.9.14 (item 2): the nav + browse bars are flex rows — in the
      stylesheet, NOT inline. The inline display:flex used to override
      the collapse rule below (inline beats stylesheet), so the toggle
      flipped but the bars stayed visible. With display in the CSS,
-     body.ref-hidden wins (higher specificity) and the bar hides. */
-  #refBar, #browseBar { display: flex; align-items: center; gap: 8px; }
-  #refBar { flex-wrap: wrap; }
-  /* 1.9.15 item 3: the Reference bar (quick-ref input) is collapsible —
-     it starts hidden and is toggled by the Reference icon in the browse
-     bar. The book + chapter (browse bar) are ALWAYS visible — collapsing
-     never hides them. (The old collapse chevron hid both bars and is gone.) */
-  body.ref-hidden #refBar { display: none; }
+     the nav-search rule below wins and the input hides. */
+  #navRow, #browseBar { display: flex; align-items: center; gap: 8px; }
+  /* 1.9.19 item 2: the nav row holds the chapter arrows (left), the
+     inline search (middle, hidden until opened), and the search +
+     recents icons (right end). Its icon buttons match the top bar's
+     44px touch targets. The Go button inside #navSearch keeps its
+     own inline sizing (it is not a direct child of #navRow). */
+  #navRow > button { background: none; border: 1px solid; border-radius: 10px; font-size: 20px; width: 44px; height: 44px; cursor: pointer; flex: none; display: inline-flex; align-items: center; justify-content: center; padding: 0; }
+  #navSearch { flex: 1; min-width: 0; display: flex; gap: 4px; align-items: center; }
+  #navSearch #ref { flex: 1; min-width: 0; }
+  #navRow:not(.nav-search-open) #navSearch { display: none; }
+  /* 1.9.19 item 2: when the inline search is open the recents icon
+     hides so the input gets room on a small phone (the input would
+     otherwise be ~40px wide at 360px). It returns when search closes.
+     The search icon stays — tapping it again closes the search. */
+  #navRow.nav-search-open #recentsBtn { display: none; }
+  #navRow #searchBtn.search-on { border-color: #16a34a; background: rgba(22,163,74,0.12); }
 </style>
 </head>
-<body class="ref-hidden">
+<body>
 <header id="topBar">
   <!-- v1.9.5: reworked top bar — [gear][sync][kbd] left, ref centered, ON AIR right. Info icon removed. -->
   <!-- 1.9.15 item 3: the collapse chevron is gone (it hid the book +
        chapter too, and its two glyphs jumped). The book + chapter live
        in the browse bar below and are always visible; the Recents icon
-       there opens the Recents popup. (1.9.18 Item 10: the Reference
-       icon moved to this top bar, beside Sync.) -->
+       is in the nav row. (1.9.19 item 2: the Reference icon left this
+       top bar — the search 🔍 lives in the nav row now, so the
+       reference gets more room.) -->
   <button id="gearTop" aria-label="Settings" onclick="togglePanel()">&#9881;</button>
   <button id="syncBtn" aria-label="Toggle auto-sync" onclick="toggleSync()" style="font-size:18px;" title="Auto-sync with tablet">&#128279;</button>
-  <!-- 1.9.18 Item 10: the Reference icon (📋) moved here from the
-       browse bar — beside Sync, so it is always visible (the browse
-       bar is for book/chapter navigation). Same id, function, style. -->
-  <button id="refBtn" onclick="toggleRefBar()" aria-label="Reference" style="font-size:18px;" title="Show/hide reference bar">&#128221;</button>
   <!-- Item 32: keyboard shortcuts moved into the gear panel (learn-once reference). -->
   <div id="topRef" dir="auto">—</div>
   <button class="onair off" id="onAirBtnTop" onclick="toggleOnAir()">OFF AIR</button>
@@ -9601,13 +9608,19 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 <!-- Item 71 (1.9.9): CONNECTION LOST banner — shown while the sync link is down. -->
 <div id="connBanner" hidden style="background:#dc2626;color:#fff;text-align:center;font-weight:bold;font-size:14px;padding:8px 12px;">⚠ CONNECTION LOST — reconnecting…</div>
 <main>
-  <!-- v1.9.5: Row 2 — [ref input with Go inside] (reference bar, starts
-       hidden — toggled by the Reference icon in the browse bar below). -->
-  <!-- 1.9.15 item 3: the Recents button moved to the browse bar (it is
-       an icon there); the reference bar holds only the quick-ref input. -->
-  <div class="card" id="refBar" dir="rtl">
-    <!-- 2026-11-02: flexbox layout (was absolute positioning, broke on narrow RTL screens). -->
-    <div style="display:flex;flex:1;gap:4px;max-width:320px;min-width:0;">
+  <!-- 1.9.19 item 2: the nav row — chapter arrows (left), the inline
+       reference search (middle, hidden until the 🔍 is tapped), and
+       the search + recents icons grouped at the far right end (recent
+       rightmost, first in reading order). The old separate #refBar row
+       is gone; its input lives here now. The book + chapter row below
+       holds only the two dropdowns, so the book name gets full width. -->
+  <div class="card" id="navRow" dir="ltr">
+    <!-- Item 29: RTL visual order — right arrow (previous) before left arrow (next). Actions unchanged. -->
+    <button id="nextChBtn" onclick="stepChapter(1)" aria-label="Next chapter">&#9664;</button>
+    <button id="prevChBtn" onclick="stepChapter(-1)" aria-label="Previous chapter">&#9654;</button>
+    <!-- Item 19 (1.9.8): RTL — arrows point in reading direction (previous=right, next=left). -->
+    <div id="navSearch" dir="rtl">
+      <!-- 2026-11-02: flexbox layout (was absolute positioning, broke on narrow RTL screens). -->
       <input id="ref" type="text" inputmode="text" autocomplete="off"
              placeholder="John 3:16  •  يوحنا 3:16  •  Jn 3:16"
              enterkeyhint="go" aria-label="Quick reference"
@@ -9615,20 +9628,16 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       <button class="btn" id="goBtn" onclick="triggerRef()" aria-label="Go"
               style="flex:none;width:auto;min-height:44px;font-size:14px;background:#16a34a;color:white;border:none;border-radius:6px;padding:8px 12px;">▶</button>
     </div>
+    <button id="searchBtn" onclick="toggleNavSearch()" aria-label="Search / reference" style="font-size:18px;" title="Search / reference">&#128269;</button>
+    <button id="recentsBtn" onclick="toggleRecents()" aria-label="Recents" style="font-size:18px;" title="Recents">&#128341;</button>
   </div>
-  <!-- v1.9.5: Row 3 — [prev][next][chapter][book] (book rightmost) -->
-  <!-- 1.9.15 item 3: the browse bar is ALWAYS visible (book + chapter
-       never collapse). Two icons on the right: Recents (opens the
-       Recents popup) and Reference (expands/collapses the reference
-       bar above; starts collapsed/hidden). -->
+  <!-- v1.9.5: Row 3 — [chapter][book] (book gets the full width now). -->
+  <!-- 1.9.19 item 2: the browse bar holds ONLY the chapter + book
+       dropdowns — the arrows and the Recents icon moved to the nav
+       row above, so the book name is never cut on a small screen. -->
   <div class="card" id="browseBar" dir="ltr">
-    <!-- Item 29: RTL visual order — right arrow (previous) before left arrow (next). Actions unchanged. -->
-    <button id="nextChBtn" onclick="stepChapter(1)" aria-label="Next chapter">&#9664;</button>
-    <button id="prevChBtn" onclick="stepChapter(-1)" aria-label="Previous chapter">&#9654;</button>
-    <!-- Item 19 (1.9.8): RTL — arrows point in reading direction (previous=right, next=left). -->
     <select id="chSel" aria-label="Chapter"></select>
     <select id="bookSel" aria-label="Book"><option value="">Loading books…</option></select>
-    <button id="recentsBtn" onclick="toggleRecents()" aria-label="Recents" style="font-size:18px;" title="Recents">&#128341;</button>
   </div>
   <!-- Recents popup with close button -->
   <div id="recentsPopup" hidden style="position:fixed;top:10px;left:10px;right:10px;bottom:10px;max-width:600px;margin:0 auto;background:var(--chrome-card,#fff);border:1px solid var(--chrome-border,#e2e8f0);border-radius:12px;z-index:90;overflow:hidden;">
@@ -9795,17 +9804,24 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     updateSyncBtn();
   }
   updateSyncBtn();
-  // 1.9.15 item 3: expand/collapse the reference bar (quick-ref input)
-  // only. The book + chapter (browse bar) are always visible — the old
-  // collapse chevron hid them too and is gone. The bar starts hidden
-  // (body.ref-hidden on load); the Reference icon toggles it. One glyph,
-  // no swap, so nothing jumps.
-  function toggleRefBar() {
-    var hidden = document.body.classList.toggle('ref-hidden');
-    var btn = document.getElementById('refBtn');
+  // 1.9.19 item 2: expand/collapse the inline reference search in the
+  // nav row (quick-ref input). The input opens in the middle space
+  // between the chapter arrows and the icons — the row never grows a
+  // second line. The recents icon hides while it is open (CSS) so the
+  // input gets room on a small phone. Tapping 🔍 again (or Go) closes
+  // it. The old #refBar row and its body.ref-hidden toggle are gone.
+  function toggleNavSearch() {
+    var row = document.getElementById('navRow');
+    var open = row.classList.toggle('nav-search-open');
+    var btn = document.getElementById('searchBtn');
     if (btn) {
-      btn.setAttribute('aria-label', hidden ? 'Show reference bar' : 'Hide reference bar');
-      btn.setAttribute('title', hidden ? 'Show reference bar' : 'Hide reference bar');
+      btn.setAttribute('aria-label', open ? 'Hide search' : 'Search / reference');
+      btn.setAttribute('title', open ? 'Hide search' : 'Search / reference');
+      btn.classList.toggle('search-on', open);
+    }
+    if (open) {
+      var ref = document.getElementById('ref');
+      if (ref) ref.focus();
     }
   }
   // Shared helper: find book index by bookId (replaces 3 duplicated loops).
@@ -10197,7 +10213,14 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     fetch('/api/trigger?ref=' + encodeURIComponent(ref))
       .then(function(r) { return r.json(); })
       .then(function(j) {
-        if (j.ok) { setStatus('✓ ' + ref, 'ok'); pollNow(); }
+        if (j.ok) {
+          setStatus('✓ ' + ref, 'ok');
+          // 1.9.19 item 2: Go closes the inline search (the verse is
+          // live now; a failed trigger keeps it open for editing).
+          var row = document.getElementById('navRow');
+          if (row && row.classList.contains('nav-search-open')) toggleNavSearch();
+          pollNow();
+        }
         else setStatus('✗ ' + (j.error || 'failed'), 'err');
       })
       .catch(function() { setStatus('✗ Network error', 'err'); });
@@ -10512,6 +10535,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     // '/' or Ctrl+F focuses the reference (even while typing elsewhere).
     if ((e.key === '/' && !typing) || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f')) {
       e.preventDefault();
+      // 1.9.19 item 2: the input lives in the nav row and is hidden
+      // until opened — open it first, then focus (a hidden input
+      // cannot take focus).
+      var navRow = document.getElementById('navRow');
+      if (navRow && !navRow.classList.contains('nav-search-open')) toggleNavSearch();
       if (ref) ref.focus();
       return;
     }

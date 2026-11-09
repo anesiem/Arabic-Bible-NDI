@@ -593,11 +593,38 @@ fun BibleReaderScreen(
                         shape = RoundedCornerShape(12.dp),
                         trailingIcon = {
                             if (uiState.searchQuery.isNotEmpty()) {
-                                IconButton(onClick = {
-                                    onClearSearch()
-                                    searchFocusRequester.requestFocus()
-                                }) {
-                                    Icon(Icons.Default.Close, "Clear search", tint = bento.textSecondary)
+                                // v1.9.19 item 4: live result count pill INSIDE
+                                // the field, next to the × — no extra line.
+                                // Only when a count applies (4+ characters);
+                                // otherwise the field looks exactly as it
+                                // did (just the ×). The pill uses theme
+                                // variables (bento.primary / bento.onPrimary)
+                                // so it follows the active theme — no
+                                // hardcoded colors. The number is the TRUE
+                                // total, not the 100 listed.
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    val count = uiState.searchResultCount
+                                    if (count != null) {
+                                        Box(
+                                            modifier = Modifier
+                                                .background(bento.primary, RoundedCornerShape(12.dp))
+                                                .padding(horizontal = 8.dp, vertical = 2.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = count.toString(),
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = bento.onPrimary
+                                            )
+                                        }
+                                    }
+                                    IconButton(onClick = {
+                                        onClearSearch()
+                                        searchFocusRequester.requestFocus()
+                                    }) {
+                                        Icon(Icons.Default.Close, "Clear search", tint = bento.textSecondary)
+                                    }
                                 }
                             }
                         }

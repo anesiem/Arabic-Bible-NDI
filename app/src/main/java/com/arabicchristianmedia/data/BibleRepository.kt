@@ -4,6 +4,7 @@ import android.content.Context
 import com.arabicchristianmedia.model.BibleBook
 import com.arabicchristianmedia.model.BibleVerse
 import com.arabicchristianmedia.model.Testament
+import java.text.Normalizer
 
 object BibleRepository {
 
@@ -237,26 +238,117 @@ object BibleRepository {
     }
 
     /**
-     * Normalize Arabic text for search matching. Strips diacritics (tashkeel),
-     * tatweel (kashida), and normalizes common letter variants so search is
-     * forgiving: أ/إ/آ → ا, ة → ه, ى → ي. The DB's searchWord column already
-     * has alef normalization applied at build time; this brings the query
-     * side to parity. Display text is NEVER touched — only search matching.
-     * v1.9.5: single shared normalizer for both query and index sides.
+     * Normalize Arabic text for search matching — variant-insensitive.
+     * A word can be written several ways and still be correct, so the
+     * search treats these groups as the same letter: ي/ى, ة/ه,
+     * ا/إ/أ/ٱ/آ (plus the Quranic alef forms ٲ/ٳ), and the hamza seats
+     * ؤ/ئ/ء (Policy B, seat-preserving). The DB's searchWord column is
+     * built with this SAME function (identical on index + query), so a
+     * query in any spelling meets the stored form. Display text is
+     * NEVER touched — only the search key.
+     *
+     * Pipeline order (research §5 — do not reorder):
+     * 1. NFKC (presentation forms → base letters; search key only),
+     * 2. NFC (compose decomposed alef+hamza so later steps see single
+     *    code points), 3. map dagger/small letters BEFORE stripping,
+     * 4. strip marks + fold letters, 5. collapse doubled و/ي from the
+     *    hamza fold. Tier 1 is the settled Lucene/CAMeL core; Tier 2
+     *    is recall extensions.
+     *
+     * Over-normalization caution: every fold merges some genuinely
+     * different words (على vs علي, حماة vs حماه, سأل→سال). Mitigation:
+     * the search ranks exact (unnormalized) matches first. Do NOT fold
+     * dialectal sound mergers (ث→ت, ذ→د/ز, ظ→ز, ق→ك/ء, ج→گ), ة→ت,
+     * a trailing ا, or aggressive stemming.
+     *
+     * Known gap (state plainly): under Policy B, مسئول folds to مسيول,
+     * NOT مسول — the seat-swap case still needs query expansion.
+     * v1.9.19: full table (13 tiered groups) replaces the v1.9.5
+     * 5-fold version; dagger alef is now MAPPED to ا, never stripped.
      */
     fun normalizeForSearch(text: String): String {
-        val stripped = text.filter { c ->
+        // 1. NFKC — fold presentation forms (U+FB50–FDFF, U+FE70–FEFF)
+        //    to base letters. Search key only: NFKC expands ﷺ to a phrase
+        //    and must never be applied to display text.
+        // 2. NFC — compose decomposed alef+hamza (ا + U+0654 → أ) so
+        //    later steps see single code points.
+        var s = Normalizer.normalize(text, Normalizer.Form.NFKC)
+        s = Normalizer.normalize(s, Normalizer.Form.NFC)
+        // 3. Map letter-like marks BEFORE stripping diacritics: dagger
+        //    alef → ا (MAP, never strip — stripping deletes a pronounced
+        //    letter: هٰذا → هذ instead of هذا); small high waw/yeh → و/ي
+        //    (pronounced letters, not diacritics).
+        s = s.map { c ->
+            when (c) {
+                '\u0670' -> 'ا' // dagger alef
+                '\u06E5', '\u08F3', '\u08D3' -> 'و' // small high waw
+                '\u06E6', '\u06E7', '\u08C9', '\u08CA', '\u08CB' -> 'ي' // small high yeh
+                else -> c
+            }
+        }.joinToString("")
+        // 4. Strip marks and 5. fold letters, in one pass.
+        val sb = StringBuilder(s.length)
+        for (c in s) {
             val code = c.code
-            code !in 0x064B..0x065F && code != 0x0670 && code != 0x0640 &&
-            // Directional marks (index side also strips these per 2026-10-26 audit)
-            code !in 0x200E..0x200F && code !in 0x202A..0x202E
+            // Strip: harakat (U+064B–U+065F, incl. madda/hamza-above/below —
+            // a remaining U+0654/U+0655 after NFC is a decomposed hamza on
+            // و/ي, and deleting it is exactly the seat-preserving fold),
+            // tatweel U+0640, Quranic annotation marks, invisible/bidi
+            // controls (copy-paste inserts these inside words).
+            if (code in 0x064B..0x065F || code == 0x0640 ||
+                code in 0x0610..0x061A || code in 0x06D6..0x06DC || code in 0x06DF..0x06ED ||
+                code in 0x08D4..0x08E2 ||
+                code in 0x200B..0x200F || code == 0x061C || code in 0x202A..0x202E ||
+                code in 0x2066..0x2069 || code == 0xFEFF) {
+                continue
+            }
+            // Fold letters. Tier 1 (Lucene/CAMeL core) first, then Tier 2
+            // recall extensions. Unicode escapes are deliberate: several
+            // of these look identical to their canonical form (Farsi yeh
+            // ی U+06CC vs Arabic yeh ي U+064A) and must not be confused.
+            when (c) {
+                // Tier 1: alef forms → ا
+                'أ', 'إ', 'آ', '\u0671', '\u0672', '\u0673' -> sb.append('ا')
+                // Tier 1: alef maksura → ي ; teh marbuta → ه
+                'ى' -> sb.append('ي')
+                'ة' -> sb.append('ه')
+                // Tier 2: hamza Policy B (seat-preserving) — ؤ→و, ئ→ي,
+                // standalone ء deleted (مؤمن→مومن).
+                'ؤ' -> sb.append('و')
+                'ئ' -> sb.append('ي')
+                'ء' -> { /* delete */ }
+                // Tier 2: Persian-keyboard lookalikes (Arabic-only app).
+                '\u06CC' -> sb.append('ي') // Farsi yeh
+                '\u06A9' -> sb.append('ك') // keheh
+                // Tier 2: Urdu goal forms → ه
+                '\u06C1', '\u06C3', '\u06C2', '\u06C0' -> sb.append('ه')
+                // Tier 3: Urdu yeh forms → ي
+                '\u06D2', '\u06D3', '\u06CD' -> sb.append('ي')
+                else -> sb.append(c)
+            }
         }
-        return stripped
-            .replace('أ', 'ا')
-            .replace('إ', 'ا')
-            .replace('آ', 'ا')
-            .replace('ة', 'ه')
-            .replace('ى', 'ي')
+        // 6. Collapse runs of doubled و/ي produced by the hamza fold
+        // (رئيس→رييس→ريس, مسؤول→مسوول→مسول). Recall extension, not a
+        // standard analyzer rule — see the over-normalization note above.
+        return collapseDoubledWawYeh(sb.toString())
+    }
+
+    /**
+     * Collapse runs of identical و or ي to a single letter. Recall
+     * extension for the hamza fold (Policy B): ئ→ي and ؤ→و can create a
+     * doubled letter that the user typed as a single one. Only و/ي are
+     * collapsed — other doubled letters are left alone.
+     */
+    private fun collapseDoubledWawYeh(text: String): String {
+        if (text.length < 2) return text
+        val sb = StringBuilder(text.length)
+        var prev = '\u0000'
+        for (c in text) {
+            if ((c == 'و' || c == 'ي') && c == prev) continue
+            sb.append(c)
+            prev = c
+        }
+        return sb.toString()
     }
 
     /**
@@ -270,13 +362,13 @@ object BibleRepository {
     }
 
     fun searchVerses(query: String): List<BibleVerse> {
-        // v1.9.5: normalizeForSearch() handles tashkeel + alef/ة/ى variants.
-        // The match runs against the search-only searchWord column (same
-        // normalization, applied to the stored text at build time): the word
-        // column is only partly unvocalized, so matching against it missed
-        // verses whose stored text kept a stray diacritic (e.g. Mark 12:26
-        // stored العلّيقة while the query stripped to العليقة). word itself
-        // is NEVER touched, so it can still be updated/corrected later.
+        // v1.9.19: normalizeForSearch() is the full variant-insensitive
+        // table (13 tiered groups). The match runs against the
+        // search-only searchWord column, rebuilt with the SAME function
+        // — the v1.9.5 index was built with a weaker normalizer, so a
+        // query for يتامى (normalized to يتامي) found nothing. word
+        // itself is NEVER touched, so it can still be updated/corrected
+        // later. Display text comes from word, not searchWord.
         val q = normalizeForSearch(query.trim())
         if (q.isEmpty()) return emptyList()
         val helper = dbHelper ?: return emptyList()
@@ -313,6 +405,30 @@ object BibleRepository {
             cursor.close()
         }
         return results
+    }
+
+    /**
+     * Count of verses matching a search query (v1.9.19 item 4). Same
+     * normalized pattern as [searchVerses], but returns one integer —
+     * no verse objects are loaded. The count is the TRUE total
+     * ([searchVerses] caps its list at 100), so the UI can show e.g.
+     * "150 verses" while listing the first 100.
+     */
+    fun searchVersesCount(query: String): Int {
+        val q = normalizeForSearch(query.trim())
+        if (q.isEmpty()) return 0
+        val helper = dbHelper ?: return 0
+        val arDb = helper.openDatabase(BibleDatabaseHelper.ARABIC_DB)
+        var count = 0
+        arDb?.let { db ->
+            val cursor = db.rawQuery(
+                "SELECT COUNT(*) FROM words WHERE searchWord LIKE ?",
+                arrayOf("%$q%")
+            )
+            if (cursor.moveToFirst()) count = cursor.getInt(0)
+            cursor.close()
+        }
+        return count
     }
 
     fun addCustomVerse(verse: BibleVerse) {}

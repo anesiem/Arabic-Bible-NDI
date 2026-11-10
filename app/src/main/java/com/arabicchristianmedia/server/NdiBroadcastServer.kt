@@ -1759,8 +1759,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       position: relative;
       z-index: 3;
       width: 100%;
-      -webkit-transform: translateZ(0);
-      transform: translateZ(0);
+      -webkit-transform: translateZ(2px);
+      transform: translateZ(2px);
       will-change: transform;
     }
 
@@ -3843,25 +3843,25 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       } else if (animType === 'custom_video' && data.customVideoId) {
         // v1.7: videos are served by opaque ID from private storage (never by path).
         const videoUrl = '/video?id=' + encodeURIComponent(data.customVideoId);
-        if (customVideoBg.src !== videoUrl) customVideoBg.src = videoUrl;
-        // v1.8: HTTP is ALWAYS muted (browser autoplay policy + Ashraf: audio goes to NDI only).
-        // The customVideoMuted toggle only affects NDI.
+        // Compare raw attribute to avoid relative vs absolute URL mismatches (video.src returns full http URL in Safari)
+        if (customVideoBg.getAttribute('src') !== videoUrl) {
+          customVideoBg.setAttribute('src', videoUrl);
+          customVideoBg.src = videoUrl;
+        }
+        // Safari/WebKit autoplay requirements: set muted and defaultMuted on DOM and properties
+        customVideoBg.defaultMuted = true;
         customVideoBg.muted = true;
+        customVideoBg.setAttribute('muted', '');
+        customVideoBg.playsInline = true;
+        customVideoBg.setAttribute('playsinline', '');
+
         // v1.8: Apply motion speed to video playback rate.
         // v1.9.2 (video-loop audit): speed 0 PAUSES (NDI parity) — the old
         // `parseFloat(...) || 1.0` turned 0 into 1x, so the HTTP video
         // ignored the pause while NDI froze.
         const speed = parseFloat(data.motionSpeed);
         const rate = isNaN(speed) ? 1.0 : speed;
-        if (rate === 0) {
-          customVideoBg.pause();
-        } else {
-          if (customVideoBg.playbackRate !== rate) customVideoBg.playbackRate = rate;
-          if (customVideoBg.paused) {
-            var pr = customVideoBg.play();
-            if (pr && pr.catch) pr.catch(function() {});
-          }
-        }
+
         // Combined batch, Play Once (HTTP): loop=false, ended
         // turns the WHOLE layer off (hidden + paused, not frozen).
         // Per Verse: restart on a new verse key. Per Go Live:
@@ -3904,9 +3904,30 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
           customVideoBg.style.display = 'none';
           animBgLayer.style.opacity = '0';
         } else {
+          // Unhide element and update opacity BEFORE calling play() so WebKit media pipeline attaches
           customVideoBg.style.display = 'block';
           customVideoBg.style.opacity = animOpacity;
-          animBgLayer.style.opacity = '1';
+          animBgLayer.style.opacity = animOpacity;
+          if (rate === 0) {
+            customVideoBg.pause();
+          } else {
+            if (customVideoBg.playbackRate !== rate) customVideoBg.playbackRate = rate;
+            if (customVideoBg.paused) {
+              var pr = customVideoBg.play();
+              if (pr && pr.catch) {
+                pr.catch(function(err) {
+                  // If Safari blocks autoplay due to gesture policy, unblock on first touch/click
+                  var unlockVideo = function() {
+                    customVideoBg.play().catch(function() {});
+                    document.removeEventListener('click', unlockVideo);
+                    document.removeEventListener('touchstart', unlockVideo);
+                  };
+                  document.addEventListener('click', unlockVideo, { once: true });
+                  document.addEventListener('touchstart', unlockVideo, { once: true });
+                });
+              }
+            }
+          }
         }
         // v1.9.2 (video-loop audit): loop fade driven by
         // requestAnimationFrame, not ontimeupdate — the ~4Hz timeupdate

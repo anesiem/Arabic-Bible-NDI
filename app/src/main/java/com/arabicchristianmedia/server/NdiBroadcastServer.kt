@@ -1594,7 +1594,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>NDI Bible Live Overlay</title>
   <!-- Bundled Arabic fonts, served from this tablet: the overlay works fully offline. -->
   <style>${buildFontFaceCss()}</style>
@@ -1610,11 +1610,14 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     html, body {
       width: 100vw;
       height: 100vh;
+      height: 100dvh;
       background: transparent !important;
       background-color: transparent !important;
       overflow: hidden;
       font-family: 'Amiri', 'Noto Naskh Arabic', serif;
       -webkit-font-smoothing: antialiased;
+      -webkit-text-size-adjust: 100%;
+      touch-action: none;
       /* v1.8: Center the 16:9 stage. */
       display: flex;
       align-items: center;
@@ -1652,12 +1655,14 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
        Lower keeps flex-end (bottom anchor, grows bottom→top).
        Item 1: the app WebView's Blink parser drops this rule on load,
        so applyData also sets these as inline styles (the reliable path);
-       this rule stays as the fallback for browsers that parse it. */
+       this rule stays as the fallback for browsers that parse it.
+       1.9.20: height 100dvh for iOS dynamic viewport support. */
     #stage.mode-full-show {
       justify-content: flex-start !important;
       align-items: stretch !important;
       width: 100vw !important;
       height: 100vh !important;
+      height: 100dvh !important;
       aspect-ratio: auto !important;
       max-height: none !important;
     }
@@ -2658,7 +2663,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // depend on the stylesheet parser. Item 5: Full anchors at
         // the TOP (justify-content flex-start, grows top→bottom).
         stage.style.setProperty('width', '100vw', 'important');
-        stage.style.setProperty('height', '100vh', 'important');
+        stage.style.setProperty('height', '100dvh', 'important');
         stage.style.setProperty('aspect-ratio', 'auto', 'important');
         stage.style.setProperty('max-height', 'none', 'important');
         stage.style.setProperty('justify-content', 'flex-start', 'important');

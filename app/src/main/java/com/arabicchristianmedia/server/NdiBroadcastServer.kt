@@ -1733,6 +1733,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       max-width: 92vw;
       overflow: hidden;
       box-sizing: border-box;
+      isolation: isolate;
+      -webkit-transform: translateZ(0);
+      transform: translateZ(0);
     }
 
     /* Card Box in Full Show Mode (Flex-centered vertically in middle of screen) */
@@ -1756,6 +1759,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       position: relative;
       z-index: 3;
       width: 100%;
+      -webkit-transform: translateZ(0);
+      transform: translateZ(0);
+      will-change: transform;
     }
 
     .card-content.mode-full-show .card-inner-content {
@@ -1783,6 +1789,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       opacity: 0;
       transition: opacity 0.5s ease;
       overflow: hidden;
+      -webkit-transform: translateZ(0);
+      transform: translateZ(0);
     }
 
     .anim-golden-rays {
@@ -1929,6 +1937,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       object-fit: cover;
       pointer-events: none;
       border-radius: inherit;
+      -webkit-transform: translateZ(0);
+      transform: translateZ(0);
     }
 
     /* ==========================================================================
@@ -1996,7 +2006,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
              on NDI. z-0, behind the card fill (z-1), particles
              (z-2), text (z-3) and logo (z-4). -->
         <div id="animated-bg-layer" class="animated-bg-layer">
-          <video id="custom-video-bg" style="display:none;" autoplay loop muted playsinline></video>
+          <video id="custom-video-bg" style="display:none;" autoplay loop muted playsinline -webkit-playsinline></video>
         </div>
         <!-- Combined batch, HTTP layer fix: card-color overlay, ABOVE
              the video layer and BELOW the text (card-inner-content,
@@ -2010,7 +2020,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
              z-0 → card color z-1 → particles z-2 → text z-3 → logo
              z-4, identical on HTTP + NDI, independent of the
              animated-bg state. -->
-        <div id="card-fill-overlay" style="display:none; position:absolute; inset:0; width:100%; height:100%; pointer-events:none; border-radius:inherit; z-index:1;"></div>
+        <div id="card-fill-overlay" style="display:none; position:absolute; inset:0; width:100%; height:100%; pointer-events:none; border-radius:inherit; z-index:1; -webkit-transform:translateZ(0); transform:translateZ(0);"></div>
         <!-- 1.9.13 (item 4): the particle canvas is a DIRECT child of the
              card, ABOVE the card color (z-2) and below the text (z-3) —
              the canonical order, so particles are always visible as
@@ -2023,7 +2033,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
              OWN box (see startParticles), 1:1, so the field is not
              squeezed: sizing it from the stage (1.9.13) made the
              buffer stage-sized while the box stayed card-sized. -->
-        <canvas id="particle-canvas" style="display:none; position:absolute; inset:0; width:100%; height:100%; pointer-events:none; z-index:2;"></canvas>
+        <canvas id="particle-canvas" style="display:none; position:absolute; inset:0; width:100%; height:100%; pointer-events:none; z-index:2; -webkit-transform:translateZ(0); transform:translateZ(0);"></canvas>
 
         <div class="card-inner-content">
           <div id="citation-row" class="citation-badge">
@@ -2040,7 +2050,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     <!-- Item 54 (1.9.8): logo image layer (z-index 4, top of everything).
          Direct child of #stage so it is positioned against the frame, not
          the card box. Hidden until a logo is set (see applyData). -->
-    <img id="logo-img" style="display:none; position:absolute; z-index:4; object-fit:contain; pointer-events:none;" alt="">
+    <img id="logo-img" style="display:none; position:absolute; z-index:4; object-fit:contain; pointer-events:none; -webkit-transform:translateZ(0); transform:translateZ(0);" alt="">
   </div>
 
   <script>

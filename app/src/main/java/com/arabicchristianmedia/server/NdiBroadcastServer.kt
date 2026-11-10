@@ -1412,6 +1412,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         writer.print("Content-Type: application/json; charset=utf-8\r\n")
         writer.print("Content-Length: ${bytes.size}\r\n")
         writer.print("Access-Control-Allow-Origin: *\r\n")
+        // 1.9.20 (item 2): /api/verse is polled every 3s by /remote — it must
+        // never be cached, or a stale poll overwrites the live verse (the
+        // Pixel 7 green-vs-yellow bug: the IP origin held a cached /api/verse
+        // while the hostname origin did not). Same headers /remote sends.
+        writer.print("Cache-Control: no-cache, no-store, must-revalidate\r\n")
+        writer.print("Pragma: no-cache\r\n")
+        writer.print("Expires: 0\r\n")
         writer.print("Connection: close\r\n\r\n")
         writer.flush()
         out.write(bytes)
@@ -1759,8 +1766,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       position: relative;
       z-index: 3;
       width: 100%;
-      -webkit-transform: translateZ(2px);
-      transform: translateZ(2px);
+      /* 1.9.20 (item 3): text at 3px — above the video (unpromoted, z-0)
+         and above card-fill (1px) and particles (2px), matching z-index
+         order. Raised from 2px so all four overlays sit at distinct depths. */
+      -webkit-transform: translateZ(3px);
+      transform: translateZ(3px);
       will-change: transform;
     }
 
@@ -1928,6 +1938,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       100% { filter: brightness(1.3); }
     }
 
+    /* 1.9.20 (item 3): the video element is deliberately NOT promoted to
+       a compositing layer — NO translateZ here. The Studio AI's 92ce76a put
+       translateZ(0) on the video itself, which gives it its own hardware
+       layer and can make it sit ON TOP of the text on iOS. The video stays
+       unpromoted in the normal flow at z-0, behind the four overlays
+       (card-fill 1px, particles 2px, text 3px, logo 4px). */
     #custom-video-bg {
       position: absolute;
       top: 0;
@@ -1937,8 +1953,6 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       object-fit: cover;
       pointer-events: none;
       border-radius: inherit;
-      -webkit-transform: translateZ(0);
-      transform: translateZ(0);
     }
 
     /* ==========================================================================
@@ -2020,7 +2034,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
              z-0 → card color z-1 → particles z-2 → text z-3 → logo
              z-4, identical on HTTP + NDI, independent of the
              animated-bg state. -->
-        <div id="card-fill-overlay" style="display:none; position:absolute; inset:0; width:100%; height:100%; pointer-events:none; border-radius:inherit; z-index:1; -webkit-transform:translateZ(0); transform:translateZ(0);"></div>
+        <div id="card-fill-overlay" style="display:none; position:absolute; inset:0; width:100%; height:100%; pointer-events:none; border-radius:inherit; z-index:1; -webkit-transform:translateZ(1px); transform:translateZ(1px); will-change:transform;"></div>
         <!-- 1.9.13 (item 4): the particle canvas is a DIRECT child of the
              card, ABOVE the card color (z-2) and below the text (z-3) —
              the canonical order, so particles are always visible as
@@ -2033,7 +2047,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
              OWN box (see startParticles), 1:1, so the field is not
              squeezed: sizing it from the stage (1.9.13) made the
              buffer stage-sized while the box stayed card-sized. -->
-        <canvas id="particle-canvas" style="display:none; position:absolute; inset:0; width:100%; height:100%; pointer-events:none; z-index:2; -webkit-transform:translateZ(0); transform:translateZ(0);"></canvas>
+        <canvas id="particle-canvas" style="display:none; position:absolute; inset:0; width:100%; height:100%; pointer-events:none; z-index:2; -webkit-transform:translateZ(2px); transform:translateZ(2px); will-change:transform;"></canvas>
 
         <div class="card-inner-content">
           <div id="citation-row" class="citation-badge">
@@ -2050,7 +2064,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     <!-- Item 54 (1.9.8): logo image layer (z-index 4, top of everything).
          Direct child of #stage so it is positioned against the frame, not
          the card box. Hidden until a logo is set (see applyData). -->
-    <img id="logo-img" style="display:none; position:absolute; z-index:4; object-fit:contain; pointer-events:none; -webkit-transform:translateZ(0); transform:translateZ(0);" alt="">
+    <img id="logo-img" style="display:none; position:absolute; z-index:4; object-fit:contain; pointer-events:none; -webkit-transform:translateZ(4px); transform:translateZ(4px); will-change:transform;" alt="">
   </div>
 
   <script>
@@ -2513,6 +2527,27 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     // /debug page shows it beside the server timings (deep HTTP analysis).
     const diagPage = (location.pathname.indexOf('full') >= 0 || location.search.indexOf('show=1') >= 0) ? 'full' : 'lower';
     const diag = { msgs: 0, applies: 0, opens: 0, reconnects: 0, lastVersion: 0, lastApplyMs: 0, maxApplyMs: 0, lastFitMs: 0, events: [] };
+    // 1.9.20 (item 4): FPS meter — counts frames via requestAnimationFrame
+    // over a rolling 1s window. Measuring is free (just counting frames the
+    // browser already renders for the animations); the value rides in the
+    // existing 10s clientstat beacon, so there are no new requests and no
+    // measurable load. 60 fps = the browser is keeping up; 30 = struggling.
+    let fpsFrames = 0;
+    let fpsLastT = performance.now();
+    let fpsValue = 0;
+    let fpsFrameMs = 0;
+    function fpsTick(now) {
+      fpsFrames++;
+      var elapsed = now - fpsLastT;
+      if (elapsed >= 1000) {
+        fpsValue = Math.round(fpsFrames * 1000 / elapsed);
+        fpsFrameMs = Math.round(elapsed / fpsFrames * 10) / 10;
+        fpsFrames = 0;
+        fpsLastT = now;
+      }
+      requestAnimationFrame(fpsTick);
+    }
+    requestAnimationFrame(fpsTick);
     let applyT0 = 0;
     function diagEvent(kind, info) {
       diag.events.push({ t: Math.round(performance.now()), kind: kind, info: info || '' });
@@ -2526,6 +2561,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
           lastApplyMs: Math.round(diag.lastApplyMs * 10) / 10,
           maxApplyMs: Math.round(diag.maxApplyMs * 10) / 10,
           lastFitMs: Math.round(diag.lastFitMs * 10) / 10,
+          fps: fpsValue, frameMs: fpsFrameMs,
           events: diag.events
         }));
         fetch('/api/clientstat?page=' + diagPage + '&data=' + payload, { keepalive: true }).catch(function() {});
@@ -7300,6 +7336,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         writer.print("Content-Type: application/json\r\n")
         writer.print("Content-Length: ${bytes.size}\r\n")
         writer.print("Access-Control-Allow-Origin: *\r\n")
+        // 1.9.20 (item 2): health probe must never be cached (same no-cache
+        // headers as /api/verse — a cached health response hides a restart).
+        writer.print("Cache-Control: no-cache, no-store, must-revalidate\r\n")
+        writer.print("Pragma: no-cache\r\n")
+        writer.print("Expires: 0\r\n")
         writer.print("Connection: close\r\n\r\n")
         writer.flush()
         out.write(bytes)
@@ -7379,6 +7420,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         writer.print("Content-Type: application/json; charset=utf-8\r\n")
         writer.print("Content-Length: ${bytes.size}\r\n")
         writer.print("Access-Control-Allow-Origin: *\r\n")
+        // 1.9.20 (item 2): every /api/* JSON response must never be cached —
+        // a stale poll overwrites live state (the Pixel 7 green-vs-yellow
+        // bug was a cached /api/verse on the IP origin). Same headers
+        // /remote already sends. This one helper covers all 51 call sites.
+        writer.print("Cache-Control: no-cache, no-store, must-revalidate\r\n")
+        writer.print("Pragma: no-cache\r\n")
+        writer.print("Expires: 0\r\n")
         writer.print("Connection: close\r\n\r\n")
         writer.flush()
         out.write(bytes)
@@ -8717,6 +8765,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         return name + ' · report age ' + Math.round(ageMs / 1000) + ' s · state v' + stat.version +
           ' · msgs ' + stat.msgs + ' · applies ' + stat.applies + ' · reconnects ' + stat.reconnects +
           ' · last apply ' + stat.lastApplyMs + ' ms · max apply ' + stat.maxApplyMs + ' ms · last fit ' + stat.lastFitMs + ' ms' +
+          // 1.9.20 (item 4): FPS readout — shown only when the overlay page
+          // reports it (older reports have no fps field). 60 fps = smooth.
+          (stat.fps != null ? ' · fps ' + stat.fps + ' · frame ' + stat.frameMs + ' ms' : '') +
           '\n  events: ' + ev +
           '\n  ua: ' + stat.ua;
       }

@@ -1640,6 +1640,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       width: min(100vw, 177.78vh);
       height: auto;
       max-height: 100vh;
+      max-height: 100dvh;
       flex-shrink: 0;
       pointer-events: none;
       display: flex;
@@ -7093,6 +7094,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       align-items: center;
       justify-content: center;
       min-height: 100vh;
+      min-height: 100dvh;
       padding: 16px;
     }
     .player-card {
@@ -9851,7 +9853,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   vList.addEventListener('pointerdown', markBrowsing, {passive: true});
   vList.addEventListener('wheel', markBrowsing, {passive: true});
   var refInput = document.getElementById('ref');
-  refInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') triggerRef(); });
+  refInput.addEventListener('keydown', function(e) { if (e.key === 'Enter' && !e.isComposing) triggerRef(); });
   refInput.addEventListener('focus', function() { refInput.select(); });
   langSel.addEventListener('change', function() {
     browseLang = langSel.value === 'en' ? 'en' : 'ar';

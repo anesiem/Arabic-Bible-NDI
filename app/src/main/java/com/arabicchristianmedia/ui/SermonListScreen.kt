@@ -525,6 +525,7 @@ fun SermonListScreen(
                                                 bandA = item.bandA,
                                                 isRecent = isRecent,
                                                 onTap = { onShowVerse(entry) },
+                                                onOpenInReader = { onOpenInReader(entry) },
                                                 onRemove = { handleRemove(entry, globalIndex) },
                                                 canMoveUp = posInGroup > 0,
                                                 canMoveDown = posInGroup < groupSize - 1,
@@ -1045,6 +1046,7 @@ private fun SermonCompactRow(
     index: Int,
     isLive: Boolean,
     onTap: () -> Unit,
+    onOpenInReader: () -> Unit,
     onRemove: () -> Unit,
     bandA: Boolean = true,
     isRecent: Boolean = false,
@@ -1176,6 +1178,20 @@ private fun SermonCompactRow(
                             modifier = Modifier.size(18.dp)
                         )
                     }
+                }
+                // 1.9.21: restore the Open in Library icon (same as SermonRow).
+                // Batch-3 introduced SermonCompactRow without it, so the main
+                // sermon list lost the jump-to-Library button.
+                IconButton(
+                    onClick = onOpenInReader,
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.MenuBook,
+                        contentDescription = "فتح في المكتبة (Open in Library)",
+                        tint = if (isLive) listColors.sermonLivePaleYellow else bento.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
                 }
             }
             // Verse text below the citation row.

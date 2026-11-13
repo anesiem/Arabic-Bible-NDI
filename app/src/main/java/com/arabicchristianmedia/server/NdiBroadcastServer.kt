@@ -9415,6 +9415,14 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   #controlBar .onair { width: auto; flex: none; height: 44px; min-height: 44px; padding: 8px 14px; font-size: 14px; max-width: 110px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   /* Item 108: top-bar ON AIR button compact styling. */
   #topBar #onAirBtnTop { width: auto; flex: none; height: 44px; min-height: 44px; padding: 8px 12px; font-size: 14px; max-width: 110px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; border-radius: 12px; }
+  /* 1.9.22: the #topBar button rule above sets background: none on ALL
+     top-bar buttons, and its ID specificity (1,0,1) beats the class-based
+     button.onair.on/off rules (0,2,1) — so the ON AIR button kept its
+     white text but lost its red/grey background: white on white in
+     light mode (dark mode hid it — white on dark was readable).
+     These two rules restore the background at higher specificity. */
+  #topBar button.onair.on { background: var(--onair-on, #dc2626); }
+  #topBar button.onair.off { background: var(--onair-off, #6b7280); }
   /* Item 17 (1.9.8): ON AIR button sizing — prevent overflow on mobile. */
   #controlBar .livepill { max-width: none; flex: 1 1 140px; margin-top: 0; }
   /* Item 28: small neutral Clear button beside the ON AIR toggle. */

@@ -867,9 +867,12 @@ fun TemplateEditorScreen(
         CollapsibleSection(
             modifier = anchorModifier("layers"),
             title = "الطبقات (Layers)",
-            // 1.9.14 (item 22): all sections start collapsed.
-            initiallyExpanded = false,
-            expanded = isSectionExpanded("layers", false),
+            // 1.9.14 (item 22): all sections start collapsed — except
+            // Layers (1.9.23 item 6): it opens expanded by default so
+            // the layer toggles are visible immediately. Detail
+            // sections (logo, frame, …) stay collapsed.
+            initiallyExpanded = true,
+            expanded = isSectionExpanded("layers", true),
             onExpandedChange = { setSectionExpanded("layers", it) },
             summary = "Video " + (if (videoLayerOn) "on" else "off") + " · Particles " + (if (particlesLayerOn) "on" else "off") + " · Card " + (if (cardLayerOn) "on" else "off") + " · Logo " + (if (logoLayerOn) "on" else "off")
         ) {

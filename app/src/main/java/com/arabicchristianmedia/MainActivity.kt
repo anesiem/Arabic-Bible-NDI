@@ -93,6 +93,7 @@ import com.arabicchristianmedia.ui.TemplateEditorScreen
 import com.arabicchristianmedia.model.LowerThirdTemplate
 import com.arabicchristianmedia.ui.theme.LocalBentoColors
 import com.arabicchristianmedia.ui.theme.MyApplicationTheme
+import com.arabicchristianmedia.ui.theme.OnAirOffGrey
 import com.arabicchristianmedia.model.ColorThemes
 import androidx.compose.ui.focus.onFocusChanged
 
@@ -493,7 +494,7 @@ class MainActivity : ComponentActivity() {
                                 Button(
                                     onClick = { viewModel.toggleLive() },
                                     colors = ButtonDefaults.buttonColors(
-                                        containerColor = if (topBarIsOnAir) bento.liveRed else Color(0xFF6B7280),
+                                        containerColor = if (topBarIsOnAir) bento.liveRed else OnAirOffGrey,
                                         contentColor = Color.White
                                     ),
                                     shape = RoundedCornerShape(10.dp),
@@ -626,6 +627,8 @@ class MainActivity : ComponentActivity() {
                                 onOpenRecentVerse = { viewModel.openRecentVerseInReader(it) },
                                 onClearRecents = { viewModel.clearRecents() },
                                 onSendRecentsToSermon = { merge -> viewModel.sendRecentsToSermon(merge) },
+                                // 1.9.23 (Sermon Builder): multi-select send.
+                                onSendVersesToSermon = { verses, merge -> viewModel.sendVersesToSermon(verses, merge) },
                                 displaySettingsNonce = displaySettingsNonce,
                                 // 2026-11-02 bugfix: reset the nonce after the dialog opens
                                 // so tab switches don't reopen it.
@@ -721,7 +724,6 @@ class MainActivity : ComponentActivity() {
                                 onClearBroadcast = { viewModel.clearBroadcast() },
                                 onSelectInterface = { viewModel.selectNetworkInterface(it) },
                                 onRefreshInterfaces = { viewModel.refreshNetworkInterfaces() },
-                                onSetNdiProtocolEnabled = { viewModel.setNdiProtocolEnabled(it) },
                                 onToggleKeepScreenOn = { viewModel.toggleKeepScreenOn() },
                                 onToggleNdiSource = { viewModel.toggleNdiSource(it) },
                                 onUpdateNdiSourceSpec = { feedKey, w, h, fps -> viewModel.updateNdiSourceSpec(feedKey, w, h, fps) },

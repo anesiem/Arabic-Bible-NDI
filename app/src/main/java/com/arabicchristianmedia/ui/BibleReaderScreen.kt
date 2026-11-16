@@ -127,6 +127,10 @@ fun BibleReaderScreen(
     onSetRecentsFontSize: (Int?) -> Unit = {},
     // Item 12: Send recents to sermon — merge=true adds to top, false replaces.
     onSendRecentsToSermon: (Boolean) -> Unit = {},
+    // 1.9.23 (Sermon Builder, Item 1): send an explicit verse list to the
+    // sermon (multi-select from Recents or Library) — merge=true adds to
+    // top (deduped), false replaces.
+    onSendVersesToSermon: (List<BibleVerse>, Boolean) -> Unit = { _, _ -> },
     // Item 92: Library grid direction (LTR/RTL) — persisted in ui_prefs.
     onSetLibraryGridRtl: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier
@@ -158,6 +162,18 @@ fun BibleReaderScreen(
     var pickerJumpChapter by remember { mutableStateOf<Int?>(null) }
     val recentsSnackbarHostState = remember { SnackbarHostState() }
     val recentsScope = rememberCoroutineScope()
+    // 1.9.23 (Sermon Builder, Item 3): Library selection-mode state —
+    // transient UI state, dropped on tab switch (screen recreation).
+    var libraryIsSelecting by remember { mutableStateOf(false) }
+    var librarySelectedIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var showLibrarySendDialog by remember { mutableStateOf(false) }
+    // 1.9.23: selection is per-chapter — a chapter change clears the
+    // selection (LaunchedEffect fires only when the keys change, never
+    // on a plain recomposition). Selection mode itself stays on, so he
+    // can start selecting in the new chapter right away.
+    LaunchedEffect(uiState.selectedBook.id, uiState.selectedChapter) {
+        librarySelectedIds = emptySet()
+    }
 
     val bento = LocalBentoColors.current
     val listColors = LocalListColors.current
@@ -536,13 +552,62 @@ fun BibleReaderScreen(
                     }
                 }
 
+                // Verse List source (moved up 1.9.23: the selection-mode
+                // header below needs the visible list for Select All).
+                val versesToShow = if (uiState.isSearching) uiState.searchResults else uiState.displayedVerses
+                // 1.9.23 (Sermon Builder, Items 3+5): the verses currently
+                // selected in the Library, in list order (chapter order
+                // outside search); the Select All toggle set.
+                val librarySelectedVerses = versesToShow.filter { it.id in librarySelectedIds }
+                val libraryAllIds = versesToShow.map { it.id }.toSet()
+                val libraryAllSelected = libraryAllIds.isNotEmpty() && librarySelectedIds.containsAll(libraryAllIds)
+
                 // Sub-controls (v1.9.1 #9): chapter steppers + search on the
                 // left, ON AIR toggle + appearance on the right. This row
                 // replaces the removed output-options card.
+                // 1.9.23: in selection mode this row becomes the selection
+                // header (Done / N selected / Select All / Add to Sermon).
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    if (libraryIsSelecting) {
+                        TextButton(onClick = {
+                            libraryIsSelecting = false
+                            librarySelectedIds = emptySet()
+                        }) {
+                            Text("تم (Done)", fontSize = 12.sp)
+                        }
+                        Text(
+                            text = "${librarySelectedIds.size} selected",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = bento.textPrimary,
+                            modifier = Modifier.weight(1f),
+                            textAlign = TextAlign.Center
+                        )
+                        TextButton(onClick = {
+                            librarySelectedIds = if (libraryAllSelected) emptySet() else libraryAllIds
+                        }) {
+                            Text(
+                                if (libraryAllSelected) "إلغاء تحديد الكل" else "تحديد الكل (Select All)",
+                                fontSize = 12.sp
+                            )
+                        }
+                        if (librarySelectedIds.isNotEmpty()) {
+                            TextButton(onClick = {
+                                if (uiState.sermonPlaylist.isNotEmpty()) {
+                                    showLibrarySendDialog = true
+                                } else {
+                                    onSendVersesToSermon(librarySelectedVerses, true)
+                                    libraryIsSelecting = false
+                                    librarySelectedIds = emptySet()
+                                }
+                            }) {
+                                Text("إضافة للعظة (Add)", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    } else {
                     // Ashraf's mapping (Arabic is RTL): the LEFT arrow moves
                     // to the NEXT chapter, the RIGHT arrow to the PREVIOUS
                     // chapter. Chapter browsing never changes the live
@@ -572,11 +637,44 @@ fun BibleReaderScreen(
                     }) {
                         Icon(if (showSearchBar) Icons.Default.Close else Icons.Default.Search, null, tint = bento.textSecondary)
                     }
+                    // 1.9.23 (Sermon Builder, Item 3): "Select" enters
+                    // selection mode (checkmark icon, next to Search).
+                    // Long-press is NOT used (reserved for cross-references).
+                    IconButton(onClick = {
+                        librarySelectedIds = emptySet()
+                        libraryIsSelecting = true
+                    }) {
+                        Icon(Icons.Filled.Check, "تحديد (Select)", tint = bento.textSecondary)
+                    }
                     // Batch-3: the ON AIR button and the display-settings
                     // gear moved to MainActivity's top bar (ON AIR replaces
                     // the LIVE pill; the gear sits beside the keyboard
                     // icon on the Library tab). This row keeps chapter
                     // navigation + search + recents only.
+                    } // else (not selecting) — 1.9.23
+                }
+
+                // 1.9.23 (Sermon Builder, Item 3): Replace/Merge dialog for
+                // the Library multi-select add (only when the sermon list
+                // is non-empty; an empty list merges directly).
+                if (showLibrarySendDialog) {
+                    SendToSermonDialog(
+                        title = "إرسال الآيات المحددة للعظة",
+                        text = "القائمة الحالية تحتوي على آيات. هل تستبدلها بالآيات المحددة، أم تدمجها في أعلى القائمة الحالية؟",
+                        onReplace = {
+                            onSendVersesToSermon(librarySelectedVerses, false)
+                            showLibrarySendDialog = false
+                            libraryIsSelecting = false
+                            librarySelectedIds = emptySet()
+                        },
+                        onMerge = {
+                            onSendVersesToSermon(librarySelectedVerses, true)
+                            showLibrarySendDialog = false
+                            libraryIsSelecting = false
+                            librarySelectedIds = emptySet()
+                        },
+                        onDismiss = { showLibrarySendDialog = false }
+                    )
                 }
 
                 if (showSearchBar) {
@@ -665,11 +763,65 @@ fun BibleReaderScreen(
                         // Batch-3: send-to-sermon dialog state (hoisted for
                         // the restructured header row below).
                         var showSendDialog by remember { mutableStateOf(false) }
+                        // 1.9.23 (Sermon Builder, Item 2): selection-mode
+                        // state — transient UI state, dropped when the
+                        // sheet closes (no stale selection survives).
+                        var recentsIsSelecting by remember { mutableStateOf(false) }
+                        var recentsSelectedIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+                        var showSelectionSendDialog by remember { mutableStateOf(false) }
+                        // 1.9.23 (Items 2+5): the selected recents, in list
+                        // order; the Select All toggle set.
+                        val recentsSelectedVerses = uiState.recentVerses.filter { it.id in recentsSelectedIds }
+                        val recentsAllIds = uiState.recentVerses.map { it.id }.toSet()
+                        val recentsAllSelected = recentsAllIds.isNotEmpty() && recentsSelectedIds.containsAll(recentsAllIds)
                         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
                         Column(modifier = Modifier.fillMaxWidth().fillMaxHeight(0.75f).padding(horizontal = 16.dp, vertical = 8.dp)) {
                             // Batch-3: RTL header — RIGHT: gear + share icon,
                             // CENTER: title, LEFT: clear (destructive, far
                             // from the primary actions).
+                            // 1.9.23: in selection mode this row becomes the
+                            // selection header (Done / N selected / Select
+                            // All / Add to Sermon).
+                            if (recentsIsSelecting) {
+                                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                    TextButton(onClick = {
+                                        recentsIsSelecting = false
+                                        recentsSelectedIds = emptySet()
+                                    }) {
+                                        Text("تم (Done)", fontSize = 12.sp)
+                                    }
+                                    Text(
+                                        text = "${recentsSelectedIds.size} selected",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = bento.textPrimary,
+                                        modifier = Modifier.weight(1f),
+                                        textAlign = TextAlign.Center
+                                    )
+                                    TextButton(onClick = {
+                                        recentsSelectedIds = if (recentsAllSelected) emptySet() else recentsAllIds
+                                    }) {
+                                        Text(
+                                            if (recentsAllSelected) "إلغاء تحديد الكل" else "تحديد الكل (Select All)",
+                                            fontSize = 12.sp
+                                        )
+                                    }
+                                    if (recentsSelectedIds.isNotEmpty()) {
+                                        TextButton(onClick = {
+                                            if (uiState.sermonPlaylist.isNotEmpty()) {
+                                                showSelectionSendDialog = true
+                                            } else {
+                                                onSendVersesToSermon(recentsSelectedVerses, true)
+                                                recentsIsSelecting = false
+                                                recentsSelectedIds = emptySet()
+                                                showRecentsSheet = false
+                                            }
+                                        }) {
+                                            Text("إضافة للعظة (Add)", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
+                            } else {
                             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                 // One-update item 3: per-section font gear.
                                 IconButton(onClick = { recentsFontDialog = true }) {
@@ -688,6 +840,17 @@ fun BibleReaderScreen(
                                     modifier = Modifier.weight(1f),
                                     textAlign = TextAlign.Center
                                 )
+                                // 1.9.23 (Sermon Builder, Item 2): "Select"
+                                // enters selection mode (checkmark icon,
+                                // next to Clear).
+                                if (uiState.recentVerses.isNotEmpty()) {
+                                    IconButton(onClick = {
+                                        recentsSelectedIds = emptySet()
+                                        recentsIsSelecting = true
+                                    }) {
+                                        Icon(Icons.Filled.Check, "تحديد (Select)", tint = bento.textSecondary)
+                                    }
+                                }
                                 // Item 10: user reset for the persisted recents
                                 // (stays open so the empty state confirms it).
                                 if (uiState.recentVerses.isNotEmpty()) {
@@ -696,27 +859,47 @@ fun BibleReaderScreen(
                                     }
                                 }
                             }
-                            // Item 12: Send recents to sermon.
+                            } // else (not selecting) — 1.9.23
+                            // Item 12: Send recents to sermon (all).
                             if (showSendDialog) {
-                                AlertDialog(
-                                    onDismissRequest = { showSendDialog = false },
-                                    title = { Text("إرسال الآيات الأخيرة للعظة") },
-                                    text = { Text("القائمة الحالية تحتوي على آيات. هل تستبدلها بالآيات الأخيرة، أم تدمجها في أعلى القائمة الحالية؟") },
-                                    confirmButton = {
-                                        TextButton(onClick = {
-                                            onSendRecentsToSermon(false)
-                                            showSendDialog = false
-                                        }) { Text("استبدال (Replace)") }
+                                SendToSermonDialog(
+                                    title = "إرسال الآيات الأخيرة للعظة",
+                                    text = "القائمة الحالية تحتوي على آيات. هل تستبدلها بالآيات الأخيرة، أم تدمجها في أعلى القائمة الحالية؟",
+                                    onReplace = {
+                                        onSendRecentsToSermon(false)
+                                        showSendDialog = false
                                     },
-                                    dismissButton = {
-                                        Row {
-                                            TextButton(onClick = {
-                                                onSendRecentsToSermon(true)
-                                                showSendDialog = false
-                                            }) { Text("دمج (Merge)") }
-                                            TextButton(onClick = { showSendDialog = false }) { Text("إلغاء") }
-                                        }
-                                    }
+                                    onMerge = {
+                                        onSendRecentsToSermon(true)
+                                        showSendDialog = false
+                                    },
+                                    onDismiss = { showSendDialog = false }
+                                )
+                            }
+                            // 1.9.23 (Sermon Builder, Item 2): Replace/Merge
+                            // dialog for the multi-select add (only when the
+                            // sermon list is non-empty; an empty list merges
+                            // directly). After adding, the sheet closes and
+                            // the app lands on the sermon list (nonce bump).
+                            if (showSelectionSendDialog) {
+                                SendToSermonDialog(
+                                    title = "إرسال الآيات المحددة للعظة",
+                                    text = "القائمة الحالية تحتوي على آيات. هل تستبدلها بالآيات المحددة، أم تدمجها في أعلى القائمة الحالية؟",
+                                    onReplace = {
+                                        onSendVersesToSermon(recentsSelectedVerses, false)
+                                        showSelectionSendDialog = false
+                                        recentsIsSelecting = false
+                                        recentsSelectedIds = emptySet()
+                                        showRecentsSheet = false
+                                    },
+                                    onMerge = {
+                                        onSendVersesToSermon(recentsSelectedVerses, true)
+                                        showSelectionSendDialog = false
+                                        recentsIsSelecting = false
+                                        recentsSelectedIds = emptySet()
+                                        showRecentsSheet = false
+                                    },
+                                    onDismiss = { showSelectionSendDialog = false }
                                 )
                             }
                             Spacer(modifier = Modifier.height(8.dp))
@@ -760,7 +943,10 @@ fun BibleReaderScreen(
                                         SwipeToDismissBox(
                                             state = recentDismissState,
                                             enableDismissFromStartToEnd = false,
-                                            enableDismissFromEndToStart = !isLiveRecent,
+                                            // 1.9.23: swipe-to-delete is off
+                                            // in selection mode (selection
+                                            // only — no gesture conflicts).
+                                            enableDismissFromEndToStart = !isLiveRecent && !recentsIsSelecting,
                                             backgroundContent = {
                                                 Box(
                                                     modifier = Modifier.fillMaxSize()
@@ -777,17 +963,38 @@ fun BibleReaderScreen(
                                                 }
                                             }
                                         ) {
-                                        Column(
+                                        // 1.9.23: in selection mode a checkbox
+                                        // sits at the start of the row and a
+                                        // tap toggles it — it must NOT open
+                                        // the verse. Outside selection mode
+                                        // the Row holds only the column, so
+                                        // the layout is identical to before.
+                                        Row(
                                             modifier = Modifier.fillMaxWidth()
                                                 .clip(RoundedCornerShape(VerseRowSpec.CardCorner))
                                                 .background(if (recentsBandA[index]) listColors.bandA else listColors.bandB)
                                                 .clickable {
-                                                    showRecentsSheet = false
-                                                    onClearSearch()
-                                                    onOpenRecentVerse(verse)
+                                                    if (recentsIsSelecting) {
+                                                        recentsSelectedIds = if (verse.id in recentsSelectedIds) recentsSelectedIds - verse.id else recentsSelectedIds + verse.id
+                                                    } else {
+                                                        showRecentsSheet = false
+                                                        onClearSearch()
+                                                        onOpenRecentVerse(verse)
+                                                    }
                                                 }
-                                                .padding(VerseRowSpec.RowPadding)
+                                                .padding(VerseRowSpec.RowPadding),
+                                            verticalAlignment = Alignment.CenterVertically
                                         ) {
+                                            if (recentsIsSelecting) {
+                                                VerseSelectionCheckbox(
+                                                    checked = verse.id in recentsSelectedIds,
+                                                    onCheckedChange = { checked ->
+                                                        recentsSelectedIds = if (checked) recentsSelectedIds + verse.id else recentsSelectedIds - verse.id
+                                                    }
+                                                )
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                            }
+                                            Column(modifier = Modifier.weight(1f)) {
                                             Text(
                                                 text = verse.getFormattedArabicCitation(),
                                                 fontSize = recentsCitationSize,
@@ -800,6 +1007,7 @@ fun BibleReaderScreen(
                                                 fontSize = recentsBodySize,
                                                 color = bento.textPrimary
                                             )
+                                            }
                                         }
                                         }
                                     }
@@ -849,7 +1057,6 @@ fun BibleReaderScreen(
                 }
 
                 // Verse List
-                val versesToShow = if (uiState.isSearching) uiState.searchResults else uiState.displayedVerses
                 // v1.9.1: verses that appear in the sermon list get a finder
                 // tint in ANY chapter the operator browses to.
                 val sermonVerseIds = remember(uiState.sermonPlaylist) {
@@ -938,6 +1145,13 @@ fun BibleReaderScreen(
                             showCitation = uiState.isSearching,
                             lineSpacingArabic = uiState.activeTemplate.lineSpacingArabic,
                             lineSpacingEnglish = uiState.activeTemplate.lineSpacingEnglish,
+                            // 1.9.23 (Sermon Builder, Item 3): selection mode
+                            // — the card shows a checkbox and taps toggle it.
+                            isSelecting = libraryIsSelecting,
+                            isSelected = verse.id in librarySelectedIds,
+                            onSelectionToggle = {
+                                librarySelectedIds = if (verse.id in librarySelectedIds) librarySelectedIds - verse.id else librarySelectedIds + verse.id
+                            },
                             // One-update item 1: a search-result tap selects
                             // (cues + closes the box, remembers the query)
                             // and NEVER goes live; a Library-list tap keeps
@@ -1002,6 +1216,55 @@ fun BibleReaderScreen(
     }
 }
 
+/**
+ * 1.9.23 (Sermon Builder, Item 1): the shared selection checkbox used by
+ * both the Recents rows and BentoVerseCard in selection mode. One
+ * implementation, two call sites. Default Material3 colors — they come
+ * from the theme colorScheme (primary = bento.primary), so the checkbox
+ * follows the active theme with no hardcoded colors.
+ */
+@Composable
+private fun VerseSelectionCheckbox(
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Checkbox(
+        checked = checked,
+        onCheckedChange = onCheckedChange,
+        modifier = modifier
+    )
+}
+
+/**
+ * 1.9.23 (Sermon Builder): the shared Replace/Merge dialog for sending
+ * verses to the sermon. One implementation, three call sites (Recents
+ * send-all, Recents multi-select, Library multi-select).
+ */
+@Composable
+private fun SendToSermonDialog(
+    title: String,
+    text: String,
+    onReplace: () -> Unit,
+    onMerge: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = { Text(text) },
+        confirmButton = {
+            TextButton(onClick = onReplace) { Text("استبدال (Replace)") }
+        },
+        dismissButton = {
+            Row {
+                TextButton(onClick = onMerge) { Text("دمج (Merge)") }
+                TextButton(onClick = onDismiss) { Text("إلغاء") }
+            }
+        }
+    )
+}
+
 @Composable
 fun BentoVerseCard(
     verse: BibleVerse,
@@ -1017,7 +1280,14 @@ fun BentoVerseCard(
     // One-update item 7: verse line spacing from the active template
     // (1.5 = the old fixed rendering).
     lineSpacingArabic: Float = 1.5f,
-    lineSpacingEnglish: Float = 1.5f
+    lineSpacingEnglish: Float = 1.5f,
+    // 1.9.23 (Sermon Builder, Item 3): selection mode — a checkbox
+    // appears on the card and taps toggle selection instead of going
+    // live. Defaults keep every existing call site unaffected.
+    // Long-press is NOT used here (reserved for cross-references).
+    isSelecting: Boolean = false,
+    isSelected: Boolean = false,
+    onSelectionToggle: () -> Unit = {}
 ) {
     val bento = LocalBentoColors.current
     val listColors = LocalListColors.current
@@ -1061,9 +1331,26 @@ fun BentoVerseCard(
             shape = RoundedCornerShape(VerseRowSpec.CardCorner),
             colors = CardDefaults.cardColors(containerColor = bgColor),
             border = androidx.compose.foundation.BorderStroke(borderWidth, borderColor),
-            modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
+            // 1.9.23: in selection mode a tap toggles the checkbox —
+            // it must NOT go live. Outside selection mode, unchanged.
+            modifier = Modifier.fillMaxWidth().clickable(onClick = { if (isSelecting) onSelectionToggle() else onClick() })
         ) {
-            Column(modifier = Modifier.padding(VerseRowSpec.RowPadding)) {
+            // 1.9.23: in selection mode a checkbox sits at the start
+            // of the card; the text column takes the remaining width.
+            // Outside selection mode the Row holds only the column,
+            // so the layout is identical to before.
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.Top
+            ) {
+            if (isSelecting) {
+                VerseSelectionCheckbox(
+                    checked = isSelected,
+                    onCheckedChange = { onSelectionToggle() },
+                    modifier = Modifier.padding(top = VerseRowSpec.RowPadding, start = VerseRowSpec.RowPadding)
+                )
+            }
+            Column(modifier = Modifier.weight(1f).padding(VerseRowSpec.RowPadding)) {
                 if (showCitation || isCued) {
                     Text(
                         text = verse.getFormattedArabicCitation(true),
@@ -1095,6 +1382,7 @@ fun BentoVerseCard(
                     }
                 }
             }
+            } // Row (1.9.23 selection checkbox + text column)
         }
         // Recent side line: 3dp on the start edge, overlaying the
         // card (not shifting its content), only when no stronger

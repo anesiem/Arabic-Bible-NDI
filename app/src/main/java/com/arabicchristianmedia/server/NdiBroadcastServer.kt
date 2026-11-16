@@ -1341,7 +1341,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                     (0 until arr.length()).mapNotNull { i -> colorThemeFromJson(arr.getJSONObject(i)) }
                 }
             } catch (e: Exception) { emptyList() }
-            val theme = ColorThemes.byId(themePrefs?.getString("selected_theme_id", "classic"), customThemes)
+            // 1.9.23 (item 8): Midnight is the default theme (matches the
+            // native app's fallback — a missed site would split them).
+            val theme = ColorThemes.byId(themePrefs?.getString("selected_theme_id", "midnight"), customThemes)
             put("bandDarkA", bandHex(theme.dark.bandA))
             put("bandDarkB", bandHex(theme.dark.bandB))
             put("bandLightA", bandHex(theme.light.bandA))
@@ -7868,7 +7870,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             try { sb.append(JSONObject(templateRepo?.templateToJsonString(t) ?: "{}").toString()) } catch (e: Exception) { sb.append("{}") }
         }
         sb.append("],\"theme\":{")
-        sb.append("\"selectedThemeId\":\"${jsonEscape(themePrefs?.getString("selected_theme_id", "classic") ?: "classic")}\",")
+        sb.append("\"selectedThemeId\":\"${jsonEscape(themePrefs?.getString("selected_theme_id", "midnight") ?: "midnight")}\",")
         sb.append("\"customThemes\":${themePrefs?.getString("custom_themes_json", "[]") ?: "[]"}")
         sb.append("},\"recents\":[")
         recents.forEachIndexed { i, r -> if (i > 0) sb.append(","); sb.append("""{"b":"${jsonEscape(r.bookId)}","c":${r.chapter},"v":${r.verse}}""") }
@@ -8518,7 +8520,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 (0 until arr.length()).mapNotNull { i -> colorThemeFromJson(arr.getJSONObject(i)) }
             }
         } catch (e: Exception) { emptyList() }
-        val themeSelectedId = themePrefs?.getString("selected_theme_id", "classic") ?: "classic"
+        val themeSelectedId = themePrefs?.getString("selected_theme_id", "midnight") ?: "midnight"
         val themeSelectedName = try { ColorThemes.byId(themeSelectedId, themeCustoms).name } catch (e: Exception) { "?" }
         val themeMigrated = themePrefs?.getBoolean("theme_migrated_v1", false) ?: false
         val themeMigratedId = if (themeMigrated && themeCustoms.any { it.id == "custom_migrated" }) "custom_migrated" else null
@@ -8940,6 +8942,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
      * Data comes from /api/verse, /api/sermons/current and /api/recents
      * (polled), with /events SSE for instant verse updates. No controls:
      * directing stays on the /remote page.
+     * 1.9.23 (item 9): page chrome follows the app theme (same
+     * --chrome-* variables as /remote, from /api/verse?light=1);
+     * the LIVE pill and the current-row highlight stay fixed.
      *
      * Layout is fully controllable per device via URL parameters (also
      * QR-encodable) plus an on-page gear panel persisted to localStorage:
@@ -8961,14 +8966,18 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   :root { color-scheme: dark; }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   body {
-    margin: 0; background: #0b0e14; color: #e8eaf0;
+    /* 1.9.23 (item 9): chrome follows the app theme (same --chrome-*
+       variables as /remote, fed from /api/verse?light=1); every var
+       keeps the current hex as its fallback, so the page looks
+       identical until the first theme poll lands. */
+    margin: 0; background: var(--chrome-bg, #0b0e14); color: var(--chrome-text, #e8eaf0);
     font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
     height: 100vh; height: 100dvh;
     display: flex; flex-direction: column; overflow: hidden;
   }
   header {
     display: flex; align-items: center; gap: 12px;
-    padding: 10px 16px; border-bottom: 1px solid #1e2532; flex: none;
+    padding: 10px 16px; border-bottom: 1px solid var(--chrome-border, #1e2532); flex: none;
   }
   #livepill {
     font-weight: 700; font-size: 13px; letter-spacing: .1em;
@@ -8976,8 +8985,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     background: #2a2f3a; color: #9aa3b5;
   }
   #livepill.on { background: #dc2626; color: #fff; }
-  #sprog { color: #8b93a7; font-size: 14px; font-variant-numeric: tabular-nums; }
-  #clock { margin-left: auto; color: #8b93a7; font-size: 14px; font-variant-numeric: tabular-nums; }
+  #sprog { color: var(--chrome-textsec, #8b93a7); font-size: 14px; font-variant-numeric: tabular-nums; }
+  #clock { margin-left: auto; color: var(--chrome-textsec, #8b93a7); font-size: 14px; font-variant-numeric: tabular-nums; }
   main { flex: 1; display: flex; min-height: 0; }
   #verse {
     flex: 1; min-width: 0; display: flex; flex-direction: column;
@@ -8986,7 +8995,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   body.offair #verse { opacity: .45; }
   #vcit { color: #f5c518; font-size: clamp(18px, 2.4vw, 30px); font-weight: 600; margin-bottom: 14px; }
   #var { direction: rtl; text-align: right; font-size: clamp(30px, 4.6vw, 72px); line-height: 1.55; }
-  #ven { color: #aab2c5; font-size: clamp(16px, 2vw, 28px); line-height: 1.55; margin-top: 16px; }
+  #ven { color: var(--chrome-textsec, #aab2c5); font-size: clamp(16px, 2vw, 28px); line-height: 1.55; margin-top: 16px; }
   body.compact-verse #var { font-size: clamp(22px, 3vw, 44px); }
   body.compact-verse #ven { font-size: clamp(14px, 1.6vw, 20px); }
   body.compact-verse #vcit { font-size: clamp(15px, 1.8vw, 22px); }
@@ -8994,79 +9003,82 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   body.lang-en #var { display: none; }
   #sermon {
     width: min(340px, 30vw); flex: none; overflow-y: auto;
-    border-left: 1px solid #1e2532; padding: 12px;
+    border-left: 1px solid var(--chrome-border, #1e2532); padding: 12px;
   }
-  body.sermon-left #sermon { order: -1; border-left: 0; border-right: 1px solid #1e2532; }
+  body.sermon-left #sermon { order: -1; border-left: 0; border-right: 1px solid var(--chrome-border, #1e2532); }
   body.hide-sermon #sermon { display: none; }
   #sermon h2 {
-    font-size: 12px; color: #8b93a7; text-transform: uppercase;
+    font-size: 12px; color: var(--chrome-textsec, #8b93a7); text-transform: uppercase;
     letter-spacing: .08em; margin: 4px 4px 10px; font-weight: 600;
   }
   .srow {
     padding: 9px 10px; border-radius: 8px; margin-bottom: 6px;
-    background: #11161f; border-left: 3px solid transparent;
+    background: var(--chrome-card, #11161f); border-left: 3px solid transparent;
   }
+  /* 1.9.23 (item 9): the current-row highlight stays fixed (not themed). */
   .srow.cur { background: #1a2233; border-left-color: #f5c518; }
   .srow .c { color: #f5c518; font-size: 14px; font-weight: 600; }
   .srow .t {
-    color: #c6ccda; font-size: 13px; direction: rtl; text-align: right;
+    color: var(--chrome-text, #c6ccda); font-size: 13px; direction: rtl; text-align: right;
     margin-top: 4px; display: -webkit-box; -webkit-line-clamp: 2;
     -webkit-box-orient: vertical; overflow: hidden;
   }
-  .hint { color: #5b6376; font-size: 13px; padding: 8px 4px; }
+  .hint { color: var(--chrome-textsec, #5b6376); font-size: 13px; padding: 8px 4px; }
   footer {
-    flex: none; border-top: 1px solid #1e2532; padding: 8px 16px;
+    flex: none; border-top: 1px solid var(--chrome-border, #1e2532); padding: 8px 16px;
     display: flex; gap: 8px; overflow-x: auto; min-height: 20px;
   }
   body.hide-recents #recents { display: none; }
   .rchip {
-    white-space: nowrap; background: #141a26; border: 1px solid #232c40;
-    color: #c6ccda; border-radius: 999px; padding: 6px 12px; font-size: 13px;
+    white-space: nowrap; background: var(--chrome-card, #141a26); border: 1px solid var(--chrome-border, #232c40);
+    color: var(--chrome-text, #c6ccda); border-radius: 999px; padding: 6px 12px; font-size: 13px;
   }
   #gear {
     position: fixed; top: 10px; right: 12px; z-index: 20;
-    background: rgba(20,26,38,.8); color: #c6ccda; border: 1px solid #232c40;
+    /* The translucent overlay background stays fixed (no --chrome-* rgb
+       token exists for it); only the text and border follow the theme. */
+    background: rgba(20,26,38,.8); color: var(--chrome-text, #c6ccda); border: 1px solid var(--chrome-border, #232c40);
     border-radius: 8px; font-size: 16px; padding: 4px 9px; cursor: pointer;
   }
   #panel {
     position: fixed; top: 48px; right: 12px; z-index: 20;
-    background: #11161f; border: 1px solid #232c40; border-radius: 10px;
-    padding: 14px; width: 248px; color: #e8eaf0;
+    background: var(--chrome-card, #11161f); border: 1px solid var(--chrome-border, #232c40); border-radius: 10px;
+    padding: 14px; width: 248px; color: var(--chrome-text, #e8eaf0);
   }
   #panel[hidden] { display: none; }
   #panel h3 { margin: 0 0 10px; font-size: 14px; }
   #panel label {
     display: flex; justify-content: space-between; align-items: center;
-    gap: 8px; font-size: 13px; margin-bottom: 8px; color: #aab2c5;
+    gap: 8px; font-size: 13px; margin-bottom: 8px; color: var(--chrome-textsec, #aab2c5);
   }
   #panel select, #panel input {
-    background: #0b0e14; color: #e8eaf0; border: 1px solid #232c40;
+    background: var(--chrome-input-bg, #0b0e14); color: var(--chrome-text, #e8eaf0); border: 1px solid var(--chrome-border, #232c40);
     border-radius: 6px; padding: 4px 6px; font-size: 13px; max-width: 132px;
   }
   #panel .prow { display: flex; gap: 6px; margin: 10px 0; }
   #panel .prow button { flex: 1; cursor: pointer; }
   #panel button {
-    background: #1a2233; color: #e8eaf0; border: 1px solid #2b3852;
+    background: var(--chrome-card, #1a2233); color: var(--chrome-text, #e8eaf0); border: 1px solid var(--chrome-border, #2b3852);
     border-radius: 6px; padding: 6px 8px; font-size: 13px; cursor: pointer;
   }
   #copylink { width: 100%; }
-  body.light { background: #f1f5f9; color: #0f172a; }
-  body.light header { border-color: #e2e8f0; }
-  body.light footer { border-color: #e2e8f0; }
-  body.light #sermon { border-color: #e2e8f0; }
-  body.light .srow { background: #ffffff; }
+  body.light { background: var(--chrome-bg, #f1f5f9); color: var(--chrome-text, #0f172a); }
+  body.light header { border-color: var(--chrome-border, #e2e8f0); }
+  body.light footer { border-color: var(--chrome-border, #e2e8f0); }
+  body.light #sermon { border-color: var(--chrome-border, #e2e8f0); }
+  body.light .srow { background: var(--chrome-card, #ffffff); }
   body.light .srow.cur { background: #e3ecfd; }
-  body.light .srow .t { color: #334155; }
-  body.light .rchip { background: #ffffff; border-color: #cbd5e1; color: #334155; }
-  body.light #ven { color: #475569; }
-  body.light #sprog, body.light #clock, body.light .hint { color: #64748b; }
-  body.light #panel { background: #ffffff; border-color: #cbd5e1; color: #0f172a; }
-  body.light #panel label { color: #475569; }
-  body.light #panel select, body.light #panel input { background: #f8fafc; color: #0f172a; border-color: #cbd5e1; }
-  body.light #panel button { background: #e8eefc; color: #0f172a; border-color: #cbd5e1; }
+  body.light .srow .t { color: var(--chrome-text, #334155); }
+  body.light .rchip { background: var(--chrome-card, #ffffff); border-color: var(--chrome-border, #cbd5e1); color: var(--chrome-text, #334155); }
+  body.light #ven { color: var(--chrome-textsec, #475569); }
+  body.light #sprog, body.light #clock, body.light .hint { color: var(--chrome-textsec, #64748b); }
+  body.light #panel { background: var(--chrome-card, #ffffff); border-color: var(--chrome-border, #cbd5e1); color: var(--chrome-text, #0f172a); }
+  body.light #panel label { color: var(--chrome-textsec, #475569); }
+  body.light #panel select, body.light #panel input { background: var(--chrome-input-bg, #f8fafc); color: var(--chrome-text, #0f172a); border-color: var(--chrome-border, #cbd5e1); }
+  body.light #panel button { background: var(--chrome-card, #e8eefc); color: var(--chrome-text, #0f172a); border-color: var(--chrome-border, #cbd5e1); }
   @media (max-width: 760px) {
     main { flex-direction: column; }
-    #sermon { width: auto; border-left: 0; border-top: 1px solid #1e2532; max-height: 30vh; }
+    #sermon { width: auto; border-left: 0; border-top: 1px solid var(--chrome-border, #1e2532); max-height: 30vh; }
     body.sermon-left #sermon { border-right: 0; }
     #verse { padding: 16px; }
   }
@@ -9149,6 +9161,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   var L = readLayout();
   var lastSermon = null;
   var lastRecents = null;
+  var lastTheme = null;
   function applyLayout() {
     var b = document.body;
     b.classList.toggle('hide-sermon', L.sermon === 'hidden');
@@ -9162,7 +9175,28 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     renderSermon(lastSermon);
     renderRecents(lastRecents);
     syncPanel();
+    applyStageTheme();
     try { localStorage.setItem('stageLayout', JSON.stringify(L)); } catch (e) {}
+  }
+  // 1.9.23 (item 9): chrome follows the app theme — same --chrome-*
+  // variables as /remote, from the /api/verse?light=1 state cached by
+  // loadAll. Dark/light follows THIS page's theme setting (gear panel
+  // or ?theme=), not the OS. Re-applied on every layout change so a
+  // theme flip takes effect immediately from the cached state; a
+  // no-op until the first light fetch lands (CSS fallbacks show the
+  // default dark look meanwhile).
+  function applyStageTheme() {
+    var j = lastTheme;
+    if (!j || !j.bandDarkA) { return; }
+    var darkMode = L.theme !== 'light';
+    document.documentElement.style.setProperty('--chrome-bg', darkMode ? j.chromeDarkBg : j.chromeLightBg);
+    document.documentElement.style.setProperty('--chrome-card', darkMode ? j.chromeDarkCard : j.chromeLightCard);
+    document.documentElement.style.setProperty('--chrome-text', darkMode ? j.chromeDarkText : j.chromeLightText);
+    document.documentElement.style.setProperty('--chrome-textsec', darkMode ? j.chromeDarkTextSec : j.chromeLightTextSec);
+    document.documentElement.style.setProperty('--chrome-border', darkMode ? j.chromeDarkBorder : j.chromeLightBorder);
+    document.documentElement.style.setProperty('--chrome-input-bg', darkMode ? j.chromeDarkInputBg : j.chromeLightInputBg);
+    document.documentElement.style.setProperty('--chrome-primary', darkMode ? j.chromeDarkPrimary : j.chromeLightPrimary);
+    document.documentElement.style.setProperty('--chrome-onprimary', darkMode ? j.chromeDarkOnPrimary : j.chromeLightOnPrimary);
   }
   function syncPanel() {
     var map = { sermon: 'p-sermon', sermonside: 'p-sermonside', recents: 'p-recents', recentscount: 'p-recentscount', verse: 'p-verse', lang: 'p-lang', theme: 'p-theme' };
@@ -9221,6 +9255,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   }
   function loadAll() {
     fetch('/api/verse').then(function (r) { return r.json(); }).then(renderVerse).catch(function () {});
+    // 1.9.23 (item 9): theme comes from the light state (the full
+    // /api/verse above carries the verse text but no theme tokens).
+    // One small extra fetch per 30s poll — negligible on LAN.
+    fetch('/api/verse?light=1').then(function (r) { return r.json(); }).then(function (j) { lastTheme = j; applyStageTheme(); }).catch(function () {});
     fetch('/api/sermons/current').then(function (r) { return r.json(); }).then(renderSermon).catch(function () { renderSermon(null); });
     // 2026-11-02 bugfix: /api/recents returns {"ok":true,"recents":[...]} —
     // renderRecents expects the bare array (was receiving the object, so

@@ -447,10 +447,11 @@ object ColorThemes {
         id = "midnight",
         name = "Midnight",
         dark = ColorThemeTokens(
-            bg = 0xFF060913, card = 0xFF0C1220, surfaceContainer = 0xFF111A2E,
-            surfaceVariant = 0xFF1B2540, border = 0xFF2A3654, borderSubtle = 0xFF182036,
+            // 1.9.23 (item 8): tuned to the Setup mockup shades.
+            bg = 0xFF0B1220, card = 0xFF111C30, surfaceContainer = 0xFF111A2E,
+            surfaceVariant = 0xFF1B2540, border = 0xFF1E293B, borderSubtle = 0xFF182036,
             textPrimary = 0xFFE2E8F0, textSecondary = 0xFF94A3B8,
-            primary = 0xFF60A5FA, primaryContainer = 0xFF1E3A8A,
+            primary = 0xFF2563EB, primaryContainer = 0xFF1E3A8A,
             bandA = 0xFF101A30, bandB = 0xFF0F2033, recents = 0xFF22D3EE, warning = 0xFFFBBF24,
             liveHighlight = 0xFF1E3A8A, liveYellow = 0xFFF5D76E, livePaleYellow = 0xFFFDE9A8, layerLogo = 0xFF10B981, layerParticles = 0xFF38BDF8, layerCard = 0xFFA855F7, layerVideo = 0xFFF59E0B, sermonTint = 0xFF14243D,
             groupPentateuch = 0xFFF59E0B,
@@ -488,13 +489,13 @@ object ColorThemes {
 
     fun isBuiltIn(id: String?): Boolean = BUILT_INS.any { it.id == id }
 
-    /** Resolve a selected id (built-ins first, then customs) — unknown ids fall back to Classic. */
+    /** Resolve a selected id (built-ins first, then customs) — unknown ids fall back to Midnight (1.9.23 item 8: the default theme). */
     fun byId(id: String?, customs: List<ColorTheme> = emptyList()): ColorTheme {
         if (id != null) {
             BUILT_INS.firstOrNull { it.id == id }?.let { return it }
             customs.firstOrNull { it.id == id }?.let { return it }
         }
-        return CLASSIC
+        return MIDNIGHT
     }
 }
 

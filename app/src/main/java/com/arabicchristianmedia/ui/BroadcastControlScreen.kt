@@ -30,12 +30,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MenuAnchorType
 import androidx.compose.ui.unit.TextUnit
@@ -43,6 +40,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cast
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.HelpOutline
 import androidx.compose.material.icons.filled.Info
@@ -50,6 +48,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.LiveTv
+import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.NetworkCheck
 import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.OpenInBrowser
@@ -58,6 +57,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Router
 import androidx.compose.material.icons.filled.Sensors
+import androidx.compose.material.icons.filled.Slideshow
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material.icons.filled.Videocam
@@ -69,7 +69,6 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -83,13 +82,13 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
@@ -104,8 +103,6 @@ import androidx.compose.ui.text.style.TextAlign
 import com.arabicchristianmedia.BuildConfig
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import com.arabicchristianmedia.server.InterfaceType
 import com.arabicchristianmedia.server.NdiNativeSender
 import com.arabicchristianmedia.server.NdiSourceSpec
@@ -124,7 +121,6 @@ fun BroadcastControlScreen(
     onClearBroadcast: () -> Unit,
     onSelectInterface: (NetworkInterfaceInfo) -> Unit = {},
     onRefreshInterfaces: () -> Unit = {},
-    onSetNdiProtocolEnabled: (Boolean) -> Unit = {},
     onToggleKeepScreenOn: () -> Unit = {},
     onToggleNdiSource: (String) -> Unit = {},
     onUpdateNdiSourceSpec: (String, Int, Int, Int) -> Unit = { _, _, _, _ -> },
@@ -170,39 +166,26 @@ fun BroadcastControlScreen(
     var showHelpGuide by remember { mutableStateOf(false) }
     var showThemeDialog by remember { mutableStateOf(false) }
 
-    // Setup anchors (tablet wide layout only, same mechanism as the Editor):
-    // each column is a LazyColumn with one stable-key item per section;
-    // the chip strip above the columns jumps by scrollToItem key and
-    // flashes the section's border. No pixel offsets, no layout
-    // callbacks, no frame waits — and no silent no-op, since section
-    // items are always in their list.
-    val leftSetupListState = rememberLazyListState()
-    val rightSetupListState = rememberLazyListState()
-    var highlightedSetupAnchor by remember { mutableStateOf<String?>(null) }
-    val setupAnchorScope = rememberCoroutineScope()
-    // Column items in order, by anchor id.
-    // 1.9.14 (items 31+32): regrouped — left = Broadcast (NDI) + HDMI;
-    // right = URLs + Integrations + Customizations. Lower/Full now live
-    // inside the Broadcast item, so their chips/keys are gone.
-    val leftSetupKeys = listOf("broadcast", "hdmi")
-    val rightSetupKeys = listOf("urls", "integrations", "custom")
-    fun jumpToSetupAnchor(id: String) {
-        highlightedSetupAnchor = id
-        val rightIndex = rightSetupKeys.indexOf(id)
-        if (rightIndex >= 0) setupAnchorScope.launch { rightSetupListState.scrollToItem(rightIndex) }
-        else {
-            val leftIndex = leftSetupKeys.indexOf(id)
-            if (leftIndex >= 0) setupAnchorScope.launch { leftSetupListState.scrollToItem(leftIndex) }
-        }
-    }
-    LaunchedEffect(highlightedSetupAnchor) {
-        if (highlightedSetupAnchor != null) {
-            delay(1600)
-            highlightedSetupAnchor = null
-        }
-    }
-    fun setupAnchorModifier(id: String): Modifier = Modifier
-        .then(if (highlightedSetupAnchor == id) Modifier.border(2.dp, bento.primary, RoundedCornerShape(12.dp)) else Modifier)
+    // 1.9.23 (Item 7): left-rail navigation (tablet wide layout). The
+    // rail lists the sections; tapping one shows ONLY that section on
+    // the right. The old anchor-scroll system (chip strip + two
+    // LazyColumns + jumpToSetupAnchor) is removed — the narrow layout
+    // never used it, so nothing keeps it alive.
+    // Future rail order (decided 2026-11-16): social media integration
+    // and remote authenticated client go at the TOP of this list, above
+    // NDI Broadcast — social media first, then remote client. No
+    // placeholders now; the list accepts them at the top later.
+    var selectedSetupSection by remember { mutableStateOf("broadcast") }
+    val setupRailItems = listOf(
+        SetupRailEntry("broadcast", "البث NDI", "NDI Broadcast", Icons.Filled.LiveTv),
+        SetupRailEntry("hdmi", "HDMI", "External Display", Icons.Filled.Tv),
+        SetupRailEntry("urls", "الروابط", "URLs", Icons.Filled.Link),
+        SetupRailEntry("vmix", "vMix", "vMix Integration", Icons.Filled.Movie),
+        SetupRailEntry("propresenter", "ProPresenter", "ProPresenter", Icons.Filled.Slideshow),
+        SetupRailEntry("obs", "OBS", "OBS Studio", Icons.Filled.Videocam),
+        SetupRailEntry("api", "API", "API Reference", Icons.Filled.Code),
+        SetupRailEntry("custom", "التخصيص", "Customizations", Icons.Filled.Palette)
+    )
 
     // Setup redesign (same treatment as the Editor): the page is a CONSOLE
     // (Bible strip + broadcast console) over a SPEC SHEET of summary
@@ -305,37 +288,11 @@ fun BroadcastControlScreen(
                     }
                 }
 
-                // Item 18: NDI protocol switch. The handler existed but
-                // no control rendered it, so the gate could never be
-                // flipped from the UI. OFF stops both senders and gates
-                // Start + the per-feed toggles until re-enabled.
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        SplitLabel(
-                            parts = listOf("بث بروتوكول ", "NDI"),
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = bento.textPrimary
-                        )
-                        InfoPopupButton(
-                            "بث بروتوكول NDI (Full NDI)",
-                            "عند الإيقاف تتوقف مصادر NDI ويُوفَّر استهلاك شبكة الواي فاي؛ مفاتيح المصدرين وزر التشغيل لن تعيد تشغيلها حتى تعيد تفعيل البروتوكول."
-                        )
-                    }
-                    Switch(
-                        checked = uiState.isNdiProtocolEnabled,
-                        onCheckedChange = { onSetNdiProtocolEnabled(it) },
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = Color.White,
-                            checkedTrackColor = bento.primary
-                        ),
-                        modifier = Modifier.testTag("ndi_protocol_switch")
-                    )
-                }
+                // 1.9.23 (Item 4): the NDI protocol switch is REMOVED —
+                // one button (Stop All / Start All) now controls NDI.
+                // Stop All turns the protocol off internally too, and
+                // Start All turns it back on; the per-feed toggles
+                // re-enable it when flipped on. No UI exposes it.
 
                 Spacer(modifier = Modifier.height(12.dp))
 
@@ -1033,6 +990,39 @@ fun BroadcastControlScreen(
                             color = bento.textSecondary
                         )
                     }
+                }
+            }
+        }
+    }
+
+    // 1.9.23 (Item 7): /api-docs link row for the API rail section —
+    // the interactive Swagger docs for the endpoints listed above.
+    // Copy pattern mirrors allUrlsBlock (clipboard + toast).
+    val apiDocsBlock: @Composable () -> Unit = {
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        val base = if (uiState.serverUrl.isNotBlank()) uiState.serverUrl.removeSuffix("/lower") else "http://<IP>:${uiState.serverPort}"
+        val full = "$base/api-docs"
+        Surface(
+            shape = RoundedCornerShape(10.dp),
+            color = bento.card,
+            border = androidx.compose.foundation.BorderStroke(1.dp, bento.border),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("توثيق API (API Docs)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary)
+                    Text(full, fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = bento.textSecondary)
+                }
+                androidx.compose.material3.IconButton(onClick = {
+                    val clip = ClipData.newPlainText("URL", full)
+                    clipboard.setPrimaryClip(clip)
+                    Toast.makeText(context, "تم نسخ: API Docs", Toast.LENGTH_SHORT).show()
+                }) {
+                    Icon(Icons.Default.ContentCopy, contentDescription = "Copy API Docs URL", tint = bento.textSecondary, modifier = Modifier.size(16.dp))
                 }
             }
         }
@@ -1833,87 +1823,86 @@ fun BroadcastControlScreen(
 
     BoxWithConstraints(modifier = modifier.fillMaxSize().background(bento.bg)) {
         // Screen-size gate (see LayoutBreakpoints): content size is
-        // ~567dp tall on tablet landscape and would hide the chip strip.
+        // ~567dp tall on tablet landscape, so the wide layout gets the
+        // left rail + single-section right side (1.9.23 Item 7).
         val screenConfig = LocalConfiguration.current
         if (isWideLayout(screenConfig.screenWidthDp.dp, screenConfig.screenHeightDp.dp)) {
             Column(Modifier.fillMaxSize()) {
-                // Setup anchors (wide only): fixed chip strip above the
-                // two scroll columns — same jump + flash as the Editor.
-                Row(
-                    Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 4.dp)
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    listOf(
-                        "broadcast" to "البث (Broadcast)",
-                        "hdmi" to "HDMI (شاشة خارجية)",
-                        "urls" to "الروابط (URLs)",
-                        "integrations" to "التكاملات (Integrations)",
-                        "custom" to "التخصيص (Customizations)"
-                    ).forEach { (id, label) ->
-                        FilterChip(
-                            selected = false,
-                            onClick = { jumpToSetupAnchor(id) },
-                            label = { Text(label, fontSize = 12.sp) }
-                        )
-                    }
-                }
+                // 1.9.23 (Item 7): left-rail navigation — the rail lists
+                // the sections, the right side shows ONLY the selected
+                // one. The chip strip and the two-column layout are gone.
                 Row(Modifier.weight(1f).fillMaxWidth()) {
-                    // Setup columns: one LazyColumn item per section, keyed
-                    // by anchor id — jumps are scrollToItem by key (see
-                    // jumpToSetupAnchor). Spacing is unchanged: 12dp
-                    // between items and between the blocks inside the
-                    // broadcast/urls items.
-                    LazyColumn(
-                        Modifier.weight(0.5f).fillMaxHeight().padding(start = 14.dp, end = 6.dp, top = 12.dp, bottom = 14.dp),
-                        state = leftSetupListState,
+                    // Left rail: vertical section list, selected item
+                    // highlighted. Scrolls if the list ever outgrows it.
+                    Column(
+                        Modifier.width(250.dp).fillMaxHeight()
+                            .background(bento.card)
+                            .verticalScroll(rememberScrollState())
+                            .padding(horizontal = 8.dp, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        setupRailItems.forEach { entry ->
+                            SetupRailItem(
+                                entry = entry,
+                                selected = selectedSetupSection == entry.id,
+                                onClick = { selectedSetupSection = entry.id }
+                            )
+                        }
+                    }
+                    // Divider between rail and content.
+                    Box(Modifier.width(1.dp).fillMaxHeight().background(bento.border))
+                    // Right side: ONLY the selected section's content.
+                    // Every block that existed in the old two-column
+                    // layout still renders here, under its rail item.
+                    Column(
+                        Modifier.weight(1f).fillMaxHeight()
+                            .verticalScroll(rememberScrollState())
+                            .padding(14.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        item("broadcast") {
-                            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                Box(setupAnchorModifier("broadcast")) { SetupSectionHeader("البث (Broadcast)") }
+                        when (selectedSetupSection) {
+                            "broadcast" -> {
+                                SetupSectionHeader("البث (Broadcast)")
                                 broadcastStatusBlock()
                                 lowerBlock()
                                 fullBlock()
                                 diagnosticsBlock()
                             }
-                        }
-                        item("hdmi") {
-                            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            "hdmi" -> {
                                 // 1.9.15 item 5: one HDMI section (the
                                 // SetupSection carries its own title).
-                                Box(setupAnchorModifier("hdmi")) { hdmiSection() }
+                                hdmiSection()
                             }
-                        }
-                    }
-                    LazyColumn(
-                        Modifier.weight(0.5f).fillMaxHeight().padding(start = 6.dp, end = 14.dp, top = 12.dp, bottom = 14.dp),
-                        state = rightSetupListState,
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        item("urls") {
-                            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            "urls" -> {
                                 // 1.9.15 item 6: Keep Screen Awake is the
-                                // first child of the urls column (a slim
+                                // first child of the urls section (a slim
                                 // row above the URLs header).
                                 keepAwakeBlock()
-                                Box(setupAnchorModifier("urls")) { SetupSectionHeader("الروابط (URLs)") }
+                                SetupSectionHeader("الروابط (URLs)")
                                 urlsCardBlock()
                                 mjpegBlock()
                                 allUrlsBlock()
-                                urlReferenceBlock()
                                 networkBlock()
                             }
-                        }
-                        item("integrations") {
-                            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                Box(setupAnchorModifier("integrations")) { SetupSectionHeader("التكاملات (Integrations)") }
-                                obsBlock()
+                            "vmix" -> {
+                                SetupSectionHeader("vMix")
                                 vmixBlock()
+                            }
+                            "propresenter" -> {
+                                SetupSectionHeader("ProPresenter")
                                 propresenterBlock()
                             }
+                            "obs" -> {
+                                SetupSectionHeader("OBS")
+                                obsBlock()
+                            }
+                            "api" -> {
+                                SetupSectionHeader("API")
+                                urlReferenceBlock()
+                                apiDocsBlock()
+                            }
+                            "custom" -> customBlock()
                         }
-                        item("custom") { Box(setupAnchorModifier("custom")) { customBlock() } }
                     }
                 }
         // App version footer: confirms which build is installed on this tablet.
@@ -1947,7 +1936,9 @@ fun BroadcastControlScreen(
                 allUrlsBlock()
                 urlReferenceBlock()
                 networkBlock()
-                SetupSectionHeader("التكاملات (Integrations)")
+                // 1.9.23 (Item 7): the Integrations header is gone (its
+                // blocks now have their own rail items on tablet); the
+                // blocks still render in the same scroll order here.
                 obsBlock()
                 vmixBlock()
                 propresenterBlock()
@@ -1986,6 +1977,61 @@ private fun SetupSectionHeader(title: String) {
         color = bento.textSecondary,
         modifier = Modifier.padding(top = 2.dp)
     )
+}
+
+// 1.9.23 (Item 7): one left-rail navigation entry — stable id (drives
+// the right-side when), bilingual label, and icon.
+private data class SetupRailEntry(
+    val id: String,
+    val labelAr: String,
+    val labelEn: String,
+    val icon: ImageVector
+)
+
+/**
+ * 1.9.23 (Item 7): one left-rail navigation item for the Setup tab.
+ * The selected item gets a primary-tinted background and primary
+ * text/icon; the rest are plain. Bilingual label (Arabic bold +
+ * English subtitle), matching the mockup.
+ */
+@Composable
+private fun SetupRailItem(
+    entry: SetupRailEntry,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    val bento = LocalBentoColors.current
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = if (selected) bento.primaryContainer else Color.Transparent,
+        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                entry.icon,
+                contentDescription = null,
+                tint = if (selected) bento.primary else bento.textSecondary,
+                modifier = Modifier.size(20.dp)
+            )
+            Spacer(modifier = Modifier.width(10.dp))
+            Column {
+                Text(
+                    entry.labelAr,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (selected) bento.onPrimaryContainer else bento.textPrimary
+                )
+                Text(
+                    entry.labelEn,
+                    fontSize = 11.sp,
+                    color = bento.textSecondary
+                )
+            }
+        }
+    }
 }
 
 /**
@@ -2926,8 +2972,7 @@ fun BroadcastControlScreenPreview() {
             onToggleLive = {},
             onClearBroadcast = {},
             onSelectInterface = {},
-            onRefreshInterfaces = {},
-            onSetNdiProtocolEnabled = {}
+            onRefreshInterfaces = {}
         )
     }
 }

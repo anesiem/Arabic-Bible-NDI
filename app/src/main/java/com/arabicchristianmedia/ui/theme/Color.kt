@@ -55,6 +55,11 @@ val SermonLiveNavy = Color(0xFF1B3A5C)
 val SermonLiveYellow = Color(0xFFF5D76E)
 val SermonLivePaleYellow = Color(0xFFFDE9A8)
 
+// 1.9.23 (Item 4): ON AIR button OFF-state grey — one shared constant
+// (was a hardcoded Color(0xFF6B7280) in MainActivity). Neutral grey,
+// the same in every theme, so no per-theme token is needed.
+val OnAirOffGrey = Color(0xFF6B7280)
+
 // Library live highlight (moved from BentoVerseCard, same values).
 val VerseLiveHighlightDark = Color(0xFF1E293B)
 val VerseLiveHighlightLight = Color(0xFFE0F2FE)

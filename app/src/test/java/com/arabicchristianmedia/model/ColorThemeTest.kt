@@ -9,8 +9,9 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 /**
- * App color themes: resolution per mode, Classic fallback, v1 pair
- * migration, recents per mode, button-text choice, JSON round-trip,
+ * App color themes: resolution per mode, Midnight fallback (1.9.23:
+ * the default theme), v1 pair migration, recents per mode, button-text
+ * choice, JSON round-trip,
  * and the WCAG contrast bars (body >= 7:1, secondary >= 4.5:1,
  * recents on card and on bands >= 3:1). One documented exception:
  * Classic light recents-on-bandA is 2.998 — the pre-existing shipping
@@ -21,9 +22,9 @@ import org.robolectric.annotation.Config
 class ColorThemeTest {
 
     @Test
-    fun unknownAndNullIdsFallBackToClassic() {
-        assertEquals("null id must resolve to Classic", ColorThemes.CLASSIC, ColorThemes.byId(null))
-        assertEquals("unknown id must resolve to Classic", ColorThemes.CLASSIC, ColorThemes.byId("no-such-theme"))
+    fun unknownAndNullIdsFallBackToMidnight() {
+        assertEquals("null id must resolve to Midnight", ColorThemes.MIDNIGHT, ColorThemes.byId(null))
+        assertEquals("unknown id must resolve to Midnight", ColorThemes.MIDNIGHT, ColorThemes.byId("no-such-theme"))
         assertEquals("classic id must resolve to Classic", ColorThemes.CLASSIC, ColorThemes.byId("classic"))
     }
 
@@ -36,19 +37,24 @@ class ColorThemeTest {
         assertEquals("Classic dark bg is the shipping value", 0xFF141218, ColorThemes.CLASSIC.dark.bg)
         assertEquals("Classic light primary is the shipping value", 0xFF6750A4, ColorThemes.CLASSIC.light.primary)
         assertEquals("Classic dark primary is the shipping value", 0xFFD0BCFF, ColorThemes.CLASSIC.dark.primary)
+        // 1.9.23 (item 8): Midnight dark is tuned to the Setup mockup shades.
+        assertEquals("Midnight dark bg is the shipping value", 0xFF0B1220, ColorThemes.MIDNIGHT.dark.bg)
+        assertEquals("Midnight dark card is the shipping value", 0xFF111C30, ColorThemes.MIDNIGHT.dark.card)
+        assertEquals("Midnight dark primary is the shipping value", 0xFF2563EB, ColorThemes.MIDNIGHT.dark.primary)
+        assertEquals("Midnight dark border is the shipping value", 0xFF1E293B, ColorThemes.MIDNIGHT.dark.border)
     }
 
     @Test
     fun customThemesResolveByIdOnlyWhenSupplied() {
         val custom = ColorThemes.CLASSIC.copy(id = "my-theme", name = "Mine")
         assertEquals("supplied custom id must resolve", custom, ColorThemes.byId("my-theme", listOf(custom)))
-        assertEquals("unsupplied custom id must fall back to Classic", ColorThemes.CLASSIC, ColorThemes.byId("my-theme"))
+        assertEquals("unsupplied custom id must fall back to Midnight", ColorThemes.MIDNIGHT, ColorThemes.byId("my-theme"))
     }
 
     @Test
-    fun migrationDefaultsToClassic() {
-        assertNull("d1/l1 picks must migrate to nothing (Classic)", migratedThemeFromPairs("d1", "l1"))
-        assertNull("null picks must migrate to nothing (Classic)", migratedThemeFromPairs(null, null))
+    fun migrationDefaultsToNothing() {
+        assertNull("d1/l1 picks must migrate to nothing (default theme)", migratedThemeFromPairs("d1", "l1"))
+        assertNull("null picks must migrate to nothing (default theme)", migratedThemeFromPairs(null, null))
     }
 
     @Test

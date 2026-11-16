@@ -125,7 +125,9 @@ data class BibleNdiUiState(
     val statusMessage: String? = null,
     val appThemeMode: AppThemeMode = AppThemeMode.SYSTEM,
     // App color theme: selected theme id (built-in or custom) + user custom themes.
-    val selectedThemeId: String = "classic",
+    // 1.9.23 (item 8): Midnight is the default theme for fresh installs;
+    // existing installs keep their saved theme (prefs win over this).
+    val selectedThemeId: String = "midnight",
     val customThemes: List<ColorTheme> = emptyList(),
     val readerFontSize: Int = 18,
     val isKeepScreenOn: Boolean = true,
@@ -383,30 +385,9 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         )
     }
 
-    fun setNdiProtocolEnabled(enabled: Boolean) {
-        _uiState.value = _uiState.value.copy(
-            isNdiProtocolEnabled = enabled,
-            statusMessage = if (enabled) "تم تفعيل بث بروتوكول Full NDI الشفاف" else "تم إيقاف بث NDI لتوفير استهلاك شبكة الواي فاي (Bandwidth Saver)"
-        )
-        if (enabled) {
-            // v1.9.1: enabling must NEVER stop senders. The old else-branch
-            // did stopAll() whenever the server wasn't (yet) marked running
-            // — in the post-restart window the service may have already
-            // auto-resumed the feeds, and flipping this switch on killed
-            // them while the per-feed toggles still showed "enabled".
-            if (_uiState.value.isServerRunning) {
-                syncNativeSources()
-                triggerAllFrames()
-            }
-            // Not running yet: the server-start path syncs on start.
-        } else {
-            nativeSender.stopAll()
-            _uiState.value = _uiState.value.copy(
-                isNativeNdiActive = false,
-                isNativeShowActive = false
-            )
-        }
-    }
+    // 1.9.23 (Item 4): setNdiProtocolEnabled REMOVED with the protocol
+    // switch — the flag is now driven only by Stop All (false), Start
+    // All (true), and the per-feed toggles (true when flipped on).
 
     /**
      * First-launch database copy (16MB of assets) runs on Dispatchers.IO so the
@@ -631,7 +612,10 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         // Batch-4: Master STOP is a true "all off" — it clears the per-feed
         // enabled flags so the switches reflect reality (not just the sender
         // state). A later Start re-enables both.
+        // 1.9.23 (Item 4): Stop All also turns the protocol off
+        // internally, so one tap means fully off (no second switch).
         nativeSender.stopAll()
+        _uiState.value = _uiState.value.copy(isNdiProtocolEnabled = false)
         // Item 31: the HTTP server keeps running after a Master STOP (see
         // below), so the auto-resume flag — and the foreground service that
         // protects the server — must stay up while it does. Clearing the flag
@@ -994,10 +978,11 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         } catch (e: Exception) {
             customs.clear()
         }
-        var selectedId = prefs?.getString("selected_theme_id", "classic") ?: "classic"
+        var selectedId = prefs?.getString("selected_theme_id", "midnight") ?: "midnight"
         // One-time migration: a user with non-default pair picks keeps
         // their exact look as a custom theme (Classic chrome + picked
-        // bands + teal recents); everyone else lands on Classic.
+        // bands + teal recents); everyone else lands on Midnight
+        // (1.9.23 item 8: the default theme).
         if (prefs?.getBoolean("theme_migrated_v1", false) != true) {
             val sermonPrefs = getSermonPrefs()
             val darkId = sermonPrefs?.getString("sermon_pair_dark", "d1") ?: "d1"
@@ -1044,11 +1029,12 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
     }
 
     /** Delete: removes a custom theme (built-ins cannot be deleted); if the
-     * deleted theme was selected, selection falls back to Classic. */
+     * deleted theme was selected, selection falls back to Midnight
+     * (1.9.23 item 8: the default theme). */
     fun deleteCustomTheme(themeId: String) {
         if (ColorThemes.isBuiltIn(themeId)) return
         val customs = _uiState.value.customThemes.filter { it.id != themeId }
-        val selected = if (_uiState.value.selectedThemeId == themeId) "classic" else _uiState.value.selectedThemeId
+        val selected = if (_uiState.value.selectedThemeId == themeId) "midnight" else _uiState.value.selectedThemeId
         _uiState.value = _uiState.value.copy(selectedThemeId = selected, customThemes = customs)
         persistThemePrefs()
     }
@@ -1071,6 +1057,19 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             "lower_full" -> _uiState.value.copy(ndiLowerEnabled = !_uiState.value.ndiLowerEnabled)
             "full_full" -> _uiState.value.copy(ndiFullShowEnabled = !_uiState.value.ndiFullShowEnabled)
             else -> _uiState.value
+        }
+        // 1.9.23 (Item 4): the per-feed toggles are self-sufficient —
+        // flipping a feed ON re-enables the protocol, so after a Stop
+        // All the toggle just works (before, it only recorded the
+        // choice and nothing started — a silent no-op). Sync starts
+        // every ENABLED feed, so the untouched feed stays off.
+        val toggledOn = when (source) {
+            "lower", "lower_full" -> _uiState.value.ndiLowerEnabled
+            "full", "full_full" -> _uiState.value.ndiFullShowEnabled
+            else -> false
+        }
+        if (toggledOn) {
+            _uiState.value = _uiState.value.copy(isNdiProtocolEnabled = true)
         }
         val s = _uiState.value
         persistNdiEnabled(NdiNativeSender.FEED_LOWER, s.ndiLowerEnabled)
@@ -2174,20 +2173,33 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
     /**
      * Item 12: Send recents to sermon. Merge=true adds recents to the top
      * of the current playlist (deduped); false replaces the playlist.
+     * 1.9.23: thin wrapper over sendVersesToSermon (the multi-select path
+     * passes an explicit list) — grouping, order, and dedupe identical.
      */
     fun sendRecentsToSermon(merge: Boolean) {
-        val recents = _uiState.value.recentVerses
-        if (recents.isEmpty()) return
+        sendVersesToSermon(_uiState.value.recentVerses, merge)
+    }
+
+    /**
+     * 1.9.23 (Sermon Builder, Item 1): send an explicit verse list to the
+     * sermon. Same grouping (by book+chapter), shading, dedupe, and
+     * persist as the recents path — only the input list changes. Bumps
+     * sermonListNonce so the app lands on the sermon list after adding
+     * (2026-11-02 rule: after sharing verses to the sermon, land on the
+     * sermon list).
+     */
+    fun sendVersesToSermon(verses: List<BibleVerse>, merge: Boolean) {
+        if (verses.isEmpty()) return
         val current = _uiState.value.sermonPlaylist
-        // Group recents by book+chapter for the sermon grouping.
+        // Group verses by book+chapter for the sermon grouping.
         val groups: List<List<com.arabicchristianmedia.model.BibleVerse>> =
-            recents.groupBy { "${it.bookId}:${it.chapter}" }.values.toList()
+            verses.groupBy { "${it.bookId}:${it.chapter}" }.values.toList()
         var nextGroupId = (current.maxOfOrNull { it.groupId } ?: 0L) + 1L
         val shades = SermonGrouping.shadesForNewBatch(current.firstOrNull()?.shade, groups.size)
         val newEntries: List<com.arabicchristianmedia.model.SermonEntry> =
-            groups.flatMapIndexed { index: Int, verses: List<com.arabicchristianmedia.model.BibleVerse> ->
+            groups.flatMapIndexed { index: Int, versesInGroup: List<com.arabicchristianmedia.model.BibleVerse> ->
             val gid = nextGroupId++
-            verses.map { v -> SermonEntry(v, gid, shades[index]) }
+            versesInGroup.map { v -> SermonEntry(v, gid, shades[index]) }
         }
         val updated = if (merge) {
             val newKeys = newEntries.map { it.key }.toSet()
@@ -2197,8 +2209,9 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         }
         _uiState.value = _uiState.value.copy(
             sermonPlaylist = updated,
-            statusMessage = if (merge) "Merged ${recents.size} recent verses into sermon"
-                           else "Sermon replaced with ${recents.size} recent verses"
+            sermonListNonce = _uiState.value.sermonListNonce + 1,
+            statusMessage = if (merge) "Merged ${verses.size} verses into sermon"
+                           else "Sermon replaced with ${verses.size} verses"
         )
         persistSermonWorking()
     }

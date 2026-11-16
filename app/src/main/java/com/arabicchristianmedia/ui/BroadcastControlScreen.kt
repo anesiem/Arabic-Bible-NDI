@@ -58,6 +58,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Router
 import androidx.compose.material.icons.filled.Sensors
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Slideshow
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Timer
@@ -188,8 +189,10 @@ fun BroadcastControlScreen(
         // tablet's address (IP/domain) + Keep Screen Awake are the
         // first things needed before a service. It is also the
         // default open section (selectedSetupSection above).
-        // 1.9.23: TabletAndroid does not resolve in this icon set (CI #112)
-        // — Settings is already used in the app and compiles.
+        // 1.9.23: TabletAndroid does not resolve in this icon set (CI #112);
+        // Settings is used in SermonListScreen/BibleReaderScreen/MainActivity
+        // and needs its own import here (CI #113) — this file imports
+        // icons one by one, no wildcard.
         SetupRailEntry("device", "الجهاز", "Device", Icons.Filled.Settings),
         // 1.9.23 (item 10): auto-clear has its own rail section — it
         // clears ALL outputs (NDI + HTTP), not just one, so it is not

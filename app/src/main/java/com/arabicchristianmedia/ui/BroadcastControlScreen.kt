@@ -180,15 +180,16 @@ fun BroadcastControlScreen(
     // never used it, so nothing keeps it alive.
     // Future rail order (decided 2026-11-16): social media integration
     // and remote authenticated client go at the TOP of this list, above
-    // NDI Broadcast — social media first, then remote client. No
+    // Auto-Clear — social media first, then remote client. No
     // placeholders now; the list accepts them at the top later.
-    var selectedSetupSection by remember { mutableStateOf("broadcast") }
+    var selectedSetupSection by remember { mutableStateOf("autoclear") }
     val setupRailItems = listOf(
-        SetupRailEntry("broadcast", "البث NDI", "NDI Broadcast", Icons.Filled.LiveTv),
-        // 1.9.23 (item 10): auto-clear has its own rail section — it
-        // clears ALL outputs (NDI + HTTP), not just one, so it is not
-        // an NDI setting and not a Customization.
+        // 1.9.23 (item 10): auto-clear has its own rail section at the
+        // very top — it clears ALL outputs (NDI + HTTP), not just one,
+        // so it is not an NDI setting and not a Customization. It is
+        // also the default open section (selectedSetupSection above).
         SetupRailEntry("autoclear", "المسح التلقائي", "Auto-Clear", Icons.Filled.Timer),
+        SetupRailEntry("broadcast", "البث NDI", "NDI Broadcast", Icons.Filled.LiveTv),
         SetupRailEntry("hdmi", "HDMI", "External Display", Icons.Filled.Tv),
         SetupRailEntry("urls", "الروابط", "URLs", Icons.Filled.Link),
         SetupRailEntry("vmix", "vMix", "vMix Integration", Icons.Filled.Movie),
@@ -1700,6 +1701,9 @@ fun BroadcastControlScreen(
                                                 value = nameText,
                                                 onValueChange = { nameText = it },
                                                 label = { Text("اسم الجهاز على الشبكة (Device name)") },
+                                                // 1.9.23: show the tablet IP as grey placeholder
+                                                // text — tap the field to type a domain instead.
+                                                placeholder = { Text(uiState.activeIpAddress, color = bento.textSecondary) },
                                                 singleLine = true,
                                                 modifier = Modifier.fillMaxWidth()
                                             )

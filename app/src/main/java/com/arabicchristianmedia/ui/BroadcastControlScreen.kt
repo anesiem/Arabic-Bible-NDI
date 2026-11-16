@@ -180,17 +180,21 @@ fun BroadcastControlScreen(
     // never used it, so nothing keeps it alive.
     // Future rail order (decided 2026-11-16): social media integration
     // and remote authenticated client go at the TOP of this list, above
-    // Auto-Clear — social media first, then remote client. No
+    // Device — social media first, then remote client. No
     // placeholders now; the list accepts them at the top later.
-    var selectedSetupSection by remember { mutableStateOf("autoclear") }
+    var selectedSetupSection by remember { mutableStateOf("device") }
     val setupRailItems = listOf(
-        // 1.9.23 (item 10): auto-clear has its own rail section at the
-        // very top — it clears ALL outputs (NDI + HTTP), not just one,
-        // so it is not an NDI setting and not a Customization. It is
-        // also the default open section (selectedSetupSection above).
+        // 1.9.23 (item 10): the Device section is the very top — the
+        // tablet's address (IP/domain) + Keep Screen Awake are the
+        // first things needed before a service. It is also the
+        // default open section (selectedSetupSection above).
+        SetupRailEntry("device", "الجهاز", "Device", Icons.Filled.TabletAndroid),
+        // 1.9.23 (item 10): auto-clear has its own rail section — it
+        // clears ALL outputs (NDI + HTTP), not just one, so it is not
+        // an NDI setting and not a Customization.
         SetupRailEntry("autoclear", "المسح التلقائي", "Auto-Clear", Icons.Filled.Timer),
-        SetupRailEntry("broadcast", "البث NDI", "NDI Broadcast", Icons.Filled.LiveTv),
         SetupRailEntry("hdmi", "HDMI", "External Display", Icons.Filled.Tv),
+        SetupRailEntry("broadcast", "البث NDI", "NDI Broadcast", Icons.Filled.LiveTv),
         SetupRailEntry("urls", "الروابط", "URLs", Icons.Filled.Link),
         SetupRailEntry("vmix", "vMix", "vMix Integration", Icons.Filled.Movie),
         SetupRailEntry("propresenter", "ProPresenter", "ProPresenter", Icons.Filled.Slideshow),
@@ -1675,20 +1679,33 @@ fun BroadcastControlScreen(
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Column(modifier = Modifier.padding(10.dp)) {
+                                        SplitLabel(
+                                            parts = listOf("عنوان البث ", "(Advertise address)"),
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = bento.textPrimary
+                                        )
+                                        Text("إظهار الروابط بعنوان IP أو باسم الجهاز على الشبكة", fontSize = 10.sp, color = bento.textSecondary)
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        // 1.9.23: the advertise-by-name toggle sits beside
+                                        // the field — ON uses the domain, OFF uses the IP.
+                                        // The field is always visible (IP as grey
+                                        // placeholder) and disabled while the toggle is off.
+                                        var nameText by remember(uiState.advertiseName) { mutableStateOf(uiState.advertiseName) }
                                         Row(
                                             modifier = Modifier.fillMaxWidth(),
                                             verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.SpaceBetween
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                                         ) {
-                                            Column(modifier = Modifier.weight(1f)) {
-                                                SplitLabel(
-                                                    parts = listOf("عنوان البث ", "(Advertise address)"),
-                                                    fontSize = 11.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = bento.textPrimary
-                                                )
-                                                Text("إظهار الروابط بعنوان IP أو باسم الجهاز على الشبكة", fontSize = 10.sp, color = bento.textSecondary)
-                                            }
+                                            TextField(
+                                                value = nameText,
+                                                onValueChange = { nameText = it },
+                                                label = { Text("اسم الجهاز على الشبكة (Device name)") },
+                                                placeholder = { Text(uiState.activeIpAddress, color = bento.textSecondary) },
+                                                singleLine = true,
+                                                enabled = uiState.advertiseByName,
+                                                modifier = Modifier.weight(1f)
+                                            )
                                             Switch(
                                                 checked = uiState.advertiseByName,
                                                 onCheckedChange = { onSetAdvertiseByName(it) }
@@ -1696,17 +1713,6 @@ fun BroadcastControlScreen(
                                         }
                                         if (uiState.advertiseByName) {
                                             Spacer(modifier = Modifier.height(8.dp))
-                                            var nameText by remember(uiState.advertiseName) { mutableStateOf(uiState.advertiseName) }
-                                            TextField(
-                                                value = nameText,
-                                                onValueChange = { nameText = it },
-                                                label = { Text("اسم الجهاز على الشبكة (Device name)") },
-                                                // 1.9.23: show the tablet IP as grey placeholder
-                                                // text — tap the field to type a domain instead.
-                                                placeholder = { Text(uiState.activeIpAddress, color = bento.textSecondary) },
-                                                singleLine = true,
-                                                modifier = Modifier.fillMaxWidth()
-                                            )
                                             Row(
                                                 modifier = Modifier.fillMaxWidth(),
                                                 verticalAlignment = Alignment.CenterVertically,
@@ -1982,6 +1988,16 @@ fun BroadcastControlScreen(
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         when (selectedSetupSection) {
+                            "device" -> {
+                                // 1.9.23 (item 10): Device is the top
+                                // rail section — Keep Screen Awake +
+                                // the Network block (status + Advertise
+                                // address) moved here from URLs.
+                                SetupSectionHeader("الجهاز (Device)")
+                                keepAwakeBlock()
+                                Spacer(modifier = Modifier.height(12.dp))
+                                networkBlock()
+                            }
                             "broadcast" -> {
                                 SetupSectionHeader("البث (Broadcast)")
                                 broadcastStatusBlock()
@@ -1991,7 +2007,7 @@ fun BroadcastControlScreen(
                             }
                             "autoclear" -> {
                                 // 1.9.23 (item 10): own rail section —
-                                // position 2, after NDI Broadcast.
+                                // position 2, after Device.
                                 SetupSectionHeader("المسح التلقائي (Auto-Clear)")
                                 autoClearBlock()
                             }
@@ -2001,15 +2017,10 @@ fun BroadcastControlScreen(
                                 hdmiSection()
                             }
                             "urls" -> {
-                                // 1.9.15 item 6: Keep Screen Awake is the
-                                // first child of the urls section (a slim
-                                // row above the URLs header).
-                                keepAwakeBlock()
                                 SetupSectionHeader("الروابط (URLs)")
                                 urlsCardBlock()
                                 mjpegBlock()
                                 allUrlsBlock()
-                                networkBlock()
                             }
                             "vmix" -> {
                                 SetupSectionHeader("vMix")

@@ -143,6 +143,15 @@ data class BibleNdiUiState(
     // item top-left), true = RTL (first item top-right). Books +
     // chapters flip together. Persisted in ui_prefs.
     val libraryGridRtl: Boolean = false,
+    // 1.9.23 (item 10): auto-clear — the live verse clears itself after
+    // a set time. OFF by default (zero behavior change unless enabled).
+    // Settings are persisted in ui_prefs; the countdown fields below are
+    // transient (never persisted) — remainingSec is null when no
+    // countdown is running, paused freezes it.
+    val autoClearEnabled: Boolean = false,
+    val autoClearDurationMinutes: Int = 2,
+    val autoClearRemainingSec: Int? = null,
+    val autoClearPaused: Boolean = false,
     // True while the Bible databases are being copied/loaded on first launch.
     val isLoadingBible: Boolean = false,
     // v2.0: sermon playlist built from text shared from other apps
@@ -293,6 +302,9 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
                     isLiveOnAir = false,
                     statusMessage = "NDI Server Stopped"
                 )
+                // 1.9.23 (item 10): broadcast stopped externally — the
+                // verse is off air, so the countdown is cancelled.
+                cancelAutoClearTimer()
             }
         }
         loadInitialDataAsync()
@@ -328,6 +340,13 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         broadcastServer.onSetOnAir = { on ->
             setOnAir(on)
         }
+        // 1.9.23 (item 10): auto-clear for /remote — the light poll reads
+        // the countdown state, and the /api/autoclear/* endpoints call
+        // back into the same pause/resume/stop functions the app uses.
+        broadcastServer.autoClearStateProvider = { autoClearStateForRemote() }
+        broadcastServer.onAutoClearPause = { pauseAutoClear() }
+        broadcastServer.onAutoClearResume = { resumeAutoClear() }
+        broadcastServer.onAutoClearStop = { stopAutoClear() }
         broadcastServer.onListVideos = {
             listBackgroundVideos()
         }
@@ -913,6 +932,9 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         val recentsFontRaw = prefs?.getInt("recents_font_size", -1) ?: -1
         val sermonFontRaw = prefs?.getInt("sermon_font_size", -1) ?: -1
         val libraryGridRtl = prefs?.getBoolean("library_grid_rtl", false) ?: false
+        // 1.9.23 (item 10): auto-clear — OFF by default, 2 min default.
+        val autoClearEnabled = prefs?.getBoolean("auto_clear_enabled", false) ?: false
+        val autoClearDurationMinutes = (prefs?.getInt("auto_clear_duration_minutes", 2) ?: 2).coerceIn(1, 60)
         _uiState.value = _uiState.value.copy(
             readerFontSize = fontSize,
             appThemeMode = mode,
@@ -922,7 +944,9 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             // 1.9.15 item 12: -1 = follow universal (the default).
             sermonFontSize = if (sermonFontRaw < 0) null else sermonFontRaw.coerceIn(12, 36),
             // Item 92: default LTR.
-            libraryGridRtl = libraryGridRtl
+            libraryGridRtl = libraryGridRtl,
+            autoClearEnabled = autoClearEnabled,
+            autoClearDurationMinutes = autoClearDurationMinutes
         )
     }
 
@@ -935,6 +959,8 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             ?.putInt("recents_font_size", state.recentsFontSize ?: -1)
             ?.putInt("sermon_font_size", state.sermonFontSize ?: -1)
             ?.putBoolean("library_grid_rtl", state.libraryGridRtl)
+            ?.putBoolean("auto_clear_enabled", state.autoClearEnabled)
+            ?.putInt("auto_clear_duration_minutes", state.autoClearDurationMinutes)
             ?.apply()
     }
 
@@ -1418,6 +1444,10 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
 
         // Item 27: Library tap is a trigger source of its own.
         broadcastServer.setLastTrigger("library", displayVerse.getFormattedArabicCitation())
+
+        // 1.9.23 (item 10): EVERY verse tap restarts the countdown, even
+        // re-tapping the verse already live (his rule).
+        startAutoClearTimer()
     }
 
     /**
@@ -1466,6 +1496,9 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         )
         broadcastServer.setLiveState(newLive)
         triggerAllFrames()
+        // 1.9.23 (item 10): going off air cancels the countdown; going
+        // live again (verse still cued) restarts it.
+        if (newLive) startAutoClearTimer() else cancelAutoClearTimer()
     }
 
     /**
@@ -1482,9 +1515,13 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         triggerAllFrames()
         // Item 25: verse off air clears ProPresenter's stage message too.
         if (!on) clearProPresenter()
+        // 1.9.23 (item 10): same as toggleLive — off cancels, on restarts.
+        if (on) startAutoClearTimer() else cancelAutoClearTimer()
     }
 
     fun clearBroadcast() {
+        // 1.9.23 (item 10): a manual clear cancels any running countdown.
+        cancelAutoClearTimer()
         _uiState.value = _uiState.value.copy(
             isLiveOnAir = false,
             statusMessage = "Lower Third Cleared (100% Transparent Screen)"
@@ -1493,6 +1530,114 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         triggerAllFrames()
         // Item 25: clear the ProPresenter stage message as well.
         clearProPresenter()
+    }
+
+    // ── 1.9.23 (item 10): auto-clear ─────────────────────────────────
+    // The live verse clears itself after a set time (default 2 min, OFF
+    // by default). The timer watches the shared isLiveOnAir/activeVerse
+    // state — the same state Facebook posting will watch later — and
+    // calls the existing clearBroadcast() at 0, so any future feature
+    // hooked into clear fires automatically. Auto-clear knows nothing
+    // about Facebook; there is no coupling between the features.
+    // Lifecycle: the Job is cancelled on clear, on ON AIR off, on
+    // external stop, and in onCleared() — no leaked timers.
+    private var autoClearJob: Job? = null
+
+    /** Shared countdown loop: ticks once per second from [startSec] to 0, then clears. */
+    private fun launchAutoClearCountdown(startSec: Int) {
+        autoClearJob?.cancel()
+        autoClearJob = viewModelScope.launch {
+            var remaining = startSec
+            while (remaining > 0) {
+                delay(1000)
+                remaining--
+                _uiState.value = _uiState.value.copy(autoClearRemainingSec = remaining)
+            }
+            // Countdown reached 0 — clear exactly like a manual Clear.
+            // Null the job first so clearBroadcast's cancel is a no-op
+            // (the loop is finishing anyway).
+            autoClearJob = null
+            _uiState.value = _uiState.value.copy(autoClearRemainingSec = null, autoClearPaused = false)
+            clearBroadcast()
+        }
+    }
+
+    /**
+     * (Re)start the countdown at the full duration. Called on EVERY
+     * verse-goes-live — even re-tapping the same verse (his rule).
+     * No-op unless auto-clear is ON with a verse live.
+     */
+    private fun startAutoClearTimer() {
+        val state = _uiState.value
+        if (!state.autoClearEnabled || !state.isLiveOnAir || state.activeVerse == null) {
+            cancelAutoClearTimer()
+            return
+        }
+        val totalSec = state.autoClearDurationMinutes.coerceIn(1, 60) * 60
+        _uiState.value = _uiState.value.copy(autoClearRemainingSec = totalSec, autoClearPaused = false)
+        launchAutoClearCountdown(totalSec)
+    }
+
+    /** Cancel any running countdown and clear its state. */
+    private fun cancelAutoClearTimer() {
+        autoClearJob?.cancel()
+        autoClearJob = null
+        if (_uiState.value.autoClearRemainingSec != null || _uiState.value.autoClearPaused) {
+            _uiState.value = _uiState.value.copy(autoClearRemainingSec = null, autoClearPaused = false)
+        }
+    }
+
+    /** Pause: freeze the countdown (tap the ring again to resume). */
+    fun pauseAutoClear() {
+        if (_uiState.value.autoClearRemainingSec == null || _uiState.value.autoClearPaused) return
+        autoClearJob?.cancel()
+        autoClearJob = null
+        _uiState.value = _uiState.value.copy(autoClearPaused = true)
+    }
+
+    /** Resume a paused countdown from the remaining seconds. */
+    fun resumeAutoClear() {
+        val remaining = _uiState.value.autoClearRemainingSec ?: return
+        if (!_uiState.value.autoClearPaused) return
+        _uiState.value = _uiState.value.copy(autoClearPaused = false)
+        launchAutoClearCountdown(remaining)
+    }
+
+    /** Stop: cancel auto-clear for this verse — it stays live until a manual clear or a new verse. */
+    fun stopAutoClear() {
+        cancelAutoClearTimer()
+    }
+
+    /** NDI-tab toggle. Enabling with a verse live starts the countdown; disabling cancels it. */
+    fun setAutoClearEnabled(enabled: Boolean) {
+        _uiState.value = _uiState.value.copy(autoClearEnabled = enabled)
+        persistUiPrefs()
+        if (enabled) startAutoClearTimer() else cancelAutoClearTimer()
+    }
+
+    /**
+     * NDI-tab duration (minutes, clamped 1–60). Changing it mid-countdown
+     * restarts the timer with the new duration.
+     */
+    fun setAutoClearDurationMinutes(minutes: Int) {
+        val clamped = minutes.coerceIn(1, 60)
+        // Only restart the countdown when the value actually changed —
+        // a re-commit of the same value (e.g. Done + focus loss firing
+        // together) must not restart the timer.
+        val changed = clamped != _uiState.value.autoClearDurationMinutes
+        _uiState.value = _uiState.value.copy(autoClearDurationMinutes = clamped)
+        persistUiPrefs()
+        if (changed && _uiState.value.autoClearRemainingSec != null) startAutoClearTimer()
+    }
+
+    /** Current countdown state for the /remote light JSON state. */
+    fun autoClearStateForRemote(): Triple<Int?, Boolean, Int> {
+        val state = _uiState.value
+        return Triple(
+            state.autoClearRemainingSec,
+            state.autoClearPaused,
+            state.autoClearDurationMinutes.coerceIn(1, 60) * 60
+        )
     }
 
     /**
@@ -1545,6 +1690,10 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
 
             // Item 27: record the trigger (source declared by caller).
             broadcastServer.setLastTrigger(source, verse.getFormattedArabicCitation())
+
+            // 1.9.23 (item 10): EVERY trigger restarts the countdown —
+            // remote taps, sermon taps, and sermon steps alike.
+            startAutoClearTimer()
 
             true
         } catch (e: Exception) {
@@ -3178,6 +3327,9 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
 
     override fun onCleared() {
         super.onCleared()
+        // 1.9.23 (item 10): no leaked timers — cancel the countdown.
+        autoClearJob?.cancel()
+        autoClearJob = null
         // v1.9: instances live in NdiService now; stop them without creating new ones.
         NdiService.stopAllIfPresent()
     }

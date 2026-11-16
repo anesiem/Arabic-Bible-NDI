@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -59,6 +60,7 @@ import androidx.compose.material.icons.filled.Router
 import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material.icons.filled.Slideshow
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.Warning
@@ -91,8 +93,10 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.tooling.preview.Preview
@@ -152,6 +156,9 @@ fun BroadcastControlScreen(
     // Batch-3: per-tab per-section expand memory (ViewModel-backed map).
     sectionExpandedMap: Map<String, Boolean> = emptyMap(),
     onSetSectionExpanded: (String, String, Boolean) -> Unit = { _, _, _ -> },
+    // 1.9.23 (item 10): auto-clear settings (own rail section).
+    onSetAutoClearEnabled: (Boolean) -> Unit = {},
+    onSetAutoClearDurationMinutes: (Int) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -178,6 +185,10 @@ fun BroadcastControlScreen(
     var selectedSetupSection by remember { mutableStateOf("broadcast") }
     val setupRailItems = listOf(
         SetupRailEntry("broadcast", "البث NDI", "NDI Broadcast", Icons.Filled.LiveTv),
+        // 1.9.23 (item 10): auto-clear has its own rail section — it
+        // clears ALL outputs (NDI + HTTP), not just one, so it is not
+        // an NDI setting and not a Customization.
+        SetupRailEntry("autoclear", "المسح التلقائي", "Auto-Clear", Icons.Filled.Timer),
         SetupRailEntry("hdmi", "HDMI", "External Display", Icons.Filled.Tv),
         SetupRailEntry("urls", "الروابط", "URLs", Icons.Filled.Link),
         SetupRailEntry("vmix", "vMix", "vMix Integration", Icons.Filled.Movie),
@@ -1821,6 +1832,112 @@ fun BroadcastControlScreen(
         }
     }
 
+    // 1.9.23 (item 10): auto-clear — its own rail section (position 2,
+    // after NDI Broadcast). It clears ALL outputs (NDI + HTTP), so it
+    // is not an NDI setting and not a Customization. The ring + pause +
+    // stop live in the Library header and on /remote; this section holds
+    // only the settings (ON/OFF + duration).
+    val autoClearBlock: @Composable () -> Unit = {
+        SetupSection(
+            title = "المسح التلقائي (Auto-Clear)",
+            sectionId = "autoclear",
+            sectionExpandedMap = sectionExpandedMap,
+            onSetSectionExpanded = onSetSectionExpanded,
+            summary = if (uiState.autoClearEnabled) "مفعّل · ${uiState.autoClearDurationMinutes} دقيقة" else "متوقف (OFF)"
+        ) {
+            // ON/OFF toggle.
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "المسح التلقائي (Auto-clear)",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = bento.textPrimary
+                    )
+                    Text(
+                        text = "The live verse clears itself after the set time. Tapping any verse restarts the timer.",
+                        fontSize = 11.sp,
+                        color = bento.textSecondary
+                    )
+                }
+                Switch(
+                    checked = uiState.autoClearEnabled,
+                    onCheckedChange = { onSetAutoClearEnabled(it) },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = bento.onPrimary,
+                        checkedTrackColor = bento.primary,
+                        uncheckedThumbColor = bento.textSecondary,
+                        uncheckedTrackColor = bento.surfaceVariant
+                    ),
+                    modifier = Modifier.testTag("autoclear_toggle")
+                )
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+            // Duration: a NUMBER INPUT in minutes (not a picker — his
+            // correction). Digits only, 1–60, committed on Done or when
+            // the field loses focus; invalid input restores the last
+            // saved value.
+            val focusManager = LocalFocusManager.current
+            var durationText by remember { mutableStateOf(uiState.autoClearDurationMinutes.toString()) }
+            var durationFocused by remember { mutableStateOf(false) }
+            fun commitDuration() {
+                val parsed = durationText.toIntOrNull()
+                if (parsed == null) {
+                    durationText = uiState.autoClearDurationMinutes.toString()
+                } else {
+                    onSetAutoClearDurationMinutes(parsed)
+                    durationText = parsed.coerceIn(1, 60).toString()
+                }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "المدة بالدقائق (Duration in minutes)",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = bento.textPrimary
+                    )
+                    Text(
+                        text = "1–60 minutes. Changing it mid-countdown restarts the timer.",
+                        fontSize = 11.sp,
+                        color = bento.textSecondary
+                    )
+                }
+                androidx.compose.material3.OutlinedTextField(
+                    value = durationText,
+                    onValueChange = { next ->
+                        // Digits only, max 2 characters (bounds are 1–60).
+                        if (next.length <= 2 && next.all { it.isDigit() }) durationText = next
+                    },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    keyboardActions = KeyboardActions(onDone = {
+                        commitDuration()
+                        focusManager.clearFocus()
+                    }),
+                    textStyle = androidx.compose.ui.text.TextStyle(
+                        fontSize = 14.sp,
+                        color = bento.textPrimary,
+                        textAlign = TextAlign.Center
+                    ),
+                    modifier = Modifier
+                        .width(96.dp)
+                        .onFocusChanged {
+                            if (durationFocused && !it.isFocused) commitDuration()
+                            durationFocused = it.isFocused
+                        }
+                        .testTag("autoclear_duration_input")
+                )
+            }
+        }
+    }
+
     BoxWithConstraints(modifier = modifier.fillMaxSize().background(bento.bg)) {
         // Screen-size gate (see LayoutBreakpoints): content size is
         // ~567dp tall on tablet landscape, so the wide layout gets the
@@ -1867,6 +1984,12 @@ fun BroadcastControlScreen(
                                 lowerBlock()
                                 fullBlock()
                                 diagnosticsBlock()
+                            }
+                            "autoclear" -> {
+                                // 1.9.23 (item 10): own rail section —
+                                // position 2, after NDI Broadcast.
+                                SetupSectionHeader("المسح التلقائي (Auto-Clear)")
+                                autoClearBlock()
                             }
                             "hdmi" -> {
                                 // 1.9.15 item 5: one HDMI section (the
@@ -1924,6 +2047,10 @@ fun BroadcastControlScreen(
                 lowerBlock()
                 fullBlock()
                 diagnosticsBlock()
+                // 1.9.23 (item 10): auto-clear section — position 2 in
+                // the rail order, right after NDI Broadcast.
+                SetupSectionHeader("المسح التلقائي (Auto-Clear)")
+                autoClearBlock()
                 // 1.9.15 item 5: one HDMI section (the SetupSection
                 // carries its own title).
                 hdmiSection()

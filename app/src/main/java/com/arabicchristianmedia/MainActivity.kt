@@ -33,6 +33,7 @@ import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.Cast
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Keyboard
@@ -50,6 +51,7 @@ import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -112,6 +114,65 @@ object TextInputFocusTracker {
  */
 fun androidx.compose.ui.Modifier.trackTextInputFocus(): androidx.compose.ui.Modifier =
     this.onFocusChanged { TextInputFocusTracker.isFocused = it.isFocused }
+
+/**
+ * 1.9.23 (item 10): the auto-clear countdown ring, shown in the top bar
+ * next to the ON AIR button while a verse is live and auto-clear is ON.
+ * The ring drains as time runs out, with the remaining time (m:ss) in
+ * the middle; it turns liveRed under 15 seconds, and greys out while
+ * paused. Tap the ring to pause/resume; the X stops auto-clear for
+ * this verse (the verse stays live).
+ */
+@Composable
+private fun AutoClearRing(
+    remainingSec: Int,
+    totalSec: Int,
+    paused: Boolean,
+    onTogglePause: () -> Unit,
+    onStop: () -> Unit
+) {
+    val bento = LocalBentoColors.current
+    val warning = remainingSec <= 15
+    val ringColor = when {
+        warning -> bento.liveRed
+        paused -> bento.textSecondary
+        else -> bento.primary
+    }
+    val progress = if (totalSec > 0) (remainingSec.toFloat() / totalSec).coerceIn(0f, 1f) else 0f
+    val timeText = "%d:%02d".format(remainingSec / 60, remainingSec % 60)
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .clickable { onTogglePause() }
+        ) {
+            CircularProgressIndicator(
+                progress = { progress },
+                color = ringColor,
+                trackColor = bento.border,
+                strokeWidth = 4.dp,
+                modifier = Modifier.size(40.dp)
+            )
+            Text(
+                timeText,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                color = if (warning) bento.liveRed else bento.textPrimary
+            )
+        }
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .size(28.dp)
+                .clip(CircleShape)
+                .clickable { onStop() }
+        ) {
+            Icon(Icons.Filled.Close, "Stop auto-clear", tint = bento.textSecondary, modifier = Modifier.size(16.dp))
+        }
+    }
+}
 
 class MainActivity : ComponentActivity() {
 
@@ -491,6 +552,22 @@ class MainActivity : ComponentActivity() {
                                 // indicator AND the toggle — red when a verse
                                 // is live on any output, grey when off.
                                 val topBarIsOnAir = uiState.isLiveOnAir && uiState.activeVerse != null
+                                // 1.9.23 (item 10): auto-clear ring — only
+                                // while a verse is live and auto-clear is
+                                // ON. Tap = pause/resume, X = stop.
+                                val autoClearRemaining = uiState.autoClearRemainingSec
+                                if (uiState.autoClearEnabled && autoClearRemaining != null) {
+                                    AutoClearRing(
+                                        remainingSec = autoClearRemaining,
+                                        totalSec = uiState.autoClearDurationMinutes.coerceIn(1, 60) * 60,
+                                        paused = uiState.autoClearPaused,
+                                        onTogglePause = {
+                                            if (uiState.autoClearPaused) viewModel.resumeAutoClear()
+                                            else viewModel.pauseAutoClear()
+                                        },
+                                        onStop = { viewModel.stopAutoClear() }
+                                    )
+                                }
                                 Button(
                                     onClick = { viewModel.toggleLive() },
                                     colors = ButtonDefaults.buttonColors(
@@ -742,7 +819,10 @@ class MainActivity : ComponentActivity() {
                                 onDeleteTheme = { viewModel.deleteCustomTheme(it) },
                                 onStreamBackgroundChange = { viewModel.setStreamBackgroundMode(it) },
                                 sectionExpandedMap = sectionExpandedMap,
-                                onSetSectionExpanded = { tabId, sectionId, expanded -> viewModel.setSectionExpanded(tabId, sectionId, expanded) }
+                                onSetSectionExpanded = { tabId, sectionId, expanded -> viewModel.setSectionExpanded(tabId, sectionId, expanded) },
+                                // 1.9.23 (item 10): auto-clear settings.
+                                onSetAutoClearEnabled = { viewModel.setAutoClearEnabled(it) },
+                                onSetAutoClearDurationMinutes = { viewModel.setAutoClearDurationMinutes(it) }
                             )
                             2 -> SermonListScreen(
                                 uiState = uiState,

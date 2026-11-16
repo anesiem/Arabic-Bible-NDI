@@ -149,6 +149,16 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     var onImportBackup: ((json: String, dryRun: Boolean) -> BackupImportResult)? = null
     var onSetOnAir: ((Boolean) -> Unit)? = null
     var onListVideos: (() -> List<VideoInfo>)? = null
+    /**
+     * 1.9.23 (item 10): auto-clear for /remote. The state provider
+     * returns (remaining seconds or null, paused, total seconds) for
+     * the light JSON state; the callbacks run the same pause/resume/
+     * stop functions the app's ring uses. LAN-only like trigger/clear.
+     */
+    var autoClearStateProvider: (() -> Triple<Int?, Boolean, Int>)? = null
+    var onAutoClearPause: (() -> Unit)? = null
+    var onAutoClearResume: (() -> Unit)? = null
+    var onAutoClearStop: (() -> Unit)? = null
 
     /** Opaque video ID + display info for /api/videos. */
     data class VideoInfo(
@@ -1135,6 +1145,16 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
                 cleanPath == "/api/onair" -> {
                     serveApiOnAir(out, fullPath)
                 }
+                // 1.9.23 (item 10): auto-clear pause/resume/stop for /remote.
+                cleanPath == "/api/autoclear/pause" -> {
+                    serveAutoClearAction(out, "pause")
+                }
+                cleanPath == "/api/autoclear/resume" -> {
+                    serveAutoClearAction(out, "resume")
+                }
+                cleanPath == "/api/autoclear/stop" -> {
+                    serveAutoClearAction(out, "stop")
+                }
                 cleanPath == "/api/videos" -> {
                     serveApiVideos(out)
                 }
@@ -1321,6 +1341,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             // (see ndiActiveProvider above). False when the provider is
             // unset or throws — never let a diagnostics flag break the poll.
             put("ndiActive", try { ndiActiveProvider?.invoke() } catch (e: Exception) { false } ?: false)
+            // 1.9.23 (item 10): auto-clear countdown for the /remote ring.
+            // remaining -1 = no countdown running; the page counts down
+            // locally between polls and re-syncs from these fields.
+            val acState = try { autoClearStateProvider?.invoke() } catch (e: Exception) { null }
+            put("autoClearRemaining", acState?.first ?: -1)
+            put("autoClearPaused", acState?.second ?: false)
+            put("autoClearTotal", acState?.third ?: 0)
             put("arabicCitation", if (verse != null) verse.getFormattedArabicCitation(tpl.useEasternArabicNumerals) else "")
             put("englishCitation", verse?.getFormattedEnglishCitation() ?: "")
             put("bookId", verse?.bookId ?: "")
@@ -7598,6 +7625,22 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         sendJson(out, 200, """{"ok":true,"cleared":true}""")
     }
 
+    /**
+     * 1.9.23 (item 10): GET /api/autoclear/{pause|resume|stop} — the
+     * /remote ring controls. One handler for all three actions (same
+     * try/catch + ok-response shape as serveApiClear).
+     */
+    private fun serveAutoClearAction(out: OutputStream, action: String) {
+        try {
+            when (action) {
+                "pause" -> onAutoClearPause?.invoke()
+                "resume" -> onAutoClearResume?.invoke()
+                "stop" -> onAutoClearStop?.invoke()
+            }
+        } catch (e: Exception) { }
+        sendJson(out, 200, """{"ok":true,"action":"$action"}""")
+    }
+
     /** GET /api/videos — list background videos by opaque ID. */
     private fun serveApiVideos(out: OutputStream) {
         val videos = try { onListVideos?.invoke() ?: emptyList() } catch (e: Exception) { emptyList() }
@@ -9461,6 +9504,22 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
      These two rules restore the background at higher specificity. */
   #topBar button.onair.on { background: var(--onair-on, #dc2626); }
   #topBar button.onair.off { background: var(--onair-off, #6b7280); }
+  /* 1.9.23 (item 10): auto-clear ring in the top bar, next to ON AIR.
+     The ring drains as the countdown runs; the arc turns red under 15s
+     (same #dc2626 as ON AIR) and greys out while paused. #topRef
+     ellipsizes, so the ring fits on narrow phones without wrapping
+     the bar (nowrap holds — see audit item 19). */
+  #acWrap { display: inline-flex; align-items: center; gap: 2px; flex: none; }
+  #acWrap[hidden] { display: none; }
+  #acRing { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; cursor: pointer; flex: none; }
+  #acRing svg { display: block; }
+  #acTrack { stroke: var(--chrome-border, #334155); }
+  #acArc { stroke: var(--chrome-primary, #3b82f6); }
+  #acArc.warn { stroke: #dc2626; }
+  #acArc.paused { stroke: var(--chrome-textsec, #94a3b8); }
+  #acText { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; color: var(--chrome-text, #f1f5f9); pointer-events: none; }
+  #acText.warn { color: #dc2626; }
+  #topBar #acStop { width: 26px; height: 26px; font-size: 13px; border: none; color: var(--chrome-textsec, #94a3b8); }
   /* Item 17 (1.9.8): ON AIR button sizing — prevent overflow on mobile. */
   #controlBar .livepill { max-width: none; flex: 1 1 140px; margin-top: 0; }
   /* Item 28: small neutral Clear button beside the ON AIR toggle. */
@@ -9738,6 +9797,18 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   <button id="syncBtn" aria-label="Toggle auto-sync" onclick="toggleSync()" style="font-size:18px;" title="Auto-sync with tablet">&#128279;</button>
   <!-- Item 32: keyboard shortcuts moved into the gear panel (learn-once reference). -->
   <div id="topRef" dir="auto">—</div>
+  <!-- 1.9.23 (item 10): auto-clear ring — hidden unless a countdown is
+       running. Tap the ring to pause/resume, ✕ to stop for this verse. -->
+  <span id="acWrap" hidden>
+    <span id="acRing" onclick="toggleAutoClearPause()" title="Pause / resume auto-clear">
+      <svg viewBox="0 0 36 36" width="40" height="40" aria-hidden="true">
+        <circle id="acTrack" cx="18" cy="18" r="15.9155" fill="none" stroke-width="3.5"></circle>
+        <circle id="acArc" cx="18" cy="18" r="15.9155" fill="none" stroke-width="3.5" stroke-linecap="round" stroke-dasharray="100" stroke-dashoffset="0" transform="rotate(-90 18 18)"></circle>
+      </svg>
+      <span id="acText">2:00</span>
+    </span>
+    <button id="acStop" onclick="stopAutoClear()" title="Stop auto-clear for this verse" aria-label="Stop auto-clear">✕</button>
+  </span>
   <button class="onair off" id="onAirBtnTop" onclick="toggleOnAir()">OFF AIR</button>
 </header>
 <!-- Item 71 (1.9.9): CONNECTION LOST banner — shown while the sync link is down. -->
@@ -10409,6 +10480,59 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     }
   }
 
+  // 1.9.23 (item 10): auto-clear ring — the server is the source of
+  // truth (remaining seconds in the light poll), but the ring ticks
+  // locally every second so it drains smoothly between 3s polls.
+  var acRemaining = -1, acTotal = 0, acPaused = false;
+  function acFormat(sec) {
+    sec = Math.max(0, sec);
+    var m = Math.floor(sec / 60), s = sec % 60;
+    return m + ':' + (s < 10 ? '0' : '') + s;
+  }
+  function renderAutoClear() {
+    var wrap = document.getElementById('acWrap');
+    if (!wrap) return;
+    if (acRemaining < 0 || acTotal <= 0) { wrap.hidden = true; return; }
+    wrap.hidden = false;
+    var arc = document.getElementById('acArc');
+    var text = document.getElementById('acText');
+    var frac = Math.max(0, Math.min(1, acRemaining / acTotal));
+    if (arc) {
+      arc.setAttribute('stroke-dashoffset', String(100 - frac * 100));
+      arc.classList.toggle('warn', acRemaining <= 15);
+      arc.classList.toggle('paused', acPaused);
+    }
+    if (text) {
+      text.textContent = acFormat(acRemaining);
+      text.classList.toggle('warn', acRemaining <= 15);
+    }
+  }
+  function syncAutoClear(j) {
+    // Re-sync from the server poll. Always trust the server value — it
+    // corrects local drift and picks up pause/stop from the tablet.
+    var r = (typeof j.autoClearRemaining === 'number') ? j.autoClearRemaining : -1;
+    acRemaining = r;
+    acTotal = (typeof j.autoClearTotal === 'number') ? j.autoClearTotal : 0;
+    acPaused = !!j.autoClearPaused;
+    renderAutoClear();
+  }
+  setInterval(function() {
+    if (acRemaining > 0 && !acPaused) { acRemaining--; renderAutoClear(); }
+  }, 1000);
+  function toggleAutoClearPause() {
+    var action = acPaused ? 'resume' : 'pause';
+    fetch('/api/autoclear/' + action)
+      .then(function(r) { return r.json(); })
+      .then(function(j) { if (j.ok) pollNow(); })
+      .catch(function() { setStatus('✗ Network error', 'err'); });
+  }
+  function stopAutoClear() {
+    fetch('/api/autoclear/stop')
+      .then(function(r) { return r.json(); })
+      .then(function(j) { if (j.ok) pollNow(); })
+      .catch(function() { setStatus('✗ Network error', 'err'); });
+  }
+
   // 2026-10-28: phone Recents is an icon opening a sheet, Browse first.
   function toggleRecents() {
     // v1.9.5: toggle the recents popup (was CSS class on body).
@@ -10559,6 +10683,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       live.bookId = j.bookId || '';
       live.chapter = j.chapterNum || 0;
       live.verse = j.verseNum || 0;
+      // 1.9.23 (item 10): re-sync the auto-clear ring from the server.
+      syncAutoClear(j);
       var cit = j.arabicCitation || j.englishCitation || '';
       // Batch-3: livePill removed; topRef shows the live reference.
       // Item 19: a live verse with no NDI sender rendering it is not

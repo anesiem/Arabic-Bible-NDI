@@ -188,7 +188,9 @@ fun BroadcastControlScreen(
         // tablet's address (IP/domain) + Keep Screen Awake are the
         // first things needed before a service. It is also the
         // default open section (selectedSetupSection above).
-        SetupRailEntry("device", "الجهاز", "Device", Icons.Filled.TabletAndroid),
+        // 1.9.23: TabletAndroid does not resolve in this icon set (CI #112)
+        // — Settings is already used in the app and compiles.
+        SetupRailEntry("device", "الجهاز", "Device", Icons.Filled.Settings),
         // 1.9.23 (item 10): auto-clear has its own rail section — it
         // clears ALL outputs (NDI + HTTP), not just one, so it is not
         // an NDI setting and not a Customization.

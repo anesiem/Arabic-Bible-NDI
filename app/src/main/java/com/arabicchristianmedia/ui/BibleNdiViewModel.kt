@@ -2006,12 +2006,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
      * tab via [BibleNdiUiState.readerJumpNonce].
      */
     fun openSermonVerseInReader(entry: SermonEntry) {
-        // Item 27: reader focus (not a trigger — nothing goes on air).
-        broadcastServer.setReaderFocus(entry.verse.getFormattedArabicCitation())
-        syncReaderToVerse(entry.verse, focus = true)
-        _uiState.value = _uiState.value.copy(
-            readerJumpNonce = _uiState.value.readerJumpNonce + 1
-        )
+        jumpToVerseInReader(entry.verse)
     }
 
     /**
@@ -2021,6 +2016,29 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
      * [BibleNdiUiState.readerJumpNonce]).
      */
     fun openRecentVerseInReader(verse: BibleVerse) {
+        jumpToVerseInReader(verse)
+    }
+
+    /**
+     * 1.9.23 (item 11): the live-verse reference in the top bar — tap it
+     * to jump to the live verse in the Library (focus + scroll, without
+     * putting anything on air — it is already live). No-op when no verse
+     * is active.
+     */
+    fun openLiveVerseInReader() {
+        val verse = _uiState.value.activeVerse ?: return
+        jumpToVerseInReader(verse)
+    }
+
+    /**
+     * 1.9.23 (item 11): shared jump-to-verse — the sermon book icon, the
+     * recents open, and the top-bar live reference all funnel through
+     * here (OOP home rule: one function, no duplicated jump logic).
+     * Focuses the verse (blue highlight + scroll) and bumps
+     * [BibleNdiUiState.readerJumpNonce] so MainActivity switches to the
+     * Library tab. Never touches the live verse or the on-air state.
+     */
+    private fun jumpToVerseInReader(verse: BibleVerse) {
         // Item 27: reader focus (not a trigger — nothing goes on air).
         broadcastServer.setReaderFocus(verse.getFormattedArabicCitation())
         syncReaderToVerse(verse, focus = true)

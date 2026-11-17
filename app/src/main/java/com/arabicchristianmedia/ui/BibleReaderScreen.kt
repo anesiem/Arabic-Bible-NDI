@@ -285,14 +285,13 @@ fun BibleReaderScreen(
                             Icon(Icons.AutoMirrored.Filled.MenuBook, null, tint = bento.primary, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                // 1.9.14 (item 25): verse number beside book + chapter when a
-                                // verse is live/selected — the activeVerse's OWN citation
-                                // (book/chapter/verse), so browsing to another book/chapter
-                                // while a verse is live can never show a mismatched reference
-                                // (browsing never touches activeVerse — v1.9.1 F5). Nothing
-                                // selected: book + chapter only, as before.
-                                text = uiState.activeVerse?.getFormattedArabicCitation()
-                                    ?: "${uiState.selectedBook.arabicName} ${ArabicTextFormatter.toEasternArabicDigits(uiState.selectedChapter)}",
+                                // 1.9.23 (item 11): ALWAYS the browsing book + chapter —
+                                // follows the swipe, so he always knows which chapter he
+                                // is on. Supersedes 1.9.14 item 25 (which showed the live
+                                // verse's citation here and froze the reference while
+                                // browsing). The live verse's citation moved to the top
+                                // bar (MainActivity), matching /remote.
+                                text = "${uiState.selectedBook.arabicName} ${ArabicTextFormatter.toEasternArabicDigits(uiState.selectedChapter)}",
                                 fontSize = 14.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary,
                                 maxLines = 1, overflow = TextOverflow.Ellipsis
                             )

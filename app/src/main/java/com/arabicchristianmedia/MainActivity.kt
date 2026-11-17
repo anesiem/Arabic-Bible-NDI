@@ -552,6 +552,25 @@ class MainActivity : ComponentActivity() {
                                 // indicator AND the toggle — red when a verse
                                 // is live on any output, grey when off.
                                 val topBarIsOnAir = uiState.isLiveOnAir && uiState.activeVerse != null
+                                // 1.9.23 (item 11): the live verse's citation, centred
+                                // between the title and ON AIR — matching /remote's
+                                // topRef. Red when ON AIR, neutral when cued but off
+                                // air. Tap = jump to the verse in the Library (focus
+                                // + scroll). Nothing shows when no verse is active.
+                                // weight(1f, fill=false) + ellipsis: shrinks on
+                                // narrow screens instead of pushing ON AIR off.
+                                uiState.activeVerse?.let { liveVerse ->
+                                    Text(
+                                        text = liveVerse.getFormattedArabicCitation(),
+                                        fontSize = 14.sp, fontWeight = FontWeight.Bold,
+                                        color = if (topBarIsOnAir) bento.liveRed else bento.textPrimary,
+                                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier
+                                            .weight(1f, fill = false)
+                                            .clickable { viewModel.openLiveVerseInReader() }
+                                            .padding(horizontal = 4.dp)
+                                    )
+                                }
                                 // 1.9.23 (item 10): auto-clear ring — only
                                 // while a verse is live and auto-clear is
                                 // ON. Tap = pause/resume, X = stop.

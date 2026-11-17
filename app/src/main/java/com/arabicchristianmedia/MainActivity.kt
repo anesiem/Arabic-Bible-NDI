@@ -559,6 +559,10 @@ class MainActivity : ComponentActivity() {
                                 // + scroll). Nothing shows when no verse is active.
                                 // weight(1f, fill=false) + ellipsis: shrinks on
                                 // narrow screens instead of pushing ON AIR off.
+                                // The tap also bumps libraryTabTapNonce, so an open
+                                // scripture picker / search / recents sheet closes
+                                // first — otherwise the jump scrolls behind it and
+                                // looks like it did nothing.
                                 uiState.activeVerse?.let { liveVerse ->
                                     Text(
                                         text = liveVerse.getFormattedArabicCitation(),
@@ -567,7 +571,7 @@ class MainActivity : ComponentActivity() {
                                         maxLines = 1, overflow = TextOverflow.Ellipsis,
                                         modifier = Modifier
                                             .weight(1f, fill = false)
-                                            .clickable { viewModel.openLiveVerseInReader() }
+                                            .clickable { libraryTabTapNonce++; viewModel.openLiveVerseInReader() }
                                             .padding(horizontal = 4.dp)
                                     )
                                 }

@@ -81,6 +81,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -428,181 +429,198 @@ class MainActivity : ComponentActivity() {
                             // slides under the system status area.
                             modifier = Modifier.fillMaxWidth().statusBarsPadding()
                         ) {
-                            Row(
+                            // 1.9.24 (top-middle rule): the top bar is a Box
+                            // so the live citation sits at the EXACT
+                            // horizontal middle of the screen — centred on
+                            // the bar itself, not in the space after the
+                            // title. The base Row holds everything else
+                            // (title left, chips/gear/ring/ON AIR right);
+                            // the citation floats centred above it, on all
+                            // tabs, portrait and landscape.
+                            Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(horizontal = 16.dp, vertical = 10.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                                contentAlignment = Alignment.Center
                             ) {
+                                // Shared by the ON AIR button (in the Row)
+                                // and the centred live citation (below it):
+                                // true only while a verse is live on air.
+                                val topBarIsOnAir = uiState.isLiveOnAir && uiState.activeVerse != null
                                 Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                    // v1.7: title takes the flexible space; the
-                                    // LIVE badge keeps its intrinsic width.
-                                    modifier = Modifier.weight(1f)
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    // Bento Round Avatar / Broadcast Badge
-                                    Box(
-                                        contentAlignment = Alignment.Center,
-                                        modifier = Modifier
-                                            .size(40.dp)
-                                            .clip(CircleShape)
-                                            .background(bento.secondary)
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                        // v1.7: title takes the flexible space; the
+                                        // LIVE badge keeps its intrinsic width.
+                                        modifier = Modifier.weight(1f)
                                     ) {
-                                        Icon(
-                                            imageVector = Icons.Filled.LiveTv,
-                                            contentDescription = "Bible NDI",
-                                            tint = bento.onSecondary,
-                                            modifier = Modifier.size(22.dp)
-                                        )
-                                    }
-
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = "Bible NDI",
-                                            fontSize = 18.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = bento.textPrimary,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        Text(
-                                            text = "SVD Arabic (الكتاب المقدس)",
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Normal,
-                                            color = bento.textSecondary,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    }
-                                }
-
-                                // Wide Editor layout: the Editor's header chips
-                                // live on this line, beside the NDI pill, so the
-                                // Editor gains a full row of scroll room.
-                                // 2026-10-28 K7 gate: width >= 900 AND height
-                                // >= 600 — the same thresholds as
-                                // isWideLayout — so the top-bar chips and
-                                // the Editor's wide branch can never
-                                // disagree and show both header rows.
-                                if (selectedTab == 1 && topBarWide) {
-                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                        // 2026-10-28: the feed chip is a label
-                                        // only now — Import lives in the design
-                                        // menu, so no separate import button.
-                                        Surface(
-                                            shape = RoundedCornerShape(999.dp),
-                                            color = bento.primaryContainer
+                                        // Bento Round Avatar / Broadcast Badge
+                                        Box(
+                                            contentAlignment = Alignment.Center,
+                                            modifier = Modifier
+                                                .size(40.dp)
+                                                .clip(CircleShape)
+                                                .background(bento.secondary)
                                         ) {
-                                            Text(
-                                                if (editorTab == 0) "السفلي · Lower" else "الكامل · Full",
-                                                fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.onPrimaryContainer,
-                                                maxLines = 1,
-                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                            Icon(
+                                                imageVector = Icons.Filled.LiveTv,
+                                                contentDescription = "Bible NDI",
+                                                tint = bento.onSecondary,
+                                                modifier = Modifier.size(22.dp)
                                             )
                                         }
-                                        // 2026-10-28 design button: always
-                                        // visible, name first, Modified
-                                        // prefix only when dirty — the
-                                        // same button as the compact stage
-                                        // row, which hides when this shows.
-                                        run {
-                                            val designName = if (editorTab == 0) {
-                                                uiState.templates.firstOrNull { it.id == uiState.highlightedLowerStyleId }?.name ?: uiState.activeTemplate.name
-                                            } else {
-                                                uiState.templates.firstOrNull { it.id == uiState.highlightedShowStyleId }?.name ?: uiState.activeShowTemplate.name
+
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "Bible NDI",
+                                                fontSize = 18.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = bento.textPrimary,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Text(
+                                                text = "SVD Arabic (الكتاب المقدس)",
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Normal,
+                                                color = bento.textSecondary,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+
+                                    // Wide Editor layout: the Editor's header chips
+                                    // live on this line, beside the NDI pill, so the
+                                    // Editor gains a full row of scroll room.
+                                    // 2026-10-28 K7 gate: width >= 900 AND height
+                                    // >= 600 — the same thresholds as
+                                    // isWideLayout — so the top-bar chips and
+                                    // the Editor's wide branch can never
+                                    // disagree and show both header rows.
+                                    if (selectedTab == 1 && topBarWide) {
+                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                            // 2026-10-28: the feed chip is a label
+                                            // only now — Import lives in the design
+                                            // menu, so no separate import button.
+                                            Surface(
+                                                shape = RoundedCornerShape(999.dp),
+                                                color = bento.primaryContainer
+                                            ) {
+                                                Text(
+                                                    if (editorTab == 0) "السفلي · Lower" else "الكامل · Full",
+                                                    fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.onPrimaryContainer,
+                                                    maxLines = 1,
+                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                                )
                                             }
-                                            val dirty = if (editorTab == 0) uiState.lowerWorkingDirty else uiState.showWorkingDirty
-                                            Surface(shape = RoundedCornerShape(10.dp), color = bento.primaryContainer, onClick = { editorShowModifiedMenu = true }) {
-                                                // Batch-4: ☰ icon indicates this is a menu button, not just a label.
-                                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)) {
-                                                    Text(if (dirty) "معدّل · $designName" else designName, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.onPrimaryContainer, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-                                                    Spacer(modifier = Modifier.width(4.dp))
-                                                    Icon(Icons.Filled.Menu, contentDescription = "قائمة (Menu)", tint = bento.onPrimaryContainer, modifier = Modifier.size(14.dp))
+                                            // 2026-10-28 design button: always
+                                            // visible, name first, Modified
+                                            // prefix only when dirty — the
+                                            // same button as the compact stage
+                                            // row, which hides when this shows.
+                                            run {
+                                                val designName = if (editorTab == 0) {
+                                                    uiState.templates.firstOrNull { it.id == uiState.highlightedLowerStyleId }?.name ?: uiState.activeTemplate.name
+                                                } else {
+                                                    uiState.templates.firstOrNull { it.id == uiState.highlightedShowStyleId }?.name ?: uiState.activeShowTemplate.name
+                                                }
+                                                val dirty = if (editorTab == 0) uiState.lowerWorkingDirty else uiState.showWorkingDirty
+                                                Surface(shape = RoundedCornerShape(10.dp), color = bento.primaryContainer, onClick = { editorShowModifiedMenu = true }) {
+                                                    // Batch-4: ☰ icon indicates this is a menu button, not just a label.
+                                                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)) {
+                                                        Text(if (dirty) "معدّل · $designName" else designName, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.onPrimaryContainer, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                                                        Spacer(modifier = Modifier.width(4.dp))
+                                                        Icon(Icons.Filled.Menu, contentDescription = "قائمة (Menu)", tint = bento.onPrimaryContainer, modifier = Modifier.size(14.dp))
+                                                    }
                                                 }
                                             }
+                                            // Batch-4: Removed redundant ⓘ beside style chip
+                                            // (the Editor header has the title info).
+                                            if (!editorTipsVisible) {
+                                                IconButton(onClick = {
+                                                    context.getSharedPreferences("editor_ui_prefs", android.content.Context.MODE_PRIVATE).edit().putBoolean("show_how_it_works", true).apply()
+                                                    editorTipsVisible = true
+                                                }) { Icon(Icons.Filled.Info, "كيفية الاستخدام", tint = bento.primary) }
+                                            }
+                                            IconButton(onClick = { viewModel.resetTemplate(editorTab == 1) }) { Icon(Icons.Filled.Refresh, "إعادة تعيين", tint = bento.primary) }
                                         }
-                                        // Batch-4: Removed redundant ⓘ beside style chip
-                                        // (the Editor header has the title info).
-                                        if (!editorTipsVisible) {
-                                            IconButton(onClick = {
-                                                context.getSharedPreferences("editor_ui_prefs", android.content.Context.MODE_PRIVATE).edit().putBoolean("show_how_it_works", true).apply()
-                                                editorTipsVisible = true
-                                            }) { Icon(Icons.Filled.Info, "كيفية الاستخدام", tint = bento.primary) }
-                                        }
-                                        IconButton(onClick = { viewModel.resetTemplate(editorTab == 1) }) { Icon(Icons.Filled.Refresh, "إعادة تعيين", tint = bento.primary) }
                                     }
-                                }
 
-                                // Live Badge & Quick Switch
-                                // Item 32: the keyboard icon moved INTO the
-                                // gear's display-settings dialog (learn-once
-                                // reference) — no standalone top-bar button.
-                                // Batch-3: display-settings gear — Library tab
-                                // only. Bumps the nonce; BibleReaderScreen
-                                // opens its dialog.
-                                if (selectedTab == 0) {
-                                    IconButton(onClick = { displaySettingsNonce++ }) {
-                                        Icon(Icons.Filled.Settings, "إعدادات العرض (Display settings)", tint = bento.textSecondary)
+                                    // Live Badge & Quick Switch
+                                    // Item 32: the keyboard icon moved INTO the
+                                    // gear's display-settings dialog (learn-once
+                                    // reference) — no standalone top-bar button.
+                                    // Batch-3: display-settings gear — Library tab
+                                    // only. Bumps the nonce; BibleReaderScreen
+                                    // opens its dialog.
+                                    if (selectedTab == 0) {
+                                        IconButton(onClick = { displaySettingsNonce++ }) {
+                                            Icon(Icons.Filled.Settings, "إعدادات العرض (Display settings)", tint = bento.textSecondary)
+                                        }
+                                    }
+                                    // Batch-3: the display-only LIVE pill is gone
+                                    // (redundant). The ON AIR button IS the live
+                                    // indicator AND the toggle — red when a verse
+                                    // is live on any output, grey when off.
+                                    // 1.9.23 (item 10): auto-clear ring — only
+                                    // while a verse is live and auto-clear is
+                                    // ON. Tap = pause/resume, X = stop.
+                                    val autoClearRemaining = uiState.autoClearRemainingSec
+                                    if (uiState.autoClearEnabled && autoClearRemaining != null) {
+                                        AutoClearRing(
+                                            remainingSec = autoClearRemaining,
+                                            totalSec = uiState.autoClearDurationMinutes.coerceIn(1, 60) * 60,
+                                            paused = uiState.autoClearPaused,
+                                            onTogglePause = {
+                                                if (uiState.autoClearPaused) viewModel.resumeAutoClear()
+                                                else viewModel.pauseAutoClear()
+                                            },
+                                            onStop = { viewModel.stopAutoClear() }
+                                        )
+                                    }
+                                    Button(
+                                        onClick = { viewModel.toggleLive() },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = if (topBarIsOnAir) bento.liveRed else OnAirOffGrey,
+                                            contentColor = Color.White
+                                        ),
+                                        shape = RoundedCornerShape(10.dp),
+                                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                                    ) {
+                                        Text(
+                                            if (topBarIsOnAir) "ON AIR" else "OFF AIR",
+                                            fontSize = 12.sp, fontWeight = FontWeight.Bold
+                                        )
                                     }
                                 }
-                                // Batch-3: the display-only LIVE pill is gone
-                                // (redundant). The ON AIR button IS the live
-                                // indicator AND the toggle — red when a verse
-                                // is live on any output, grey when off.
-                                val topBarIsOnAir = uiState.isLiveOnAir && uiState.activeVerse != null
-                                // 1.9.23 (item 11): the live verse's citation, centred
-                                // between the title and ON AIR — matching /remote's
-                                // topRef. Red when ON AIR, neutral when cued but off
-                                // air. Tap = jump to the verse in the Library (focus
-                                // + scroll). Nothing shows when no verse is active.
-                                // weight(1f, fill=false) + ellipsis: shrinks on
-                                // narrow screens instead of pushing ON AIR off.
-                                // The tap also bumps libraryTabTapNonce, so an open
-                                // scripture picker / search / recents sheet closes
-                                // first — otherwise the jump scrolls behind it and
-                                // looks like it did nothing.
+                                // 1.9.24 (top-middle rule): the live verse's
+                                // citation, at the EXACT horizontal middle of
+                                // the screen. Red when ON AIR, neutral when
+                                // cued but off air. Tap = jump to the verse
+                                // in the Library (focus + scroll); the tap
+                                // also bumps libraryTabTapNonce so an open
+                                // picker / search / recents sheet closes
+                                // first. fillMaxWidth(0.5f) + ellipsis: a
+                                // long citation shrinks instead of covering
+                                // the title or ON AIR. Nothing shows when
+                                // no verse is active.
                                 uiState.activeVerse?.let { liveVerse ->
                                     Text(
                                         text = liveVerse.getFormattedArabicCitation(),
                                         fontSize = 14.sp, fontWeight = FontWeight.Bold,
                                         color = if (topBarIsOnAir) bento.liveRed else bento.textPrimary,
+                                        textAlign = TextAlign.Center,
                                         maxLines = 1, overflow = TextOverflow.Ellipsis,
                                         modifier = Modifier
-                                            .weight(1f, fill = false)
+                                            .fillMaxWidth(0.5f)
                                             .clickable { libraryTabTapNonce++; viewModel.openLiveVerseInReader() }
                                             .padding(horizontal = 4.dp)
-                                    )
-                                }
-                                // 1.9.23 (item 10): auto-clear ring — only
-                                // while a verse is live and auto-clear is
-                                // ON. Tap = pause/resume, X = stop.
-                                val autoClearRemaining = uiState.autoClearRemainingSec
-                                if (uiState.autoClearEnabled && autoClearRemaining != null) {
-                                    AutoClearRing(
-                                        remainingSec = autoClearRemaining,
-                                        totalSec = uiState.autoClearDurationMinutes.coerceIn(1, 60) * 60,
-                                        paused = uiState.autoClearPaused,
-                                        onTogglePause = {
-                                            if (uiState.autoClearPaused) viewModel.resumeAutoClear()
-                                            else viewModel.pauseAutoClear()
-                                        },
-                                        onStop = { viewModel.stopAutoClear() }
-                                    )
-                                }
-                                Button(
-                                    onClick = { viewModel.toggleLive() },
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = if (topBarIsOnAir) bento.liveRed else OnAirOffGrey,
-                                        contentColor = Color.White
-                                    ),
-                                    shape = RoundedCornerShape(10.dp),
-                                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
-                                ) {
-                                    Text(
-                                        if (topBarIsOnAir) "ON AIR" else "OFF AIR",
-                                        fontSize = 12.sp, fontWeight = FontWeight.Bold
                                     )
                                 }
                             }

@@ -2062,33 +2062,39 @@ fun BroadcastControlScreen(
                 Modifier.fillMaxSize().padding(14.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                SetupSectionHeader("البث (Broadcast)")
-                broadcastStatusBlock()
-                lowerBlock()
-                fullBlock()
-                diagnosticsBlock()
-                // 1.9.23 (item 10): auto-clear section — position 2 in
-                // the rail order, right after NDI Broadcast.
+                // 1.9.24: the narrow column follows the agreed rail order
+                // exactly — Device first (Keep Screen Awake + Network
+                // together), then Auto-Clear, HDMI, Broadcast, URLs,
+                // vMix, ProPresenter, OBS, API, Customizations. The
+                // blocks carry their own titles, so only the Device
+                // section gets a header (it groups two blocks).
+                SetupSectionHeader("الجهاز (Device)")
+                keepAwakeBlock()
+                Spacer(modifier = Modifier.height(12.dp))
+                networkBlock()
                 SetupSectionHeader("المسح التلقائي (Auto-Clear)")
                 autoClearBlock()
                 // 1.9.15 item 5: one HDMI section (the SetupSection
                 // carries its own title).
                 hdmiSection()
-                // 1.9.15 item 6: Keep Screen Awake is a slim row directly
-                // above the URLs header.
-                keepAwakeBlock()
+                SetupSectionHeader("البث (Broadcast)")
+                broadcastStatusBlock()
+                lowerBlock()
+                fullBlock()
+                diagnosticsBlock()
                 SetupSectionHeader("الروابط (URLs)")
                 urlsCardBlock()
                 mjpegBlock()
                 allUrlsBlock()
-                urlReferenceBlock()
-                networkBlock()
-                // 1.9.23 (Item 7): the Integrations header is gone (its
-                // blocks now have their own rail items on tablet); the
-                // blocks still render in the same scroll order here.
-                obsBlock()
+                // 1.9.24: vMix, ProPresenter, OBS and API in rail order
+                // (URL Reference belongs to the API section, as on
+                // tablet); apiDocsBlock was missing from the phone
+                // layout entirely — 1.9.23 used it only on tablet.
                 vmixBlock()
                 propresenterBlock()
+                obsBlock()
+                urlReferenceBlock()
+                apiDocsBlock()
                 customBlock()
         // App version footer: confirms which build is installed on this tablet.
         Text(

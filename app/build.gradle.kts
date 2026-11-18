@@ -20,8 +20,8 @@ android {
     applicationId = "com.arabicchristianmedia"
     minSdk = 24
     targetSdk = 36
-    versionCode = 27
-    versionName = "1.9.23"
+    versionCode = 28
+    versionName = "1.9.24"
     // Build date (UTC) shown in the NDI tab version footer.
     buildConfigField("String", "BUILD_DATE", "\"${LocalDate.now(ZoneId.of("UTC"))}\"")
 

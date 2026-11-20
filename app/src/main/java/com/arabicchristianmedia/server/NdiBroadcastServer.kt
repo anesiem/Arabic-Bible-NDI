@@ -1342,6 +1342,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             // (see ndiActiveProvider above). False when the provider is
             // unset or throws — never let a diagnostics flag break the poll.
             put("ndiActive", try { ndiActiveProvider?.invoke() } catch (e: Exception) { false } ?: false)
+            // 1.9.26 (item 7): working-sermon verse count for the /remote
+            // sermon arrows — the page greys them out when it is 0 (no
+            // sermon loaded). First of the sermonCounts pair; 0 when
+            // the provider is unset or throws.
+            put("sermonTotal", try { sermonCountsProvider?.invoke()?.first } catch (e: Exception) { null } ?: 0)
             // 1.9.23 (item 10): auto-clear countdown for the /remote ring.
             // remaining -1 = no countdown running; the page counts down
             // locally between polls and re-syncs from these fields.
@@ -9006,7 +9011,7 @@ ${i18nScript()}
     private fun serveStageMonitorPage(out: OutputStream) {
         val html = """
 <!DOCTYPE html>
-<html lang="en">
+<html lang="${defaultUiLang()}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -9386,6 +9391,20 @@ ${i18nScript()}
         out.flush()
     }
 
+    /**
+     * 1.9.26 (item 8): the app's interface language ("ar" | "en") as the
+     * server-side default for the served pages — the same value
+     * i18nScript injects as DEFAULT_LANG. One helper so the <html lang>
+     * on /remote + /stage and the i18n default can't drift. Falls back
+     * to "en" if the language prefs can't be read.
+     * NOTE: this lives OUTSIDE the BEGIN/END-GENERATED-I18N region on
+     * purpose — phaseB-webgen.py replaces everything between those
+     * markers, and deleting this helper would break the <html lang>
+     * interpolations in serveStageMonitorPage / serveRemotePage.
+     */
+    private fun defaultUiLang(): String =
+        try { AppLanguage.effectiveLang(context) } catch (e: Exception) { Log.w("NdiBroadcastServer", "default UI language failed, falling back to en", e); "en" }
+
     // 1.9.25 (item 2, language mode): GENERATED from translate-data.json
     // (web entries) by phaseB-webgen.py — regenerate, don't hand-edit the
     // map. One script block shared by /remote, /stage and /remote/sermon:
@@ -9406,7 +9425,7 @@ ${i18nScript()}
     // select on each page (localStorage). Verse language is separate.
     // BEGIN-GENERATED-I18N
     private fun i18nScript(): String {
-        val defaultLang = try { AppLanguage.effectiveLang(context) } catch (e: Exception) { Log.w("NdiBroadcastServer", "i18n default language failed, falling back to en", e); "en" }
+        val defaultLang = defaultUiLang()
         return """
 <script>
 (function () {
@@ -9587,7 +9606,7 @@ ${i18nScript()}
     private fun serveRemotePage(out: OutputStream) {
         val html = """
 <!DOCTYPE html>
-<html lang="en">
+<html lang="${defaultUiLang()}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
@@ -9637,9 +9656,6 @@ ${i18nScript()}
   #infoPopup { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 100; display: flex; align-items: center; justify-content: center; }
   #infoPopup[hidden] { display: none; }
   #infoPopup .card { max-width: 320px; text-align: center; }
-  #controlBar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-  #controlBar select, #controlBar input { flex: 0 1 auto; }
-  #controlBar #ref { flex: 1 1 120px; min-width: 100px; }
   /* The live reference rides in the header as a slim pill \u2014 information
      only, zero extra layout space. */
   .livepill { display: inline-flex; align-items: center; gap: 8px; max-width: 55%; flex: none;
@@ -9701,16 +9717,6 @@ ${i18nScript()}
     width: 46px; padding: 9px 0; font-size: 15px; font-weight: 600;
     border: 1px solid; border-radius: 10px; background: transparent; cursor: pointer;
   }
-  /* Item 13: the single control line — book + chapter + version +
-     reference + citation + ON AIR in one wrapping flex row. */
-  #controlBar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-  #controlBar select, #controlBar input { width: auto; min-width: 0; }
-  #controlBar #bookSel { flex: 2 1 140px; }
-  #controlBar #chSel { flex: 1 1 64px; }
-  #controlBar #langSel { flex: 1 1 80px; }
-  #controlBar #ref { flex: 2 1 140px; height: 44px; padding: 10px 12px; font-size: 15px; }
-  #controlBar #goBtn { width: auto; flex: none; height: 44px; min-height: 44px; padding: 8px 14px; font-size: 14px; font-weight: 700; border-radius: 12px; margin: 0; display: inline-flex; align-items: center; justify-content: center; }
-  #controlBar .onair { width: auto; flex: none; height: 44px; min-height: 44px; padding: 8px 14px; font-size: 14px; max-width: 110px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   /* Item 108: top-bar ON AIR button compact styling. */
   #topBar #onAirBtnTop { width: auto; flex: none; height: 44px; min-height: 44px; padding: 8px 12px; font-size: 14px; max-width: 110px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; border-radius: 12px; }
   /* 1.9.22: the #topBar button rule above sets background: none on ALL
@@ -9737,21 +9743,6 @@ ${i18nScript()}
   #acText { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; color: var(--chrome-text, #f1f5f9); pointer-events: none; }
   #acText.warn { color: #dc2626; }
   #topBar #acStop { width: 26px; height: 26px; font-size: 13px; border: none; color: var(--chrome-textsec, #94a3b8); }
-  /* Item 17 (1.9.8): ON AIR button sizing — prevent overflow on mobile. */
-  #controlBar .livepill { max-width: none; flex: 1 1 140px; margin-top: 0; }
-  /* Item 28: small neutral Clear button beside the ON AIR toggle. */
-  #controlBar #clearBtn { width: auto; flex: none; padding: 12px 14px; min-height: 48px; font-size: 14px; font-weight: 700; background: transparent; border: 1px solid var(--chrome-border, #334155); color: inherit; border-radius: 16px; cursor: pointer; }
-  /* Sermon APIs: Prev/Next use the same neutral control styling as
-     Clear, so the remote control bar does not grow a new visual
-     language; they call POST /api/sermons/current/prev|next. */
-  #controlBar #prevBtn, #controlBar #nextBtn { width: auto; flex: none; padding: 12px 14px; min-height: 48px; font-size: 14px; font-weight: 700; background: transparent; border: 1px solid var(--chrome-border, #334155); color: inherit; border-radius: 16px; cursor: pointer; }
-  #controlBar #clearBtn:active { transform: scale(0.98); opacity: 0.9; }
-  /* 1.9.25 (item 21): the revived control bar is a 3-button row
-     (Prev / Clear / Next) under the header — breathing room only. */
-  #controlBar { margin: 8px 8px 0 8px; }
-  /* 1.9.25 (item 2): the Prev/Next arrows flip with the page direction. */
-  #controlBar .arr { display: inline-block; }
-  html[dir="rtl"] #controlBar .arr { transform: scaleX(-1); }
   .vlist { margin-top: 8px; max-height: 52dvh; overflow-y: auto; min-height: 0; flex: 1; transition: opacity 0.15s; touch-action: pan-y; overscroll-behavior-y: auto; }
   /* 1.9.16 items 14-15: the browse card is a flex column (so the
      verse list can fill it) and the VERSE list has no dvh cap on
@@ -9835,7 +9826,6 @@ ${i18nScript()}
   #recentsToggle { display: none; width: 100%; padding: 12px; font-size: 15px; font-weight: 700; border: 1px solid var(--chrome-border, #334155); border-radius: 12px; background: transparent; color: inherit; cursor: pointer; }
   @media (max-width: 899px) {
     main { display: flex; flex-direction: column; }
-    #controlBar { order: 1; }
     #browseCard { order: 2; }
     #recentsToggle { display: block; order: 3; }
     #recentCard { order: 4; display: none; }
@@ -9853,11 +9843,6 @@ ${i18nScript()}
     /* One-update item 19: RTL Arabic support for the recents sheet. */
     body.recents-open #recentCard .vrow { direction: rtl; text-align: right; }
     body.recents-open #recentCard .vrow .ve { direction: ltr; text-align: left; }
-  }
-  @media (max-width: 480px) {
-    #controlBar .livepill { flex: 1 1 100%; max-width: 100%; text-align: center; justify-content: center; margin: 4px 0; }
-    #controlBar #ref { flex: 1 1 120px; }
-    #controlBar #goBtn { height: 44px; padding: 8px 12px; font-size: 14px; }
   }
   .vn { font-weight: 800; min-width: 30px; text-align: center; opacity: 0.65; padding-top: 2px; }
   .va { font-size: 17px; line-height: 1.8; }
@@ -9990,16 +9975,30 @@ ${i18nScript()}
      inline search (middle, hidden until opened), and the search +
      recents icons (right end). Its icon buttons match the top bar's
      44px touch targets. The Go button inside #navSearch keeps its
-     own inline sizing (it is not a direct child of #navRow). */
-  #navRow > button { background: none; border: 1px solid; border-radius: 10px; font-size: 20px; width: 44px; height: 44px; cursor: pointer; flex: none; display: inline-flex; align-items: center; justify-content: center; padding: 0; }
+     own inline sizing (it is not a direct child of #navRow).
+     1.9.26 (item 2): the sermon group shares the same 44px button
+     rule — it rides at the far right of the row (margin-left:auto
+     on the ltr row), after the recents icon. */
+  #navRow > button, #sermonGroup > button { background: none; border: 1px solid; border-radius: 10px; font-size: 20px; width: 44px; height: 44px; cursor: pointer; flex: none; display: inline-flex; align-items: center; justify-content: center; padding: 0; }
+  /* 1.9.26 (item 2): the sermon group — a 📋 marker + the sermon
+     Prev/Next arrows, icons only. The arrows match the chapter
+     arrows' direction (next=◀, prev=▶, next first in the DOM).
+     1.9.26 (item 7): the arrows disable (grey out) when no sermon
+     is loaded — the poll sets .disabled from the sermon total. */
+  #sermonGroup { display: flex; gap: 8px; align-items: center; margin-left: auto; flex: none; }
+  #sermonGroup > button:disabled { opacity: 0.35; cursor: default; }
+  #sermonGroup > .sermon-mark { font-size: 20px; cursor: default; }
   #navSearch { flex: 1; min-width: 0; display: flex; gap: 4px; align-items: center; }
   #navSearch #ref { flex: 1; min-width: 0; }
   #navRow:not(.nav-search-open) #navSearch { display: none; }
   /* 1.9.19 item 2: when the inline search is open the recents icon
      hides so the input gets room on a small phone (the input would
      otherwise be ~40px wide at 360px). It returns when search closes.
-     The search icon stays — tapping it again closes the search. */
+     The search icon stays — tapping it again closes the search.
+     1.9.26 (item 2): the sermon group hides the same way — there is
+     no room for it at 390px while the input is open. */
   #navRow.nav-search-open #recentsBtn { display: none; }
+  #navRow.nav-search-open #sermonGroup { display: none; }
   #navRow #searchBtn.search-on { border-color: #16a34a; background: rgba(22,163,74,0.12); }
 </style>
 </head>
@@ -10030,16 +10029,6 @@ ${i18nScript()}
   </span>
   <button class="onair off" id="onAirBtnTop" onclick="toggleOnAir()">OFF AIR</button>
 </header>
-<!-- 1.9.25 (item 21): sermon + clear controls — Clear was keyboard-only
-     (no Clear at all on a phone remote); Prev/Next step the working
-     sermon list and go live. Wired to the existing clearVerse() /
-     sermonStep() handlers; labels come from the per-client language
-     map (data-i18n) with English as the shipped default. -->
-<div id="controlBar">
-  <button id="prevBtn" onclick="sermonStep('prev')"><span class="arr" aria-hidden="true">◀</span> <span data-i18n="s905">Prev</span></button>
-  <button id="clearBtn" data-i18n="s906" onclick="clearVerse()">Clear</button>
-  <button id="nextBtn" onclick="sermonStep('next')"><span data-i18n="s907">Next</span> <span class="arr" aria-hidden="true">▶</span></button>
-</div>
 <!-- Item 71 (1.9.9): CONNECTION LOST banner — shown while the sync link is down. -->
 <div id="connBanner" hidden data-i18n="s733" style="background:#dc2626;color:#fff;text-align:center;font-weight:bold;font-size:14px;padding:8px 12px;">⚠ CONNECTION LOST — reconnecting…</div>
 <main>
@@ -10048,7 +10037,11 @@ ${i18nScript()}
        the search + recents icons grouped at the far right end (recent
        rightmost, first in reading order). The old separate #refBar row
        is gone; its input lives here now. The book + chapter row below
-       holds only the two dropdowns, so the book name gets full width. -->
+       holds only the two dropdowns, so the book name gets full width.
+       1.9.26 (item 2): the sermon group (📋 marker + sermon Prev/Next,
+       icons only) rides at the far right, after the recents icon.
+       Item 1: the Clear button is gone — Clear stays on the keyboard
+       shortcut + the native app + auto-clear. -->
   <div class="card" id="navRow" dir="ltr">
     <!-- Item 29: RTL visual order — right arrow (previous) before left arrow (next). Actions unchanged. -->
     <button id="nextChBtn" onclick="stepChapter(1)" aria-label="Next chapter" data-i18n-aria="s734">&#9664;</button>
@@ -10065,6 +10058,16 @@ ${i18nScript()}
     </div>
     <button id="searchBtn" onclick="toggleNavSearch()" aria-label="Search / reference" data-i18n-aria="s739" style="font-size:18px;" title="Search / reference" data-i18n-title="s739">&#128269;</button>
     <button id="recentsBtn" onclick="toggleRecents()" aria-label="Recents" data-i18n-aria="s740" style="font-size:18px;" title="Recents" data-i18n-title="s740">&#128341;</button>
+    <!-- 1.9.26 (item 2): the sermon group — 📋 marker + sermon Prev/Next
+         at the far right (icons only, no text). Arrows match the chapter
+         arrows' direction (next=◀, prev=▶, next first in the DOM); the
+         aria labels come from the per-client language map. Item 7: the
+         poll disables both arrows when no sermon is loaded. -->
+    <span id="sermonGroup">
+      <span class="sermon-mark" aria-hidden="true">&#128203;</span>
+      <button id="nextBtn" onclick="sermonStep('next')" aria-label="Next sermon" data-i18n-aria="s750">&#9664;</button>
+      <button id="prevBtn" onclick="sermonStep('prev')" aria-label="Previous sermon" data-i18n-aria="s751">&#9654;</button>
+    </span>
   </div>
   <!-- v1.9.5: Row 3 — [chapter][book] (book gets the full width now). -->
   <!-- 1.9.19 item 2: the browse bar holds ONLY the chapter + book
@@ -10197,7 +10200,8 @@ ${i18nScript()}
         var dy = e.changedTouches[0].clientY - startY;
         if (Math.abs(dx) > 90 && Math.abs(dx) > Math.abs(dy) * 2.5) {
           // Item 28: RTL swipe — right-to-left = previous, left-to-right = next.
-          // (Page is <html lang="en"> so dir detection fails; Arabic Bible app = RTL always.)
+          // (The verse list is Arabic-first, so the swipe direction is
+          // hardcoded RTL — it does not follow the page's <html lang>.)
           stepChapter(dx < 0 ? -1 : 1);
         }
       }
@@ -10928,17 +10932,16 @@ ${i18nScript()}
       syncAutoClear(j);
       var cit = j.arabicCitation || j.englishCitation || '';
       // Batch-3: livePill removed; topRef shows the live reference.
-      // Item 19: a live verse with no NDI sender rendering it is not
-      // "on screen" for OBS/vMix — say so in the ref (HTTP overlays
-      // still show it).
-      var ndiOff = live.onAir && cit && j.ndiActive === false;
+      // 1.9.26 (item 3): the NDI-off suffix + tooltip are gone — the
+      // top citation shows just the citation (NDI status lives in
+      // the native NDI tab now, not on /remote).
       var topRefEl = document.getElementById('topRef');
       if (topRefEl) {
         // Item 30: removed the redundant "Off air — " prefix (the top-right
         // ON AIR button is the explicit status). Tint the verse ref red when
         // ON AIR as the at-a-glance signal.
-        topRefEl.textContent = cit ? (ndiOff ? cit + ' ' + T('s759', '(NDI off)') : cit) : '—';
-        topRefEl.title = ndiOff ? cit + ' — ' + T('s760', 'NDI senders off; HTTP overlays still show this verse') : (cit || '');
+        topRefEl.textContent = cit || '—';
+        topRefEl.title = cit || '';
         topRefEl.style.color = live.onAir ? '#dc2626' : '';
       }
       // Theme bands + recents + chrome: mirror the app's selected theme
@@ -10969,6 +10972,13 @@ ${i18nScript()}
         document.documentElement.style.setProperty('--chrome-primary-rgb', hexToRgb(darkMode ? j.chromeDarkPrimary : j.chromeLightPrimary));
       }
       renderOnAir();
+      // 1.9.26 (item 7): grey out the sermon arrows when no sermon is
+      // loaded (total 0) — stepping does nothing then.
+      var noSermon = (j.sermonTotal || 0) == 0;
+      var nxBtn = document.getElementById('nextBtn');
+      var pvBtn = document.getElementById('prevBtn');
+      if (nxBtn) nxBtn.disabled = noSermon;
+      if (pvBtn) pvBtn.disabled = noSermon;
       // 2026-11-03: Mark rows AFTER recents arrive (was marking before fetch completed,
       // so lastRecents was empty and colors never showed).
       fetch('/api/recents').then(function(r) { return r.json(); }).then(function(rj) {

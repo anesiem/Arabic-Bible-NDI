@@ -1633,7 +1633,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         val initialJson = buildJsonState(forceFullScreen)
         return """
 <!DOCTYPE html>
-<html lang="ar" dir="rtl">
+<!-- 1.9.29 (item 16): lang follows the app language like /remote +
+     /stage (was hardcoded Arabic). The verse blocks carry their
+     own alignment from the template. -->
+<html lang="${defaultUiLang()}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
@@ -7113,7 +7116,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         val ip = getLocalIpAddress()
         val html = """
 <!DOCTYPE html>
-<html lang="ar" dir="rtl">
+<!-- 1.9.29 (item 18): lang follows the app language like /remote +
+     /stage (was hardcoded Arabic). -->
+<html lang="${defaultUiLang()}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -9285,6 +9290,12 @@ ${i18nScript()}
     el('var').textContent = s.arabicText || '';
     el('ven').textContent = s.englishText || '';
   }
+  // 1.9.29 (item 17): Eastern Arabic digits when the client
+  // interface language is Arabic; Western otherwise.
+  function eastNum(n) {
+    if (document.documentElement.lang !== 'ar') return String(n);
+    return String(n).replace(/[0-9]/g, function(d) { return '٠١٢٣٤٥٦٧٨٩'.charAt(d); });
+  }
   function renderSermon(d) {
     lastSermon = d;
     var box = el('slist');
@@ -9293,7 +9304,7 @@ ${i18nScript()}
       el('sprog').textContent = '';
       return;
     }
-    el('sprog').textContent = (d.index + 1) + ' / ' + d.total;
+    el('sprog').textContent = eastNum(d.index + 1) + ' / ' + eastNum(d.total);
     var lo = 0, hi = d.entries.length;
     if (L.sermon === 'context') { lo = Math.max(0, d.index - 1); hi = Math.min(d.entries.length, d.index + 2); }
     var h = '';
@@ -9366,6 +9377,9 @@ ${i18nScript()}
     es.onmessage = function (ev) { try { renderVerse(JSON.parse(ev.data)); } catch (e) {} };
   } catch (e) {}
   function tick() { el('clock').textContent = new Date().toLocaleTimeString(); }
+  // 1.9.29 (item 17): re-render the sermon progress when the
+  // interface language changes (its digits follow the language).
+  document.addEventListener('i18n-applied', function() { renderSermon(lastSermon); });
   applyLayout();
   loadAll();
   tick();
@@ -10043,10 +10057,10 @@ ${i18nScript()}
        Item 1: the Clear button is gone — Clear stays on the keyboard
        shortcut + the native app + auto-clear. -->
   <div class="card" id="navRow" dir="ltr">
-    <!-- Item 29: RTL visual order — right arrow (previous) before left arrow (next). Actions unchanged. -->
+    <!-- Item 29: RTL visual order — right arrow (previous) before left arrow (next). Actions unchanged. 1.9.29 (item 8): this is the served (Arabic) default — applyNavDirection() swaps glyphs + order in English mode. -->
     <button id="nextChBtn" onclick="stepChapter(1)" aria-label="Next chapter" data-i18n-aria="s734">&#9664;</button>
     <button id="prevChBtn" onclick="stepChapter(-1)" aria-label="Previous chapter" data-i18n-aria="s735">&#9654;</button>
-    <!-- Item 19 (1.9.8): RTL — arrows point in reading direction (previous=right, next=left). -->
+    <!-- Item 19 (1.9.8): RTL — arrows point in reading direction (previous=right, next=left). 1.9.29 (item 8): applyNavDirection() flips them in English mode. -->
     <div id="navSearch" dir="rtl">
       <!-- 2026-11-02: flexbox layout (was absolute positioning, broke on narrow RTL screens). -->
       <input id="ref" type="text" inputmode="text" autocomplete="off"
@@ -10060,7 +10074,9 @@ ${i18nScript()}
     <button id="recentsBtn" onclick="toggleRecents()" aria-label="Recents" data-i18n-aria="s740" style="font-size:18px;" title="Recents" data-i18n-title="s740">&#128341;</button>
     <!-- 1.9.26 (item 2): the sermon group — 📋 marker + sermon Prev/Next
          at the far right (icons only, no text). Arrows match the chapter
-         arrows' direction (next=◀, prev=▶, next first in the DOM); the
+         arrows' direction (next=◀, prev=▶, next first in the DOM) in the
+         served (Arabic) default; 1.9.29 (item 8): applyNavDirection()
+         swaps them in English mode. The
          aria labels come from the per-client language map. Item 7: the
          poll disables both arrows when no sermon is loaded. -->
     <span id="sermonGroup">
@@ -11214,9 +11230,39 @@ ${i18nScript()}
     else { done(); }
   };
 
+  // 1.9.29 (item 8): the nav-row arrows + search direction follow
+  // the client interface language. Arabic (RTL): next=◀ first,
+  // prev=▶, search RTL, Go ◀. English (LTR): prev=◀ first, next=▶,
+  // search LTR, Go ▶. The served HTML carries the Arabic defaults;
+  // this runs on every i18n-applied event (load + language switch).
+  function applyNavDirection() {
+    var rtl = document.documentElement.lang === 'ar';
+    var nav = document.getElementById('navSearch');
+    if (nav) nav.dir = rtl ? 'rtl' : 'ltr';
+    var go = document.getElementById('goBtn');
+    if (go) go.textContent = rtl ? '◀' : '▶';
+    var pairs = [['nextChBtn', 'prevChBtn'], ['nextBtn', 'prevBtn']];
+    for (var i = 0; i < pairs.length; i++) {
+      var next = document.getElementById(pairs[i][0]);
+      var prev = document.getElementById(pairs[i][1]);
+      if (!next || !prev || next.parentNode !== prev.parentNode) continue;
+      next.innerHTML = rtl ? '&#9664;' : '&#9654;';
+      prev.innerHTML = rtl ? '&#9654;' : '&#9664;';
+      // English wants prev first, next second; Arabic keeps the
+      // served order (next first). The two buttons are adjacent
+      // siblings, so one move puts them right.
+      if (!rtl && next.nextElementSibling === prev) {
+        next.parentNode.insertBefore(next, prev.nextElementSibling);
+      }
+      if (rtl && prev.nextElementSibling === next) {
+        prev.parentNode.insertBefore(prev, next.nextElementSibling);
+      }
+    }
+  }
+
   // 1.9.25 (item 2): the text-size label is JS-managed (not
   // data-i18n) — refresh it when the interface language changes.
-  document.addEventListener('i18n-applied', function() { syncPanel(); });
+  document.addEventListener('i18n-applied', function() { syncPanel(); applyNavDirection(); });
   loadBooks();
   applyLayout();
   setInterval(pollNow, 3000);

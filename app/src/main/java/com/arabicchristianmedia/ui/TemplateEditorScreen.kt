@@ -224,12 +224,11 @@ fun TemplateEditorScreen(
     onRenameTemplate: (String, String, Boolean) -> Unit = { _, _, _ -> },
     // Deep-test fix: empty-state "Restore factory styles" button.
     onRestoreFactoryTemplates: () -> Unit = {},
-    // One-update item 13: Tashkeel + English version live in the Editor
-    // (top of their language groups), GLOBAL effect — not per template.
+    // One-update item 13: Tashkeel lives in the Editor (top of the
+    // Arabic group), GLOBAL effect — not per template. 1.9.29 (item
+    // 10): the English version moved to Display Settings.
     tashkeelEnabled: Boolean = true,
     onTashkeelChange: (Boolean) -> Unit = {},
-    englishVersion: String = "asv",
-    onEnglishVersionChange: (String) -> Unit = {},
     // Batch-3: per-tab per-section expand memory (ViewModel-backed map).
     sectionExpandedMap: Map<String, Boolean> = emptyMap(),
     onSetSectionExpanded: (String, String, Boolean) -> Unit = { _, _, _ -> },
@@ -1377,35 +1376,10 @@ CollapsibleSection(
                         )
                     }
                     Spacer(modifier = Modifier.height(8.dp))
-                        // One-update item 13: English version at the TOP of the
-                    // English group - GLOBAL (applies to all styles).
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        Text(
-                            context.getString(R.string.s195),
-                            fontSize = 13.sp, fontWeight = FontWeight.Bold,
-                            color = bento.textPrimary
-                        )
-                        Text(
-                            context.getString(R.string.s176),
-                            fontSize = 10.sp, color = bento.textSecondary
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            listOf("asv" to "ASV", "kjv" to "KJV").forEach { (id, label) ->
-                                FilterChip(
-                                    selected = englishVersion == id,
-                                    onClick = { onEnglishVersionChange(id) },
-                                    label = { Text(label, fontSize = 12.sp) }
-                                )
-                            }
-                        }
-                        Text(
-                            context.getString(R.string.s196),
-                            fontSize = 10.sp, color = bento.textSecondary,
-                            modifier = Modifier.padding(top = 2.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
+                    // 1.9.29 (item 10): the English version chips lived
+                    // here — moved to Display Settings (the version is
+                    // global, not per-style). The Editor keeps only
+                    // how this style shows English.
                     // English Citation Controls
                         Row(modifier = anchorModifier("english-citation"), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             Text(context.getString(R.string.s197), fontSize = 11.sp, color = bento.textSecondary)
@@ -3461,7 +3435,9 @@ fun ColorGradeSpectrumModal(
                                 style = TextStyle(shadow = previewTextShadow)
                             )
                             Text(
-                                "يوحنا الأولى 4: 8",
+                                // 1.9.29 (item 15): Eastern digits — the
+                                // sample is an Arabic citation.
+                                "يوحنا الأولى ٤: ٨",
                                 color = citCol, fontSize = 11.sp, fontWeight = FontWeight.Bold,
                                 textAlign = TextAlign.Right, modifier = Modifier.fillMaxWidth(),
                                 style = TextStyle(shadow = previewTextShadow)

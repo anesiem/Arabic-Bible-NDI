@@ -803,6 +803,9 @@ class MainActivity : ComponentActivity() {
                                 onNextVerse = { viewModel.nextVerse() },
                                 onPrevVerse = { viewModel.prevVerse() },
                                 onSelectVersion = { viewModel.setBibleVersion(it) },
+                                // 1.9.29 (item 10): the English version
+                                // moved here from the Editor.
+                                onEnglishVersionChange = { viewModel.setEnglishVersion(it) },
                                 onSearchChanged = { viewModel.onSearchQueryChanged(it) },
                                 onClearSearch = { viewModel.clearSearch() },
                                 onSearchResultClicked = { viewModel.onSearchResultClicked(it) },
@@ -842,8 +845,6 @@ class MainActivity : ComponentActivity() {
                                 editingShowStyleId = uiState.editingShowStyleId,
                                 tashkeelEnabled = uiState.tashkeelEnabled,
                                 onTashkeelChange = { viewModel.setTashkeelEnabled(it) },
-                                englishVersion = uiState.englishVersion,
-                                onEnglishVersionChange = { viewModel.setEnglishVersion(it) },
                                 lowerWorkingDirty = uiState.lowerWorkingDirty,
                                 showWorkingDirty = uiState.showWorkingDirty,
                                 activeVerse = uiState.activeVerse,

@@ -986,6 +986,11 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         val bookNameLanguage = try {
             BookNameLanguage.valueOf(prefs?.getString("library_book_name_lang", null) ?: "FOLLOW")
         } catch (e: Exception) { BookNameLanguage.FOLLOW }
+        // 1.9.29 (item 10): Bible version — ARABIC_SVD is the default
+        // (and the fallback for an unknown stored value).
+        val bibleVersion = try {
+            BibleVersion.valueOf(prefs?.getString("library_bible_version", null) ?: "ARABIC_SVD")
+        } catch (e: Exception) { BibleVersion.ARABIC_SVD }
         // 1.9.27 (item 7): list treatment overrides — an unknown stored
         // value falls back to null (theme default), same as a missing key.
         val listTreatmentRecents = listTreatmentFromName(prefs?.getString("list_treatment_recents", null))
@@ -1017,6 +1022,8 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             libraryGridRtl = libraryGridRtl,
             // 1.9.26 (item 9): default FOLLOW.
             bookNameLanguage = bookNameLanguage,
+            // 1.9.29 (item 10): default ARABIC_SVD.
+            bibleVersion = bibleVersion,
             // 1.9.27 (item 7): default null = theme default.
             listTreatmentRecents = listTreatmentRecents,
             listTreatmentSermon = listTreatmentSermon,
@@ -1035,6 +1042,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             ?.putInt("sermon_font_size", state.sermonFontSize ?: -1)
             ?.putBoolean("library_grid_rtl", state.libraryGridRtl)
             ?.putString("library_book_name_lang", state.bookNameLanguage.name)
+            ?.putString("library_bible_version", state.bibleVersion.name)
             ?.putString("list_treatment_recents", state.listTreatmentRecents?.name)
             ?.putString("list_treatment_sermon", state.listTreatmentSermon?.name)
             ?.putBoolean("auto_clear_enabled", state.autoClearEnabled)
@@ -1342,14 +1350,20 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
 
     fun setBibleVersion(version: BibleVersion) {
         _uiState.value = _uiState.value.copy(bibleVersion = version)
-        // v1.8: sync the three-way language mode with the reader's version picker.
-        val newMode = when (version) {
-            BibleVersion.DUAL_BILINGUAL -> LanguageMode.BOTH
-            BibleVersion.ENGLISH_KJV, BibleVersion.ENGLISH_WEB -> LanguageMode.ENGLISH_ONLY
-            else -> LanguageMode.ARABIC_ONLY
+        persistUiPrefs()
+        // 1.9.29 (item 10): sync the active style's language
+        // visibility with the reader's version picker.
+        // showArabic/showEnglish are the current fields (item 27);
+        // languageMode is deprecated but the HTTP broadcast still
+        // reads it, so it stays in sync too.
+        val (showAr, showEn, newMode) = when (version) {
+            BibleVersion.DUAL_BILINGUAL -> Triple(true, true, LanguageMode.BOTH)
+            BibleVersion.ENGLISH_KJV, BibleVersion.ENGLISH_WEB -> Triple(false, true, LanguageMode.ENGLISH_ONLY)
+            else -> Triple(true, false, LanguageMode.ARABIC_ONLY)
         }
-        if (newMode != _uiState.value.activeTemplate.languageMode) {
-            updateActiveTemplate(_uiState.value.activeTemplate.copy(languageMode = newMode))
+        val tpl = _uiState.value.activeTemplate
+        if (showAr != tpl.showArabic || showEn != tpl.showEnglish || newMode != tpl.languageMode) {
+            updateActiveTemplate(tpl.copy(showArabic = showAr, showEnglish = showEn, languageMode = newMode))
         }
     }
 

@@ -106,6 +106,9 @@ fun BibleReaderScreen(
     onNextVerse: () -> Unit = {},
     onPrevVerse: () -> Unit = {},
     onSelectVersion: (BibleVersion) -> Unit,
+    // 1.9.29 (item 10): the English version (ASV/KJV) moved here from
+    // the Editor — Display Settings owns every Bible choice now.
+    onEnglishVersionChange: (String) -> Unit = {},
     onSearchChanged: (String) -> Unit,
     onClearSearch: () -> Unit,
     // One-update item 1: search-result tap selects WITHOUT going live;
@@ -203,6 +206,10 @@ fun BibleReaderScreen(
         BookNameLanguage.ARABIC -> false
         BookNameLanguage.FOLLOW -> !AppLanguage.isArabicUi(context)
     }
+    // 1.9.29: the interface language, resolved here so it is always
+    // fresh — the recents sheet, the chapter steppers and the search
+    // count pill all follow it (items 5, 7, 14).
+    val arabicUi = AppLanguage.isArabicUi(context)
     val lazyListState = rememberLazyListState()
 
     // Auto-scroll to active verse
@@ -298,6 +305,12 @@ fun BibleReaderScreen(
                     // padding so a long book/chapter can never push it
                     // off-centre or under the sides. One line + ellipsis;
                     // the whole bar stays clickable.
+                    // 1.9.29 (item 6): the bar follows the PICKER's name
+                    // language, not the interface language — the
+                    // reference sits on the reading side of its own
+                    // language (English names: left; Arabic: right),
+                    // with the collapse arrow on the other side.
+                    CompositionLocalProvider(LocalLayoutDirection provides if (bookNameEnglish) LayoutDirection.Ltr else LayoutDirection.Rtl) {
                     BoxWithConstraints(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp)
                     ) {
@@ -305,9 +318,11 @@ fun BibleReaderScreen(
                         // hint is gone — the book name gets the full
                         // flexible width instead (everything except the
                         // 26dp collapse arrow + gaps).
-                        // Item 93: the book + chapter reference sits on the
-                        // RIGHT side; the collapse arrow moves to the left.
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.align(Alignment.CenterEnd).widthIn(max = maxWidth - 40.dp)) {
+                        // Item 93 (1.9.29 item 6): the book + chapter
+                        // reference sits on the START side of the
+                        // picker's name language; the collapse arrow
+                        // moves to the end.
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.align(Alignment.CenterStart).widthIn(max = maxWidth - 40.dp)) {
                             Icon(Icons.AutoMirrored.Filled.MenuBook, null, tint = bento.primary, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
@@ -328,12 +343,13 @@ fun BibleReaderScreen(
                             )
                         }
                         Box(
-                            modifier = Modifier.align(Alignment.CenterStart).size(26.dp).background(bento.primary.copy(alpha = 0.16f), CircleShape),
+                            modifier = Modifier.align(Alignment.CenterEnd).size(26.dp).background(bento.primary.copy(alpha = 0.16f), CircleShape),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(if (scripturePickerExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown, null, tint = bento.primary, modifier = Modifier.size(18.dp))
                         }
                     }
+                    } // 1.9.29 (item 6): picker-language direction provider
                 }
 
                 AnimatedVisibility(visible = scripturePickerExpanded) {
@@ -577,7 +593,7 @@ fun BibleReaderScreen(
                                             },
                                         contentAlignment = Alignment.Center
                                     ) {
-                                        Text(ArabicTextFormatter.toEasternArabicDigits(ch), color = if (isSelected) bento.onPrimary else bento.textPrimary, fontSize = chNumSize)
+                                        Text(if (bookNameEnglish) "$ch" else ArabicTextFormatter.toEasternArabicDigits(ch), color = if (isSelected) bento.onPrimary else bento.textPrimary, fontSize = chNumSize)
                                     }
                                 }
                             }
@@ -643,17 +659,22 @@ fun BibleReaderScreen(
                             }
                         }
                     } else {
-                    // Ashraf's mapping (Arabic is RTL): the LEFT arrow moves
-                    // to the NEXT chapter, the RIGHT arrow to the PREVIOUS
-                    // chapter. Chapter browsing never changes the live
-                    // outputs — the server holds the on-air verse.
+                    // 1.9.29 (item 7): the steppers follow the interface
+                    // language. Arabic (RTL): next first — Ashraf's
+                    // mapping, the first arrow moves to the NEXT chapter.
+                    // English (LTR): prev first, next second — next
+                    // points right, prev points left. The icons stay
+                    // AutoMirrored in the same slots; only the actions
+                    // (and their descriptions) swap. Chapter browsing
+                    // never changes the live outputs — the server holds
+                    // the on-air verse.
                     // 2026-11-02 bugfix: arrows scroll the new chapter to verse 1
                     // (pickerJumpChapter = -1 sentinel; see LaunchedEffect above).
-                    IconButton(onClick = { pickerJumpChapter = -1; onNextChapter() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, context.getString(R.string.s37), tint = bento.textSecondary)
+                    IconButton(onClick = { pickerJumpChapter = -1; if (arabicUi) onNextChapter() else onPrevChapter() }) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, context.getString(if (arabicUi) R.string.s37 else R.string.s38), tint = bento.textSecondary)
                     }
-                    IconButton(onClick = { pickerJumpChapter = -1; onPrevChapter() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowForward, context.getString(R.string.s38), tint = bento.textSecondary)
+                    IconButton(onClick = { pickerJumpChapter = -1; if (arabicUi) onPrevChapter() else onNextChapter() }) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowForward, context.getString(if (arabicUi) R.string.s38 else R.string.s37), tint = bento.textSecondary)
                     }
 
                     Spacer(modifier = Modifier.weight(1f))
@@ -745,7 +766,11 @@ fun BibleReaderScreen(
                                             contentAlignment = Alignment.Center
                                         ) {
                                             Text(
-                                                text = count.toString(),
+                                                // 1.9.29 (item 14): the count
+                                                // follows the interface
+                                                // language (Eastern in
+                                                // Arabic mode).
+                                                text = if (arabicUi) ArabicTextFormatter.toEasternArabicDigits(count) else count.toString(),
                                                 fontSize = 13.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 color = bento.onPrimary
@@ -809,11 +834,16 @@ fun BibleReaderScreen(
                         val recentsSelectedVerses = uiState.recentVerses.filter { it.id in recentsSelectedIds }
                         val recentsAllIds = uiState.recentVerses.map { it.id }.toSet()
                         val recentsAllSelected = recentsAllIds.isNotEmpty() && recentsSelectedIds.containsAll(recentsAllIds)
-                        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+                        // 1.9.29 (item 5): the sheet follows the interface
+                        // language — the header mirrors with it. The rows
+                        // are BentoVerseCards (their own direction, item 9).
+                        CompositionLocalProvider(LocalLayoutDirection provides if (arabicUi) LayoutDirection.Rtl else LayoutDirection.Ltr) {
                         Column(modifier = Modifier.fillMaxWidth().fillMaxHeight(0.75f).padding(horizontal = 16.dp, vertical = 8.dp)) {
                             // Batch-3: RTL header — RIGHT: gear + share icon,
                             // CENTER: title, LEFT: clear (destructive, far
-                            // from the primary actions).
+                            // from the primary actions). 1.9.29: in English
+                            // mode the same row mirrors (actions left,
+                            // clear right).
                             // 1.9.23: in selection mode this row becomes the
                             // selection header (Done / N selected / Select
                             // All / Add to Sermon).
@@ -826,7 +856,10 @@ fun BibleReaderScreen(
                                         Text(context.getString(R.string.s22), fontSize = 12.sp)
                                     }
                                     Text(
-                                        text = "${recentsSelectedIds.size} selected",
+                                        // 1.9.29 (item 13): the localized
+                                        // string, like the Library header
+                                        // (was a hardcoded English word).
+                                        text = context.getString(R.string.s23, recentsSelectedIds.size),
                                         fontSize = 13.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = bento.textPrimary,
@@ -1212,7 +1245,10 @@ fun BibleReaderScreen(
             onDismissRequest = { displayMenuExpanded = false },
             title = { Text(context.getString(R.string.s8)) },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                // 1.9.29 (item 10): the dialog grew (Bible version
+                // rows) — scrolls on small screens instead of
+                // clipping.
+                Column(modifier = Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(context.getString(R.string.s9, uiState.readerFontSize))
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                         Button(onClick = onDecreaseFontSize) { Text("-") }
@@ -1227,6 +1263,54 @@ fun BibleReaderScreen(
                                 selected = uiState.appThemeMode == mode,
                                 onClick = { onSetAppThemeMode(mode) },
                                 label = { Text(context.getString(mode.labelRes)) }
+                            )
+                        }
+                    }
+                    // 1.9.29 (item 10): Bible version — two levels.
+                    // (1) Which languages show: Arabic only / Both /
+                    // English only. It also syncs the active style's
+                    // showArabic/showEnglish via setBibleVersion.
+                    HorizontalDivider()
+                    Text(context.getString(R.string.s910))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(
+                            BibleVersion.ARABIC_SVD to R.string.s717,
+                            BibleVersion.DUAL_BILINGUAL to R.string.s716,
+                            BibleVersion.ENGLISH_KJV to R.string.s718
+                        ).forEach { (version, labelRes) ->
+                            FilterChip(
+                                selected = uiState.bibleVersion == version ||
+                                    (version == BibleVersion.ENGLISH_KJV && uiState.bibleVersion == BibleVersion.ENGLISH_WEB),
+                                onClick = { onSelectVersion(version) },
+                                label = { Text(context.getString(labelRes)) }
+                            )
+                        }
+                    }
+                    // (2) Which version inside each language. Arabic
+                    // has one version today (SVD); English offers ASV /
+                    // KJV (moved here from the Editor — the version is
+                    // global, not per-style). The English row is
+                    // disabled while Arabic-only is picked.
+                    Text(context.getString(R.string.s911))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(
+                            selected = true,
+                            onClick = {},
+                            enabled = false,
+                            label = { Text("SVD") }
+                        )
+                    }
+                    Text(
+                        context.getString(R.string.s195),
+                        color = if (uiState.bibleVersion == BibleVersion.ARABIC_SVD) bento.textSecondary else Color.Unspecified
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("asv" to "ASV", "kjv" to "KJV").forEach { (id, label) ->
+                            FilterChip(
+                                selected = uiState.englishVersion == id,
+                                onClick = { onEnglishVersionChange(id) },
+                                enabled = uiState.bibleVersion != BibleVersion.ARABIC_SVD,
+                                label = { Text(label, fontSize = 12.sp) }
                             )
                         }
                     }
@@ -1401,8 +1485,14 @@ fun BentoVerseCard(
     }
     val lineColor = rowStyle?.lineColor
     val tagColor = rowStyle?.tagColor
+    // 1.9.29 (item 9, Option B): the card CHROME follows the interface
+    // language — in English mode the checkbox, the LINE side line and
+    // the TAG chip move to the left. The verse text + citation stay
+    // Arabic: the text column keeps its own RTL provider below.
+    val context = LocalContext.current
+    val cardRtl = AppLanguage.isArabicUi(context)
 
-    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+    CompositionLocalProvider(LocalLayoutDirection provides if (cardRtl) LayoutDirection.Rtl else LayoutDirection.Ltr) {
         Box(modifier = Modifier.fillMaxWidth()) {
         Card(
             shape = RoundedCornerShape(VerseRowSpec.CardCorner),
@@ -1427,6 +1517,9 @@ fun BentoVerseCard(
                     modifier = Modifier.padding(top = VerseRowSpec.RowPadding, start = VerseRowSpec.RowPadding)
                 )
             }
+            // 1.9.29 (item 9): the text column is ALWAYS RTL — the
+            // Arabic verse + citation never flip with the chrome.
+            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
             Column(modifier = Modifier.weight(1f).padding(VerseRowSpec.RowPadding)) {
                 if (showCitation || isCued) {
                     Text(
@@ -1461,6 +1554,7 @@ fun BentoVerseCard(
                     }
                 }
             }
+            } // 1.9.29 (item 9): text-column RTL provider
             } // Row (1.9.23 selection checkbox + text column)
         }
         // 1.9.27 (item 1): LINE treatment — a 3dp side line in the

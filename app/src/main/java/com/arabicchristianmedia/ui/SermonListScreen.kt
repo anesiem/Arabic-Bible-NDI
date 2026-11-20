@@ -35,7 +35,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.ui.platform.LocalContext
@@ -100,6 +100,7 @@ import androidx.compose.ui.unit.sp
 import com.arabicchristianmedia.data.ArabicTextFormatter
 import com.arabicchristianmedia.model.SavedSermon
 import com.arabicchristianmedia.model.SermonEntry
+import com.arabicchristianmedia.ui.AppLanguage
 import com.arabicchristianmedia.ui.theme.LocalBentoColors
 import com.arabicchristianmedia.ui.theme.LocalListColors
 import com.arabicchristianmedia.ui.theme.VerseRowSpec
@@ -512,14 +513,27 @@ fun SermonListScreen(
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
                                                 Icon(
-                                                    if (isCollapsed) Icons.Filled.ChevronRight else Icons.Filled.ExpandMore,
+                                                    // 1.9.29 (item 12):
+                                                    // AutoMirrored — the
+                                                    // chevron points left
+                                                    // in RTL. KeyboardArrowRight
+                                                    // (core set, verified) —
+                                                    // AutoMirrored ChevronRight
+                                                    // could not be verified
+                                                    // in the extended set
+                                                    // from here.
+                                                    if (isCollapsed) Icons.AutoMirrored.Filled.KeyboardArrowRight else Icons.Filled.ExpandMore,
                                                     contentDescription = null,
                                                     tint = bento.textSecondary,
                                                     modifier = Modifier.size(18.dp)
                                                 )
                                                 Spacer(Modifier.width(4.dp))
                                                 Text(
-                                                    text = "${item.title} (${item.count})",
+                                                    // 1.9.29 (item 11): the
+                                                    // group count follows
+                                                    // the interface language
+                                                    // (Eastern in Arabic mode).
+                                                    text = "${item.title} (${if (AppLanguage.isArabicUi(context)) ArabicTextFormatter.toEasternArabicDigits(item.count) else item.count})",
                                                     fontSize = 12.sp,
                                                     fontWeight = FontWeight.Bold,
                                                     color = bento.textPrimary,

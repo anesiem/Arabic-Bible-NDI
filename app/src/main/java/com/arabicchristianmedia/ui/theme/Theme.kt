@@ -13,6 +13,9 @@ import com.arabicchristianmedia.model.AppThemeMode
 import com.arabicchristianmedia.model.ColorTheme
 import com.arabicchristianmedia.model.ColorThemeTokens
 import com.arabicchristianmedia.model.ColorThemes
+import com.arabicchristianmedia.model.ListKind
+import com.arabicchristianmedia.model.ListTreatment
+import com.arabicchristianmedia.model.defaultListTreatment
 import com.arabicchristianmedia.model.onPrimaryFor
 
 data class BentoColors(
@@ -126,6 +129,22 @@ val LocalListColors = staticCompositionLocalOf {
     )
 }
 
+/**
+ * 1.9.27 (item 1): the effective list-row treatments for the current
+ * theme + mode — the user's override (Setup > Customizations > List
+ * colours) or the theme default from his review picks. Every native
+ * list row reads these; the default (solid/solid) is the pre-1.9.27
+ * look, for previews.
+ */
+data class ListTreatments(
+    val recent: ListTreatment,
+    val sermon: ListTreatment
+)
+
+val LocalListTreatments = staticCompositionLocalOf {
+    ListTreatments(ListTreatment.SOLID, ListTreatment.SOLID)
+}
+
 /** Bento chrome + Material scheme, both built from one theme token set. */
 private fun bentoColorsFromTheme(tokens: ColorThemeTokens, isDark: Boolean): BentoColors {
     return BentoColors(
@@ -183,6 +202,10 @@ private fun colorSchemeFromTheme(bento: BentoColors, isDark: Boolean): ColorSche
 fun MyApplicationTheme(
     themeMode: AppThemeMode = AppThemeMode.SYSTEM,
     colorTheme: ColorTheme = ColorThemes.CLASSIC,
+    // 1.9.27 (item 7): list treatment overrides — null = the theme
+    // default from his review picks (see defaultListTreatment).
+    listTreatmentRecents: ListTreatment? = null,
+    listTreatmentSermon: ListTreatment? = null,
     content: @Composable () -> Unit,
 ) {
     val isDark = when (themeMode) {
@@ -194,6 +217,11 @@ fun MyApplicationTheme(
     val tokens = colorTheme.tokens(isDark)
     val bentoColors = bentoColorsFromTheme(tokens, isDark)
     val colorScheme = colorSchemeFromTheme(bentoColors, isDark)
+    // 1.9.27 (item 1): effective treatments for this theme + mode.
+    val listTreatments = ListTreatments(
+        recent = listTreatmentRecents ?: defaultListTreatment(colorTheme.id, isDark, ListKind.RECENT),
+        sermon = listTreatmentSermon ?: defaultListTreatment(colorTheme.id, isDark, ListKind.SERMON)
+    )
     val listColors = ListColors(
         bandA = Color(tokens.bandA),
         bandB = Color(tokens.bandB),
@@ -225,7 +253,8 @@ fun MyApplicationTheme(
     CompositionLocalProvider(
         LocalBentoColors provides bentoColors,
         LocalListColors provides listColors,
-        LocalBookGroupColors provides bookGroupColors
+        LocalBookGroupColors provides bookGroupColors,
+        LocalListTreatments provides listTreatments
     ) {
         MaterialTheme(
             colorScheme = colorScheme,

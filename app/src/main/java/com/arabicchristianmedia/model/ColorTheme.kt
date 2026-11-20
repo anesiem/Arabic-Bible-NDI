@@ -383,9 +383,11 @@ object ColorThemes {
         )
     )
 
-    /** One-update item 18: Bento Blue — blue shades primary, yellow
-     * live/highlight, grey surfaces. Designed separately for dark and
-     * light. */
+    /** One-update item 18: Bento Blue — blue shades throughout: primary,
+     * recents and live all follow the theme blues (1.9.27 item 6: the
+     * amber recents + yellow live card are gone — the name said Blue
+     * but the list said amber/yellow). Grey surfaces. Designed
+     * separately for dark and light. */
     val BENTO_BLUE = ColorTheme(
         id = "bento_blue",
         name = "Bento Blue",
@@ -395,8 +397,8 @@ object ColorThemes {
             surfaceVariant = 0xFF2E3947, border = 0xFF3A4552, borderSubtle = 0xFF28303A,
             textPrimary = 0xFFF1F5F9, textSecondary = 0xFF94A3B8,
             primary = 0xFF3B82F6, primaryContainer = 0xFF1E3A5F, primarySoft = 0xFF60A5FA,
-            bandA = 0xFF1E293B, bandB = 0xFF1C2B3A, recents = 0xFFF59E0B, warning = 0xFFFBBF24,
-            liveHighlight = 0xFFFACC15, liveYellow = 0xFFF5D76E, livePaleYellow = 0xFFFDE9A8, layerLogo = 0xFF10B981, layerParticles = 0xFF38BDF8, layerCard = 0xFFA855F7, layerVideo = 0xFFF59E0B, sermonTint = 0xFF243447,
+            bandA = 0xFF1E293B, bandB = 0xFF1C2B3A, recents = 0xFF60A5FA, warning = 0xFFFBBF24,
+            liveHighlight = 0xFF1E3A5F, liveYellow = 0xFFF5D76E, livePaleYellow = 0xFFFDE9A8, layerLogo = 0xFF10B981, layerParticles = 0xFF38BDF8, layerCard = 0xFFA855F7, layerVideo = 0xFFF59E0B, sermonTint = 0xFF243447,
             groupPentateuch = 0xFFF59E0B,
             groupHistorical = 0xFF38BDF8,
             groupPoetry = 0xFFA78BFA,
@@ -413,8 +415,8 @@ object ColorThemes {
             surfaceVariant = 0xFFE2E8F0, border = 0xFFCBD5E1, borderSubtle = 0xFFE2E8F0,
             textPrimary = 0xFF0F172A, textSecondary = 0xFF475569,
             primary = 0xFF1D4ED8, primaryContainer = 0xFFDBEAFE, primarySoft = 0xFF1D4ED8,
-            bandA = 0xFFDBEAFE, bandB = 0xFFFEF3C7, recents = 0xFFB45309, warning = 0xFFB45309,
-            liveHighlight = 0xFFFEF08A, liveYellow = 0xFFF5D76E, livePaleYellow = 0xFFFDE9A8, layerLogo = 0xFF10B981, layerParticles = 0xFF38BDF8, layerCard = 0xFFA855F7, layerVideo = 0xFFF59E0B, sermonTint = 0xFFE0EAF5,
+            bandA = 0xFFDBEAFE, bandB = 0xFFFEF3C7, recents = 0xFF1D4ED8, warning = 0xFFB45309,
+            liveHighlight = 0xFFDBEAFE, liveYellow = 0xFFF5D76E, livePaleYellow = 0xFFFDE9A8, layerLogo = 0xFF10B981, layerParticles = 0xFF38BDF8, layerCard = 0xFFA855F7, layerVideo = 0xFFF59E0B, sermonTint = 0xFFE0EAF5,
             groupPentateuch = 0xFFB45309,
             groupHistorical = 0xFF0284C7,
             groupPoetry = 0xFF7C3AED,
@@ -502,7 +504,7 @@ object ColorThemes {
             textPrimary = 0xFF0F1B2D, textSecondary = 0xFF475569,
             primary = 0xFF1E40AF, primaryContainer = 0xFFDBEAFE, primarySoft = 0xFF1E40AF,
             bandA = 0xFFDBEAFE, bandB = 0xFFCFFAFE, recents = 0xFF0891B2, warning = 0xFFB45309,
-            liveHighlight = 0xFFFEF08A, liveYellow = 0xFFF5D76E, livePaleYellow = 0xFFFDE9A8, layerLogo = 0xFF10B981, layerParticles = 0xFF38BDF8, layerCard = 0xFFA855F7, layerVideo = 0xFFF59E0B, sermonTint = 0xFFD9E6F5,
+            liveHighlight = 0xFFE0F2FE, liveYellow = 0xFFF5D76E, livePaleYellow = 0xFFFDE9A8, layerLogo = 0xFF10B981, layerParticles = 0xFF38BDF8, layerCard = 0xFFA855F7, layerVideo = 0xFFF59E0B, sermonTint = 0xFFD9E6F5,
             groupPentateuch = 0xFFB45309,
             groupHistorical = 0xFF0284C7,
             groupPoetry = 0xFF7C3AED,

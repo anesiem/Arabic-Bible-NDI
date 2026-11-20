@@ -773,4 +773,14 @@
     <string name="s897">"System language"</string>
     <string name="s898">"العربية"</string>
     <string name="s899">"English"</string>
+    <string name="s900">"List colours"</string>
+    <string name="s901">"Recent verses"</string>
+    <string name="s902">"Sermon verses"</string>
+    <string name="s903">"Theme default"</string>
+    <string name="s904">"Solid fill"</string>
+    <string name="s905">"Side line"</string>
+    <string name="s906">"Pale tint"</string>
+    <string name="s907">"Soft fill"</string>
+    <string name="s908">"Border only"</string>
+    <string name="s909">"Coloured tag"</string>
 </resources>

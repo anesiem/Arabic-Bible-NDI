@@ -40,6 +40,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.SpanStyle
@@ -59,6 +60,7 @@ import com.arabicchristianmedia.R
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -70,6 +72,7 @@ import com.arabicchristianmedia.model.BibleBook
 import com.arabicchristianmedia.model.BibleBookGroups
 import com.arabicchristianmedia.model.BibleVerse
 import com.arabicchristianmedia.model.BibleVersion
+import com.arabicchristianmedia.model.ListTreatment
 import com.arabicchristianmedia.model.Testament
 import com.arabicchristianmedia.ui.theme.*
 import androidx.compose.ui.input.key.Key
@@ -1298,6 +1301,38 @@ private fun SendToSermonDialog(
     )
 }
 
+/**
+ * 1.9.27 (item 1): the resolved visuals for one list-row treatment —
+ * background + border, plus the optional side-line / tag overlays.
+ * The token colour always comes from the theme; the treatment only
+ * decides how it is applied. TINT/SOFT composite the token at the
+ * review widget's alphas (12% / 45%) over the card — the alpha is the
+ * treatment's definition, not a hardcoded colour (reviewed exception
+ * to the no-.copy(alpha=) rule, same as highlightColor below).
+ */
+private data class ListRowStyle(
+    val bg: Color,
+    val borderColor: Color,
+    val borderWidth: Dp,
+    val lineColor: Color?,
+    val tagColor: Color?
+)
+
+/** One shared resolver for recent + sermon rows (item 1). */
+private fun listRowStyle(
+    treatment: ListTreatment,
+    token: Color,
+    card: Color,
+    border: Color
+): ListRowStyle = when (treatment) {
+    ListTreatment.SOLID -> ListRowStyle(bg = token, borderColor = border, borderWidth = 1.dp, lineColor = null, tagColor = null)
+    ListTreatment.LINE -> ListRowStyle(bg = card, borderColor = border, borderWidth = 1.dp, lineColor = token, tagColor = null)
+    ListTreatment.TINT -> ListRowStyle(bg = token.copy(alpha = 0.12f).compositeOver(card), borderColor = border, borderWidth = 1.dp, lineColor = null, tagColor = null)
+    ListTreatment.SOFT -> ListRowStyle(bg = token.copy(alpha = 0.45f).compositeOver(card), borderColor = border, borderWidth = 1.dp, lineColor = null, tagColor = null)
+    ListTreatment.BORDER -> ListRowStyle(bg = card, borderColor = token, borderWidth = 2.dp, lineColor = null, tagColor = null)
+    ListTreatment.TAG -> ListRowStyle(bg = card, borderColor = border, borderWidth = 1.dp, lineColor = null, tagColor = token)
+}
+
 @Composable
 fun BentoVerseCard(
     verse: BibleVerse,
@@ -1329,19 +1364,23 @@ fun BentoVerseCard(
     } else {
         bento.primary.copy(alpha = 0.25f)
     }
-    // 2026-10-28 Library colours (theme variables, one source):
-    // focused = yellow border on a plain card (the earlier beautiful
-    // version); recent = plain card + a thin side line ONLY (no full
-    // fill — like the remote page's edge); sermon = a muted soft
-    // tint, low attention. Priority stays live > focused > cued >
-    // recent > sermon > plain. The side line is drawn as an overlay
-    // Box inside a wrapping Box so the Card click still works.
-    // Note: recentLine is the theme recents variable (Classic teal),
-    // not literal yellow in every theme — see the final report.
+    // 1.9.27 (item 1): Library row colours are theme variables, one
+    // source, rendered per the effective treatment (his review picks
+    // per theme/mode, or his Setup override). Priority stays live >
+    // cued > sermon > recent > plain — a live/cued row keeps its
+    // highlight and never shows a treatment marker; focused keeps its
+    // yellow border. The side line / tag are drawn as overlay Boxes
+    // inside a wrapping Box so the Card click still works.
+    val treatments = LocalListTreatments.current
+    val rowStyle = when {
+        isLiveOnAir || isCued -> null
+        inSermonList -> listRowStyle(treatments.sermon, listColors.sermonTint, bento.card, bento.border)
+        isRecent -> listRowStyle(treatments.recent, listColors.recents, bento.card, bento.border)
+        else -> null
+    }
     val targetColor = when {
         isLiveOnAir || isCued -> highlightColor
-        inSermonList -> listColors.sermonTint
-        isRecent -> listColors.recents // 2026-11-03: theme variable, no hardcoded alpha (user rule)
+        rowStyle != null -> rowStyle.bg
         else -> bento.card
     }
     val bgColor by animateColorAsState(targetColor, label = "cardBg")
@@ -1352,11 +1391,16 @@ fun BentoVerseCard(
         isLiveOnAir -> bento.liveYellow
         isCued -> bento.primary
         isFocused -> listColors.focusedBorder
-        inSermonList -> bento.border
+        rowStyle != null -> rowStyle.borderColor
         else -> bento.border
     }
-    val borderWidth = if (isCued || isFocused || inSermonList) 2.dp else 1.dp
-    val showRecentLine = isRecent
+    val borderWidth = when {
+        isCued || isFocused -> 2.dp
+        rowStyle != null -> rowStyle.borderWidth
+        else -> 1.dp
+    }
+    val lineColor = rowStyle?.lineColor
+    val tagColor = rowStyle?.tagColor
 
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
         Box(modifier = Modifier.fillMaxWidth()) {
@@ -1419,14 +1463,28 @@ fun BentoVerseCard(
             }
             } // Row (1.9.23 selection checkbox + text column)
         }
-        // Recent side line: 3dp on the start edge, overlaying the
-        // card (not shifting its content), only when no stronger
-        // marker (live/cued/focused) applies.
-        if (showRecentLine) {
+        // 1.9.27 (item 1): LINE treatment — a 3dp side line in the
+        // token colour on the start edge, overlaying the card (not
+        // shifting its content). Only when no stronger marker
+        // (live/cued) applies — rowStyle is null for those rows.
+        if (lineColor != null) {
             Box(
                 modifier = Modifier.align(Alignment.CenterStart).fillMaxHeight().width(3.dp)
                     .clip(RoundedCornerShape(topStart = VerseRowSpec.CardCorner, bottomStart = VerseRowSpec.CardCorner))
-                    .background(listColors.recentLine)
+                    .background(lineColor)
+            )
+        }
+        // 1.9.27 (item 1): TAG treatment — a small tag chip in the
+        // token colour at the top-end corner. The colour is the
+        // marker (same principle as the line/border); no text, so
+        // no localization is needed.
+        if (tagColor != null) {
+            Box(
+                modifier = Modifier.align(Alignment.TopEnd)
+                    .padding(top = 6.dp, end = 6.dp)
+                    .size(width = 24.dp, height = 8.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(tagColor)
             )
         }
         }

@@ -29,6 +29,9 @@ import com.arabicchristianmedia.model.BroadcastTextAlignment
 import com.arabicchristianmedia.model.CustomFont
 import com.arabicchristianmedia.model.CustomFonts
 import com.arabicchristianmedia.model.LanguageMode
+import com.arabicchristianmedia.model.ListKind
+import com.arabicchristianmedia.model.ListTreatment
+import com.arabicchristianmedia.model.listTreatmentFromName
 import com.arabicchristianmedia.model.LowerThirdTemplate
 import com.arabicchristianmedia.model.StreamBackgroundMode
 import com.arabicchristianmedia.model.BackupImportResult
@@ -159,6 +162,13 @@ data class BibleNdiUiState(
     // universal readerFontSize; a value = local override for the sermon
     // list only (persisted). Same pattern as recentsFontSize.
     val sermonFontSize: Int? = null,
+    // 1.9.27 (item 7): list-colour treatment overrides — null = the
+    // theme default from his review picks (see defaultListTreatment);
+    // a value replaces the default in every theme and mode. Persisted
+    // in ui_prefs by name. Same nullable-override pattern as the
+    // per-section font sizes above.
+    val listTreatmentRecents: ListTreatment? = null,
+    val listTreatmentSermon: ListTreatment? = null,
     // Item 92: Library grid direction — false = LTR (default, first
     // item top-left), true = RTL (first item top-right). Books +
     // chapters flip together. Persisted in ui_prefs.
@@ -568,6 +578,13 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
                     str(R.string.s656)
                 else str(R.string.s655)
             )
+            // 1.9.27 (item 5): the server auto-resumed a live verse while
+            // the app was dead — the countdown is transient (never
+            // persisted), so restart it here or the verse sits live with
+            // no timer. startAutoClearTimer no-ops unless auto-clear is
+            // ON with a verse live, and the launch cancels any existing
+            // job first — no double timer.
+            startAutoClearTimer()
         } else {
             broadcastServer.currentVerse = null
             broadcastServer.isLive = false // Ensure server starts off-air
@@ -969,6 +986,10 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         val bookNameLanguage = try {
             BookNameLanguage.valueOf(prefs?.getString("library_book_name_lang", null) ?: "FOLLOW")
         } catch (e: Exception) { BookNameLanguage.FOLLOW }
+        // 1.9.27 (item 7): list treatment overrides — an unknown stored
+        // value falls back to null (theme default), same as a missing key.
+        val listTreatmentRecents = listTreatmentFromName(prefs?.getString("list_treatment_recents", null))
+        val listTreatmentSermon = listTreatmentFromName(prefs?.getString("list_treatment_sermon", null))
         // 1.9.26 (item 12): auto-clear is ON by default. The default
         // alone would do nothing on existing installs — persistUiPrefs
         // has written auto_clear_enabled=false on every save since
@@ -996,6 +1017,9 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             libraryGridRtl = libraryGridRtl,
             // 1.9.26 (item 9): default FOLLOW.
             bookNameLanguage = bookNameLanguage,
+            // 1.9.27 (item 7): default null = theme default.
+            listTreatmentRecents = listTreatmentRecents,
+            listTreatmentSermon = listTreatmentSermon,
             autoClearEnabled = autoClearEnabled,
             autoClearDurationMinutes = autoClearDurationMinutes
         )
@@ -1011,6 +1035,8 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             ?.putInt("sermon_font_size", state.sermonFontSize ?: -1)
             ?.putBoolean("library_grid_rtl", state.libraryGridRtl)
             ?.putString("library_book_name_lang", state.bookNameLanguage.name)
+            ?.putString("list_treatment_recents", state.listTreatmentRecents?.name)
+            ?.putString("list_treatment_sermon", state.listTreatmentSermon?.name)
             ?.putBoolean("auto_clear_enabled", state.autoClearEnabled)
             ?.putInt("auto_clear_duration_minutes", state.autoClearDurationMinutes)
             ?.apply()
@@ -1048,6 +1074,19 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
      */
     fun setBookNameLanguage(language: BookNameLanguage) {
         _uiState.value = _uiState.value.copy(bookNameLanguage = language)
+        persistUiPrefs()
+    }
+
+    /**
+     * 1.9.27 (item 7): list-colour treatment override for one kind
+     * (RECENT / SERMON) — null returns to the theme default from his
+     * review picks. Persisted in ui_prefs by name.
+     */
+    fun setListTreatment(kind: ListKind, treatment: ListTreatment?) {
+        _uiState.value = when (kind) {
+            ListKind.RECENT -> _uiState.value.copy(listTreatmentRecents = treatment)
+            ListKind.SERMON -> _uiState.value.copy(listTreatmentSermon = treatment)
+        }
         persistUiPrefs()
     }
 

@@ -9,6 +9,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -38,7 +39,6 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Keyboard
-import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.Radio
@@ -78,11 +78,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -360,7 +364,11 @@ class MainActivity : ComponentActivity() {
 
             MyApplicationTheme(
                 themeMode = uiState.appThemeMode,
-                colorTheme = ColorThemes.byId(uiState.selectedThemeId, uiState.customThemes)
+                colorTheme = ColorThemes.byId(uiState.selectedThemeId, uiState.customThemes),
+                // 1.9.27 (item 7): list treatment overrides (null =
+                // theme default from his review picks).
+                listTreatmentRecents = uiState.listTreatmentRecents,
+                listTreatmentSermon = uiState.listTreatmentSermon
             ) {
                 val bento = LocalBentoColors.current
                 val snackbarHostState = remember { SnackbarHostState() }
@@ -379,6 +387,14 @@ class MainActivity : ComponentActivity() {
                 // 2026-10-28 K7 gate, shared by the top bar and the
                 // Editor body: width >= 900 AND height >= 600.
                 val topBarWide = LocalConfiguration.current.screenWidthDp >= 900 && LocalConfiguration.current.screenHeightDp >= 600
+                // 1.9.27 (item 3): the measured width of the top bar's
+                // right group (auto-clear ring + ON AIR button) — the
+                // live citation centres in the free space between the
+                // app icon and the ring while the ring shows. 0.dp
+                // until the first measure (falls back to the centred
+                // citation for one frame).
+                val density = LocalDensity.current
+                var topBarRightGroupWidth by remember { mutableStateOf(0.dp) }
                 // 2026-10-28: every Library-tab tap bumps this, even
                 // when already on Library — BibleReaderScreen closes
                 // search / recents sheet / chapter picker on the bump.
@@ -503,20 +519,18 @@ class MainActivity : ComponentActivity() {
                                                     displaySettingsNonce++
                                                 }
                                         ) {
-                                            Box(
-                                                contentAlignment = Alignment.Center,
-                                                modifier = Modifier
-                                                    .size(40.dp)
-                                                    .clip(CircleShape)
-                                                    .background(bento.secondary)
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Filled.LiveTv,
-                                                    contentDescription = context.getString(R.string.s52),
-                                                    tint = bento.onSecondary,
-                                                    modifier = Modifier.size(22.dp)
-                                                )
-                                            }
+                                            // 1.9.27 (item 4): the real
+                                            // launcher icon, not the
+                                            // generic TV glyph — the
+                                            // adaptive icon carries its
+                                            // own background, so no
+                                            // purple circle behind it.
+                                            Image(
+                                                painter = painterResource(R.mipmap.ic_launcher),
+                                                contentDescription = context.getString(R.string.s52),
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier.size(40.dp).clip(CircleShape)
+                                            )
                                         }
                                     }
 
@@ -591,31 +605,46 @@ class MainActivity : ComponentActivity() {
                                     // 1.9.23 (item 10): auto-clear ring — only
                                     // while a verse is live and auto-clear is
                                     // ON. Tap = pause/resume, X = stop.
-                                    if (autoClearRingShowing && autoClearRemaining != null) {
-                                        AutoClearRing(
-                                            remainingSec = autoClearRemaining,
-                                            totalSec = uiState.autoClearDurationMinutes.coerceIn(1, 60) * 60,
-                                            paused = uiState.autoClearPaused,
-                                            onTogglePause = {
-                                                if (uiState.autoClearPaused) viewModel.resumeAutoClear()
-                                                else viewModel.pauseAutoClear()
-                                            },
-                                            onStop = { viewModel.stopAutoClear() }
-                                        )
-                                    }
-                                    Button(
-                                        onClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); viewModel.toggleLive() },
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = if (topBarIsOnAir) bento.liveRed else OnAirOffGrey,
-                                            contentColor = Color.White
-                                        ),
-                                        shape = RoundedCornerShape(10.dp),
-                                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                                    // 1.9.27 (item 3): the ring + ON AIR
+                                    // button are one measured group — its
+                                    // width sets the citation's end inset
+                                    // while the ring shows, so the citation
+                                    // centres in the free space between the
+                                    // app icon and the ring. Same layout as
+                                    // before (no spacing between them).
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.onGloballyPositioned { coords ->
+                                            val w = with(density) { coords.size.width.toDp() }
+                                            if (w != topBarRightGroupWidth) topBarRightGroupWidth = w
+                                        }
                                     ) {
-                                        Text(
-                                            if (topBarIsOnAir) context.getString(R.string.s53) else context.getString(R.string.s54),
-                                            fontSize = 12.sp, fontWeight = FontWeight.Bold
-                                        )
+                                        if (autoClearRingShowing && autoClearRemaining != null) {
+                                            AutoClearRing(
+                                                remainingSec = autoClearRemaining,
+                                                totalSec = uiState.autoClearDurationMinutes.coerceIn(1, 60) * 60,
+                                                paused = uiState.autoClearPaused,
+                                                onTogglePause = {
+                                                    if (uiState.autoClearPaused) viewModel.resumeAutoClear()
+                                                    else viewModel.pauseAutoClear()
+                                                },
+                                                onStop = { viewModel.stopAutoClear() }
+                                            )
+                                        }
+                                        Button(
+                                            onClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); viewModel.toggleLive() },
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = if (topBarIsOnAir) bento.liveRed else OnAirOffGrey,
+                                                contentColor = Color.White
+                                            ),
+                                            shape = RoundedCornerShape(10.dp),
+                                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                                        ) {
+                                            Text(
+                                                if (topBarIsOnAir) context.getString(R.string.s53) else context.getString(R.string.s54),
+                                                fontSize = 12.sp, fontWeight = FontWeight.Bold
+                                            )
+                                        }
                                     }
                                 }
                                 // 1.9.24 (top-middle rule): the live verse's
@@ -627,20 +656,30 @@ class MainActivity : ComponentActivity() {
                                 // picker / search / recents sheet closes
                                 // first. fillMaxWidth(0.5f) + ellipsis: a
                                 // long citation shrinks instead of covering
-                                // the icon or ON AIR. 1.9.25 (item 1): the
-                                // cap narrows to 0.3f while the auto-clear
-                                // ring shows, so a long citation can never
-                                // touch the ring. Nothing shows when no
-                                // verse is active.
+                                // the icon or ON AIR. 1.9.27 (item 3): while
+                                // the auto-clear ring shows, the citation
+                                // centres in the FREE space between the app
+                                // icon (48dp tap target) and the ring
+                                // instead — the 1.9.25 0.3f cap narrowed it
+                                // but never moved its centre, so its edge
+                                // landed under the ring on a phone. The
+                                // measured right-group width sets the end
+                                // inset; until the first measure it falls
+                                // back to the 0.3f cap. Nothing shows when
+                                // no verse is active.
                                 uiState.activeVerse?.let { liveVerse ->
+                                    val citationWidthModifier = if (autoClearRingShowing && topBarRightGroupWidth > 0.dp) {
+                                        Modifier.fillMaxWidth().padding(start = 48.dp, end = topBarRightGroupWidth)
+                                    } else {
+                                        Modifier.fillMaxWidth(if (autoClearRingShowing) 0.3f else 0.5f)
+                                    }
                                     Text(
                                         text = liveVerse.getFormattedArabicCitation(),
                                         fontSize = 14.sp, fontWeight = FontWeight.Bold,
                                         color = if (topBarIsOnAir) bento.liveRed else bento.textPrimary,
                                         textAlign = TextAlign.Center,
                                         maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier
-                                            .fillMaxWidth(if (autoClearRingShowing) 0.3f else 0.5f)
+                                        modifier = citationWidthModifier
                                             .clickable { libraryTabTapNonce++; viewModel.openLiveVerseInReader() }
                                             .padding(horizontal = 4.dp)
                                     )
@@ -887,6 +926,8 @@ class MainActivity : ComponentActivity() {
                                 // 1.9.23 (item 10): auto-clear settings.
                                 onSetAutoClearEnabled = { viewModel.setAutoClearEnabled(it) },
                                 onSetAutoClearDurationMinutes = { viewModel.setAutoClearDurationMinutes(it) },
+                                // 1.9.27 (item 7): list-colour treatment overrides.
+                                onSetListTreatment = { kind, treatment -> viewModel.setListTreatment(kind, treatment) },
                                 // 1.9.25 (item 2, language mode): persist
                                 // the choice, then recreate so every
                                 // string + the layout direction re-resolve.

@@ -112,6 +112,8 @@ import com.arabicchristianmedia.server.NdiSourceSpec
 import com.arabicchristianmedia.server.NetworkInterfaceInfo
 import com.arabicchristianmedia.model.ColorTheme
 import com.arabicchristianmedia.model.ColorThemes
+import com.arabicchristianmedia.model.ListKind
+import com.arabicchristianmedia.model.ListTreatment
 import com.arabicchristianmedia.ui.theme.*
 
 @Composable
@@ -161,6 +163,9 @@ fun BroadcastControlScreen(
     // 1.9.25 (item 2, language mode): interface-language choice
     // ("system" | "ar" | "en"); MainActivity persists + recreates.
     onSetAppLanguage: (String) -> Unit = {},
+    // 1.9.27 (item 7): list-colour treatment override for one kind
+    // (RECENT / SERMON); null = theme default from his review picks.
+    onSetListTreatment: (ListKind, ListTreatment?) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -1189,6 +1194,37 @@ fun BroadcastControlScreen(
                         Box(modifier = Modifier.size(22.dp).background(Color(selectedTheme.light.bandB), RoundedCornerShape(6.dp)))
                         Box(modifier = Modifier.size(22.dp).background(Color(selectedTheme.light.recents), RoundedCornerShape(6.dp)))
                     }
+                }
+            }
+            // 1.9.27 (item 7): list colours — per-kind treatment
+            // overrides. Theme default = his review picks per theme
+            // and mode; a choice replaces the default everywhere.
+            Spacer(modifier = Modifier.height(10.dp))
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = bento.card,
+                border = androidx.compose.foundation.BorderStroke(1.dp, bento.border),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
+                    Text(
+                        text = context.getString(R.string.s900),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = bento.textPrimary
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    ListTreatmentDropdown(
+                        label = context.getString(R.string.s901),
+                        selected = uiState.listTreatmentRecents,
+                        onSelect = { onSetListTreatment(ListKind.RECENT, it) }
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    ListTreatmentDropdown(
+                        label = context.getString(R.string.s902),
+                        selected = uiState.listTreatmentSermon,
+                        onSelect = { onSetListTreatment(ListKind.SERMON, it) }
+                    )
                 }
             }
         }
@@ -2262,6 +2298,60 @@ private fun NdiSourceSettingsRow(
                 checked = spec.motionEnabled,
                 onCheckedChange = { onToggleMotion(feedKey) }
             )
+        }
+    }
+}
+
+/** 1.9.27 (item 7): label for one treatment option (null = Theme default). */
+private fun listTreatmentLabelRes(treatment: ListTreatment?): Int = when (treatment) {
+    null -> R.string.s903
+    ListTreatment.SOLID -> R.string.s904
+    ListTreatment.LINE -> R.string.s905
+    ListTreatment.TINT -> R.string.s906
+    ListTreatment.SOFT -> R.string.s907
+    ListTreatment.BORDER -> R.string.s908
+    ListTreatment.TAG -> R.string.s909
+}
+
+/**
+ * 1.9.27 (item 7): one list-colour picker (Recent verses / Sermon
+ * verses) — Theme default + the six treatments, same dropdown pattern
+ * as NdiDropdown below.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ListTreatmentDropdown(
+    label: String,
+    selected: ListTreatment?,
+    onSelect: (ListTreatment?) -> Unit
+) {
+    val context = LocalContext.current
+    var expanded by remember { mutableStateOf(false) }
+    val options: List<ListTreatment?> = listOf(null) + ListTreatment.entries
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = !expanded }
+    ) {
+        TextField(
+            value = context.getString(listTreatmentLabelRes(selected)),
+            onValueChange = {},
+            readOnly = true,
+            label = { Text(label, fontSize = 9.sp) },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable).fillMaxWidth(),
+            textStyle = TextStyle(fontSize = 11.sp),
+            singleLine = true
+        )
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            options.forEach { opt ->
+                DropdownMenuItem(
+                    text = { Text(context.getString(listTreatmentLabelRes(opt)), fontSize = 11.sp) },
+                    onClick = { onSelect(opt); expanded = false }
+                )
+            }
         }
     }
 }

@@ -95,6 +95,21 @@ class ColorThemeTest {
         assertEquals("Fresh recents amber light", 0xFFB45309, ColorThemes.FRESH.tokens(false).recents)
         assertEquals("Gentle recents amber dark", 0xFFE8A33D, ColorThemes.GENTLE.tokens(true).recents)
         assertEquals("Gentle recents amber light", 0xFFB45309, ColorThemes.GENTLE.tokens(false).recents)
+        // 1.9.27 (item 6): Bento Blue is actually blue now — recents
+        // follow the theme's own blues (primarySoft / primary).
+        assertEquals("Bento Blue recents blue dark", 0xFF60A5FA, ColorThemes.BENTO_BLUE.tokens(true).recents)
+        assertEquals("Bento Blue recents blue light", 0xFF1D4ED8, ColorThemes.BENTO_BLUE.tokens(false).recents)
+    }
+
+    @Test
+    fun liveHighlightIsBlueWhereTheThemeIsBlue() {
+        // 1.9.27 (item 6): Bento Blue's live card follows the theme's
+        // own blues (primaryContainer), not yellow.
+        assertEquals("Bento Blue live deep blue dark", 0xFF1E3A5F, ColorThemes.BENTO_BLUE.tokens(true).liveHighlight)
+        assertEquals("Bento Blue live pale blue light", 0xFFDBEAFE, ColorThemes.BENTO_BLUE.tokens(false).liveHighlight)
+        // 1.9.27 (item 8): Midnight's light live card is pale blue like
+        // the other six themes, not yellow.
+        assertEquals("Midnight live pale blue light", 0xFFE0F2FE, ColorThemes.MIDNIGHT.tokens(false).liveHighlight)
     }
 
     @Test

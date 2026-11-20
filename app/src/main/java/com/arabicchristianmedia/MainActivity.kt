@@ -519,14 +519,20 @@ class MainActivity : ComponentActivity() {
                                                     displaySettingsNonce++
                                                 }
                                         ) {
-                                            // 1.9.27 (item 4): the real
-                                            // launcher icon, not the
-                                            // generic TV glyph — the
-                                            // adaptive icon carries its
-                                            // own background, so no
+                                            // 1.9.28 (crash fix): the real
+                                            // logo picture, loaded directly
+                                            // — 1.9.27 loaded the adaptive
+                                            // launcher icon here
+                                            // (R.mipmap.ic_launcher) and
+                                            // the app crashed on launch;
+                                            // Compose cannot draw an
+                                            // adaptive icon through
+                                            // painterResource. The JPEG
+                                            // loads through the plain
+                                            // bitmap path. Same look, no
                                             // purple circle behind it.
                                             Image(
-                                                painter = painterResource(R.mipmap.ic_launcher),
+                                                painter = painterResource(R.drawable.ic_bible_ndi_logo),
                                                 contentDescription = context.getString(R.string.s52),
                                                 contentScale = ContentScale.Crop,
                                                 modifier = Modifier.size(40.dp).clip(CircleShape)

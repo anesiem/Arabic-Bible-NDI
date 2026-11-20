@@ -58,6 +58,24 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+/**
+ * 1.9.26 (item 9): the Library picker's book-name language. FOLLOW tracks
+ * the interface language (Arabic UI → Arabic names, English UI → English
+ * names) — the default; ARABIC / ENGLISH are explicit overrides, and once
+ * the user taps the toggle, the explicit choice wins over the language.
+ * Persisted in ui_prefs by name.
+ */
+enum class BookNameLanguage {
+    FOLLOW, ARABIC, ENGLISH;
+
+    /** The picker's toggle cycles FOLLOW → Arabic → English → FOLLOW. */
+    fun next(): BookNameLanguage = when (this) {
+        FOLLOW -> ARABIC
+        ARABIC -> ENGLISH
+        ENGLISH -> FOLLOW
+    }
+}
+
 data class BibleNdiUiState(
     val selectedTestament: Testament = Testament.NEW_TESTAMENT,
     val selectedBook: BibleBook = BibleRepository.getBookById("jhn") ?: BibleRepository.allBooks.first(),
@@ -145,6 +163,11 @@ data class BibleNdiUiState(
     // item top-left), true = RTL (first item top-right). Books +
     // chapters flip together. Persisted in ui_prefs.
     val libraryGridRtl: Boolean = false,
+    // 1.9.26 (item 9): Library picker book-name language — FOLLOW
+    // (default) tracks the interface language; ARABIC / ENGLISH are
+    // explicit overrides. Book chips + picker bar only. Persisted in
+    // ui_prefs by name.
+    val bookNameLanguage: BookNameLanguage = BookNameLanguage.FOLLOW,
     // 1.9.23 (item 10): auto-clear — the live verse clears itself after
     // a set time. OFF by default (zero behavior change unless enabled).
     // Settings are persisted in ui_prefs; the countdown fields below are
@@ -940,6 +963,11 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         val recentsFontRaw = prefs?.getInt("recents_font_size", -1) ?: -1
         val sermonFontRaw = prefs?.getInt("sermon_font_size", -1) ?: -1
         val libraryGridRtl = prefs?.getBoolean("library_grid_rtl", false) ?: false
+        // 1.9.26 (item 9): book-name language — FOLLOW is the default
+        // (and the fallback for an unknown stored value).
+        val bookNameLanguage = try {
+            BookNameLanguage.valueOf(prefs?.getString("library_book_name_lang", null) ?: "FOLLOW")
+        } catch (e: Exception) { BookNameLanguage.FOLLOW }
         // 1.9.23 (item 10): auto-clear — OFF by default, 2 min default.
         val autoClearEnabled = prefs?.getBoolean("auto_clear_enabled", false) ?: false
         val autoClearDurationMinutes = (prefs?.getInt("auto_clear_duration_minutes", 2) ?: 2).coerceIn(1, 60)
@@ -953,6 +981,8 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             sermonFontSize = if (sermonFontRaw < 0) null else sermonFontRaw.coerceIn(12, 36),
             // Item 92: default LTR.
             libraryGridRtl = libraryGridRtl,
+            // 1.9.26 (item 9): default FOLLOW.
+            bookNameLanguage = bookNameLanguage,
             autoClearEnabled = autoClearEnabled,
             autoClearDurationMinutes = autoClearDurationMinutes
         )
@@ -967,6 +997,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             ?.putInt("recents_font_size", state.recentsFontSize ?: -1)
             ?.putInt("sermon_font_size", state.sermonFontSize ?: -1)
             ?.putBoolean("library_grid_rtl", state.libraryGridRtl)
+            ?.putString("library_book_name_lang", state.bookNameLanguage.name)
             ?.putBoolean("auto_clear_enabled", state.autoClearEnabled)
             ?.putInt("auto_clear_duration_minutes", state.autoClearDurationMinutes)
             ?.apply()
@@ -995,6 +1026,15 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
      */
     fun setLibraryGridRtl(rtl: Boolean) {
         _uiState.value = _uiState.value.copy(libraryGridRtl = rtl)
+        persistUiPrefs()
+    }
+
+    /**
+     * 1.9.26 (item 9): Library picker book-name language (FOLLOW /
+     * ARABIC / ENGLISH) — persisted in ui_prefs by name.
+     */
+    fun setBookNameLanguage(language: BookNameLanguage) {
+        _uiState.value = _uiState.value.copy(bookNameLanguage = language)
         persistUiPrefs()
     }
 
@@ -3033,6 +3073,9 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
      * "Save as": create a NEW style in the current tab's collection from the
      * working values. (v1.9.1 adds updateStyleInPlace for overwriting the
      * highlighted user style; Save As remains the way to fork a style.)
+     * 1.9.26 (item 11): the new style becomes the EDITING ORIGIN too — a
+     * later "Update current style" must write to the new copy, not the
+     * template it was forked from.
      */
     fun saveAsNewTemplate(name: String, base: LowerThirdTemplate, isFullScreen: Boolean) {
         val newTemplate = base.copy(
@@ -3048,6 +3091,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
                 templates = newList,
                 activeShowTemplate = newTemplate,
                 highlightedShowStyleId = newTemplate.id,
+                editingShowStyleId = newTemplate.id,
                 showWorkingDirty = false
             )
             templateRepo.setActiveShowTemplateId(newTemplate.id)
@@ -3059,6 +3103,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
                 templates = newList,
                 activeTemplate = newTemplate,
                 highlightedLowerStyleId = newTemplate.id,
+                editingLowerStyleId = newTemplate.id,
                 lowerWorkingDirty = false
             )
             templateRepo.setActiveTemplateId(newTemplate.id)

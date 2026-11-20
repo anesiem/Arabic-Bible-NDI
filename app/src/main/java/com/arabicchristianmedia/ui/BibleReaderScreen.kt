@@ -79,6 +79,15 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import kotlin.math.abs
 
+/**
+ * 1.9.26 (item 9): the book name as shown on a picker chip — the short
+ * Arabic form (leading سفر / إنجيل / رسالة stripped) or the English
+ * name as-is (no prefix to strip). One helper for both grids (OT +
+ * NT) so they can't drift.
+ */
+private fun pickerBookName(book: BibleBook, english: Boolean): String =
+    if (english) book.englishName else BibleBookGroups.shortDisplayName(book.arabicName)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BibleReaderScreen(
@@ -135,6 +144,9 @@ fun BibleReaderScreen(
     onSendVersesToSermon: (List<BibleVerse>, Boolean) -> Unit = { _, _ -> },
     // Item 92: Library grid direction (LTR/RTL) — persisted in ui_prefs.
     onSetLibraryGridRtl: (Boolean) -> Unit = {},
+    // 1.9.26 (item 9): Library picker book-name language (FOLLOW /
+    // ARABIC / ENGLISH) — persisted in ui_prefs by name.
+    onSetBookNameLanguage: (BookNameLanguage) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -180,6 +192,14 @@ fun BibleReaderScreen(
 
     val bento = LocalBentoColors.current
     val listColors = LocalListColors.current
+    // 1.9.26 (item 9): the picker's book-name language, resolved here so
+    // it is always fresh — FOLLOW tracks the interface language as it
+    // renders right now; an explicit choice wins over it.
+    val bookNameEnglish = when (uiState.bookNameLanguage) {
+        BookNameLanguage.ENGLISH -> true
+        BookNameLanguage.ARABIC -> false
+        BookNameLanguage.FOLLOW -> !AppLanguage.isArabicUi(context)
+    }
     val lazyListState = rememberLazyListState()
 
     // Auto-scroll to active verse
@@ -294,7 +314,12 @@ fun BibleReaderScreen(
                                 // verse's citation here and froze the reference while
                                 // browsing). The live verse's citation moved to the top
                                 // bar (MainActivity), matching /remote.
-                                text = "${uiState.selectedBook.arabicName} ${ArabicTextFormatter.toEasternArabicDigits(uiState.selectedChapter)}",
+                                // 1.9.26 (item 9): the book name follows
+                                // the picker's name language; the chapter
+                                // digits match it (Eastern for Arabic,
+                                // Western for English) so the reference
+                                // reads as one unit.
+                                text = if (bookNameEnglish) "${uiState.selectedBook.englishName} ${uiState.selectedChapter}" else "${uiState.selectedBook.arabicName} ${ArabicTextFormatter.toEasternArabicDigits(uiState.selectedChapter)}",
                                 fontSize = 14.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary,
                                 maxLines = 1, overflow = TextOverflow.Ellipsis
                             )
@@ -348,6 +373,18 @@ fun BibleReaderScreen(
                             // icon-only toggle at the far end of the search
                             // row (the old grid row + spacer are gone).
                             Spacer(Modifier.weight(1f))
+                            // 1.9.26 (item 9): book-name language — the chip
+                            // shows the language the book names are in now
+                            // (العربية / English, the language's own name,
+                            // like the web language select) and cycles
+                            // FOLLOW → Arabic → English on tap. Selected =
+                            // an explicit choice is active; unselected =
+                            // following the interface language.
+                            FilterChip(
+                                selected = uiState.bookNameLanguage != BookNameLanguage.FOLLOW,
+                                onClick = { onSetBookNameLanguage(uiState.bookNameLanguage.next()) },
+                                label = { Text(if (bookNameEnglish) "English" else "العربية", fontSize = 12.sp) }
+                            )
                             IconButton(onClick = { onSetLibraryGridRtl(!uiState.libraryGridRtl) }) {
                                 Icon(
                                     if (uiState.libraryGridRtl) Icons.Default.FormatTextdirectionRToL else Icons.Default.FormatTextdirectionLToR,
@@ -462,7 +499,7 @@ fun BibleReaderScreen(
                                             },
                                             label = {
                                                 Text(
-                                                    BibleBookGroups.shortDisplayName(book.arabicName),
+                                                    pickerBookName(book, bookNameEnglish),
                                                     fontSize = bookLabelSize, maxLines = 1
                                                 )
                                             },
@@ -495,7 +532,7 @@ fun BibleReaderScreen(
                                             },
                                             label = {
                                                 Text(
-                                                    BibleBookGroups.shortDisplayName(book.arabicName),
+                                                    pickerBookName(book, bookNameEnglish),
                                                     fontSize = bookLabelSize, maxLines = 1
                                                 )
                                             },
@@ -1350,14 +1387,16 @@ fun BentoVerseCard(
                 if (showCitation || isCued) {
                     Text(
                         text = verse.getFormattedArabicCitation(true),
-                        fontSize = VerseRowSpec.CitationSize, fontWeight = FontWeight.Bold, color = bento.primary,
+                        // 1.9.26 (item 10): primarySoft, not primary —
+                        // the full primary is unreadable on dark cards.
+                        fontSize = VerseRowSpec.CitationSize, fontWeight = FontWeight.Bold, color = bento.primarySoft,
                         modifier = Modifier.padding(bottom = VerseRowSpec.CitationBodySpacing)
                     )
                 }
                 
                 Text(
                     text = buildAnnotatedString {
-                        withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = bento.primary)) {
+                        withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = bento.primarySoft)) {
                             append("${ArabicTextFormatter.toEasternArabicDigits(verse.verse)} ")
                         }
                         append(verse.arabicText)

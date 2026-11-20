@@ -784,7 +784,8 @@ class MainActivity : ComponentActivity() {
                                 onRemoveRecent = { viewModel.removeRecentVerse(it) },
                                 onRestoreRecent = { verse, index -> viewModel.restoreRecentVerse(verse, index) },
                                 onSetRecentsFontSize = { viewModel.setRecentsFontSize(it) },
-                                onSetLibraryGridRtl = { viewModel.setLibraryGridRtl(it) }
+                                onSetLibraryGridRtl = { viewModel.setLibraryGridRtl(it) },
+                                onSetBookNameLanguage = { viewModel.setBookNameLanguage(it) }
                             )
                             1 -> TemplateEditorScreen(
                                 currentTemplate = uiState.activeTemplate,

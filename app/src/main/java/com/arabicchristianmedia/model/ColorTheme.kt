@@ -39,6 +39,16 @@ data class ColorThemeTokens(
     val textSecondary: Long,
     val primary: Long,
     val primaryContainer: Long,
+    /**
+     * 1.9.26 (item 10): a lighter tint of [primary] for small accent
+     * text (verse numbers + citation line in the Library rows) — the
+     * full primary is too dark to read on dark cards (Midnight dark
+     * #2563EB on #111C30 is 3.3:1). Dark values clear 4.5:1 on the
+     * theme's dark card (verified by calculation); light values equal
+     * the primary (dark-on-light already reads well). Themes whose
+     * dark primary already clears 4.5:1 keep primarySoft == primary.
+     */
+    val primarySoft: Long,
     val bandA: Long,
     val bandB: Long,
     val recents: Long,
@@ -160,7 +170,7 @@ object ColorThemes {
             bg = 0xFF141218, card = 0xFF1D1B20, surfaceContainer = 0xFF2B2930,
             surfaceVariant = 0xFF4A4458, border = 0xFF49454F, borderSubtle = 0xFF36343B,
             textPrimary = 0xFFE6E1E5, textSecondary = 0xFFCAC4D0,
-            primary = 0xFFD0BCFF, primaryContainer = 0xFF4F378B,
+            primary = 0xFFD0BCFF, primaryContainer = 0xFF4F378B, primarySoft = 0xFFD0BCFF,
             bandA = 0xFF3B3052, bandB = 0xFF2B3A42, recents = 0xFF0D9488, warning = 0xFFFBBF24,
             // Item 11: default live style from remote page — navy bg.
             liveHighlight = 0xFF1B3A5C, liveYellow = 0xFFF5D76E, livePaleYellow = 0xFFFDE9A8, layerLogo = 0xFF10B981, layerParticles = 0xFF38BDF8, layerCard = 0xFFA855F7, layerVideo = 0xFFF59E0B, sermonTint = 0xFF2B3A42,
@@ -179,7 +189,7 @@ object ColorThemes {
             bg = 0xFFFEF7FF, card = 0xFFFFFFFF, surfaceContainer = 0xFFF3EDF7,
             surfaceVariant = 0xFFEADDFF, border = 0xFFCAC4D0, borderSubtle = 0xFFE7E0EC,
             textPrimary = 0xFF1D1B20, textSecondary = 0xFF49454F,
-            primary = 0xFF6750A4, primaryContainer = 0xFFEADDFF,
+            primary = 0xFF6750A4, primaryContainer = 0xFFEADDFF, primarySoft = 0xFF6750A4,
             bandA = 0xFFEAE3F6, bandB = 0xFFDFE9F3, recents = 0xFF0D9488, warning = 0xFFB45309,
             liveHighlight = 0xFFE0F2FE, liveYellow = 0xFFF5D76E, livePaleYellow = 0xFFFDE9A8, layerLogo = 0xFF10B981, layerParticles = 0xFF38BDF8, layerCard = 0xFFA855F7, layerVideo = 0xFFF59E0B, sermonTint = 0xFFDFE9F3,
             groupPentateuch = 0xFFB45309,
@@ -205,7 +215,7 @@ object ColorThemes {
             bg = 0xFF1A1712, card = 0xFF26221C, surfaceContainer = 0xFF2E2820,
             surfaceVariant = 0xFF4A3F2A, border = 0xFF57503F, borderSubtle = 0xFF3A332A,
             textPrimary = 0xFFFFFFFF, textSecondary = 0xFFD6D0C4,
-            primary = 0xFFEAB308, primaryContainer = 0xFF5A4A1A,
+            primary = 0xFFEAB308, primaryContainer = 0xFF5A4A1A, primarySoft = 0xFFEAB308,
             bandA = 0xFF3A3226, bandB = 0xFF2E3A2E, recents = 0xFFF59E0B, warning = 0xFFFBBF24,
             liveHighlight = 0xFF1E293B, liveYellow = 0xFFF5D76E, livePaleYellow = 0xFFFDE9A8, layerLogo = 0xFF10B981, layerParticles = 0xFF38BDF8, layerCard = 0xFFA855F7, layerVideo = 0xFFF59E0B, sermonTint = 0xFF2E3A2E,
             groupPentateuch = 0xFFF59E0B,
@@ -223,7 +233,7 @@ object ColorThemes {
             bg = 0xFFFDF8F0, card = 0xFFFFFFFF, surfaceContainer = 0xFFF5EFE2,
             surfaceVariant = 0xFFE8DCC8, border = 0xFFC9BFA8, borderSubtle = 0xFFEDE6D6,
             textPrimary = 0xFF000000, textSecondary = 0xFF333333,
-            primary = 0xFF1E40AF, primaryContainer = 0xFFDCE6F5,
+            primary = 0xFF1E40AF, primaryContainer = 0xFFDCE6F5, primarySoft = 0xFF1E40AF,
             bandA = 0xFFF5E6C8, bandB = 0xFFDDE8D0, recents = 0xFFB45309, warning = 0xFFB45309,
             liveHighlight = 0xFFE0F2FE, liveYellow = 0xFFF5D76E, livePaleYellow = 0xFFFDE9A8, layerLogo = 0xFF10B981, layerParticles = 0xFF38BDF8, layerCard = 0xFFA855F7, layerVideo = 0xFFF59E0B, sermonTint = 0xFFDDE8D0,
             groupPentateuch = 0xFFB45309,
@@ -251,7 +261,7 @@ object ColorThemes {
             bg = 0xFF0F0A1E, card = 0xFF1E1533, surfaceContainer = 0xFF271B40,
             surfaceVariant = 0xFF3D2A5E, border = 0xFF4A3A6B, borderSubtle = 0xFF2E2347,
             textPrimary = 0xFFF5F3FF, textSecondary = 0xFFC4B5FD,
-            primary = 0xFF7C3AED, primaryContainer = 0xFF4C2E8B,
+            primary = 0xFF7C3AED, primaryContainer = 0xFF4C2E8B, primarySoft = 0xFFA78BFA,
             bandA = 0xFF2D1B4E, bandB = 0xFF123B3F, recents = 0xFF22D3EE, warning = 0xFFFBBF24,
             liveHighlight = 0xFF1E293B, liveYellow = 0xFFF5D76E, livePaleYellow = 0xFFFDE9A8, layerLogo = 0xFF10B981, layerParticles = 0xFF38BDF8, layerCard = 0xFFA855F7, layerVideo = 0xFFF59E0B, sermonTint = 0xFF123B3F,
             groupPentateuch = 0xFFF59E0B,
@@ -269,7 +279,7 @@ object ColorThemes {
             bg = 0xFFF5F3FF, card = 0xFFFFFFFF, surfaceContainer = 0xFFF0EDFB,
             surfaceVariant = 0xFFDDD6FE, border = 0xFFC9C2E0, borderSubtle = 0xFFE9E5F7,
             textPrimary = 0xFF1E1B4B, textSecondary = 0xFF4C4A6B,
-            primary = 0xFF7C3AED, primaryContainer = 0xFFE6DFF5,
+            primary = 0xFF7C3AED, primaryContainer = 0xFFE6DFF5, primarySoft = 0xFF7C3AED,
             bandA = 0xFFEDE9FE, bandB = 0xFFCFFAFE, recents = 0xFF0891B2, warning = 0xFFB45309,
             liveHighlight = 0xFFE0F2FE, liveYellow = 0xFFF5D76E, livePaleYellow = 0xFFFDE9A8, layerLogo = 0xFF10B981, layerParticles = 0xFF38BDF8, layerCard = 0xFFA855F7, layerVideo = 0xFFF59E0B, sermonTint = 0xFFCFFAFE,
             groupPentateuch = 0xFFB45309,
@@ -295,7 +305,7 @@ object ColorThemes {
             bg = 0xFF0C1A17, card = 0xFF142A25, surfaceContainer = 0xFF1C332C,
             surfaceVariant = 0xFF2A4A3E, border = 0xFF3D5A4E, borderSubtle = 0xFF24382F,
             textPrimary = 0xFFECFDF5, textSecondary = 0xFFA7F3D0,
-            primary = 0xFF34D399, primaryContainer = 0xFF14532D,
+            primary = 0xFF34D399, primaryContainer = 0xFF14532D, primarySoft = 0xFF34D399,
             bandA = 0xFF14352C, bandB = 0xFF3B2A12, recents = 0xFFFBBF24, warning = 0xFFFBBF24,
             liveHighlight = 0xFF1E293B, liveYellow = 0xFFF5D76E, livePaleYellow = 0xFFFDE9A8, layerLogo = 0xFF10B981, layerParticles = 0xFF38BDF8, layerCard = 0xFFA855F7, layerVideo = 0xFFF59E0B, sermonTint = 0xFF3B2A12,
             groupPentateuch = 0xFFF59E0B,
@@ -313,7 +323,7 @@ object ColorThemes {
             bg = 0xFFF0FDF9, card = 0xFFFFFFFF, surfaceContainer = 0xFFEAF9F1,
             surfaceVariant = 0xFFCFF5E0, border = 0xFFB9D8C6, borderSubtle = 0xFFE2F2E8,
             textPrimary = 0xFF0F172A, textSecondary = 0xFF475569,
-            primary = 0xFF047857, primaryContainer = 0xFFC9EBD9,
+            primary = 0xFF047857, primaryContainer = 0xFFC9EBD9, primarySoft = 0xFF047857,
             bandA = 0xFFD1FAE5, bandB = 0xFFFEF3C7, recents = 0xFFB45309, warning = 0xFFB45309,
             liveHighlight = 0xFFE0F2FE, liveYellow = 0xFFF5D76E, livePaleYellow = 0xFFFDE9A8, layerLogo = 0xFF10B981, layerParticles = 0xFF38BDF8, layerCard = 0xFFA855F7, layerVideo = 0xFFF59E0B, sermonTint = 0xFFFEF3C7,
             groupPentateuch = 0xFFB45309,
@@ -339,7 +349,7 @@ object ColorThemes {
             bg = 0xFF1C1917, card = 0xFF292524, surfaceContainer = 0xFF322C26,
             surfaceVariant = 0xFF4A3F31, border = 0xFF57503F, borderSubtle = 0xFF3A332B,
             textPrimary = 0xFFF5F5F4, textSecondary = 0xFFD6D3D1,
-            primary = 0xFFC89B6A, primaryContainer = 0xFF5C4626,
+            primary = 0xFFC89B6A, primaryContainer = 0xFF5C4626, primarySoft = 0xFFC89B6A,
             bandA = 0xFF3B332B, bandB = 0xFF2E352E, recents = 0xFFE8A33D, warning = 0xFFFBBF24,
             liveHighlight = 0xFF1E293B, liveYellow = 0xFFF5D76E, livePaleYellow = 0xFFFDE9A8, layerLogo = 0xFF10B981, layerParticles = 0xFF38BDF8, layerCard = 0xFFA855F7, layerVideo = 0xFFF59E0B, sermonTint = 0xFF2E352E,
             groupPentateuch = 0xFFF59E0B,
@@ -357,7 +367,7 @@ object ColorThemes {
             bg = 0xFFFDF6E3, card = 0xFFFFFBEB, surfaceContainer = 0xFFF7ECD2,
             surfaceVariant = 0xFFEFE0BC, border = 0xFFD8CBA8, borderSubtle = 0xFFEFE7D0,
             textPrimary = 0xFF292524, textSecondary = 0xFF57534E,
-            primary = 0xFF92400E, primaryContainer = 0xFFF0DCB8,
+            primary = 0xFF92400E, primaryContainer = 0xFFF0DCB8, primarySoft = 0xFF92400E,
             bandA = 0xFFF5E6C8, bandB = 0xFFE7E5D4, recents = 0xFFB45309, warning = 0xFFB45309,
             liveHighlight = 0xFFE0F2FE, liveYellow = 0xFFF5D76E, livePaleYellow = 0xFFFDE9A8, layerLogo = 0xFF10B981, layerParticles = 0xFF38BDF8, layerCard = 0xFFA855F7, layerVideo = 0xFFF59E0B, sermonTint = 0xFFE7E5D4,
             groupPentateuch = 0xFFB45309,
@@ -384,7 +394,7 @@ object ColorThemes {
             bg = 0xFF101418, card = 0xFF1A2027, surfaceContainer = 0xFF222B34,
             surfaceVariant = 0xFF2E3947, border = 0xFF3A4552, borderSubtle = 0xFF28303A,
             textPrimary = 0xFFF1F5F9, textSecondary = 0xFF94A3B8,
-            primary = 0xFF3B82F6, primaryContainer = 0xFF1E3A5F,
+            primary = 0xFF3B82F6, primaryContainer = 0xFF1E3A5F, primarySoft = 0xFF60A5FA,
             bandA = 0xFF1E293B, bandB = 0xFF1C2B3A, recents = 0xFFF59E0B, warning = 0xFFFBBF24,
             liveHighlight = 0xFFFACC15, liveYellow = 0xFFF5D76E, livePaleYellow = 0xFFFDE9A8, layerLogo = 0xFF10B981, layerParticles = 0xFF38BDF8, layerCard = 0xFFA855F7, layerVideo = 0xFFF59E0B, sermonTint = 0xFF243447,
             groupPentateuch = 0xFFF59E0B,
@@ -402,7 +412,7 @@ object ColorThemes {
             bg = 0xFFF8FAFC, card = 0xFFFFFFFF, surfaceContainer = 0xFFF1F5F9,
             surfaceVariant = 0xFFE2E8F0, border = 0xFFCBD5E1, borderSubtle = 0xFFE2E8F0,
             textPrimary = 0xFF0F172A, textSecondary = 0xFF475569,
-            primary = 0xFF1D4ED8, primaryContainer = 0xFFDBEAFE,
+            primary = 0xFF1D4ED8, primaryContainer = 0xFFDBEAFE, primarySoft = 0xFF1D4ED8,
             bandA = 0xFFDBEAFE, bandB = 0xFFFEF3C7, recents = 0xFFB45309, warning = 0xFFB45309,
             liveHighlight = 0xFFFEF08A, liveYellow = 0xFFF5D76E, livePaleYellow = 0xFFFDE9A8, layerLogo = 0xFF10B981, layerParticles = 0xFF38BDF8, layerCard = 0xFFA855F7, layerVideo = 0xFFF59E0B, sermonTint = 0xFFE0EAF5,
             groupPentateuch = 0xFFB45309,
@@ -428,7 +438,7 @@ object ColorThemes {
             bg = 0xFF1C1712, card = 0xFF262019, surfaceContainer = 0xFF2E2820,
             surfaceVariant = 0xFF453A2A, border = 0xFF57493A, borderSubtle = 0xFF38302A,
             textPrimary = 0xFFFFF7ED, textSecondary = 0xFFD6C4A8,
-            primary = 0xFFF59E0B, primaryContainer = 0xFF5A3D14,
+            primary = 0xFFF59E0B, primaryContainer = 0xFF5A3D14, primarySoft = 0xFFF59E0B,
             bandA = 0xFF33291D, bandB = 0xFF3A2E1E, recents = 0xFFFB923C, warning = 0xFFFBBF24,
             liveHighlight = 0xFF7C2D12, liveYellow = 0xFFF5D76E, livePaleYellow = 0xFFFDE9A8, layerLogo = 0xFF10B981, layerParticles = 0xFF38BDF8, layerCard = 0xFFA855F7, layerVideo = 0xFFF59E0B, sermonTint = 0xFF3A2F22,
             groupPentateuch = 0xFFF59E0B,
@@ -446,7 +456,7 @@ object ColorThemes {
             bg = 0xFFFDF8F0, card = 0xFFFFFFFF, surfaceContainer = 0xFFFAF3E8,
             surfaceVariant = 0xFFF0E4D0, border = 0xFFD8C9A8, borderSubtle = 0xFFEDE4D0,
             textPrimary = 0xFF292524, textSecondary = 0xFF57534E,
-            primary = 0xFFB45309, primaryContainer = 0xFFF5E0C0,
+            primary = 0xFFB45309, primaryContainer = 0xFFF5E0C0, primarySoft = 0xFFB45309,
             bandA = 0xFFF5E6C8, bandB = 0xFFEDE0C8, recents = 0xFFB45309, warning = 0xFFB45309,
             liveHighlight = 0xFFFEF3C7, liveYellow = 0xFFF5D76E, livePaleYellow = 0xFFFDE9A8, layerLogo = 0xFF10B981, layerParticles = 0xFF38BDF8, layerCard = 0xFFA855F7, layerVideo = 0xFFF59E0B, sermonTint = 0xFFF0E4CE,
             groupPentateuch = 0xFFB45309,
@@ -472,7 +482,7 @@ object ColorThemes {
             bg = 0xFF0B1220, card = 0xFF111C30, surfaceContainer = 0xFF111A2E,
             surfaceVariant = 0xFF1B2540, border = 0xFF1E293B, borderSubtle = 0xFF182036,
             textPrimary = 0xFFE2E8F0, textSecondary = 0xFF94A3B8,
-            primary = 0xFF2563EB, primaryContainer = 0xFF1E3A8A,
+            primary = 0xFF2563EB, primaryContainer = 0xFF1E3A8A, primarySoft = 0xFF60A5FA,
             bandA = 0xFF101A30, bandB = 0xFF0F2033, recents = 0xFF22D3EE, warning = 0xFFFBBF24,
             liveHighlight = 0xFF1E3A8A, liveYellow = 0xFFF5D76E, livePaleYellow = 0xFFFDE9A8, layerLogo = 0xFF10B981, layerParticles = 0xFF38BDF8, layerCard = 0xFFA855F7, layerVideo = 0xFFF59E0B, sermonTint = 0xFF14243D,
             groupPentateuch = 0xFFF59E0B,
@@ -490,7 +500,7 @@ object ColorThemes {
             bg = 0xFFF0F4FA, card = 0xFFFFFFFF, surfaceContainer = 0xFFE8EEF7,
             surfaceVariant = 0xFFD6E2F2, border = 0xFFB8C9E2, borderSubtle = 0xFFDDE6F2,
             textPrimary = 0xFF0F1B2D, textSecondary = 0xFF475569,
-            primary = 0xFF1E40AF, primaryContainer = 0xFFDBEAFE,
+            primary = 0xFF1E40AF, primaryContainer = 0xFFDBEAFE, primarySoft = 0xFF1E40AF,
             bandA = 0xFFDBEAFE, bandB = 0xFFCFFAFE, recents = 0xFF0891B2, warning = 0xFFB45309,
             liveHighlight = 0xFFFEF08A, liveYellow = 0xFFF5D76E, livePaleYellow = 0xFFFDE9A8, layerLogo = 0xFF10B981, layerParticles = 0xFF38BDF8, layerCard = 0xFFA855F7, layerVideo = 0xFFF59E0B, sermonTint = 0xFFD9E6F5,
             groupPentateuch = 0xFFB45309,
@@ -529,7 +539,7 @@ fun ColorTheme.toJson(): JSONObject {
             put("surface", hex(t.surfaceContainer)); put("variant", hex(t.surfaceVariant))
             put("border", hex(t.border)); put("borderSub", hex(t.borderSubtle))
             put("text", hex(t.textPrimary)); put("textSec", hex(t.textSecondary))
-            put("primary", hex(t.primary)); put("primaryCont", hex(t.primaryContainer))
+            put("primary", hex(t.primary)); put("primaryCont", hex(t.primaryContainer)); put("primarySoft", hex(t.primarySoft))
             put("bandA", hex(t.bandA)); put("bandB", hex(t.bandB)); put("recents", hex(t.recents)); put("warning", hex(t.warning))
             put("liveHighlight", hex(t.liveHighlight)); put("liveYellow", hex(t.liveYellow)); put("livePaleYellow", hex(t.livePaleYellow)); put("layerLogo", hex(t.layerLogo)); put("layerParticles", hex(t.layerParticles)); put("layerCard", hex(t.layerCard)); put("layerVideo", hex(t.layerVideo)); put("sermonTint", hex(t.sermonTint))
             put("gPent", hex(t.groupPentateuch)); put("gHist", hex(t.groupHistorical)); put("gPoet", hex(t.groupPoetry))
@@ -556,6 +566,10 @@ fun colorThemeFromJson(obj: JSONObject): ColorTheme? {
                 border = argb("border"), borderSubtle = argb("borderSub"),
                 textPrimary = argb("text"), textSecondary = argb("textSec"),
                 primary = argb("primary"), primaryContainer = argb("primaryCont"),
+                // 1.9.26 (item 10): pre-update custom themes fall back
+                // to the theme's own primary (the previous verse-number
+                // color) when the key is absent.
+                primarySoft = if (o.has("primarySoft")) argb("primarySoft") else argb("primary"),
                 bandA = argb("bandA"), bandB = argb("bandB"), recents = argb("recents"),
                 // Pre-warning custom themes (saved before this field existed)
                 // fall back to the per-mode amber, not black.

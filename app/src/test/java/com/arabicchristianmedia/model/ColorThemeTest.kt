@@ -41,6 +41,8 @@ class ColorThemeTest {
         assertEquals("Midnight dark bg is the shipping value", 0xFF0B1220, ColorThemes.MIDNIGHT.dark.bg)
         assertEquals("Midnight dark card is the shipping value", 0xFF111C30, ColorThemes.MIDNIGHT.dark.card)
         assertEquals("Midnight dark primary is the shipping value", 0xFF2563EB, ColorThemes.MIDNIGHT.dark.primary)
+        // 1.9.26 (item 10): Midnight dark verse numbers use the lighter blue.
+        assertEquals("Midnight dark primarySoft is the lighter blue", 0xFF60A5FA, ColorThemes.MIDNIGHT.dark.primarySoft)
         assertEquals("Midnight dark border is the shipping value", 0xFF1E293B, ColorThemes.MIDNIGHT.dark.border)
     }
 
@@ -186,5 +188,29 @@ class ColorThemeTest {
         val parsed = colorThemeFromJson(json)
         assertEquals("dark falls back to light amber", 0xFFFBBF24, parsed?.dark?.warning)
         assertEquals("light falls back to dark amber", 0xFFB45309, parsed?.light?.warning)
+    }
+
+    @Test
+    fun missingPrimarySoftKeyFallsBackToPrimary() {
+        val json = ColorThemes.CLASSIC.toJson()
+        json.getJSONObject("dark").remove("primarySoft")
+        json.getJSONObject("light").remove("primarySoft")
+        val parsed = colorThemeFromJson(json)
+        assertEquals("dark falls back to its own primary", 0xFFD0BCFF, parsed?.dark?.primarySoft)
+        assertEquals("light falls back to its own primary", 0xFF6750A4, parsed?.light?.primarySoft)
+    }
+
+    @Test
+    fun primarySoftDarkClearsBarOnEveryCard() {
+        // 1.9.26 (item 10): the whole point of primarySoft is small
+        // accent text that reads on dark cards — every theme's dark
+        // value must clear the 4.5:1 normal-text bar on its dark card.
+        for (theme in ColorThemes.BUILT_INS) {
+            val t = theme.tokens(true)
+            assertTrue(
+                "${theme.id} dark primarySoft must be >= 4.5:1 on card",
+                contrastRatio(t.primarySoft, t.card) >= 4.5
+            )
+        }
     }
 }

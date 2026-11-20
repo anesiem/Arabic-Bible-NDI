@@ -27,6 +27,10 @@ data class BentoColors(
     val primary: Color,
     val onPrimary: Color,
     val primaryContainer: Color,
+    // 1.9.26 (item 10): lighter primary for small accent text (verse
+    // numbers + citation line) — resolved from the token of the same
+    // name, so dark-mode rows stay readable.
+    val primarySoft: Color,
     val onPrimaryContainer: Color,
     val secondary: Color,
     val onSecondary: Color,
@@ -58,6 +62,7 @@ val LocalBentoColors = staticCompositionLocalOf {
         primary = BentoPrimaryLight,
         onPrimary = BentoOnPrimaryLight,
         primaryContainer = BentoPrimaryContainerLight,
+        primarySoft = Color(ColorThemes.CLASSIC.light.primarySoft),
         onPrimaryContainer = BentoOnPrimaryContainerLight,
         secondary = BentoSecondaryLight,
         onSecondary = BentoOnSecondaryLight,
@@ -135,6 +140,7 @@ private fun bentoColorsFromTheme(tokens: ColorThemeTokens, isDark: Boolean): Ben
         primary = Color(tokens.primary),
         onPrimary = Color(onPrimaryFor(tokens.primary)),
         primaryContainer = Color(tokens.primaryContainer),
+        primarySoft = Color(tokens.primarySoft),
         onPrimaryContainer = if (isDark) BentoOnPrimaryContainerDark else BentoOnPrimaryContainerLight,
         secondary = if (isDark) BentoSecondaryDark else BentoSecondaryLight,
         onSecondary = if (isDark) BentoOnSecondaryDark else BentoOnSecondaryLight,

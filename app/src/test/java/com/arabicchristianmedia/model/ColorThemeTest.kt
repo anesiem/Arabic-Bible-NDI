@@ -106,13 +106,26 @@ class ColorThemeTest {
     @Test
     fun jsonRoundTripPreservesTokens() {
         val classic = ColorThemes.CLASSIC
-        assertEquals("Classic round-trips", classic, colorThemeFromJson(classic.toJson()))
+        val classicRestored = colorThemeFromJson(classic.toJson())
+        // 1.9.25: nameRes is code-side only (built-ins resolve display names
+        // through resources) and is deliberately NOT serialized — JSON carries
+        // id/name/tokens. Compare what the round-trip preserves.
+        assertEquals("Classic id round-trips", classic.id, classicRestored?.id)
+        assertEquals("Classic name round-trips", classic.name, classicRestored?.name)
+        assertEquals("Classic dark tokens round-trip", classic.dark, classicRestored?.dark)
+        assertEquals("Classic light tokens round-trip", classic.light, classicRestored?.light)
+        assertNull("nameRes is not serialized", classicRestored?.nameRes)
         val custom = classic.copy(
             id = "custom_x", name = "X",
             dark = classic.dark.copy(bandA = 0xFF111111, recents = 0xFF222222),
             light = classic.light.copy(bandB = 0xFF333333)
         )
-        assertEquals("custom theme round-trips", custom, colorThemeFromJson(custom.toJson()))
+        val customRestored = colorThemeFromJson(custom.toJson())
+        assertEquals("custom id round-trips", custom.id, customRestored?.id)
+        assertEquals("custom name round-trips", custom.name, customRestored?.name)
+        assertEquals("custom dark tokens round-trip", custom.dark, customRestored?.dark)
+        assertEquals("custom light tokens round-trip", custom.light, customRestored?.light)
+        assertNull("custom nameRes is not serialized", customRestored?.nameRes)
     }
 
     @Test

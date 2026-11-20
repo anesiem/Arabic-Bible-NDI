@@ -169,11 +169,12 @@ data class BibleNdiUiState(
     // ui_prefs by name.
     val bookNameLanguage: BookNameLanguage = BookNameLanguage.FOLLOW,
     // 1.9.23 (item 10): auto-clear — the live verse clears itself after
-    // a set time. OFF by default (zero behavior change unless enabled).
+    // a set time. ON by default since 1.9.26 (item 12); the toggle in
+    // Setup > Auto-Clear turns it off.
     // Settings are persisted in ui_prefs; the countdown fields below are
     // transient (never persisted) — remainingSec is null when no
     // countdown is running, paused freezes it.
-    val autoClearEnabled: Boolean = false,
+    val autoClearEnabled: Boolean = true,
     val autoClearDurationMinutes: Int = 2,
     val autoClearRemainingSec: Int? = null,
     val autoClearPaused: Boolean = false,
@@ -968,8 +969,20 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         val bookNameLanguage = try {
             BookNameLanguage.valueOf(prefs?.getString("library_book_name_lang", null) ?: "FOLLOW")
         } catch (e: Exception) { BookNameLanguage.FOLLOW }
-        // 1.9.23 (item 10): auto-clear — OFF by default, 2 min default.
-        val autoClearEnabled = prefs?.getBoolean("auto_clear_enabled", false) ?: false
+        // 1.9.26 (item 12): auto-clear is ON by default. The default
+        // alone would do nothing on existing installs — persistUiPrefs
+        // has written auto_clear_enabled=false on every save since
+        // 1.9.23 — so a one-time migration flips it ON the first time
+        // 1.9.26 runs (flag-gated; the toggle still turns it off).
+        val autoClearMigrated = prefs?.getBoolean("auto_clear_default_migrated", false) ?: false
+        var autoClearEnabled = prefs?.getBoolean("auto_clear_enabled", true) ?: true
+        if (!autoClearMigrated) {
+            autoClearEnabled = true
+            prefs?.edit()
+                ?.putBoolean("auto_clear_enabled", true)
+                ?.putBoolean("auto_clear_default_migrated", true)
+                ?.apply()
+        }
         val autoClearDurationMinutes = (prefs?.getInt("auto_clear_duration_minutes", 2) ?: 2).coerceIn(1, 60)
         _uiState.value = _uiState.value.copy(
             readerFontSize = fontSize,

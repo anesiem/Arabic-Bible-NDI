@@ -200,7 +200,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
     // 1.9.25 (item 2, language mode): status/toast strings resolve through
     // the app resources so they follow the interface language. AndroidViewModel
     // holds the Application, so getApplication() is non-null by contract.
-    private fun str(@StringRes id: Int, vararg args: Any): String =
+    private fun str(@StringRes id: Int, vararg args: Any?): String =
         getApplication<Application>().getString(id, *args)
 
     companion object {

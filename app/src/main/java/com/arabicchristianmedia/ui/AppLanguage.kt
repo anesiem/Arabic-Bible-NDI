@@ -81,7 +81,7 @@ object AppLanguage {
     fun wrap(base: Context): Context {
         val choice = currentChoice(base)
         if (choice == SYSTEM) return base
-        val locale = Locale.forLanguageTags(choice)
+        val locale = Locale.forLanguageTag(choice)
         val config = Configuration(base.resources.configuration)
         config.setLocale(locale)
         return base.createConfigurationContext(config)

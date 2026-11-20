@@ -321,6 +321,7 @@ fun ThemeDialog(
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ThemeRow(theme: ColorTheme, selected: Boolean, onClick: () -> Unit, onLongClick: (() -> Unit)?) {
+    val context = LocalContext.current
     val bento = LocalBentoColors.current
     Row(
         modifier = Modifier.fillMaxWidth().combinedClickable(onClick = { onClick() }, onLongClick = onLongClick).padding(vertical = 6.dp),

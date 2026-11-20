@@ -890,7 +890,7 @@ class MainActivity : ComponentActivity() {
                                 // the choice, then recreate so every
                                 // string + the layout direction re-resolve.
                                 onSetAppLanguage = { choice ->
-                                    AppLanguage.applyChoice(this, choice)
+                                    AppLanguage.applyChoice(this@MainActivity, choice)
                                     recreate()
                                 }
                             )

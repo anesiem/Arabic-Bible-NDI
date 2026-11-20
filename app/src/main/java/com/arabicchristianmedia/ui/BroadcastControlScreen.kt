@@ -45,8 +45,6 @@ import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.HelpOutline
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.Movie
@@ -303,7 +301,7 @@ fun BroadcastControlScreen(
                             ) {
                                 Icon(Icons.Default.PlayArrow, contentDescription = null, tint = bento.onPrimary, modifier = Modifier.size(14.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("تشغيل الكل", fontSize = 11.sp, color = bento.onPrimary, fontWeight = FontWeight.Bold)
+                                Text("تفعيل الكل", fontSize = 11.sp, color = bento.onPrimary, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -353,7 +351,7 @@ fun BroadcastControlScreen(
                                 text = if (anyActive)
                                     "المصدر: Bible-NDI | Lower ${loSpec.width}×${loSpec.height}@${loSpec.fps} • Full ${fuSpec.width}×${fuSpec.height}@${fuSpec.fps} | شفافية ألفا نقية 100% لـ OBS / vMix ودفق MJPEG مباشر"
                                 else
-                                    "المصدر: Bible-NDI | المنفذ: ${uiState.serverPort} | اضغط 'تشغيل المصادر' لبدء البث",
+                                    "المصدر: Bible-NDI | المنفذ: ${uiState.serverPort} | اضغط 'تفعيل الكل' لبدء البث",
                                 fontSize = 10.sp,
                                 color = if (anyActive) bento.green else bento.textSecondary
                             )
@@ -558,7 +556,7 @@ fun BroadcastControlScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                         Icon(
                             imageVector = Icons.Default.Link,
                             contentDescription = null,
@@ -566,42 +564,24 @@ fun BroadcastControlScreen(
                             modifier = Modifier.size(16.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
-                        Column {
-                            Text(
-                                text = "روابط الإخراج المباشر لـ OBS و vMix (شفافية 100%)",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = bento.textPrimary
-                            )
-                            Text(
-                                text = if (showOutputUrls) "انقر للطي" else "انقر لعرض روابط Browser Source و MJPEG للبرامج الأخرى",
-                                fontSize = 9.sp,
-                                color = bento.textSecondary
-                            )
-                        }
+                        // 1.9.25 (item 9): the "انقر للطي" hint is gone —
+                        // the chevron alone is the control.
+                        Text(
+                            text = "روابط الإخراج المباشر لـ OBS و vMix (شفافية 100%)",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = bento.textPrimary
+                        )
                     }
 
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(bento.primaryContainer.copy(alpha = 0.6f))
-                            .padding(horizontal = 8.dp, vertical = 3.dp)
-                    ) {
-                        Text(
-                            text = if (showOutputUrls) "طي" else "عرض",
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = bento.primary
-                        )
-                        Spacer(modifier = Modifier.width(2.dp))
-                        Icon(
-                            imageVector = if (showOutputUrls) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                            contentDescription = null,
-                            tint = bento.primary,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
+                    // 1.9.25 (item 13): the same ▲/▼ chevron as every
+                    // other expandable card (▲ open, ▼ closed) — the
+                    // "طي"/"عرض" text button is gone with unification.
+                    Text(
+                        text = if (showOutputUrls) "▲" else "▼",
+                        fontSize = 12.sp,
+                        color = bento.textSecondary
+                    )
                 }
 
                 AnimatedVisibility(
@@ -647,84 +627,18 @@ fun BroadcastControlScreen(
                                     modifier = Modifier.weight(1f)
                                 )
 
-                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    val isCopied = copiedUrlType == "OVERLAY"
-                                    Surface(
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = if (isCopied) bento.green else bento.primary,
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .clickable {
-                                                if (uiState.serverUrl.isBlank()) {
-                                                    Toast.makeText(context, "لا يوجد اتصال شبكة محلية (Wi-Fi) — الرابط غير متاح", Toast.LENGTH_SHORT).show()
-                                                } else {
-                                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                                    val clip = ClipData.newPlainText("Bible NDI Overlay URL", uiState.serverUrl)
-                                                    clipboard.setPrimaryClip(clip)
-                                                    copiedUrlType = "OVERLAY"
-                                                    Toast.makeText(context, "تم نسخ رابط التغذية الشفافة!", Toast.LENGTH_SHORT).show()
-                                                }
-                                            }
-                                            .padding(horizontal = 8.dp, vertical = 5.dp)
-                                    ) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Icon(
-                                                imageVector = if (isCopied) Icons.Default.Check else Icons.Default.ContentCopy,
-                                                contentDescription = "Copy URL",
-                                                tint = if (isCopied) Color.White else bento.onPrimary,
-                                                modifier = Modifier.size(12.dp)
-                                            )
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text(
-                                                text = if (isCopied) "تم النسخ" else "نسخ",
-                                                fontSize = 10.sp,
-                                                color = if (isCopied) Color.White else bento.onPrimary,
-                                                fontWeight = FontWeight.Bold
-                                            )
-                                        }
-                                    }
-
-                                    Surface(
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = bento.surfaceVariant,
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .clickable {
-                                                if (uiState.serverUrl.isBlank()) {
-                                                    Toast.makeText(context, "لا يوجد اتصال شبكة محلية (Wi-Fi) — الرابط غير متاح", Toast.LENGTH_SHORT).show()
-                                                } else {
-                                                    try {
-                                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(uiState.serverUrl))
-                                                        context.startActivity(intent)
-                                                    } catch (e: Exception) {
-                                                        Toast.makeText(context, "تعذر فتح المتصفح", Toast.LENGTH_SHORT).show()
-                                                    }
-                                                }
-                                            }
-                                            .padding(horizontal = 7.dp, vertical = 5.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.OpenInBrowser,
-                                            contentDescription = "Open in Browser",
-                                            tint = bento.textPrimary,
-                                            modifier = Modifier.size(14.dp)
-                                        )
-                                    }
-
-                                    // 1.9.15 item 7: QR code for the Lower URL
-                                    // (same icon/16dp/textSecondary tint as
-                                    // the All-URLs list). No-Wi-Fi guard +
-                                    // toast, same as Copy/Open.
-                                    androidx.compose.material3.IconButton(onClick = {
-                                        if (uiState.serverUrl.isBlank()) {
-                                            Toast.makeText(context, "لا يوجد اتصال شبكة محلية (Wi-Fi) — الرابط غير متاح", Toast.LENGTH_SHORT).show()
-                                        } else {
-                                            showQrLower = true
-                                        }
-                                    }) {
-                                        Icon(Icons.Default.QrCode, contentDescription = "QR Lower", tint = bento.textSecondary, modifier = Modifier.size(16.dp))
-                                    }
-                                }
+                                // 1.9.25 (items 4/5): the shared icon-only
+                                // copy/open/QR set.
+                                UrlActionIcons(
+                                    url = uiState.serverUrl,
+                                    copyType = "OVERLAY",
+                                    copiedUrlType = copiedUrlType,
+                                    onCopied = { copiedUrlType = it },
+                                    clipLabel = "Bible NDI Overlay URL",
+                                    copiedToast = "تم نسخ رابط التغذية الشفافة!",
+                                    qrDescription = "QR Lower",
+                                    onQr = { showQrLower = true }
+                                )
                             }
                         }
                         if (showQrLower) {
@@ -764,84 +678,18 @@ fun BroadcastControlScreen(
                                     modifier = Modifier.weight(1f)
                                 )
 
-                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    val isCopied = copiedUrlType == "SHOW"
-                                    Surface(
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = if (isCopied) bento.green else bento.primary,
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .clickable {
-                                                if (showUrl.isBlank()) {
-                                                    Toast.makeText(context, "لا يوجد اتصال شبكة محلية (Wi-Fi) — الرابط غير متاح", Toast.LENGTH_SHORT).show()
-                                                } else {
-                                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                                    val clip = ClipData.newPlainText("Bible NDI Show URL", showUrl)
-                                                    clipboard.setPrimaryClip(clip)
-                                                    copiedUrlType = "SHOW"
-                                                    Toast.makeText(context, "تم نسخ رابط العرض الكامل!", Toast.LENGTH_SHORT).show()
-                                                }
-                                            }
-                                            .padding(horizontal = 8.dp, vertical = 5.dp)
-                                    ) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Icon(
-                                                imageVector = if (isCopied) Icons.Default.Check else Icons.Default.ContentCopy,
-                                                contentDescription = "Copy URL",
-                                                tint = if (isCopied) Color.White else bento.onPrimary,
-                                                modifier = Modifier.size(12.dp)
-                                            )
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text(
-                                                text = if (isCopied) "تم النسخ" else "نسخ",
-                                                fontSize = 10.sp,
-                                                color = if (isCopied) Color.White else bento.onPrimary,
-                                                fontWeight = FontWeight.Bold
-                                            )
-                                        }
-                                    }
-
-                                    Surface(
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = bento.surfaceVariant,
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .clickable {
-                                                if (showUrl.isBlank()) {
-                                                    Toast.makeText(context, "لا يوجد اتصال شبكة محلية (Wi-Fi) — الرابط غير متاح", Toast.LENGTH_SHORT).show()
-                                                } else {
-                                                    try {
-                                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(showUrl))
-                                                        context.startActivity(intent)
-                                                    } catch (e: Exception) {
-                                                        Toast.makeText(context, "تعذر فتح المتصفح", Toast.LENGTH_SHORT).show()
-                                                    }
-                                                }
-                                            }
-                                            .padding(horizontal = 7.dp, vertical = 5.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.OpenInBrowser,
-                                            contentDescription = "Open in Browser",
-                                            tint = bento.textPrimary,
-                                            modifier = Modifier.size(14.dp)
-                                        )
-                                    }
-
-                                    // 1.9.15 item 7: QR code for the Full URL
-                                    // (same icon/16dp/textSecondary tint as
-                                    // the All-URLs list). No-Wi-Fi guard +
-                                    // toast, same as Copy/Open.
-                                    androidx.compose.material3.IconButton(onClick = {
-                                        if (showUrl.isBlank()) {
-                                            Toast.makeText(context, "لا يوجد اتصال شبكة محلية (Wi-Fi) — الرابط غير متاح", Toast.LENGTH_SHORT).show()
-                                        } else {
-                                            showQrFull = true
-                                        }
-                                    }) {
-                                        Icon(Icons.Default.QrCode, contentDescription = "QR Full", tint = bento.textSecondary, modifier = Modifier.size(16.dp))
-                                    }
-                                }
+                                // 1.9.25 (items 4/5): the shared icon-only
+                                // copy/open/QR set.
+                                UrlActionIcons(
+                                    url = showUrl,
+                                    copyType = "SHOW",
+                                    copiedUrlType = copiedUrlType,
+                                    onCopied = { copiedUrlType = it },
+                                    clipLabel = "Bible NDI Show URL",
+                                    copiedToast = "تم نسخ رابط العرض الكامل!",
+                                    qrDescription = "QR Full",
+                                    onQr = { showQrFull = true }
+                                )
                             }
                         }
                         if (showQrFull) {
@@ -874,6 +722,9 @@ fun BroadcastControlScreen(
 
     val mjpegBlock: @Composable () -> Unit = {
         // Broadcast URL 3: Direct MJPEG Video Stream URL (old numbering)
+        // 1.9.25 (item 5): QR dialog state for the MJPEG URL.
+        var showQrStream by remember { mutableStateOf(false) }
+
         SplitLabel(
             parts = listOf("٣. رابط بث الفيديو المباشر ", "(Direct Video Stream / MJPEG في vMix و OBS):"),
             fontSize = 11.sp,
@@ -899,66 +750,43 @@ fun BroadcastControlScreen(
                     fontSize = 11.sp,
                     fontFamily = FontFamily.Monospace,
                     fontWeight = FontWeight.Bold,
-                    color = bento.green,
+                    color = bento.primary,
                     modifier = Modifier.weight(1f)
                 )
 
-                val isCopied = copiedUrlType == "STREAM"
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = if (isCopied) bento.green else bento.green,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .clickable {
-                            if (uiState.streamUrl.isBlank()) {
-                                Toast.makeText(context, "لا يوجد اتصال شبكة محلية (Wi-Fi) — الرابط غير متاح", Toast.LENGTH_SHORT).show()
-                            } else {
-                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                val clip = ClipData.newPlainText("Bible NDI Stream URL", uiState.streamUrl)
-                                clipboard.setPrimaryClip(clip)
-                                copiedUrlType = "STREAM"
-                                Toast.makeText(context, "تم نسخ رابط بث الفيديو المباشر!", Toast.LENGTH_SHORT).show()
-                            }
-                        }
-                        .padding(horizontal = 8.dp, vertical = 5.dp)
-                        .testTag("copy_stream_button")
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = if (isCopied) Icons.Default.Check else Icons.Default.Videocam,
-                            contentDescription = "Copy Stream URL",
-                            tint = Color.White,
-                            modifier = Modifier.size(12.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = if (isCopied) "تم النسخ" else "نسخ البث",
-                            fontSize = 10.sp,
-                            color = Color.White,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
+                // 1.9.25 (items 4/5/15): the shared icon-only
+                // copy/open/QR set (was a green copy-only button).
+                UrlActionIcons(
+                    url = uiState.streamUrl,
+                    copyType = "STREAM",
+                    copiedUrlType = copiedUrlType,
+                    onCopied = { copiedUrlType = it },
+                    clipLabel = "Bible NDI Stream URL",
+                    copiedToast = "تم نسخ رابط بث الفيديو المباشر!",
+                    qrDescription = "QR Stream",
+                    onQr = { showQrStream = true }
+                )
             }
+        }
+        if (showQrStream) {
+            QrCodeDialog(url = uiState.streamUrl, label = "MJPEG Stream", onDismiss = { showQrStream = false })
         }
         // 1.9.3: 4 color dots MOVED to HDMI section (see hdmiCardBlock).
         // The MJPEG /stream background is now controlled from there.
     }
 
     val allUrlsBlock: @Composable () -> Unit = {
-        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        // Card: All available URLs
+        // Card: All available URLs. 1.9.25 (item 5): copy lives in the
+        // shared UrlActionIcons set now (with open + QR per row), so
+        // the block only passes the copied-state through.
         AllUrlsCard(
             baseUrl = uiState.serverUrl,
             textPrimary = bento.textPrimary,
             textSecondary = bento.textSecondary,
             cardColor = bento.card,
             borderColor = bento.border,
-            onCopy = { label, url ->
-                val clip = ClipData.newPlainText("URL", url)
-                clipboard.setPrimaryClip(clip)
-                Toast.makeText(context, "تم نسخ: $label", Toast.LENGTH_SHORT).show()
-            }
+            copiedUrlType = copiedUrlType,
+            onCopied = { copiedUrlType = it }
         )
     }
 
@@ -1020,7 +848,8 @@ fun BroadcastControlScreen(
     // the interactive Swagger docs for the endpoints listed above.
     // Copy pattern mirrors allUrlsBlock (clipboard + toast).
     val apiDocsBlock: @Composable () -> Unit = {
-        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        // 1.9.25 (item 5): QR dialog state for the API docs URL.
+        var showQrApiDocs by remember { mutableStateOf(false) }
         val base = if (uiState.serverUrl.isNotBlank()) uiState.serverUrl.removeSuffix("/lower") else "http://<IP>:${uiState.serverPort}"
         val full = "$base/api-docs"
         Surface(
@@ -1038,14 +867,22 @@ fun BroadcastControlScreen(
                     Text("توثيق API (API Docs)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary)
                     Text(full, fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = bento.textSecondary)
                 }
-                androidx.compose.material3.IconButton(onClick = {
-                    val clip = ClipData.newPlainText("URL", full)
-                    clipboard.setPrimaryClip(clip)
-                    Toast.makeText(context, "تم نسخ: API Docs", Toast.LENGTH_SHORT).show()
-                }) {
-                    Icon(Icons.Default.ContentCopy, contentDescription = "Copy API Docs URL", tint = bento.textSecondary, modifier = Modifier.size(16.dp))
-                }
+                // 1.9.25 (item 5): the shared icon-only copy/open/QR
+                // set (open + QR are new here).
+                UrlActionIcons(
+                    url = full,
+                    copyType = "APIDOCS",
+                    copiedUrlType = copiedUrlType,
+                    onCopied = { copiedUrlType = it },
+                    clipLabel = "URL",
+                    copiedToast = "تم نسخ: API Docs",
+                    qrDescription = "QR API Docs",
+                    onQr = { showQrApiDocs = true }
+                )
             }
+        }
+        if (showQrApiDocs) {
+            QrCodeDialog(url = full, label = "API Docs", onDismiss = { showQrApiDocs = false })
         }
     }
 
@@ -1055,7 +892,9 @@ fun BroadcastControlScreen(
             sectionId = "ndi-lower",
             sectionExpandedMap = sectionExpandedMap,
             onSetSectionExpanded = onSetSectionExpanded,
-            summary = "Lower " + loSpec.width + "×" + loSpec.height + "@" + loSpec.fps
+            // 1.9.25 (item 10): the feed is named in full (Lower Third /
+            // Full Show), not the bare "Lower"/"Full".
+            summary = "Lower Third " + loSpec.width + "×" + loSpec.height + "@" + loSpec.fps
         ) {
             // Item 20: the restart is immediate only when this feed
             // and the NDI protocol are both on; otherwise the new spec
@@ -1105,7 +944,9 @@ fun BroadcastControlScreen(
             sectionId = "ndi-full",
             sectionExpandedMap = sectionExpandedMap,
             onSetSectionExpanded = onSetSectionExpanded,
-            summary = "Full " + fuSpec.width + "×" + fuSpec.height + "@" + fuSpec.fps
+            // 1.9.25 (item 10): the feed is named in full (Lower Third /
+            // Full Show), not the bare "Lower"/"Full".
+            summary = "Full Show " + fuSpec.width + "×" + fuSpec.height + "@" + fuSpec.fps
         ) {
             // Item 20: the restart is immediate only when this feed
             // and the NDI protocol are both on; otherwise the new spec
@@ -1377,12 +1218,13 @@ fun BroadcastControlScreen(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
+                // 1.9.25 (item 6): Arabic-Indic step numbers (١٢٣).
                 val obsSteps = listOf(
-                    "1. في برنامج OBS، اضغط على زر (+) في قسم Sources (المصادر) واختر Browser (متصفح).",
-                    "2. ضع في خانة URL الرابط أعلاه: ${if (uiState.serverUrl.isNotBlank()) uiState.serverUrl else "http://<IP>:8080/lower"}.",
-                    "3. اضبط الأبعاد: Width = 1920 و Height = 1080.",
-                    "4. تأكد من تحديد خيار (Shutdown source when not active).",
-                    "5. بمجرد النقر على أي آية في التطبيق، ستظهر فوراً في البث المباشر مع خلفية شفافة 100% فوق الكاميرا!"
+                    "١. في برنامج OBS، اضغط على زر (+) في قسم Sources (المصادر) واختر Browser (متصفح).",
+                    "٢. ضع في خانة URL الرابط أعلاه: ${if (uiState.serverUrl.isNotBlank()) uiState.serverUrl else "http://<IP>:8080/lower"}.",
+                    "٣. اضبط الأبعاد: Width = 1920 و Height = 1080.",
+                    "٤. تأكد من تحديد خيار (Shutdown source when not active).",
+                    "٥. بمجرد النقر على أي آية في التطبيق، ستظهر فوراً في البث المباشر مع خلفية شفافة 100% فوق الكاميرا!"
                 )
 
                 obsSteps.forEach { step ->
@@ -1430,11 +1272,12 @@ fun BroadcastControlScreen(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
+                // 1.9.25 (item 6): Arabic-Indic step numbers (١٢٣).
                 val vmixSteps = listOf(
-                    "1. في vMix، اضغط على Add Input أسفل الشاشة.",
-                    "2. اختر تبويب Web Browser من القائمة الجانبية (أو تبويب Stream / VLC واستخدم رابط البث المباشر).",
-                    "3. الصق رابط التغذية، واضبط الدقة على 1920x1080.",
-                    "4. قم بربط المدخل بأحد قنوات الـ Overlay (1 أو 2 أو 3) لدمج الآيات بشفافية ألفا تلقائياً."
+                    "١. في vMix، اضغط على Add Input أسفل الشاشة.",
+                    "٢. اختر تبويب Web Browser من القائمة الجانبية (أو تبويب Stream / VLC واستخدم رابط البث المباشر).",
+                    "٣. الصق رابط التغذية، واضبط الدقة على 1920x1080.",
+                    "٤. قم بربط المدخل بأحد قنوات الـ Overlay (1 أو 2 أو 3) لدمج الآيات بشفافية ألفا تلقائياً."
                 )
 
                 vmixSteps.forEach { step ->
@@ -1766,7 +1609,10 @@ fun BroadcastControlScreen(
             sectionId = "diagnostics",
             sectionExpandedMap = sectionExpandedMap,
             onSetSectionExpanded = onSetSectionExpanded,
-            summary = "أخطاء NDI: " + uiState.ndiErrorEvents.size + " · متصل الآن: " + uiState.sseConnectedNow,
+            // 1.9.25 (item 8): two short lines — connected count and
+            // error count each on its own line (the one-line form
+            // reordered confusingly in RTL).
+            summary = "متصل الآن: " + uiState.sseConnectedNow + "\nأخطاء NDI: " + uiState.ndiErrorEvents.size,
             controlledExpanded = uiState.showAdvancedNdi,
             onToggleControlled = onToggleAdvancedNdi
         ) {
@@ -2013,7 +1859,8 @@ fun BroadcastControlScreen(
                             "autoclear" -> {
                                 // 1.9.23 (item 10): own rail section —
                                 // position 2, after Device.
-                                SetupSectionHeader("المسح التلقائي (Auto-Clear)")
+                                // 1.9.25 (item 14): no rail header — the
+                                // block titles itself ("المسح التلقائي").
                                 autoClearBlock()
                             }
                             "hdmi" -> {
@@ -2027,16 +1874,16 @@ fun BroadcastControlScreen(
                                 mjpegBlock()
                                 allUrlsBlock()
                             }
+                            // 1.9.25 (item 14): no rail header — each
+                            // block titles itself (vMix / ProPresenter /
+                            // OBS guide titles).
                             "vmix" -> {
-                                SetupSectionHeader("vMix")
                                 vmixBlock()
                             }
                             "propresenter" -> {
-                                SetupSectionHeader("ProPresenter")
                                 propresenterBlock()
                             }
                             "obs" -> {
-                                SetupSectionHeader("OBS")
                                 obsBlock()
                             }
                             "api" -> {
@@ -2072,7 +1919,7 @@ fun BroadcastControlScreen(
                 keepAwakeBlock()
                 Spacer(modifier = Modifier.height(12.dp))
                 networkBlock()
-                SetupSectionHeader("المسح التلقائي (Auto-Clear)")
+                // 1.9.25 (item 14): no header — the block titles itself.
                 autoClearBlock()
                 // 1.9.15 item 5: one HDMI section (the SetupSection
                 // carries its own title).
@@ -2267,10 +2114,14 @@ private fun SetupSection(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(title, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary)
                     if (!expanded && summary.isNotEmpty()) {
-                        Text(summary, fontSize = 11.sp, color = bento.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        // 1.9.25 (item 8): two lines allowed — the
+                        // diagnostics summary is two short lines.
+                        Text(summary, fontSize = 11.sp, color = bento.textSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     }
                 }
-                Text(if (expanded) "▼" else "▶", fontSize = 12.sp, color = bento.textSecondary)
+                // 1.9.25 (item 13): ONE expand/collapse pattern
+                // everywhere — ▲ when open, ▼ when closed.
+                Text(if (expanded) "▲" else "▼", fontSize = 12.sp, color = bento.textSecondary)
             }
             if (expanded) {
                 Spacer(modifier = Modifier.height(10.dp))
@@ -2534,6 +2385,73 @@ private fun QrCodeDialog(
 }
 
 /**
+ * 1.9.25 (items 4/5): the ONE URL action set — copy + open-in-browser +
+ * QR, icon-only, same IconButton style on every URL row in Setup
+ * (/lower, /full, MJPEG, the all-URLs list, API docs). Copy shows a
+ * Check + green tint once this row was copied (copiedUrlType key);
+ * all three actions guard on a blank URL with the no-Wi-Fi toast.
+ * Pass onQr = null to hide the QR button (no row does today).
+ */
+@Composable
+private fun UrlActionIcons(
+    url: String,
+    copyType: String,
+    copiedUrlType: String?,
+    onCopied: (String) -> Unit,
+    clipLabel: String,
+    copiedToast: String,
+    qrDescription: String,
+    onQr: (() -> Unit)?
+) {
+    val context = LocalContext.current
+    val bento = LocalBentoColors.current
+    Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+        androidx.compose.material3.IconButton(onClick = {
+            if (url.isBlank()) {
+                Toast.makeText(context, "لا يوجد اتصال شبكة محلية (Wi-Fi) — الرابط غير متاح", Toast.LENGTH_SHORT).show()
+            } else {
+                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                clipboard.setPrimaryClip(ClipData.newPlainText(clipLabel, url))
+                onCopied(copyType)
+                Toast.makeText(context, copiedToast, Toast.LENGTH_SHORT).show()
+            }
+        }) {
+            val isCopied = copiedUrlType == copyType
+            Icon(
+                if (isCopied) Icons.Default.Check else Icons.Default.ContentCopy,
+                contentDescription = "Copy URL",
+                tint = if (isCopied) bento.green else bento.textSecondary,
+                modifier = Modifier.size(16.dp)
+            )
+        }
+        androidx.compose.material3.IconButton(onClick = {
+            if (url.isBlank()) {
+                Toast.makeText(context, "لا يوجد اتصال شبكة محلية (Wi-Fi) — الرابط غير متاح", Toast.LENGTH_SHORT).show()
+            } else {
+                try {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                } catch (e: Exception) {
+                    Toast.makeText(context, "تعذر فتح المتصفح", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }) {
+            Icon(Icons.Default.OpenInBrowser, contentDescription = "Open in Browser", tint = bento.textSecondary, modifier = Modifier.size(16.dp))
+        }
+        if (onQr != null) {
+            androidx.compose.material3.IconButton(onClick = {
+                if (url.isBlank()) {
+                    Toast.makeText(context, "لا يوجد اتصال شبكة محلية (Wi-Fi) — الرابط غير متاح", Toast.LENGTH_SHORT).show()
+                } else {
+                    onQr()
+                }
+            }) {
+                Icon(Icons.Default.QrCode, contentDescription = qrDescription, tint = bento.textSecondary, modifier = Modifier.size(16.dp))
+            }
+        }
+    }
+}
+
+/**
  * Lists every HTTP endpoint the tablet serves, so the user knows all the URLs
  * they can use (browser sources, MJPEG, snapshots, events, status, API).
  */
@@ -2544,7 +2462,8 @@ private fun AllUrlsCard(
     textSecondary: Color,
     cardColor: Color,
     borderColor: Color,
-    onCopy: (String, String) -> Unit
+    copiedUrlType: String?,
+    onCopied: (String) -> Unit
 ) {
     // 2026-10-28 old URL numbering (restored): 1 Lower, 2 Full,
     // 3 MJPEG, 4 PNG Lower, 5 PNG Full, 6 SSE, 7 Status, 8 API,
@@ -2599,19 +2518,24 @@ private fun AllUrlsCard(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
+                        // 1.9.25 (item 7): tighter rows — title + URL
+                        // stacked left, single-line with ellipsis.
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("$num. $label", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = textPrimary)
-                            Text(full, fontSize = 9.sp, fontFamily = FontFamily.Monospace, color = textSecondary)
+                            Text("$num. $label", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(full, fontSize = 9.sp, fontFamily = FontFamily.Monospace, color = textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
-                        Row {
-                            // Item 22: QR code button.
-                            androidx.compose.material3.IconButton(onClick = { showQr = true }) {
-                                Icon(Icons.Default.QrCode, contentDescription = "QR $label", tint = textSecondary, modifier = Modifier.size(16.dp))
-                            }
-                            androidx.compose.material3.IconButton(onClick = { onCopy(label, full) }) {
-                                Icon(Icons.Default.ContentCopy, contentDescription = "Copy $label", tint = textSecondary, modifier = Modifier.size(16.dp))
-                            }
-                        }
+                        // 1.9.25 (item 5): the shared icon-only
+                        // copy/open/QR set (open is new here).
+                        UrlActionIcons(
+                            url = full,
+                            copyType = path,
+                            copiedUrlType = copiedUrlType,
+                            onCopied = onCopied,
+                            clipLabel = "URL",
+                            copiedToast = "تم نسخ: $label",
+                            qrDescription = "QR $label",
+                            onQr = { showQr = true }
+                        )
                     }
                     if (showQr) {
                         QrCodeDialog(url = full, label = label, onDismiss = { showQr = false })

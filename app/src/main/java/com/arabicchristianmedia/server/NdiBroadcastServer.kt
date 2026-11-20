@@ -9529,6 +9529,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
      language; they call POST /api/sermons/current/prev|next. */
   #controlBar #prevBtn, #controlBar #nextBtn { width: auto; flex: none; padding: 12px 14px; min-height: 48px; font-size: 14px; font-weight: 700; background: transparent; border: 1px solid var(--chrome-border, #334155); color: inherit; border-radius: 16px; cursor: pointer; }
   #controlBar #clearBtn:active { transform: scale(0.98); opacity: 0.9; }
+  /* 1.9.25 (item 21): the revived control bar is a 3-button row
+     (Prev / Clear / Next) under the header — breathing room only. */
+  #controlBar { margin: 8px 8px 0 8px; }
   .vlist { margin-top: 8px; max-height: 52dvh; overflow-y: auto; min-height: 0; flex: 1; transition: opacity 0.15s; touch-action: pan-y; overscroll-behavior-y: auto; }
   /* 1.9.16 items 14-15: the browse card is a flex column (so the
      verse list can fill it) and the VERSE list has no dvh cap on
@@ -9603,18 +9606,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   /* 2026-10-28 remote redesign: tablet RTL control order (Clear
      rightmost, then smaller ON AIR, live pill, Arabic, book, chapter
      numbers, verse input + Go leftmost, left-to-right) and phone
-     Recents as an icon opening a sheet, Browse first. */
-  @media (min-width: 900px) {
-    #controlBar { direction: rtl; }
-    #controlBar #clearBtn { order: 1; }
-    #controlBar .onair { order: 2; }
-    #controlBar .livepill { order: 3; }
-    #controlBar #langSel { order: 4; }
-    #controlBar #bookSel { order: 5; }
-    #controlBar #chSel { order: 6; }
-    #controlBar #goBtn { order: 7; direction: ltr; }
-    #controlBar #ref { order: 8; direction: ltr; }
-  }
+     Recents as an icon opening a sheet, Browse first.
+     1.9.25 (item 21): the desktop order rules for the OLD controlBar
+     are gone — every selector in them was dead (no #controlBar
+     element existed), and #clearBtn's order:1 would have pulled
+     Clear out of the new Prev/Clear/Next row. The new row follows
+     the document direction, which the per-client language sets. */
   #recentsToggle { display: none; width: 100%; padding: 12px; font-size: 15px; font-weight: 700; border: 1px solid var(--chrome-border, #334155); border-radius: 12px; background: transparent; color: inherit; cursor: pointer; }
   @media (max-width: 899px) {
     main { display: flex; flex-direction: column; }
@@ -9811,6 +9808,16 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   </span>
   <button class="onair off" id="onAirBtnTop" onclick="toggleOnAir()">OFF AIR</button>
 </header>
+<!-- 1.9.25 (item 21): sermon + clear controls — Clear was keyboard-only
+     (no Clear at all on a phone remote); Prev/Next step the working
+     sermon list and go live. Wired to the existing clearVerse() /
+     sermonStep() handlers; labels come from the per-client language
+     map (data-i18n) with English as the shipped default. -->
+<div id="controlBar">
+  <button id="prevBtn" data-i18n="sermonPrev" onclick="sermonStep('prev')">◀ Prev</button>
+  <button id="clearBtn" data-i18n="clear" onclick="clearVerse()">Clear</button>
+  <button id="nextBtn" data-i18n="sermonNext" onclick="sermonStep('next')">Next ▶</button>
+</div>
 <!-- Item 71 (1.9.9): CONNECTION LOST banner — shown while the sync link is down. -->
 <div id="connBanner" hidden style="background:#dc2626;color:#fff;text-align:center;font-weight:bold;font-size:14px;padding:8px 12px;">⚠ CONNECTION LOST — reconnecting…</div>
 <main>

@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
@@ -191,6 +192,7 @@ fun SermonListScreen(
     var groupingMode by remember { mutableIntStateOf(0) }
     var collapsedHeaders by remember { mutableStateOf(setOf<String>()) }
     var showInfoDialog by remember { mutableStateOf(false) }
+    var showHeaderMenu by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
     // 1.9.3: bookOrder and otBookIds needed for collapse/expand all arrows (moved up from below).
     val bookOrder = remember {
@@ -228,55 +230,39 @@ fun SermonListScreen(
                 }
         ) {
             Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-            // Slim header: name + verse count on the left, icon-only actions.
-            // Batch-3: subtitle is the count only; hints moved behind ⓘ.
+            // 1.9.25 (item 17): one row — the title takes the flexible
+            // width, the verse count is a round badge with the number
+            // inside, Save + Open + Clear stay visible, and Share /
+            // Settings / Info / Undo move behind the ⋮ menu.
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = uiState.currentSermonName ?: "قائمة الخدمة (Sermon list)",
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = bento.textPrimary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        text = if (playlist.isEmpty()) "لا توجد آيات بعد"
-                               else "${playlist.size} آية",
-                        fontSize = 12.sp,
-                        color = bento.textSecondary
-                    )
-                }
-                // Undo delete button — restores the last deleted entry to its exact position.
-                IconButton(
-                    onClick = { onUndo() },
-                    enabled = uiState.canUndoDelete
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.Undo,
-                        contentDescription = "تراجع (Undo)",
-                        tint = if (uiState.canUndoDelete) bento.textPrimary else bento.textSecondary.copy(alpha = 0.3f)
-                    )
-                }
-                IconButton(onClick = { showInfoDialog = true }) {
-                    Icon(
-                        imageVector = Icons.Filled.Info,
-                        contentDescription = "تلميحات (Hints)",
-                        tint = bento.textSecondary
-                    )
-                }
-                // 1.9.15 item 12: per-section font gear (same pattern as
-                // the recents sheet). Sits in the slim header row — no
-                // list space taken (sacred-screen-space rule).
-                IconButton(onClick = { sermonFontDialog = true }) {
-                    Icon(
-                        imageVector = Icons.Filled.Settings,
-                        contentDescription = "حجم خط آيات العظة",
-                        tint = bento.textSecondary
-                    )
+                Text(
+                    text = uiState.currentSermonName ?: "قائمة الخدمة (Sermon list)",
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = bento.textPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                if (playlist.isNotEmpty()) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clip(CircleShape)
+                            .background(bento.primary)
+                    ) {
+                        Text(
+                            text = ArabicTextFormatter.toEasternArabicDigits(playlist.size),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = bento.onPrimary
+                        )
+                    }
                 }
                 IconButton(
                     onClick = {
@@ -306,21 +292,50 @@ fun SermonListScreen(
                             tint = bento.textSecondary
                         )
                     }
-                    // Item 14 (#23): share as plain text (one verse per line).
-                    IconButton(onClick = {
-                        val text = playlist.joinToString("\n") { entry ->
-                            entry.verse.getFormattedArabicCitation()
-                        }
-                        val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                            type = "text/plain"
-                            putExtra(android.content.Intent.EXTRA_TEXT, text)
-                        }
-                        context.startActivity(android.content.Intent.createChooser(intent, "مشاركة العظة (Share sermon)"))
-                    }) {
+                }
+                Box {
+                    IconButton(onClick = { showHeaderMenu = true }) {
                         Icon(
-                            imageVector = Icons.Filled.Share,
-                            contentDescription = "مشاركة (Share)",
+                            imageVector = Icons.Filled.MoreVert,
+                            contentDescription = "المزيد (More)",
                             tint = bento.textSecondary
+                        )
+                    }
+                    DropdownMenu(
+                        expanded = showHeaderMenu,
+                        onDismissRequest = { showHeaderMenu = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("مشاركة (Share)") },
+                            onClick = {
+                                showHeaderMenu = false
+                                val text = playlist.joinToString("\n") { entry ->
+                                    entry.verse.getFormattedArabicCitation()
+                                }
+                                val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                    type = "text/plain"
+                                    putExtra(android.content.Intent.EXTRA_TEXT, text)
+                                }
+                                context.startActivity(android.content.Intent.createChooser(intent, "مشاركة العظة (Share sermon)"))
+                            },
+                            leadingIcon = { Icon(Icons.Filled.Share, contentDescription = null) },
+                            enabled = playlist.isNotEmpty()
+                        )
+                        DropdownMenuItem(
+                            text = { Text("حجم خط آيات العظة") },
+                            onClick = { showHeaderMenu = false; sermonFontDialog = true },
+                            leadingIcon = { Icon(Icons.Filled.Settings, contentDescription = null) }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("تلميحات (Hints)") },
+                            onClick = { showHeaderMenu = false; showInfoDialog = true },
+                            leadingIcon = { Icon(Icons.Filled.Info, contentDescription = null) }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("تراجع (Undo)") },
+                            onClick = { showHeaderMenu = false; onUndo() },
+                            leadingIcon = { Icon(Icons.AutoMirrored.Filled.Undo, contentDescription = null) },
+                            enabled = uiState.canUndoDelete
                         )
                     }
                 }
@@ -353,8 +368,12 @@ fun SermonListScreen(
                                         fontSize = 13.sp,
                                         fontWeight = if (groupingMode == index) FontWeight.Bold else FontWeight.Normal
                                     )
-                                    // 1.9.3: Collapse/expand all arrow (modes 1 and 2 only)
-                                    if (index == 1 || index == 2) {
+                                    // 1.9.3: Collapse/expand all arrow (modes 1 and 2 only).
+                                    // 1.9.25 (item 18): only on the ACTIVE
+                                    // grouped mode — inactive segments show
+                                    // plain text (there is nothing to
+                                    // collapse until that mode is selected).
+                                    if ((index == 1 || index == 2) && groupingMode == index) {
                                         val allHeaderIds = remember(playlist, index, bookOrder, otBookIds) {
                                             getAllHeaderIdsForMode(playlist, index, bookOrder, otBookIds)
                                         }

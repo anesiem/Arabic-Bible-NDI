@@ -275,13 +275,13 @@ fun BibleReaderScreen(
                     BoxWithConstraints(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp)
                     ) {
-                        // Side reservation: each side gets at most 28% of
-                        // the bar, so the label's centre is the bar's
-                        // centre no matter how long the book/chapter is.
-                        val side = maxWidth * 0.28f
+                        // 1.9.25 (item 3): the "الكتاب المقدس - إضغط هنا"
+                        // hint is gone — the book name gets the full
+                        // flexible width instead (everything except the
+                        // 26dp collapse arrow + gaps).
                         // Item 93: the book + chapter reference sits on the
                         // RIGHT side; the collapse arrow moves to the left.
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.align(Alignment.CenterEnd).widthIn(max = side)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.align(Alignment.CenterEnd).widthIn(max = maxWidth - 40.dp)) {
                             Icon(Icons.AutoMirrored.Filled.MenuBook, null, tint = bento.primary, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
@@ -296,13 +296,6 @@ fun BibleReaderScreen(
                                 maxLines = 1, overflow = TextOverflow.Ellipsis
                             )
                         }
-                        Text(
-                            "الكتاب المقدس - إضغط هنا",
-                            fontSize = 13.sp, fontWeight = FontWeight.Bold, color = bento.primary,
-                            modifier = Modifier.align(Alignment.Center).padding(horizontal = side),
-                            textAlign = TextAlign.Center,
-                            maxLines = 1, overflow = TextOverflow.Ellipsis
-                        )
                         Box(
                             modifier = Modifier.align(Alignment.CenterStart).size(26.dp).background(bento.primary.copy(alpha = 0.16f), CircleShape),
                             contentAlignment = Alignment.Center

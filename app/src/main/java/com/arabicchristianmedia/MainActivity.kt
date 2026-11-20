@@ -78,7 +78,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -370,9 +372,10 @@ class MainActivity : ComponentActivity() {
                 // when already on Library — BibleReaderScreen closes
                 // search / recents sheet / chapter picker on the bump.
                 var libraryTabTapNonce by remember { mutableIntStateOf(0) }
-                // Batch-3: display-settings nonce — the top-bar gear (Library
-                // tab only) bumps this; BibleReaderScreen opens its existing
-                // "إعدادات العرض" dialog on the bump.
+                // Batch-3: display-settings nonce — the top-bar app icon
+                // bumps this (1.9.25: the gear merged into the icon);
+                // BibleReaderScreen opens its existing "إعدادات العرض"
+                // dialog on the bump.
                 var displaySettingsNonce by remember { mutableIntStateOf(0) }
                 // v2.0: a successful share (sermonListNonce bump) opens the
                 // sermon list tab so the operator lands on the verses.
@@ -391,6 +394,9 @@ class MainActivity : ComponentActivity() {
                 // v1.9.5: default to Full Show tab (was Lower).
                 var editorTab by rememberSaveable { mutableIntStateOf(1) }
                 val context = LocalContext.current
+                // 1.9.25 (item 16): haptic confirmation on ON AIR +
+                // verse-go-live — felt while preaching, eyes elsewhere.
+                val haptic = LocalHapticFeedback.current
                 // Editor tips visibility, hoisted so the top-bar info icon
                 // (wide Editor layout) can reopen the tips card. Persisted
                 // in the same prefs the Editor screen already uses, so it
@@ -434,9 +440,11 @@ class MainActivity : ComponentActivity() {
                             // horizontal middle of the screen — centred on
                             // the bar itself, not in the space after the
                             // title. The base Row holds everything else
-                            // (title left, chips/gear/ring/ON AIR right);
+                            // (app icon left, chips/ring/ON AIR right);
                             // the citation floats centred above it, on all
                             // tabs, portrait and landscape.
+                            // 1.9.25 (item 1): no title text anywhere — the
+                            // app icon alone, icon-only single row.
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -447,6 +455,12 @@ class MainActivity : ComponentActivity() {
                                 // and the centred live citation (below it):
                                 // true only while a verse is live on air.
                                 val topBarIsOnAir = uiState.isLiveOnAir && uiState.activeVerse != null
+                                // 1.9.25 (item 1): the auto-clear ring's
+                                // visibility, shared by the ring (in the
+                                // Row) and the citation cap (below it) —
+                                // the citation narrows while the ring shows.
+                                val autoClearRemaining = uiState.autoClearRemainingSec
+                                val autoClearRingShowing = uiState.autoClearEnabled && autoClearRemaining != null
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -454,44 +468,44 @@ class MainActivity : ComponentActivity() {
                                 ) {
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                        // v1.7: title takes the flexible space; the
-                                        // LIVE badge keeps its intrinsic width.
+                                        // 1.9.25 (item 1): icon only — the
+                                        // "Bible NDI" title and "SVD Arabic"
+                                        // subtitle are gone (the version
+                                        // stays in Display settings).
                                         modifier = Modifier.weight(1f)
                                     ) {
-                                        // Bento Round Avatar / Broadcast Badge
+                                        // Bento Round Avatar / Broadcast Badge.
+                                        // 1.9.25 (item 1): the gear merged
+                                        // into the app icon — tapping it
+                                        // opens display settings (switches
+                                        // to the Library tab first, since
+                                        // the settings are reader settings).
+                                        // The 40dp badge sits in a 48dp
+                                        // tap target.
                                         Box(
                                             contentAlignment = Alignment.Center,
                                             modifier = Modifier
-                                                .size(40.dp)
+                                                .size(48.dp)
                                                 .clip(CircleShape)
-                                                .background(bento.secondary)
+                                                .clickable {
+                                                    if (selectedTab != 0) selectedTab = 0
+                                                    displaySettingsNonce++
+                                                }
                                         ) {
-                                            Icon(
-                                                imageVector = Icons.Filled.LiveTv,
-                                                contentDescription = "Bible NDI",
-                                                tint = bento.onSecondary,
-                                                modifier = Modifier.size(22.dp)
-                                            )
-                                        }
-
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                text = "Bible NDI",
-                                                fontSize = 18.sp,
-                                                fontWeight = FontWeight.SemiBold,
-                                                color = bento.textPrimary,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                            Text(
-                                                text = "SVD Arabic (الكتاب المقدس)",
-                                                fontSize = 12.sp,
-                                                fontWeight = FontWeight.Normal,
-                                                color = bento.textSecondary,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
+                                            Box(
+                                                contentAlignment = Alignment.Center,
+                                                modifier = Modifier
+                                                    .size(40.dp)
+                                                    .clip(CircleShape)
+                                                    .background(bento.secondary)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.LiveTv,
+                                                    contentDescription = "إعدادات العرض (Display settings)",
+                                                    tint = bento.onSecondary,
+                                                    modifier = Modifier.size(22.dp)
+                                                )
+                                            }
                                         }
                                     }
 
@@ -554,16 +568,11 @@ class MainActivity : ComponentActivity() {
 
                                     // Live Badge & Quick Switch
                                     // Item 32: the keyboard icon moved INTO the
-                                    // gear's display-settings dialog (learn-once
+                                    // display-settings dialog (learn-once
                                     // reference) — no standalone top-bar button.
-                                    // Batch-3: display-settings gear — Library tab
-                                    // only. Bumps the nonce; BibleReaderScreen
-                                    // opens its dialog.
-                                    if (selectedTab == 0) {
-                                        IconButton(onClick = { displaySettingsNonce++ }) {
-                                            Icon(Icons.Filled.Settings, "إعدادات العرض (Display settings)", tint = bento.textSecondary)
-                                        }
-                                    }
+                                    // 1.9.25 (item 1): the display-settings
+                                    // gear is gone — the app icon opens the
+                                    // settings now (see the icon above).
                                     // Batch-3: the display-only LIVE pill is gone
                                     // (redundant). The ON AIR button IS the live
                                     // indicator AND the toggle — red when a verse
@@ -571,8 +580,7 @@ class MainActivity : ComponentActivity() {
                                     // 1.9.23 (item 10): auto-clear ring — only
                                     // while a verse is live and auto-clear is
                                     // ON. Tap = pause/resume, X = stop.
-                                    val autoClearRemaining = uiState.autoClearRemainingSec
-                                    if (uiState.autoClearEnabled && autoClearRemaining != null) {
+                                    if (autoClearRingShowing && autoClearRemaining != null) {
                                         AutoClearRing(
                                             remainingSec = autoClearRemaining,
                                             totalSec = uiState.autoClearDurationMinutes.coerceIn(1, 60) * 60,
@@ -585,7 +593,7 @@ class MainActivity : ComponentActivity() {
                                         )
                                     }
                                     Button(
-                                        onClick = { viewModel.toggleLive() },
+                                        onClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); viewModel.toggleLive() },
                                         colors = ButtonDefaults.buttonColors(
                                             containerColor = if (topBarIsOnAir) bento.liveRed else OnAirOffGrey,
                                             contentColor = Color.White
@@ -608,8 +616,11 @@ class MainActivity : ComponentActivity() {
                                 // picker / search / recents sheet closes
                                 // first. fillMaxWidth(0.5f) + ellipsis: a
                                 // long citation shrinks instead of covering
-                                // the title or ON AIR. Nothing shows when
-                                // no verse is active.
+                                // the icon or ON AIR. 1.9.25 (item 1): the
+                                // cap narrows to 0.3f while the auto-clear
+                                // ring shows, so a long citation can never
+                                // touch the ring. Nothing shows when no
+                                // verse is active.
                                 uiState.activeVerse?.let { liveVerse ->
                                     Text(
                                         text = liveVerse.getFormattedArabicCitation(),
@@ -618,7 +629,7 @@ class MainActivity : ComponentActivity() {
                                         textAlign = TextAlign.Center,
                                         maxLines = 1, overflow = TextOverflow.Ellipsis,
                                         modifier = Modifier
-                                            .fillMaxWidth(0.5f)
+                                            .fillMaxWidth(if (autoClearRingShowing) 0.3f else 0.5f)
                                             .clickable { libraryTabTapNonce++; viewModel.openLiveVerseInReader() }
                                             .padding(horizontal = 4.dp)
                                     )
@@ -726,7 +737,7 @@ class MainActivity : ComponentActivity() {
                         when (selectedTab) {
                             0 -> BibleReaderScreen(
                                 uiState = uiState,
-                                onVerseClicked = { viewModel.onVerseClicked(it) },
+                                onVerseClicked = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); viewModel.onVerseClicked(it) },
                                 onSelectTestament = { viewModel.selectTestament(it) },
                                 onSelectBook = { book, ch -> viewModel.selectBook(book, ch) },
                                 onSelectChapter = { viewModel.selectChapter(it) },
@@ -867,7 +878,7 @@ class MainActivity : ComponentActivity() {
                             )
                             2 -> SermonListScreen(
                                 uiState = uiState,
-                                onShowVerse = { viewModel.showSermonVerse(it) },
+                                onShowVerse = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); viewModel.showSermonVerse(it) },
                                 onOpenInReader = { viewModel.openSermonVerseInReader(it) },
                                 onRemove = { viewModel.removeSermonEntry(it) },
                                 onRestoreVerse = { entry, index -> viewModel.restoreSermonEntry(entry, index) },

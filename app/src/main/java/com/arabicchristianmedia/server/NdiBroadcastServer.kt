@@ -7538,9 +7538,21 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         }
 
         val trigT0 = System.nanoTime()
-        val ok = try {
-            onTriggerVerse?.invoke(bookId!!, chapter!!, verseNum!!, target) ?: false
-        } catch (e: Exception) { false }
+        // 1.9.30 (item 5): server-side trigger fallback — when the app
+        // process died in the background, the foreground service
+        // auto-resumes the server WITHOUT the ViewModel, so
+        // onTriggerVerse is null and the trigger used to fail with the
+        // misleading "Verse not found". Gated STRICTLY on a null
+        // callback: a live ViewModel is never second-guessed (a
+        // non-null callback returning false keeps its behavior).
+        val triggerCallback = onTriggerVerse
+        val ok = if (triggerCallback == null) {
+            triggerVerseFallback(bookId!!, chapter!!, verseNum!!)
+        } else {
+            try {
+                triggerCallback(bookId!!, chapter!!, verseNum!!, target)
+            } catch (e: Exception) { false }
+        }
         statTrigger.record((System.nanoTime() - trigT0) / 1_000_000.0)
 
         if (ok) {
@@ -7551,6 +7563,33 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             sendJson(out, 200, """{"ok":true,"bookId":"${jsonEscape(bookId!!)}","chapter":$chapter,"verse":$verseNum,"target":"$target"}""")
         } else {
             sendJson(out, 400, """{"ok":false,"error":"Verse not found: bookId=$bookId $chapter:$verseNum"}""")
+        }
+    }
+
+    /**
+     * 1.9.30 (item 5): trigger fallback when the ViewModel is dead
+     * (onTriggerVerse == null — process died in the background, the
+     * service auto-resumed the server alone). Same lookup as
+     * triggerVerseByReference; updateVerse is the single funnel (sets
+     * the live verse, broadcasts to SSE clients, persists state) and
+     * bumps frameVersion via invalidateBitmapCache, so NDI picks the
+     * verse up on the send loop's next poll (~120 ms idle cadence) —
+     * no triggerAllFrames() needed. Honest limits: no UiState/recents
+     * update, no reader sync, no vMix/ProPresenter push, no auto-clear
+     * countdown (the verse stays live until the app is foregrounded,
+     * when the 1.9.27 restore restarts the countdown). Returns false
+     * only when the verse genuinely isn't in the database.
+     */
+    private fun triggerVerseFallback(bookId: String, chapter: Int, verseNum: Int): Boolean {
+        return try {
+            val verse = BibleRepository.getVerses(bookId, chapter)
+                .firstOrNull { it.verse == verseNum } ?: return false
+            updateVerse(verse, live = true)
+            setLastTrigger("remote-fallback", verse.getFormattedArabicCitation())
+            true
+        } catch (e: Exception) {
+            Log.w("NdiBroadcastServer", "triggerVerseFallback failed for $bookId $chapter:$verseNum", e)
+            false
         }
     }
 
@@ -10045,6 +10084,8 @@ ${i18nScript()}
 </header>
 <!-- Item 71 (1.9.9): CONNECTION LOST banner — shown while the sync link is down. -->
 <div id="connBanner" hidden data-i18n="s733" style="background:#dc2626;color:#fff;text-align:center;font-weight:bold;font-size:14px;padding:8px 12px;">⚠ CONNECTION LOST — reconnecting…</div>
+<!-- 1.9.30 (item 6): trigger-failure banner — a failed verse/step trigger must be visible, never silent. Cleared by the next successful trigger. -->
+<div id="triggerBanner" hidden style="background:#dc2626;color:#fff;text-align:center;font-weight:bold;font-size:14px;padding:8px 12px;">⚠ Trigger failed — open the app on the tablet</div>
 <main>
   <!-- 1.9.19 item 2: the nav row — chapter arrows (left), the inline
        reference search (middle, hidden until the 🔍 is tapped), and
@@ -10371,6 +10412,20 @@ ${i18nScript()}
   var syncReconnectTimer = null;
   function showConnBanner() { var b = document.getElementById('connBanner'); if (b) b.hidden = false; }
   function hideConnBanner() { var b = document.getElementById('connBanner'); if (b) b.hidden = true; }
+  // 1.9.30 (item 6): trigger-failure banner — a failed verse/step
+  // trigger must be visible, never silent. Shown by the trigger call
+  // sites; cleared by the next successful trigger. NOT cleared by the
+  // light poll: the poll succeeds even when the ViewModel is dead
+  // (server-side state), so poll-clearing would flash the banner for
+  // one poll interval and re-silence the exact failure this exists
+  // to surface.
+  function showTriggerBanner() { var b = document.getElementById('triggerBanner'); if (b) b.hidden = false; }
+  function hideTriggerBanner() { var b = document.getElementById('triggerBanner'); if (b) b.hidden = true; }
+  // 1.9.30 (item 6): sermon-step boundaries are NOT failures — the
+  // sermon just ended (or is empty). Status line only, no banner.
+  function isSermonBoundaryError(err) {
+    return err === 'End of sermon list' || err === 'Already at the first verse of the sermon list' || err === 'Sermon list is empty';
+  }
   function connectSync() {
     try {
       if (syncReconnectTimer) { clearTimeout(syncReconnectTimer); syncReconnectTimer = null; }
@@ -10667,10 +10722,10 @@ ${i18nScript()}
     fetch('/api/trigger?book=' + (curBookIdx + 1) + '&chapter=' + curChapter + '&verse=' + verseNum)
       .then(function(r) { return r.json(); })
       .then(function(j) {
-        if (j.ok) { setStatus(T('s794', '✓ Verse set'), 'ok'); pollNow(); }
-        else setStatus('✗ ' + (j.error || T('s795', 'failed')), 'err');
+        if (j.ok) { hideTriggerBanner(); setStatus(T('s794', '✓ Verse set'), 'ok'); pollNow(); }
+        else { showTriggerBanner(); setStatus('✗ ' + (j.error || T('s795', 'failed')), 'err'); }
       })
-      .catch(function() { setStatus(T('s796', '✗ Network error'), 'err'); });
+      .catch(function() { showTriggerBanner(); setStatus(T('s796', '✗ Network error'), 'err'); });
   }
 
   function triggerRef() {
@@ -10681,6 +10736,7 @@ ${i18nScript()}
       .then(function(r) { return r.json(); })
       .then(function(j) {
         if (j.ok) {
+          hideTriggerBanner();
           setStatus('✓ ' + ref, 'ok');
           // 1.9.19 item 2: Go closes the inline search (the verse is
           // live now; a failed trigger keeps it open for editing).
@@ -10688,9 +10744,9 @@ ${i18nScript()}
           if (row && row.classList.contains('nav-search-open')) toggleNavSearch();
           pollNow();
         }
-        else setStatus('✗ ' + (j.error || T('s795', 'failed')), 'err');
+        else { showTriggerBanner(); setStatus('✗ ' + (j.error || T('s795', 'failed')), 'err'); }
       })
-      .catch(function() { setStatus(T('s796', '✗ Network error'), 'err'); });
+      .catch(function() { showTriggerBanner(); setStatus(T('s796', '✗ Network error'), 'err'); });
   }
 
   function toggleOnAir() {
@@ -10723,10 +10779,10 @@ ${i18nScript()}
     fetch('/api/sermons/current/' + dir, { method: 'POST' })
       .then(function(r) { return r.json(); })
       .then(function(j) {
-        if (j.ok && j.entry) { setStatus('✓ ' + (j.entry.englishCitation || ''), 'ok'); pollNow(); }
-        else setStatus('✗ ' + (j.error || T('s795', 'failed')), 'err');
+        if (j.ok && j.entry) { hideTriggerBanner(); setStatus('✓ ' + (j.entry.englishCitation || ''), 'ok'); pollNow(); }
+        else { if (!isSermonBoundaryError(j.error)) showTriggerBanner(); setStatus('✗ ' + (j.error || T('s795', 'failed')), 'err'); }
       })
-      .catch(function() { setStatus(T('s796', '✗ Network error'), 'err'); });
+      .catch(function() { showTriggerBanner(); setStatus(T('s796', '✗ Network error'), 'err'); });
   }
 
   function renderOnAir() {
@@ -10912,6 +10968,7 @@ ${i18nScript()}
       .then(function(r) { return r.json(); })
       .then(function(j) {
         if (j.ok) {
+          hideTriggerBanner();
           setStatus('✓ ' + ref, 'ok');
           // Move the library to the picked verse immediately (do not
           // wait for the SSE/poll echo) — showVerse is idempotent, so
@@ -10919,9 +10976,9 @@ ${i18nScript()}
           if (j.bookId && j.chapter && j.verse) showVerse(j.bookId, j.chapter, j.verse);
           pollNow();
         }
-        else setStatus('✗ ' + (j.error || T('s795', 'failed')), 'err');
+        else { showTriggerBanner(); setStatus('✗ ' + (j.error || T('s795', 'failed')), 'err'); }
       })
-      .catch(function() { setStatus(T('s796', '✗ Network error'), 'err'); });
+      .catch(function() { showTriggerBanner(); setStatus(T('s796', '✗ Network error'), 'err'); });
   }
 
   function hexToRgb(hex) {

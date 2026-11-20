@@ -3,6 +3,9 @@ package com.arabicchristianmedia.ui
 import android.app.Application
 import android.content.Context
 import android.content.SharedPreferences
+import android.net.ConnectivityManager
+import android.net.LinkProperties
+import android.net.Network
 import android.net.Uri
 import androidx.annotation.StringRes
 import androidx.lifecycle.AndroidViewModel
@@ -402,6 +405,72 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         broadcastServer.onSermonRename = { id, name -> renameSermonApi(id, name) }
         broadcastServer.onSermonDelete = { id -> deleteSermonApi(id) }
         broadcastServer.onImportBackup = { json, dryRun -> importBackupApi(json, dryRun) }
+        // 1.9.30 (item 4): detect network address changes (Wi-Fi switch)
+        // so Setup > URLs stops showing the old IP until a restart.
+        registerNetworkCallback()
+    }
+
+    // 1.9.30 (item 4): the UI cached serverUrl/streamUrl and nothing
+    // refreshed them on a network change. A default-network callback
+    // refreshes the cached URLs (+ interface list) on every change.
+    // The HTTP server needs nothing (wildcard bind) and the NDI
+    // senders need no re-registration (no IP/interface binding — NDI
+    // discovery is mDNS on all interfaces, handled by the NDI SDK).
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
+    // @Volatile: written from the NetworkCallback binder thread
+    // (scheduleNetworkRefresh) as well as Main (unregister).
+    @Volatile private var networkRefreshJob: Job? = null
+
+    private fun registerNetworkCallback() {
+        val cm = try {
+            getApplication<Application>().getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+        } catch (e: Exception) {
+            android.util.Log.w("BibleNdiViewModel", "registerNetworkCallback: no ConnectivityManager", e)
+            null
+        } ?: return
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) { scheduleNetworkRefresh() }
+            override fun onLost(network: Network) { scheduleNetworkRefresh() }
+            override fun onLinkPropertiesChanged(network: Network, linkProperties: LinkProperties) {
+                scheduleNetworkRefresh()
+            }
+        }
+        networkCallback = callback
+        try {
+            cm.registerDefaultNetworkCallback(callback)
+        } catch (e: Exception) {
+            android.util.Log.w("BibleNdiViewModel", "registerNetworkCallback: registration failed", e)
+            networkCallback = null
+        }
+    }
+
+    private fun scheduleNetworkRefresh() {
+        // Debounce: one Wi-Fi change fires a burst (available +
+        // link-properties + capabilities); refresh once, 500 ms after
+        // the last event, on Main like every other
+        // refreshNetworkInterfaces() caller.
+        networkRefreshJob?.cancel()
+        networkRefreshJob = viewModelScope.launch {
+            delay(500)
+            try {
+                refreshNetworkInterfaces()
+            } catch (e: Exception) {
+                android.util.Log.w("BibleNdiViewModel", "scheduleNetworkRefresh: refresh failed", e)
+            }
+        }
+    }
+
+    private fun unregisterNetworkCallback() {
+        networkRefreshJob?.cancel()
+        networkRefreshJob = null
+        val callback = networkCallback ?: return
+        networkCallback = null
+        try {
+            val cm = getApplication<Application>().getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            cm?.unregisterNetworkCallback(callback)
+        } catch (e: Exception) {
+            android.util.Log.w("BibleNdiViewModel", "unregisterNetworkCallback failed", e)
+        }
     }
 
     fun refreshNetworkInterfaces() {
@@ -3467,6 +3536,8 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         // 1.9.23 (item 10): no leaked timers — cancel the countdown.
         autoClearJob?.cancel()
         autoClearJob = null
+        // 1.9.30 (item 4): no leaked network callback.
+        unregisterNetworkCallback()
         // v1.9: instances live in NdiService now; stop them without creating new ones.
         NdiService.stopAllIfPresent()
     }

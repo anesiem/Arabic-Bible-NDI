@@ -260,7 +260,11 @@ fun SermonListScreen(
                             .background(bento.primary)
                     ) {
                         Text(
-                            text = ArabicTextFormatter.toEasternArabicDigits(playlist.size),
+                            // 1.9.30 (item 3): the badge is the ONLY number
+                            // in the sermon tab that follows the UI
+                            // language (Western in English mode, Eastern
+                            // in Arabic) — row positions stay Eastern.
+                            text = if (AppLanguage.isArabicUi(context)) ArabicTextFormatter.toEasternArabicDigits(playlist.size) else playlist.size.toString(),
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold,
                             color = bento.onPrimary
@@ -304,42 +308,51 @@ fun SermonListScreen(
                             tint = bento.textSecondary
                         )
                     }
-                    DropdownMenu(
-                        expanded = showHeaderMenu,
-                        onDismissRequest = { showHeaderMenu = false }
+                    // 1.9.30 (item 2): the header ⋮ menu is controls, not
+                    // Bible text — its direction follows the UI language
+                    // (LTR in English, RTL in Arabic), overriding the
+                    // sermon's hardcoded RTL provider. The Open-sheet
+                    // menu is NOT wrapped (open question, undecided).
+                    CompositionLocalProvider(
+                        LocalLayoutDirection provides if (AppLanguage.isArabicUi(context)) LayoutDirection.Rtl else LayoutDirection.Ltr
                     ) {
-                        DropdownMenuItem(
-                            text = { Text(context.getString(R.string.s356)) },
-                            onClick = {
-                                showHeaderMenu = false
-                                val text = playlist.joinToString("\n") { entry ->
-                                    entry.verse.getFormattedArabicCitation()
-                                }
-                                val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                                    type = "text/plain"
-                                    putExtra(android.content.Intent.EXTRA_TEXT, text)
-                                }
-                                context.startActivity(android.content.Intent.createChooser(intent, context.getString(R.string.s355)))
-                            },
-                            leadingIcon = { Icon(Icons.Filled.Share, contentDescription = null) },
-                            enabled = playlist.isNotEmpty()
-                        )
-                        DropdownMenuItem(
-                            text = { Text(context.getString(R.string.s330)) },
-                            onClick = { showHeaderMenu = false; sermonFontDialog = true },
-                            leadingIcon = { Icon(Icons.Filled.Settings, contentDescription = null) }
-                        )
-                        DropdownMenuItem(
-                            text = { Text(context.getString(R.string.s351)) },
-                            onClick = { showHeaderMenu = false; showInfoDialog = true },
-                            leadingIcon = { Icon(Icons.Filled.Info, contentDescription = null) }
-                        )
-                        DropdownMenuItem(
-                            text = { Text(context.getString(R.string.s350)) },
-                            onClick = { showHeaderMenu = false; onUndo() },
-                            leadingIcon = { Icon(Icons.AutoMirrored.Filled.Undo, contentDescription = null) },
-                            enabled = uiState.canUndoDelete
-                        )
+                        DropdownMenu(
+                            expanded = showHeaderMenu,
+                            onDismissRequest = { showHeaderMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text(context.getString(R.string.s356)) },
+                                onClick = {
+                                    showHeaderMenu = false
+                                    val text = playlist.joinToString("\n") { entry ->
+                                        entry.verse.getFormattedArabicCitation()
+                                    }
+                                    val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                        type = "text/plain"
+                                        putExtra(android.content.Intent.EXTRA_TEXT, text)
+                                    }
+                                    context.startActivity(android.content.Intent.createChooser(intent, context.getString(R.string.s355)))
+                                },
+                                leadingIcon = { Icon(Icons.Filled.Share, contentDescription = null) },
+                                enabled = playlist.isNotEmpty()
+                            )
+                            DropdownMenuItem(
+                                text = { Text(context.getString(R.string.s330)) },
+                                onClick = { showHeaderMenu = false; sermonFontDialog = true },
+                                leadingIcon = { Icon(Icons.Filled.Settings, contentDescription = null) }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(context.getString(R.string.s351)) },
+                                onClick = { showHeaderMenu = false; showInfoDialog = true },
+                                leadingIcon = { Icon(Icons.Filled.Info, contentDescription = null) }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(context.getString(R.string.s350)) },
+                                onClick = { showHeaderMenu = false; onUndo() },
+                                leadingIcon = { Icon(Icons.AutoMirrored.Filled.Undo, contentDescription = null) },
+                                enabled = uiState.canUndoDelete
+                            )
+                        }
                     }
                 }
             }

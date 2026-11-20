@@ -330,7 +330,7 @@
     <string name="s327">"• \"Original\" shows your manual order as compact rows. \"By Book\" and \"OT/NT\" group verses under collapsible sticky headers sorted by book/chapter/verse — switching between them never touches your original order."</string>
     <string name="s328">"• The row color changes when the chapter changes, so you know you have moved to a new section."</string>
     <string name="s329">"Got it"</string>
-    <string name="s330">"Sermon verses font size"</string>
+    <string name="s330">"Verse font size"</string>
     <string name="s331">"Save sermon"</string>
     <string name="s332">"Sermon name"</string>
     <string name="s333">"Saving with the name of an existing sermon updates it instead of creating a new copy."</string>

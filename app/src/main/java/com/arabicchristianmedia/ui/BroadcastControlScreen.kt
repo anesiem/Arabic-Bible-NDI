@@ -17,8 +17,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -106,6 +104,8 @@ import androidx.compose.ui.text.style.TextAlign
 import com.arabicchristianmedia.BuildConfig
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.arabicchristianmedia.R
+import com.arabicchristianmedia.data.ArabicTextFormatter
 import com.arabicchristianmedia.server.InterfaceType
 import com.arabicchristianmedia.server.NdiNativeSender
 import com.arabicchristianmedia.server.NdiSourceSpec
@@ -158,6 +158,9 @@ fun BroadcastControlScreen(
     // 1.9.23 (item 10): auto-clear settings (own rail section).
     onSetAutoClearEnabled: (Boolean) -> Unit = {},
     onSetAutoClearDurationMinutes: (Int) -> Unit = {},
+    // 1.9.25 (item 2, language mode): interface-language choice
+    // ("system" | "ar" | "en"); MainActivity persists + recreates.
+    onSetAppLanguage: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -191,19 +194,19 @@ fun BroadcastControlScreen(
         // Settings is used in SermonListScreen/BibleReaderScreen/MainActivity
         // and needs its own import here (CI #113) — this file imports
         // icons one by one, no wildcard.
-        SetupRailEntry("device", "الجهاز", "Device", Icons.Filled.Settings),
+        SetupRailEntry("device", context.getString(R.string.s395), Icons.Filled.Settings),
         // 1.9.23 (item 10): auto-clear has its own rail section — it
         // clears ALL outputs (NDI + HTTP), not just one, so it is not
         // an NDI setting and not a Customization.
-        SetupRailEntry("autoclear", "المسح التلقائي", "Auto-Clear", Icons.Filled.Timer),
-        SetupRailEntry("hdmi", "HDMI", "External Display", Icons.Filled.Tv),
-        SetupRailEntry("broadcast", "البث NDI", "NDI Broadcast", Icons.Filled.LiveTv),
-        SetupRailEntry("urls", "الروابط", "URLs", Icons.Filled.Link),
-        SetupRailEntry("vmix", "vMix", "vMix Integration", Icons.Filled.Movie),
-        SetupRailEntry("propresenter", "ProPresenter", "ProPresenter", Icons.Filled.Slideshow),
-        SetupRailEntry("obs", "OBS", "OBS Studio", Icons.Filled.Videocam),
-        SetupRailEntry("api", "API", "API Reference", Icons.Filled.Code),
-        SetupRailEntry("custom", "التخصيص", "Customizations", Icons.Filled.Palette)
+        SetupRailEntry("autoclear", context.getString(R.string.s396), Icons.Filled.Timer),
+        SetupRailEntry("hdmi", context.getString(R.string.s397), Icons.Filled.Tv),
+        SetupRailEntry("broadcast", context.getString(R.string.s398), Icons.Filled.LiveTv),
+        SetupRailEntry("urls", context.getString(R.string.s399), Icons.Filled.Link),
+        SetupRailEntry("vmix", context.getString(R.string.s400), Icons.Filled.Movie),
+        SetupRailEntry("propresenter", context.getString(R.string.s401), Icons.Filled.Slideshow),
+        SetupRailEntry("obs", context.getString(R.string.s402), Icons.Filled.Videocam),
+        SetupRailEntry("api", context.getString(R.string.s403), Icons.Filled.Code),
+        SetupRailEntry("custom", context.getString(R.string.s404), Icons.Filled.Palette)
     )
 
     // Setup redesign (same treatment as the Editor): the page is a CONSOLE
@@ -214,7 +217,7 @@ fun BroadcastControlScreen(
     val specOf = { feed: String -> uiState.ndiSourceSpecs[feed] ?: NdiNativeSender.defaultSpec(feed) }
     val netSummary = (uiState.selectedInterface?.labelAr
         ?: uiState.availableInterfaces.firstOrNull { it.ip == uiState.activeIpAddress }?.labelAr
-        ?: "الشبكة") + " · " + uiState.activeIpAddress
+        ?: context.getString(R.string.s413)) + " · " + uiState.activeIpAddress
     val netWarning = uiState.activeIpAddress.isBlank() ||
         (uiState.availableInterfaces.isNotEmpty() && uiState.availableInterfaces.none { it.isRecommended })
 
@@ -248,11 +251,8 @@ fun BroadcastControlScreen(
                                 .background(if (uiState.isNativeNdiActive || uiState.isNativeShowActive) bento.green else bento.liveRed)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
-                        SplitLabel(
-                            parts = if (uiState.isNativeNdiActive || uiState.isNativeShowActive)
-                                listOf("بث ", "NDI 6", " نشط ", "(NDI Broadcast Active)")
-                            else
-                                listOf("بث ", "NDI", " متوقف ", "(NDI Broadcast Standby)"),
+                        Text(
+                            if (uiState.isNativeNdiActive || uiState.isNativeShowActive) context.getString(R.string.s414) else context.getString(R.string.s415),
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
                             color = if (uiState.isNativeNdiActive || uiState.isNativeShowActive) bento.green else bento.textPrimary
@@ -283,7 +283,7 @@ fun BroadcastControlScreen(
                             ) {
                                 Icon(Icons.Default.Stop, contentDescription = null, tint = bento.liveRed, modifier = Modifier.size(14.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("إيقاف الكل", fontSize = 11.sp, color = bento.liveRed, fontWeight = FontWeight.Bold)
+                                Text(context.getString(R.string.s416), fontSize = 11.sp, color = bento.liveRed, fontWeight = FontWeight.Bold)
                             }
                         }
                     } else {
@@ -301,7 +301,7 @@ fun BroadcastControlScreen(
                             ) {
                                 Icon(Icons.Default.PlayArrow, contentDescription = null, tint = bento.onPrimary, modifier = Modifier.size(14.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("تفعيل الكل", fontSize = 11.sp, color = bento.onPrimary, fontWeight = FontWeight.Bold)
+                                Text(context.getString(R.string.s417), fontSize = 11.sp, color = bento.onPrimary, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -338,20 +338,17 @@ fun BroadcastControlScreen(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Column(modifier = Modifier.weight(1f)) {
-                            SplitLabel(
-                                parts = if (anyActive)
-                                    listOf("خادم البث المباشر نشط ", "(Live Broadcast Active)")
-                                else
-                                    listOf("خادم البث في وضع الاستعداد ", "(Ready to Start)"),
+                            Text(
+                                if (anyActive) context.getString(R.string.s418) else context.getString(R.string.s419),
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = if (anyActive) bento.green else bento.textSecondary
                             )
                             Text(
                                 text = if (anyActive)
-                                    "المصدر: Bible-NDI | Lower ${loSpec.width}×${loSpec.height}@${loSpec.fps} • Full ${fuSpec.width}×${fuSpec.height}@${fuSpec.fps} | شفافية ألفا نقية 100% لـ OBS / vMix ودفق MJPEG مباشر"
+                                    context.getString(R.string.s420, loSpec.width, loSpec.height, loSpec.fps, fuSpec.width, fuSpec.height, fuSpec.fps)
                                 else
-                                    "المصدر: Bible-NDI | المنفذ: ${uiState.serverPort} | اضغط 'تفعيل الكل' لبدء البث",
+                                    context.getString(R.string.s421, uiState.serverPort),
                                 fontSize = 10.sp,
                                 color = if (anyActive) bento.green else bento.textSecondary
                             )
@@ -400,7 +397,7 @@ fun BroadcastControlScreen(
                     Spacer(modifier = Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "عرض الشاشة الشفافة الكامل",
+                            text = context.getString(R.string.s422),
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold,
                             color = bento.onPrimaryContainer,
@@ -408,7 +405,7 @@ fun BroadcastControlScreen(
                             overflow = TextOverflow.Ellipsis
                         )
                         Text(
-                            text = "HDMI capture or NDI Screen capture ready",
+                            text = context.getString(R.string.s423),
                             fontSize = 10.sp,
                             color = bento.textSecondary,
                             maxLines = 1,
@@ -432,7 +429,7 @@ fun BroadcastControlScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            "عرض سفلي بملء الشاشة",
+                            context.getString(R.string.s424),
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
                             color = bento.onPrimary,
@@ -462,7 +459,7 @@ fun BroadcastControlScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            "عرض كلي بملء الشاشة",
+                            context.getString(R.string.s425),
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
                             color = bento.onPrimary,
@@ -473,7 +470,7 @@ fun BroadcastControlScreen(
                 }
                 // 1.9.3: 4 color dots moved here from old location. Controls HDMI/full-screen background.
                 Text(
-                    text = "لون خلفية العرض",
+                    text = context.getString(R.string.s426),
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
                     color = bento.textPrimary
@@ -517,7 +514,7 @@ fun BroadcastControlScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
-                        text = "تطبيق اللون على العرضين",
+                        text = context.getString(R.string.s427),
                         fontSize = 12.sp,
                         color = bento.textSecondary,
                         maxLines = 2,
@@ -567,7 +564,7 @@ fun BroadcastControlScreen(
                         // 1.9.25 (item 9): the "انقر للطي" hint is gone —
                         // the chevron alone is the control.
                         Text(
-                            text = "روابط الإخراج المباشر لـ OBS و vMix (شفافية 100%)",
+                            text = context.getString(R.string.s428),
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             color = bento.textPrimary
@@ -598,8 +595,8 @@ fun BroadcastControlScreen(
                         androidx.compose.material3.HorizontalDivider(color = bento.borderSubtle)
 
                         // Broadcast URL 1: HTML5 Transparent Overlay URL (Browser Source)
-                        SplitLabel(
-                            parts = listOf("١. رابط التغذية الشفافة ", "(Lower Third Overlay):"),
+                        Text(
+                            context.getString(R.string.s433),
                             fontSize = 11.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = bento.textPrimary
@@ -634,20 +631,20 @@ fun BroadcastControlScreen(
                                     copyType = "OVERLAY",
                                     copiedUrlType = copiedUrlType,
                                     onCopied = { copiedUrlType = it },
-                                    clipLabel = "Bible NDI Overlay URL",
-                                    copiedToast = "تم نسخ رابط التغذية الشفافة!",
-                                    qrDescription = "QR Lower",
+                                    clipLabel = context.getString(R.string.s597),
+                                    copiedToast = context.getString(R.string.s692),
+                                    qrDescription = context.getString(R.string.s588),
                                     onQr = { showQrLower = true }
                                 )
                             }
                         }
                         if (showQrLower) {
-                            QrCodeDialog(url = uiState.serverUrl, label = "Lower Third", onDismiss = { showQrLower = false })
+                            QrCodeDialog(url = uiState.serverUrl, label = context.getString(R.string.s439), onDismiss = { showQrLower = false })
                         }
 
                         // Broadcast URL 2: Full Show Projector URL
-                        SplitLabel(
-                            parts = listOf("٢. رابط عرض الشاشة الكامل ", "(Full Show Projector):"),
+                        Text(
+                            context.getString(R.string.s434),
                             fontSize = 11.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = bento.textPrimary
@@ -685,15 +682,15 @@ fun BroadcastControlScreen(
                                     copyType = "SHOW",
                                     copiedUrlType = copiedUrlType,
                                     onCopied = { copiedUrlType = it },
-                                    clipLabel = "Bible NDI Show URL",
-                                    copiedToast = "تم نسخ رابط العرض الكامل!",
-                                    qrDescription = "QR Full",
+                                    clipLabel = context.getString(R.string.s598),
+                                    copiedToast = context.getString(R.string.s694),
+                                    qrDescription = context.getString(R.string.s589),
                                     onQr = { showQrFull = true }
                                 )
                             }
                         }
                         if (showQrFull) {
-                            QrCodeDialog(url = showUrl, label = "Full Show", onDismiss = { showQrFull = false })
+                            QrCodeDialog(url = showUrl, label = context.getString(R.string.s440), onDismiss = { showQrFull = false })
                         }
 
 
@@ -707,7 +704,7 @@ fun BroadcastControlScreen(
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Text(
-                                    text = "⚠ تم تسجيل ${uiState.ndiErrorEvents.size} من أخطاء NDI — افتح «التشخيص» في قسم البث لعرض التفاصيل",
+                                    text = context.getString(R.string.s441, uiState.ndiErrorEvents.size),
                                     fontSize = 10.sp,
                                     color = bento.liveRed,
                                     modifier = Modifier.padding(10.dp)
@@ -725,8 +722,8 @@ fun BroadcastControlScreen(
         // 1.9.25 (item 5): QR dialog state for the MJPEG URL.
         var showQrStream by remember { mutableStateOf(false) }
 
-        SplitLabel(
-            parts = listOf("٣. رابط بث الفيديو المباشر ", "(Direct Video Stream / MJPEG في vMix و OBS):"),
+        Text(
+            context.getString(R.string.s435),
             fontSize = 11.sp,
             fontWeight = FontWeight.SemiBold,
             color = bento.textPrimary
@@ -761,15 +758,15 @@ fun BroadcastControlScreen(
                     copyType = "STREAM",
                     copiedUrlType = copiedUrlType,
                     onCopied = { copiedUrlType = it },
-                    clipLabel = "Bible NDI Stream URL",
-                    copiedToast = "تم نسخ رابط بث الفيديو المباشر!",
-                    qrDescription = "QR Stream",
+                    clipLabel = context.getString(R.string.s599),
+                    copiedToast = context.getString(R.string.s695),
+                    qrDescription = context.getString(R.string.s880),
                     onQr = { showQrStream = true }
                 )
             }
         }
         if (showQrStream) {
-            QrCodeDialog(url = uiState.streamUrl, label = "MJPEG Stream", onDismiss = { showQrStream = false })
+            QrCodeDialog(url = uiState.streamUrl, label = context.getString(R.string.s879), onDismiss = { showQrStream = false })
         }
         // 1.9.3: 4 color dots MOVED to HDMI section (see hdmiCardBlock).
         // The MJPEG /stream background is now controlled from there.
@@ -794,34 +791,34 @@ fun BroadcastControlScreen(
     // at the bottom of Setup after All URLs.
     val urlReferenceBlock: @Composable () -> Unit = {
         SetupSection(
-            title = "مرجع الروابط (URL Reference)",
+            title = context.getString(R.string.s442),
             sectionId = "url-reference",
             sectionExpandedMap = sectionExpandedMap,
             onSetSectionExpanded = onSetSectionExpanded,
-            summary = "كل الصفحات والـ APIs مع الباراميترات"
+            summary = context.getString(R.string.s443)
         ) {
             val base = if (uiState.serverUrl.isNotBlank()) uiState.serverUrl.removeSuffix("/lower") else "http://<IP>:${uiState.serverPort}"
             val urls = listOf(
-                "/lower" to "?lang=ar|en — صفحة الطبقة السفلى (Lower Third overlay)",
-                "/full" to "?lang=ar|en — صفحة العرض الكامل (Full Show)",
-                "/remote" to "?lang=ar|en — صفحة التحكم عن بعد (Remote control)",
-                "/stage" to "?lang=ar|en — صفحة المسرح (Stage display)",
-                "/stream" to "?bg=green|black|white|purple — بث MJPEG (خلفية مخصصة للعرض)",
-                "/api/trigger" to "?ref=John+3:16 أو ?book=&chapter=&verse= &target=lower|show|both — بث آية",
-                "/api/onair" to "تبديل البث المباشر (ON AIR toggle)",
-                "/api/clear" to "مسح البث (Clear broadcast)",
-                "/api/verse" to "?show=1 — الآية الحالية (Current verse)",
-                "/api/books" to "قائمة الأسفار (Books list)",
-                "/api/chapter" to "?book=jhn&chapter=14 — آيات الإصحاح (Chapter verses)",
-                "/api/recents" to "الآيات الأخيرة (Recent verses)",
-                "/api/sermons" to "قائمة الخدمة (Sermon list)",
-                "/api/sermons/current" to "الآية الحالية في العظة (Current sermon verse)",
-                "/api/sermons/next" to "الآية التالية (Next)",
-                "/api/sermons/prev" to "الآية السابقة (Previous)",
-                "/api/preflight" to "فحص ما قبل البث (Preflight check)",
-                "/api/debug" to "معلومات التشخيص (Debug info)",
-                "/api/status" to "حالة الخادم (Server status)",
-                "/events" to "أحداث SSE المباشرة (Live SSE events)"
+                "/lower" to context.getString(R.string.s444),
+                "/full" to context.getString(R.string.s445),
+                "/remote" to context.getString(R.string.s446),
+                "/stage" to context.getString(R.string.s447),
+                "/stream" to context.getString(R.string.s448),
+                "/api/trigger" to context.getString(R.string.s449),
+                "/api/onair" to context.getString(R.string.s450),
+                "/api/clear" to context.getString(R.string.s451),
+                "/api/verse" to context.getString(R.string.s452),
+                "/api/books" to context.getString(R.string.s453),
+                "/api/chapter" to context.getString(R.string.s454),
+                "/api/recents" to context.getString(R.string.s455),
+                "/api/sermons" to context.getString(R.string.s347),
+                "/api/sermons/current" to context.getString(R.string.s456),
+                "/api/sermons/next" to context.getString(R.string.s457),
+                "/api/sermons/prev" to context.getString(R.string.s458),
+                "/api/preflight" to context.getString(R.string.s459),
+                "/api/debug" to context.getString(R.string.s460),
+                "/api/status" to context.getString(R.string.s461),
+                "/events" to context.getString(R.string.s462)
             )
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 urls.forEach { (path, desc) ->
@@ -864,7 +861,7 @@ fun BroadcastControlScreen(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("توثيق API (API Docs)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary)
+                    Text(context.getString(R.string.s463), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary)
                     Text(full, fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = bento.textSecondary)
                 }
                 // 1.9.25 (item 5): the shared icon-only copy/open/QR
@@ -874,52 +871,52 @@ fun BroadcastControlScreen(
                     copyType = "APIDOCS",
                     copiedUrlType = copiedUrlType,
                     onCopied = { copiedUrlType = it },
-                    clipLabel = "URL",
-                    copiedToast = "تم نسخ: API Docs",
-                    qrDescription = "QR API Docs",
+                    clipLabel = context.getString(R.string.s600),
+                    copiedToast = context.getString(R.string.s697),
+                    qrDescription = context.getString(R.string.s882),
                     onQr = { showQrApiDocs = true }
                 )
             }
         }
         if (showQrApiDocs) {
-            QrCodeDialog(url = full, label = "API Docs", onDismiss = { showQrApiDocs = false })
+            QrCodeDialog(url = full, label = context.getString(R.string.s881), onDismiss = { showQrApiDocs = false })
         }
     }
 
     val lowerBlock: @Composable () -> Unit = {
         SetupSection(
-            title = "الثلث السفلي (Lower Third)",
+            title = context.getString(R.string.s464),
             sectionId = "ndi-lower",
             sectionExpandedMap = sectionExpandedMap,
             onSetSectionExpanded = onSetSectionExpanded,
             // 1.9.25 (item 10): the feed is named in full (Lower Third /
             // Full Show), not the bare "Lower"/"Full".
-            summary = "Lower Third " + loSpec.width + "×" + loSpec.height + "@" + loSpec.fps
+            summary = context.getString(R.string.s465) + loSpec.width + "×" + loSpec.height + "@" + loSpec.fps
         ) {
             // Item 20: the restart is immediate only when this feed
             // and the NDI protocol are both on; otherwise the new spec
             // is only persisted and applies at the next start.
             val restartNote = if (uiState.ndiLowerEnabled && uiState.isNdiProtocolEnabled)
-                "التغيير يُعاد تشغيل المصدر فوراً."
+                context.getString(R.string.s466)
             else
-                "التغيير يُطبَّق عند بدء المصدر القادم."
+                context.getString(R.string.s467)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = "اختر الدقة ومعدل الإطارات. " + restartNote,
+                    text = context.getString(R.string.s468) + restartNote,
                     fontSize = 11.sp,
                     color = bento.textSecondary,
                     modifier = Modifier.weight(1f)
                 )
                 InfoPopupButton(
-                    infoTitle = "الثلث السفلي (Lower Third)",
-                    infoText = "اختر الدقة ومعدل الإطارات. " + restartNote
+                    infoTitle = context.getString(R.string.s464),
+                    infoText = context.getString(R.string.s468) + restartNote
                 )
             }
             Spacer(modifier = Modifier.height(8.dp))
             NdiSourceRow(
                 feedKey = NdiNativeSender.FEED_LOWER,
                 toggleKey = "lower",
-                tierLabel = specLabel(NdiNativeSender.FEED_LOWER, "Lower Third • شفاف"),
+                tierLabel = specLabel(NdiNativeSender.FEED_LOWER, context.getString(R.string.s469)),
                 enabled = uiState.ndiLowerEnabled,
                 active = uiState.isNativeNdiActive,
                 tint = bento.primary,
@@ -940,38 +937,38 @@ fun BroadcastControlScreen(
 
     val fullBlock: @Composable () -> Unit = {
         SetupSection(
-            title = "العرض الكامل (Full Show)",
+            title = context.getString(R.string.s470),
             sectionId = "ndi-full",
             sectionExpandedMap = sectionExpandedMap,
             onSetSectionExpanded = onSetSectionExpanded,
             // 1.9.25 (item 10): the feed is named in full (Lower Third /
             // Full Show), not the bare "Lower"/"Full".
-            summary = "Full Show " + fuSpec.width + "×" + fuSpec.height + "@" + fuSpec.fps
+            summary = context.getString(R.string.s471) + fuSpec.width + "×" + fuSpec.height + "@" + fuSpec.fps
         ) {
             // Item 20: the restart is immediate only when this feed
             // and the NDI protocol are both on; otherwise the new spec
             // is only persisted and applies at the next start.
             val restartNote = if (uiState.ndiFullShowEnabled && uiState.isNdiProtocolEnabled)
-                "التغيير يُعاد تشغيل المصدر فوراً."
+                context.getString(R.string.s466)
             else
-                "التغيير يُطبَّق عند بدء المصدر القادم."
+                context.getString(R.string.s467)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = "اختر الدقة ومعدل الإطارات. " + restartNote,
+                    text = context.getString(R.string.s468) + restartNote,
                     fontSize = 11.sp,
                     color = bento.textSecondary,
                     modifier = Modifier.weight(1f)
                 )
                 InfoPopupButton(
-                    infoTitle = "العرض الكامل (Full Show)",
-                    infoText = "اختر الدقة ومعدل الإطارات. " + restartNote
+                    infoTitle = context.getString(R.string.s470),
+                    infoText = context.getString(R.string.s468) + restartNote
                 )
             }
             Spacer(modifier = Modifier.height(8.dp))
             NdiSourceRow(
                 feedKey = NdiNativeSender.FEED_FULL,
                 toggleKey = "full",
-                tierLabel = specLabel(NdiNativeSender.FEED_FULL, "Full Show • شفاف"),
+                tierLabel = specLabel(NdiNativeSender.FEED_FULL, context.getString(R.string.s472)),
                 enabled = uiState.ndiFullShowEnabled,
                 active = uiState.isNativeShowActive,
                 tint = bento.green,
@@ -999,24 +996,24 @@ fun BroadcastControlScreen(
     // then the overlay block nested below, unchanged.
     val hdmiSection: @Composable () -> Unit = {
         SetupSection(
-            title = "HDMI (شاشة خارجية)",
+            title = context.getString(R.string.s473),
             sectionId = "hdmi",
             sectionExpandedMap = sectionExpandedMap,
             onSetSectionExpanded = onSetSectionExpanded,
-            summary = if (hdmiPresentationShowing) "يعرض الآن (Showing)"
-                else if (hdmiConnected) "متصل (Connected)"
-                else "غير متصل (Not connected)"
+            summary = if (hdmiPresentationShowing) context.getString(R.string.s474)
+                else if (hdmiConnected) context.getString(R.string.s475)
+                else context.getString(R.string.s476)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "عرض HDMI (HDMI Presentation)",
+                        text = context.getString(R.string.s477),
                         fontSize = 12.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = bento.textPrimary
                     )
                     Text(
-                        text = "يعرض صفحة العرض الكامل (/full) على شاشة خارجية عند توصيلها.",
+                        text = context.getString(R.string.s478),
                         fontSize = 11.sp,
                         color = bento.textSecondary
                     )
@@ -1028,8 +1025,8 @@ fun BroadcastControlScreen(
             }
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "الحالة: " + if (hdmiConnected) "متصل (Connected)" else "غير متصل (Not connected)" +
-                    " • " + if (hdmiPresentationShowing) "يعرض (Showing)" else "متوقف (Not showing)",
+                text = context.getString(R.string.s479) + if (hdmiConnected) context.getString(R.string.s475) else context.getString(R.string.s476) +
+                    " • " + if (hdmiPresentationShowing) context.getString(R.string.s480) else context.getString(R.string.s481),
                 fontSize = 11.sp,
                 color = bento.textSecondary
             )
@@ -1082,13 +1079,13 @@ fun BroadcastControlScreen(
                     }
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        SplitLabel(
-                            parts = listOf("إبقاء الشاشة مفعلة ", "(Keep Screen Awake)"),
+                        Text(
+                            context.getString(R.string.s482),
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold,
                             color = bento.textPrimary
                         )
-                        InfoPopupButton("إبقاء الشاشة مفعلة (Keep Screen Awake)", "يُبقي شاشة التطبيق مضاءة أثناء البث فقط عندما يكون التطبيق مفتوحاً في المقدمة؛ ولا يتحكم في بقاء البث عند تصغير التطبيق (ذلك من خدمة البث وأقفال الشبكة)")
+                        InfoPopupButton(context.getString(R.string.s482), context.getString(R.string.s483))
                     }
                 }
 
@@ -1104,13 +1101,58 @@ fun BroadcastControlScreen(
         }
     }
 
+    // 1.9.25 (item 2, language mode): interface-language switcher in the
+    // Device section — System language (the default), Arabic, or English.
+    // Tapping a chip persists the choice and recreates the Activity (via
+    // onSetAppLanguage), so every string + the layout direction re-resolve.
+    // Bible text is untouched; Android's per-app language picker (system
+    // Settings) is the second way to switch — both read the same choice.
+    val languageBlock: @Composable () -> Unit = {
+        val currentChoice = AppLanguage.currentChoice(context)
+        Surface(
+            shape = RoundedCornerShape(14.dp),
+            color = bento.card,
+            border = BorderStroke(1.dp, bento.border),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp)
+            ) {
+                Text(
+                    context.getString(R.string.s896),
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = bento.textPrimary
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    androidx.compose.material3.FilterChip(
+                        selected = currentChoice == AppLanguage.SYSTEM,
+                        onClick = { onSetAppLanguage(AppLanguage.SYSTEM) },
+                        label = { Text(context.getString(R.string.s897)) }
+                    )
+                    androidx.compose.material3.FilterChip(
+                        selected = currentChoice == AppLanguage.ARABIC,
+                        onClick = { onSetAppLanguage(AppLanguage.ARABIC) },
+                        label = { Text(context.getString(R.string.s898)) }
+                    )
+                    androidx.compose.material3.FilterChip(
+                        selected = currentChoice == AppLanguage.ENGLISH,
+                        onClick = { onSetAppLanguage(AppLanguage.ENGLISH) },
+                        label = { Text(context.getString(R.string.s899)) }
+                    )
+                }
+            }
+        }
+    }
+
     val customBlock: @Composable () -> Unit = {
         SetupSection(
-            title = "التخصيص (Customizations)",
+            title = context.getString(R.string.s484),
             sectionId = "custom",
             sectionExpandedMap = sectionExpandedMap,
             onSetSectionExpanded = onSetSectionExpanded,
-            summary = selectedTheme.name
+            summary = selectedTheme.displayName(context)
         ) {
             Surface(
                 shape = RoundedCornerShape(10.dp),
@@ -1125,19 +1167,19 @@ fun BroadcastControlScreen(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Palette,
-                        contentDescription = "App theme",
+                        contentDescription = context.getString(R.string.s592),
                         tint = bento.primary,
                         modifier = Modifier.size(20.dp)
                     )
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "مظهر التطبيق (App theme)",
+                            text = context.getString(R.string.s485),
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold,
                             color = bento.textPrimary
                         )
                         Text(
-                            text = selectedTheme.name,
+                            text = selectedTheme.displayName(context),
                             fontSize = 11.sp,
                             color = bento.textSecondary
                         )
@@ -1154,11 +1196,11 @@ fun BroadcastControlScreen(
 
     val obsBlock: @Composable () -> Unit = {
         SetupSection(
-            title = "الربط مع OBS Studio (OBS Guide)",
+            title = context.getString(R.string.s486),
             sectionId = "obs",
             sectionExpandedMap = sectionExpandedMap,
             onSetSectionExpanded = onSetSectionExpanded,
-            summary = "Browser Source · 1920×1080"
+            summary = context.getString(R.string.s487)
         ) {
                                 // How-to OBS Guide Banner
                                 Surface(
@@ -1176,8 +1218,8 @@ fun BroadcastControlScreen(
                                                 modifier = Modifier.size(14.dp)
                                             )
                                             Spacer(modifier = Modifier.width(6.dp))
-                                            SplitLabel(
-                                                parts = listOf("روابط الربط لبرامج البث ", "(OBS / vMix / Projector):"),
+                                            Text(
+                                                context.getString(R.string.s488),
                                                 fontSize = 10.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 color = bento.green
@@ -1185,7 +1227,7 @@ fun BroadcastControlScreen(
                                         }
                                         Spacer(modifier = Modifier.height(4.dp))
                                         Text(
-                                            text = "• للآيات أسفل الشاشة (Lower Third): استخدم الرابط رقم ١.\n• للعرض الكامل (Projector/Full): استخدم الرابط رقم ٢.\n• للأداء الأقصى وجودة NDI 6: ابحث عن مصادر NDI مباشرة.\n• لبرامج المونتاج القديمة: استخدم رابط MJPEG رقم ٣.",
+                                            text = context.getString(R.string.s489),
                                             fontSize = 9.sp,
                                             color = bento.green,
                                             lineHeight = 14.sp
@@ -1200,7 +1242,7 @@ fun BroadcastControlScreen(
                         color = bento.primary
                     ) {
                         Text(
-                            text = "OBS",
+                            text = context.getString(R.string.s411),
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
                             color = bento.onPrimary,
@@ -1208,8 +1250,8 @@ fun BroadcastControlScreen(
                         )
                     }
                     Spacer(modifier = Modifier.width(8.dp))
-                    SplitLabel(
-                        parts = listOf("طريقة الربط مع ", "OBS Studio", " (5 خطوات سريعة):"),
+                    Text(
+                        context.getString(R.string.s490),
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
                         color = bento.textPrimary
@@ -1220,11 +1262,11 @@ fun BroadcastControlScreen(
 
                 // 1.9.25 (item 6): Arabic-Indic step numbers (١٢٣).
                 val obsSteps = listOf(
-                    "١. في برنامج OBS، اضغط على زر (+) في قسم Sources (المصادر) واختر Browser (متصفح).",
-                    "٢. ضع في خانة URL الرابط أعلاه: ${if (uiState.serverUrl.isNotBlank()) uiState.serverUrl else "http://<IP>:8080/lower"}.",
-                    "٣. اضبط الأبعاد: Width = 1920 و Height = 1080.",
-                    "٤. تأكد من تحديد خيار (Shutdown source when not active).",
-                    "٥. بمجرد النقر على أي آية في التطبيق، ستظهر فوراً في البث المباشر مع خلفية شفافة 100% فوق الكاميرا!"
+                    context.getString(R.string.s491),
+                    context.getString(R.string.s492, if (uiState.serverUrl.isNotBlank()) uiState.serverUrl else "http://<IP>:8080/lower"),
+                    context.getString(R.string.s493),
+                    context.getString(R.string.s494),
+                    context.getString(R.string.s495)
                 )
 
                 obsSteps.forEach { step ->
@@ -1241,11 +1283,11 @@ fun BroadcastControlScreen(
     }
     val vmixBlock: @Composable () -> Unit = {
         SetupSection(
-            title = "الربط مع vMix (vMix Guide)",
+            title = context.getString(R.string.s496),
             sectionId = "vmix",
             sectionExpandedMap = sectionExpandedMap,
             onSetSectionExpanded = onSetSectionExpanded,
-            summary = "Web Browser input · SetText push"
+            summary = context.getString(R.string.s497)
         ) {
             Column {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1254,7 +1296,7 @@ fun BroadcastControlScreen(
                         color = bento.green
                     ) {
                         Text(
-                            text = "vMix",
+                            text = context.getString(R.string.s409),
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color.White,
@@ -1263,7 +1305,7 @@ fun BroadcastControlScreen(
                     }
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "طريقة الربط مع vMix:",
+                        text = context.getString(R.string.s498),
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
                         color = bento.textPrimary
@@ -1274,10 +1316,10 @@ fun BroadcastControlScreen(
 
                 // 1.9.25 (item 6): Arabic-Indic step numbers (١٢٣).
                 val vmixSteps = listOf(
-                    "١. في vMix، اضغط على Add Input أسفل الشاشة.",
-                    "٢. اختر تبويب Web Browser من القائمة الجانبية (أو تبويب Stream / VLC واستخدم رابط البث المباشر).",
-                    "٣. الصق رابط التغذية، واضبط الدقة على 1920x1080.",
-                    "٤. قم بربط المدخل بأحد قنوات الـ Overlay (1 أو 2 أو 3) لدمج الآيات بشفافية ألفا تلقائياً."
+                    context.getString(R.string.s499),
+                    context.getString(R.string.s500),
+                    context.getString(R.string.s501),
+                    context.getString(R.string.s502)
                 )
 
                 vmixSteps.forEach { step ->
@@ -1303,11 +1345,11 @@ fun BroadcastControlScreen(
     // Batch-2 item 25: ProPresenter stage-message push settings (LAN-only).
     val propresenterBlock: @Composable () -> Unit = {
         SetupSection(
-            title = "الربط مع ProPresenter",
+            title = context.getString(R.string.s503),
             sectionId = "propresenter",
             sectionExpandedMap = sectionExpandedMap,
             onSetSectionExpanded = onSetSectionExpanded,
-            summary = "Stage message push · PUT /v1/stage/message"
+            summary = context.getString(R.string.s504)
         ) {
         ProPresenterSettingsCard(
             cardColor = bento.card,
@@ -1319,7 +1361,7 @@ fun BroadcastControlScreen(
     }
     val networkBlock: @Composable () -> Unit = {
         SetupSection(
-            title = "الشبكة (Network)",
+            title = context.getString(R.string.s505),
             sectionId = "network",
             sectionExpandedMap = sectionExpandedMap,
             onSetSectionExpanded = onSetSectionExpanded,
@@ -1342,7 +1384,7 @@ fun BroadcastControlScreen(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "عناوين وبطاقات الشبكة المتاحة في الهاتف:",
+                            text = context.getString(R.string.s506),
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
                             color = bento.textPrimary
@@ -1361,12 +1403,12 @@ fun BroadcastControlScreen(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
                                 imageVector = Icons.Default.Refresh,
-                                contentDescription = "Refresh Interfaces",
+                                contentDescription = context.getString(R.string.s593),
                                 tint = bento.textPrimary,
                                 modifier = Modifier.size(12.dp)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("تحديث", fontSize = 10.sp, color = bento.textPrimary, fontWeight = FontWeight.Bold)
+                            Text(context.getString(R.string.s507), fontSize = 10.sp, color = bento.textPrimary, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -1375,7 +1417,7 @@ fun BroadcastControlScreen(
 
                 if (uiState.availableInterfaces.isEmpty()) {
                     Text(
-                        text = "العنوان النشط حالياً: ${uiState.activeIpAddress}",
+                        text = context.getString(R.string.s508, uiState.activeIpAddress),
                         fontSize = 11.sp,
                         color = bento.textSecondary
                     )
@@ -1431,14 +1473,14 @@ fun BroadcastControlScreen(
                                             )
                                             if (iface.isRecommended) {
                                                 Text(
-                                                    text = "✓ موصى به للربط مع كمبيوتر البث في نفس الراوتر",
+                                                    text = context.getString(R.string.s509),
                                                     fontSize = 9.sp,
                                                     color = bento.green,
                                                     fontWeight = FontWeight.SemiBold
                                                 )
                                             } else if (!iface.reachableFromLan) {
                                                 Text(
-                                                    text = "⚠️ بيانات شريحة SIM (لا يمكن للكمبيوتر الوصول إليها)",
+                                                    text = "⚠️ " + context.getString(R.string.s510),
                                                     fontSize = 9.sp,
                                                     color = bento.liveRed
                                                 )
@@ -1452,7 +1494,7 @@ fun BroadcastControlScreen(
                                             color = bento.primary
                                         ) {
                                             Text(
-                                                text = "محدد",
+                                                text = context.getString(R.string.s511),
                                                 fontSize = 9.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 color = bento.onPrimary,
@@ -1485,7 +1527,7 @@ fun BroadcastControlScreen(
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = "تنبيه هام للمتصفح وحل مشكلة عدم الاتصال (ERR_ADDRESS_UNREACHABLE):",
+                                text = context.getString(R.string.s512),
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = bento.warning
@@ -1495,21 +1537,21 @@ fun BroadcastControlScreen(
                         Spacer(modifier = Modifier.height(6.dp))
 
                         Text(
-                            text = "١. في شريط عنوان المتصفح: اكتب http:// صراحة وليس https:// لأن الخادم يعمل محلياً داخل الشبكة بدون شهادة SSL خارجية. برامج vMix و OBS تتصل مباشرة وبسرعة فائقة بدون أي تنبيهات.",
+                            text = context.getString(R.string.s513),
                             fontSize = 10.sp,
                             lineHeight = 15.sp,
                             color = bento.warning
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "٢. تأكد من اختيار عنوان Wi-Fi (يبدأ عادة بـ 192.168 أو 10.0) من القائمة أعلاه، وتجنب اختيار عنوان بيانات الشريحة (Cellular).",
+                            text = context.getString(R.string.s514),
                             fontSize = 10.sp,
                             lineHeight = 15.sp,
                             color = bento.warning
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "٣. إذا كانت شبكة الواي فاي تفصل الأجهزة عن بعضها (AP Isolation)، شغّل (نقطة اتصال الهواتف المحمولة / Mobile Hotspot) في الهاتف واشبك كمبيوتر البث بها مباشرة، وسيعمل فوراً بدون مشاكل.",
+                            text = context.getString(R.string.s515),
                             fontSize = 10.sp,
                             lineHeight = 15.sp,
                             color = bento.warning
@@ -1527,13 +1569,13 @@ fun BroadcastControlScreen(
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Column(modifier = Modifier.padding(10.dp)) {
-                                        SplitLabel(
-                                            parts = listOf("عنوان البث ", "(Advertise address)"),
+                                        Text(
+                                            context.getString(R.string.s516),
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.Bold,
                                             color = bento.textPrimary
                                         )
-                                        Text("إظهار الروابط بعنوان IP أو باسم الجهاز على الشبكة", fontSize = 10.sp, color = bento.textSecondary)
+                                        Text(context.getString(R.string.s517), fontSize = 10.sp, color = bento.textSecondary)
                                         Spacer(modifier = Modifier.height(8.dp))
                                         // 1.9.23: the advertise-by-name toggle sits beside
                                         // the field — ON uses the domain, OFF uses the IP.
@@ -1548,7 +1590,7 @@ fun BroadcastControlScreen(
                                             TextField(
                                                 value = nameText,
                                                 onValueChange = { nameText = it },
-                                                label = { Text("اسم الجهاز على الشبكة (Device name)") },
+                                                label = { Text(context.getString(R.string.s518)) },
                                                 placeholder = { Text(uiState.activeIpAddress, color = bento.textSecondary) },
                                                 singleLine = true,
                                                 enabled = uiState.advertiseByName,
@@ -1567,14 +1609,14 @@ fun BroadcastControlScreen(
                                                 horizontalArrangement = Arrangement.SpaceBetween
                                             ) {
                                                 Text(
-                                                    "مثال: http://" + nameText.ifBlank { "…" } + ":" + uiState.serverPort + "/lower",
+                                                    context.getString(R.string.s519) + nameText.ifBlank { "…" } + ":" + uiState.serverPort + "/lower",
                                                     fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = bento.textSecondary
                                                 )
                                                 androidx.compose.material3.TextButton(onClick = { onSetAdvertiseName(nameText) }) {
-                                                    Text("تطبيق (Apply)")
+                                                    Text(context.getString(R.string.s520))
                                                 }
                                             }
-                                            Text("البديل دائماً متاح (IP): " + uiState.activeIpAddress, fontSize = 10.sp, color = bento.textSecondary)
+                                            Text(context.getString(R.string.s521) + uiState.activeIpAddress, fontSize = 10.sp, color = bento.textSecondary)
                                         }
                                         Spacer(modifier = Modifier.height(6.dp))
                                         Row(
@@ -1582,21 +1624,21 @@ fun BroadcastControlScreen(
                                             verticalAlignment = Alignment.CenterVertically,
                                             horizontalArrangement = Arrangement.SpaceBetween
                                         ) {
-                                            Text("💡 معلومات ونصائح (Info & tips)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary)
+                                            Text(context.getString(R.string.s522), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary)
                                             androidx.compose.material3.TextButton(onClick = { onToggleAdvertiseTips() }) {
-                                                Text(if (uiState.advertiseTipsCollapsed) "عرض (Show)" else "إخفاء (Hide)")
+                                                Text(if (uiState.advertiseTipsCollapsed) context.getString(R.string.s523) else context.getString(R.string.s524))
                                             }
                                         }
                                         if (!uiState.advertiseTipsCollapsed) {
-                                            Text("• عنوان IP يعمل دائماً، لكنه قد يتغيّر عند إعادة تشغيل الراوتر أو الجهاز (DHCP) فتنكسر الروابط المحفوظة.", fontSize = 10.sp, color = bento.textSecondary)
+                                            Text(context.getString(R.string.s525), fontSize = 10.sp, color = bento.textSecondary)
                                             Spacer(modifier = Modifier.height(2.dp))
-                                            Text("• اسم الجهاز يبقى ثابتاً حتى لو تغيّر الـ IP — اكتب الاسم تماماً كما يفتح في متصفحك الآن (بدون .local).", fontSize = 10.sp, color = bento.textSecondary)
+                                            Text(context.getString(R.string.s526), fontSize = 10.sp, color = bento.textSecondary)
                                             Spacer(modifier = Modifier.height(2.dp))
-                                            Text("• جرّب الاسم في المتصفح أولاً: إذا فتحت صفحة التحكم، فالاسم يعمل على شبكتك ويمكن الاعتماد عليه.", fontSize = 10.sp, color = bento.textSecondary)
+                                            Text(context.getString(R.string.s527), fontSize = 10.sp, color = bento.textSecondary)
                                             Spacer(modifier = Modifier.height(2.dp))
-                                            Text("• إذا توقّف الاسم عن العمل على شبكة معيّنة، أعد التبديل إلى IP — رابط الـ IP يبقى ظاهراً دائماً كبديل.", fontSize = 10.sp, color = bento.textSecondary)
+                                            Text(context.getString(R.string.s528), fontSize = 10.sp, color = bento.textSecondary)
                                             Spacer(modifier = Modifier.height(2.dp))
-                                            Text("• هذا الإعداد يغيّر الروابط المعروضة والمنسوخة فقط؛ البثّ نفسه وطرق الاتصال لا تتغيّر.", fontSize = 10.sp, color = bento.textSecondary)
+                                            Text(context.getString(R.string.s529), fontSize = 10.sp, color = bento.textSecondary)
                                             Spacer(modifier = Modifier.height(2.dp))
                                         }
                                     }
@@ -1605,14 +1647,14 @@ fun BroadcastControlScreen(
     }
     val diagnosticsBlock: @Composable () -> Unit = {
         SetupSection(
-            title = "تشخيص NDI (NDI Diagnostics)",
+            title = context.getString(R.string.s530),
             sectionId = "diagnostics",
             sectionExpandedMap = sectionExpandedMap,
             onSetSectionExpanded = onSetSectionExpanded,
             // 1.9.25 (item 8): two short lines — connected count and
             // error count each on its own line (the one-line form
             // reordered confusingly in RTL).
-            summary = "متصل الآن: " + uiState.sseConnectedNow + "\nأخطاء NDI: " + uiState.ndiErrorEvents.size,
+            summary = context.getString(R.string.s531, uiState.sseConnectedNow, uiState.ndiErrorEvents.size),
             controlledExpanded = uiState.showAdvancedNdi,
             onToggleControlled = onToggleAdvancedNdi
         ) {
@@ -1630,7 +1672,7 @@ fun BroadcastControlScreen(
                     val running = activeOf[feed] == true
                     Text(
                         text = "${NdiNativeSender.displayName(feed)}: ${spec.width}×${spec.height} @ ${spec.fps}fps — " +
-                            if (running) "يعمل ✓" else "متوقف",
+                            if (running) context.getString(R.string.s532) else context.getString(R.string.s533),
                         fontSize = 10.sp,
                         fontFamily = FontFamily.Monospace,
                         color = if (running) bento.green else bento.textSecondary
@@ -1638,7 +1680,7 @@ fun BroadcastControlScreen(
                     Spacer(modifier = Modifier.height(2.dp))
                 }
                 Text(
-                    "صحة بث HTTP (الأوفرلاي):",
+                    context.getString(R.string.s534),
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     color = bento.textPrimary
@@ -1648,9 +1690,9 @@ fun BroadcastControlScreen(
                 // leaving is recorded as "viewer left", not an error,
                 // and Clear clears this line too (see ViewModel).
                 Text(
-                    text = "متصل الآن: ${uiState.sseConnectedNow} • جلسات الاتصال: ${uiState.sseConnectTotal} • الانقطاعات: ${uiState.sseDropTotal}" +
+                    text = context.getString(R.string.s535, uiState.sseConnectedNow, uiState.sseConnectTotal, uiState.sseDropTotal) +
                         if (uiState.sseLastDropReason.isNotEmpty() && uiState.sseLastDropAgoSec >= 0)
-                            " • آخر مشاهد غادر: ${uiState.sseLastDropReason} (قبل ${uiState.sseLastDropAgoSec} ث)"
+                            context.getString(R.string.s536, uiState.sseLastDropReason, uiState.sseLastDropAgoSec)
                         else "",
                     fontSize = 10.sp,
                     fontFamily = FontFamily.Monospace,
@@ -1658,14 +1700,14 @@ fun BroadcastControlScreen(
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    "سجل الأخطاء (${uiState.ndiErrorEvents.size}):",
+                    context.getString(R.string.s537, uiState.ndiErrorEvents.size),
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     color = bento.textPrimary
                 )
                 if (uiState.ndiErrorEvents.isEmpty()) {
                     Text(
-                        "لا توجد أخطاء مسجلة — جميع المصادر تعمل بشكل طبيعي.",
+                        context.getString(R.string.s538),
                         fontSize = 10.sp,
                         color = bento.green
                     )
@@ -1683,10 +1725,10 @@ fun BroadcastControlScreen(
                 Spacer(modifier = Modifier.height(6.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     androidx.compose.material3.TextButton(onClick = { onRefreshNdiDiagnostics() }) {
-                        Text("تحديث", fontSize = 10.sp)
+                        Text(context.getString(R.string.s507), fontSize = 10.sp)
                     }
                     androidx.compose.material3.TextButton(onClick = { onClearNdiDiagnostics() }) {
-                        Text("مسح الكل (أخطاء + نشاط)", fontSize = 10.sp)
+                        Text(context.getString(R.string.s539), fontSize = 10.sp)
                     }
                 }
             }
@@ -1700,11 +1742,11 @@ fun BroadcastControlScreen(
     // only the settings (ON/OFF + duration).
     val autoClearBlock: @Composable () -> Unit = {
         SetupSection(
-            title = "المسح التلقائي (Auto-Clear)",
+            title = context.getString(R.string.s407),
             sectionId = "autoclear",
             sectionExpandedMap = sectionExpandedMap,
             onSetSectionExpanded = onSetSectionExpanded,
-            summary = if (uiState.autoClearEnabled) "مفعّل · ${uiState.autoClearDurationMinutes} دقيقة" else "متوقف (OFF)"
+            summary = if (uiState.autoClearEnabled) context.getString(R.string.s540, uiState.autoClearDurationMinutes) else context.getString(R.string.s541)
         ) {
             // ON/OFF toggle.
             Row(
@@ -1713,13 +1755,13 @@ fun BroadcastControlScreen(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "المسح التلقائي (Auto-clear)",
+                        text = context.getString(R.string.s542),
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
                         color = bento.textPrimary
                     )
                     Text(
-                        text = "The live verse clears itself after the set time. Tapping any verse restarts the timer.",
+                        text = context.getString(R.string.s543),
                         fontSize = 11.sp,
                         color = bento.textSecondary
                     )
@@ -1759,13 +1801,13 @@ fun BroadcastControlScreen(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "المدة بالدقائق (Duration in minutes)",
+                        text = context.getString(R.string.s544),
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
                         color = bento.textPrimary
                     )
                     Text(
-                        text = "1–60 minutes. Changing it mid-countdown restarts the timer.",
+                        text = context.getString(R.string.s545),
                         fontSize = 11.sp,
                         color = bento.textSecondary
                     )
@@ -1844,13 +1886,15 @@ fun BroadcastControlScreen(
                                 // rail section — Keep Screen Awake +
                                 // the Network block (status + Advertise
                                 // address) moved here from URLs.
-                                SetupSectionHeader("الجهاز (Device)")
+                                SetupSectionHeader(context.getString(R.string.s405))
                                 keepAwakeBlock()
+                                Spacer(modifier = Modifier.height(12.dp))
+                                languageBlock()
                                 Spacer(modifier = Modifier.height(12.dp))
                                 networkBlock()
                             }
                             "broadcast" -> {
-                                SetupSectionHeader("البث (Broadcast)")
+                                SetupSectionHeader(context.getString(R.string.s406))
                                 broadcastStatusBlock()
                                 lowerBlock()
                                 fullBlock()
@@ -1869,7 +1913,7 @@ fun BroadcastControlScreen(
                                 hdmiSection()
                             }
                             "urls" -> {
-                                SetupSectionHeader("الروابط (URLs)")
+                                SetupSectionHeader(context.getString(R.string.s408))
                                 urlsCardBlock()
                                 mjpegBlock()
                                 allUrlsBlock()
@@ -1887,7 +1931,7 @@ fun BroadcastControlScreen(
                                 obsBlock()
                             }
                             "api" -> {
-                                SetupSectionHeader("API")
+                                SetupSectionHeader(context.getString(R.string.s412))
                                 urlReferenceBlock()
                                 apiDocsBlock()
                             }
@@ -1897,7 +1941,7 @@ fun BroadcastControlScreen(
                 }
         // App version footer: confirms which build is installed on this tablet.
         Text(
-            text = "Arabic Bible NDI v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE}) • ${BuildConfig.BUILD_DATE}",
+            text = context.getString(R.string.s546, BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE, BuildConfig.BUILD_DATE),
             fontSize = 11.sp,
             color = bento.textSecondary,
             textAlign = TextAlign.Center,
@@ -1915,8 +1959,10 @@ fun BroadcastControlScreen(
                 // vMix, ProPresenter, OBS, API, Customizations. The
                 // blocks carry their own titles, so only the Device
                 // section gets a header (it groups two blocks).
-                SetupSectionHeader("الجهاز (Device)")
+                SetupSectionHeader(context.getString(R.string.s405))
                 keepAwakeBlock()
+                Spacer(modifier = Modifier.height(12.dp))
+                languageBlock()
                 Spacer(modifier = Modifier.height(12.dp))
                 networkBlock()
                 // 1.9.25 (item 14): no header — the block titles itself.
@@ -1924,12 +1970,12 @@ fun BroadcastControlScreen(
                 // 1.9.15 item 5: one HDMI section (the SetupSection
                 // carries its own title).
                 hdmiSection()
-                SetupSectionHeader("البث (Broadcast)")
+                SetupSectionHeader(context.getString(R.string.s406))
                 broadcastStatusBlock()
                 lowerBlock()
                 fullBlock()
                 diagnosticsBlock()
-                SetupSectionHeader("الروابط (URLs)")
+                SetupSectionHeader(context.getString(R.string.s408))
                 urlsCardBlock()
                 mjpegBlock()
                 allUrlsBlock()
@@ -1945,7 +1991,7 @@ fun BroadcastControlScreen(
                 customBlock()
         // App version footer: confirms which build is installed on this tablet.
         Text(
-            text = "Arabic Bible NDI v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE}) • ${BuildConfig.BUILD_DATE}",
+            text = context.getString(R.string.s546, BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE, BuildConfig.BUILD_DATE),
             fontSize = 11.sp,
             color = bento.textSecondary,
             textAlign = TextAlign.Center,
@@ -1981,18 +2027,19 @@ private fun SetupSectionHeader(title: String) {
 
 // 1.9.23 (Item 7): one left-rail navigation entry — stable id (drives
 // the right-side when), bilingual label, and icon.
+// 1.9.25 (item 2, language mode): one label, resolved at build time in
+// the interface language — the old bilingual Arabic-bold + English-
+// subtitle pair is gone with the rest of the bilingual labels.
 private data class SetupRailEntry(
     val id: String,
-    val labelAr: String,
-    val labelEn: String,
+    val label: String,
     val icon: ImageVector
 )
 
 /**
  * 1.9.23 (Item 7): one left-rail navigation item for the Setup tab.
  * The selected item gets a primary-tinted background and primary
- * text/icon; the rest are plain. Bilingual label (Arabic bold +
- * English subtitle), matching the mockup.
+ * text/icon; the rest are plain.
  */
 @Composable
 private fun SetupRailItem(
@@ -2017,19 +2064,12 @@ private fun SetupRailItem(
                 modifier = Modifier.size(20.dp)
             )
             Spacer(modifier = Modifier.width(10.dp))
-            Column {
-                Text(
-                    entry.labelAr,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = if (selected) bento.onPrimaryContainer else bento.textPrimary
-                )
-                Text(
-                    entry.labelEn,
-                    fontSize = 11.sp,
-                    color = bento.textSecondary
-                )
-            }
+            Text(
+                entry.label,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                color = if (selected) bento.onPrimaryContainer else bento.textPrimary
+            )
         }
     }
 }
@@ -2043,29 +2083,10 @@ private fun SetupRailItem(
  * controlled via [controlledExpanded] + [onToggleControlled] (the
  * Diagnostics section, whose state lives in the UI state as before).
  */
-// Bidi-safe label: a mixed Arabic/Latin string is rendered as separate
-// unidirectional pieces so the bidi engine cannot reorder runs across a
-// boundary (e.g. a trailing "(Latin):" flipping). The pieces concatenate
-// exactly to the original string, and FlowRow preserves line wrapping.
-// Scope: short direct labels only. SetupSection titles stay single-string
-// (changing that API is out of scope), as do flowing paragraphs, guide
-// sentences, and interpolated/dynamic lines.
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun SplitLabel(
-    parts: List<String>,
-    fontSize: TextUnit,
-    fontWeight: FontWeight,
-    color: Color,
-    modifier: Modifier = Modifier
-) {
-    FlowRow(modifier = modifier) {
-        parts.forEach { part ->
-            Text(part, fontSize = fontSize, fontWeight = fontWeight, color = color)
-        }
-    }
-}
-
+// 1.9.25 (item 2, language mode): SplitLabel is gone — each language's
+// resource value is monolingual (product names aside), so the bidi
+// splitting it did for mixed Arabic+English labels is no longer needed.
+// All 9 call sites are plain Text(context.getString(...)) now.
 @Composable
 private fun SetupSection(
     title: String,
@@ -2147,6 +2168,7 @@ private fun NdiSourceRow(
     textSecondary: Color,
     onToggle: (String) -> Unit
 ) {
+    val context = LocalContext.current
     val bento = LocalBentoColors.current
     Row(
         modifier = Modifier
@@ -2169,7 +2191,7 @@ private fun NdiSourceRow(
                 color = tint
             )
             Text(
-                text = tierLabel + if (active) " • يعمل الآن" else " • متوقف",
+                text = tierLabel + if (active) context.getString(R.string.s547) else context.getString(R.string.s895),
                 fontSize = 9.sp,
                 color = textSecondary
             )
@@ -2194,6 +2216,7 @@ private fun NdiSourceSettingsRow(
     onUpdate: (String, Int, Int, Int) -> Unit,
     onToggleMotion: (String) -> Unit
 ) {
+    val context = LocalContext.current
     Column(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
         Text(
             text = NdiNativeSender.displayName(feedKey),
@@ -2206,7 +2229,7 @@ private fun NdiSourceSettingsRow(
             val resOptions = NdiNativeSender.RESOLUTION_OPTIONS.map { (w, h) -> "${w}×${h} • 16:9" }
             val selectedRes = "${spec.width}×${spec.height} • 16:9"
             NdiDropdown(
-                label = "الدقة",
+                label = context.getString(R.string.s381),
                 options = resOptions,
                 selected = if (resOptions.contains(selectedRes)) selectedRes else resOptions.first(),
                 onSelect = { sel ->
@@ -2214,10 +2237,10 @@ private fun NdiSourceSettingsRow(
                     onUpdate(feedKey, w, h, spec.fps)
                 }
             )
-            val fpsOptions = NdiNativeSender.FPS_OPTIONS.map { "$it fps" }
+            val fpsOptions = NdiNativeSender.FPS_OPTIONS.map { context.getString(R.string.s383, it) }
             val selectedFps = "${spec.fps} fps"
             NdiDropdown(
-                label = "الإطارات/ثا",
+                label = context.getString(R.string.s382),
                 options = fpsOptions,
                 selected = if (fpsOptions.contains(selectedFps)) selectedFps else fpsOptions.first(),
                 onSelect = { sel ->
@@ -2232,8 +2255,8 @@ private fun NdiSourceSettingsRow(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                Text("حركة الفيديو (Video Motion)", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = tint)
-                InfoPopupButton("حركة الفيديو (Video Motion)", "إعادة رسم الفيديو المتحرك باستمرار (بحد أقصى 30 إطار/ثا). يتحكم بالفيديو فقط — حركة لون البطاقة (التدرج) تعمل مستقلة عنه، حتى لو أُطفئ هذا المفتاح.")
+                Text(context.getString(R.string.s548), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = tint)
+                InfoPopupButton(context.getString(R.string.s548), context.getString(R.string.s549))
             }
             Switch(
                 checked = spec.motionEnabled,
@@ -2361,11 +2384,11 @@ private fun QrCodeDialog(
                 if (qrBitmap != null) {
                     androidx.compose.foundation.Image(
                         bitmap = qrBitmap.asImageBitmap(),
-                        contentDescription = "QR for $url",
+                        contentDescription = context.getString(R.string.s594, url),
                         modifier = Modifier.size(256.dp)
                     )
                 } else {
-                    androidx.compose.material3.Text("فشل إنشاء QR", fontSize = 12.sp)
+                    androidx.compose.material3.Text(context.getString(R.string.s375), fontSize = 12.sp)
                 }
                 Spacer(Modifier.height(8.dp))
                 androidx.compose.material3.Text(
@@ -2378,7 +2401,7 @@ private fun QrCodeDialog(
         },
         confirmButton = {
             androidx.compose.material3.TextButton(onClick = onDismiss) {
-                androidx.compose.material3.Text("إغلاق (Close)")
+                androidx.compose.material3.Text(context.getString(R.string.s376))
             }
         }
     )
@@ -2408,7 +2431,7 @@ private fun UrlActionIcons(
     Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
         androidx.compose.material3.IconButton(onClick = {
             if (url.isBlank()) {
-                Toast.makeText(context, "لا يوجد اتصال شبكة محلية (Wi-Fi) — الرابط غير متاح", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, context.getString(R.string.s691), Toast.LENGTH_SHORT).show()
             } else {
                 val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                 clipboard.setPrimaryClip(ClipData.newPlainText(clipLabel, url))
@@ -2419,28 +2442,28 @@ private fun UrlActionIcons(
             val isCopied = copiedUrlType == copyType
             Icon(
                 if (isCopied) Icons.Default.Check else Icons.Default.ContentCopy,
-                contentDescription = "Copy URL",
+                contentDescription = context.getString(R.string.s586),
                 tint = if (isCopied) bento.green else bento.textSecondary,
                 modifier = Modifier.size(16.dp)
             )
         }
         androidx.compose.material3.IconButton(onClick = {
             if (url.isBlank()) {
-                Toast.makeText(context, "لا يوجد اتصال شبكة محلية (Wi-Fi) — الرابط غير متاح", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, context.getString(R.string.s691), Toast.LENGTH_SHORT).show()
             } else {
                 try {
                     context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
                 } catch (e: Exception) {
-                    Toast.makeText(context, "تعذر فتح المتصفح", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, context.getString(R.string.s693), Toast.LENGTH_SHORT).show()
                 }
             }
         }) {
-            Icon(Icons.Default.OpenInBrowser, contentDescription = "Open in Browser", tint = bento.textSecondary, modifier = Modifier.size(16.dp))
+            Icon(Icons.Default.OpenInBrowser, contentDescription = context.getString(R.string.s587), tint = bento.textSecondary, modifier = Modifier.size(16.dp))
         }
         if (onQr != null) {
             androidx.compose.material3.IconButton(onClick = {
                 if (url.isBlank()) {
-                    Toast.makeText(context, "لا يوجد اتصال شبكة محلية (Wi-Fi) — الرابط غير متاح", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, context.getString(R.string.s691), Toast.LENGTH_SHORT).show()
                 } else {
                     onQr()
                 }
@@ -2465,24 +2488,30 @@ private fun AllUrlsCard(
     copiedUrlType: String?,
     onCopied: (String) -> Unit
 ) {
+    val context = LocalContext.current
     // 2026-10-28 old URL numbering (restored): 1 Lower, 2 Full,
     // 3 MJPEG, 4 PNG Lower, 5 PNG Full, 6 SSE, 7 Status, 8 API,
     // then trigger, remote, vMix XML, JSON in order. No gap, no
     // collapsed "All links" number — every row carries its own.
+    // 1.9.25 (item 2): the numerals follow the interface language
+    // (Arabic-Indic in Arabic UI, Western in English UI — matching
+    // the s433-s435 resource values).
+    val arabicUi = AppLanguage.isArabicUi(context)
+    fun num(i: Int): String = if (arabicUi) ArabicTextFormatter.toEasternArabicDigits(i) else i.toString()
     val urls = listOf(
         // Item 16: simplified URLs — user-facing only + API Docs.
         // API endpoints moved to /api-docs (Swagger).
-        Triple("١", "Lower Third (Browser Source)", "/lower"),
-        Triple("٢", "العرض الكامل (Full Show)", "/full"),
-        Triple("٣", "بث MJPEG", "/stream"),
-        Triple("٤", "صفحة التحكم عن بُعد", "/remote"),
-        Triple("٥", "توثيق API (API Docs)", "/api-docs"),
+        Triple(num(1), context.getString(R.string.s550), "/lower"),
+        Triple(num(2), context.getString(R.string.s470), "/full"),
+        Triple(num(3), context.getString(R.string.s551), "/stream"),
+        Triple(num(4), context.getString(R.string.s552), "/remote"),
+        Triple(num(5), context.getString(R.string.s463), "/api-docs"),
         // v1.9.5: RSS feeds for ProPresenter/vMix data sources.
-        Triple("٦", "RSS Lower (ProPresenter/vMix)", "/lower/rss.xml"),
-        Triple("٧", "RSS Full (ProPresenter/vMix)", "/full/rss.xml")
+        Triple(num(6), context.getString(R.string.s553), "/lower/rss.xml"),
+        Triple(num(7), context.getString(R.string.s554), "/full/rss.xml")
     )
     Text(
-        text = "جميع الروابط المتاحة:",
+        text = context.getString(R.string.s555),
         fontSize = 11.sp,
         fontWeight = FontWeight.SemiBold,
         color = textPrimary
@@ -2490,7 +2519,7 @@ private fun AllUrlsCard(
     // NDI sources are not URLs — they appear in OBS/vMix directly,
     // so no NDI entry appears in this URL list.
     Text(
-        text = "مصادر NDI تظهر في OBS/vMix مباشرة، وليست روابط ويب.",
+        text = context.getString(R.string.s556),
         fontSize = 10.sp,
         color = textSecondary
     )
@@ -2503,7 +2532,7 @@ private fun AllUrlsCard(
         Column(modifier = Modifier.padding(10.dp)) {
             if (baseUrl.isBlank()) {
                 Text(
-                    "لا يوجد اتصال شبكة محلية (Wi-Fi) — الروابط تظهر بعد الاتصال.",
+                    context.getString(R.string.s557),
                     fontSize = 10.sp,
                     color = textSecondary
                 )
@@ -2531,9 +2560,9 @@ private fun AllUrlsCard(
                             copyType = path,
                             copiedUrlType = copiedUrlType,
                             onCopied = onCopied,
-                            clipLabel = "URL",
-                            copiedToast = "تم نسخ: $label",
-                            qrDescription = "QR $label",
+                            clipLabel = context.getString(R.string.s600),
+                            copiedToast = context.getString(R.string.s696, label),
+                            qrDescription = context.getString(R.string.s595, label),
                             onQr = { showQr = true }
                         )
                     }
@@ -2603,10 +2632,10 @@ private fun VMixSettingsCard(
                     input = input.trim()
                 )
                 val testField = fieldArabicVerse.trim().ifEmpty { fieldEnglishVerse.trim() }
-                val (ok, msg) = controller.testConnection(testField, "Test 123 — Bible NDI")
+                val (ok, msg) = controller.testConnection(testField, context.getString(R.string.s558))
                 testResult = if (ok) "✓ $msg" else "✗ $msg"
             } catch (e: Exception) {
-                testResult = "✗ Error: ${e.message}"
+                testResult = context.getString(R.string.s559, e.message)
             } finally {
                 isTesting = false
             }
@@ -2626,13 +2655,13 @@ private fun VMixSettingsCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    "vMix SetText Push (LAN)",
+                    context.getString(R.string.s561),
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
                     color = textPrimary
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("مفعّل", fontSize = 12.sp, color = textSecondary)
+                    Text(context.getString(R.string.s560), fontSize = 12.sp, color = textSecondary)
                     Spacer(Modifier.width(8.dp))
                     androidx.compose.material3.Switch(
                         checked = enabled,
@@ -2645,52 +2674,52 @@ private fun VMixSettingsCard(
             }
 
             Text(
-                "Push verse text to vMix title fields via LAN. vMix controls all formatting.",
+                context.getString(R.string.s562),
                 fontSize = 11.sp,
                 color = textSecondary
             )
 
             if (enabled) {
-                VMixTextField("vMix IP (e.g. 192.168.1.50)", host, { host = it; save() }, textPrimary, textSecondary)
-                VMixTextField("Port (default 8088)", port, { port = it; save() }, textPrimary, textSecondary)
-                VMixTextField("Title input (name, number, or GUID)", input, { input = it; save() }, textPrimary, textSecondary)
+                VMixTextField(context.getString(R.string.s563), host, { host = it; save() }, textPrimary, textSecondary)
+                VMixTextField(context.getString(R.string.s564), port, { port = it; save() }, textPrimary, textSecondary)
+                VMixTextField(context.getString(R.string.s565), input, { input = it; save() }, textPrimary, textSecondary)
 
-                Text("Field mappings (GT field names, e.g. Headline.Text):", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = textPrimary)
-                VMixTextField("Arabic verse field", fieldArabicVerse, { fieldArabicVerse = it; save() }, textPrimary, textSecondary)
-                VMixTextField("Arabic citation field", fieldArabicCitation, { fieldArabicCitation = it; save() }, textPrimary, textSecondary)
-                VMixTextField("English verse field", fieldEnglishVerse, { fieldEnglishVerse = it; save() }, textPrimary, textSecondary)
-                VMixTextField("English citation field", fieldEnglishCitation, { fieldEnglishCitation = it; save() }, textPrimary, textSecondary)
+                Text(context.getString(R.string.s566), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = textPrimary)
+                VMixTextField(context.getString(R.string.s567), fieldArabicVerse, { fieldArabicVerse = it; save() }, textPrimary, textSecondary)
+                VMixTextField(context.getString(R.string.s568), fieldArabicCitation, { fieldArabicCitation = it; save() }, textPrimary, textSecondary)
+                VMixTextField(context.getString(R.string.s569), fieldEnglishVerse, { fieldEnglishVerse = it; save() }, textPrimary, textSecondary)
+                VMixTextField(context.getString(R.string.s570), fieldEnglishCitation, { fieldEnglishCitation = it; save() }, textPrimary, textSecondary)
 
                 androidx.compose.material3.Button(
                     onClick = { showTestConfirm = true },
                     enabled = !isTesting && host.isNotBlank() && input.isNotBlank(),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(if (isTesting) "Testing…" else "Test Connection")
+                    Text(if (isTesting) context.getString(R.string.s571) else context.getString(R.string.s572))
                 }
 
                 if (showTestConfirm) {
                     val testField = fieldArabicVerse.trim().ifEmpty { fieldEnglishVerse.trim() }
                     androidx.compose.material3.AlertDialog(
                         onDismissRequest = { showTestConfirm = false },
-                        title = { Text("اختبار الاتصال بـ vMix", fontSize = 15.sp, fontWeight = FontWeight.Bold) },
+                        title = { Text(context.getString(R.string.s371), fontSize = 15.sp, fontWeight = FontWeight.Bold) },
                         text = {
                             Text(
                                 if (testField.isNotBlank())
-                                    "سيكتب الاختبار «Test 123 — Bible NDI» في حقل vMix «$testField»، وسيحل محل النص الحي المعروض فيه حالياً. متابعة؟"
+                                    context.getString(R.string.s372, testField)
                                 else
-                                    "لم يتم تعيين حقل آية بعد؛ قد يفشل الاختبار. متابعة؟"
+                                    context.getString(R.string.s373)
                             )
                         },
                         confirmButton = {
                             androidx.compose.material3.Button(
                                 onClick = { showTestConfirm = false; runTest() }
-                            ) { Text("اختبار") }
+                            ) { Text(context.getString(R.string.s374)) }
                         },
                         dismissButton = {
                             androidx.compose.material3.TextButton(
                                 onClick = { showTestConfirm = false }
-                            ) { Text("إلغاء") }
+                            ) { Text(context.getString(R.string.s7)) }
                         }
                     )
                 }
@@ -2771,7 +2800,7 @@ private fun ProPresenterSettingsCard(
                 val (ok, msg) = controller().testConnection()
                 testResult = if (ok) "✓ $msg" else "✗ $msg"
             } catch (e: Exception) {
-                testResult = "✗ Error: ${e.message}"
+                testResult = context.getString(R.string.s559, e.message)
             } finally {
                 isTesting = false
             }
@@ -2815,13 +2844,13 @@ private fun ProPresenterSettingsCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    "ProPresenter Stage Push (LAN)",
+                    context.getString(R.string.s573),
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
                     color = textPrimary
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("مفعّل", fontSize = 12.sp, color = textSecondary)
+                    Text(context.getString(R.string.s560), fontSize = 12.sp, color = textSecondary)
                     Spacer(Modifier.width(8.dp))
                     androidx.compose.material3.Switch(
                         checked = enabled,
@@ -2834,18 +2863,18 @@ private fun ProPresenterSettingsCard(
             }
 
             Text(
-                "Push the live verse to ProPresenter's stage message (PUT /v1/stage/message). Clears automatically when the verse goes off air.",
+                context.getString(R.string.s574),
                 fontSize = 11.sp,
                 color = textSecondary
             )
 
             if (enabled) {
-                VMixTextField("ProPresenter IP or hostname (e.g. 192.168.50.20)", host, { host = it; save() }, textPrimary, textSecondary)
-                VMixTextField("API port (default 50001 — see ProPresenter → Settings → Network)", port, { port = it; save() }, textPrimary, textSecondary)
-                VMixTextField("Username (only if your setup needs auth — v21 API normally needs none)", username, { username = it; save() }, textPrimary, textSecondary)
+                VMixTextField(context.getString(R.string.s575), host, { host = it; save() }, textPrimary, textSecondary)
+                VMixTextField(context.getString(R.string.s576), port, { port = it; save() }, textPrimary, textSecondary)
+                VMixTextField(context.getString(R.string.s577), username, { username = it; save() }, textPrimary, textSecondary)
 
                 Column {
-                    Text("Password (stored obfuscated, never plaintext — usually unnecessary)", fontSize = 11.sp, color = textSecondary, modifier = Modifier.padding(bottom = 4.dp))
+                    Text(context.getString(R.string.s578), fontSize = 11.sp, color = textSecondary, modifier = Modifier.padding(bottom = 4.dp))
                     androidx.compose.material3.OutlinedTextField(
                         value = password,
                         onValueChange = { password = it; save() },
@@ -2857,9 +2886,9 @@ private fun ProPresenterSettingsCard(
                     )
                 }
 
-                Text("Push target:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = textPrimary)
+                Text(context.getString(R.string.s384), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = textPrimary)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("stage" to "Stage screen", "audience" to "Audience output", "both" to "Both").forEach { (value, label) ->
+                    listOf("stage" to context.getString(R.string.s385), "audience" to context.getString(R.string.s386), "both" to context.getString(R.string.s387)).forEach { (value, label) ->
                         androidx.compose.material3.FilterChip(
                             selected = target == value,
                             onClick = { target = value; save() },
@@ -2868,9 +2897,9 @@ private fun ProPresenterSettingsCard(
                     }
                 }
 
-                Text("Verse text format:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = textPrimary)
+                Text(context.getString(R.string.s388), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = textPrimary)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("both" to "Arabic + English", "arabic" to "Arabic", "english" to "English").forEach { (value, label) ->
+                    listOf("both" to context.getString(R.string.s389), "arabic" to context.getString(R.string.s390), "english" to context.getString(R.string.s391)).forEach { (value, label) ->
                         androidx.compose.material3.FilterChip(
                             selected = format == value,
                             onClick = { format = value; save() },
@@ -2885,14 +2914,14 @@ private fun ProPresenterSettingsCard(
                         enabled = !isScanning,
                         modifier = Modifier.weight(1f)
                     ) {
-                        Text(if (isScanning) "Scanning…" else "Find on network")
+                        Text(if (isScanning) context.getString(R.string.s579) else context.getString(R.string.s580))
                     }
                     androidx.compose.material3.Button(
                         onClick = { runTest() },
                         enabled = !isTesting && host.isNotBlank(),
                         modifier = Modifier.weight(1f)
                     ) {
-                        Text(if (isTesting) "Testing…" else "Test Connection")
+                        Text(if (isTesting) context.getString(R.string.s571) else context.getString(R.string.s572))
                     }
                 }
 
@@ -2906,7 +2935,7 @@ private fun ProPresenterSettingsCard(
                 }
 
                 if (isScanning) {
-                    Text("Probing the local network for ProPresenter…", fontSize = 12.sp, color = textSecondary)
+                    Text(context.getString(R.string.s581), fontSize = 12.sp, color = textSecondary)
                 }
             }
         }
@@ -2917,16 +2946,16 @@ private fun ProPresenterSettingsCard(
     if (results != null && !isScanning) {
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { scanResults = null },
-            title = { Text("ProPresenter found", fontSize = 15.sp, fontWeight = FontWeight.Bold) },
+            title = { Text(context.getString(R.string.s377), fontSize = 15.sp, fontWeight = FontWeight.Bold) },
             text = {
                 Column {
                     if (results.isEmpty()) {
                         Text(
-                            "No ProPresenter API answered on this network (port ${port.toIntOrNull() ?: 50001}). Check the port in ProPresenter → Settings → Network, or enter the IP manually.",
+                            context.getString(R.string.s378, port.toIntOrNull() ?: 50001),
                             fontSize = 13.sp
                         )
                     } else {
-                        Text("Tap an address to use it:", fontSize = 13.sp, modifier = Modifier.padding(bottom = 8.dp))
+                        Text(context.getString(R.string.s379), fontSize = 13.sp, modifier = Modifier.padding(bottom = 8.dp))
                         results.forEach { ip ->
                             androidx.compose.material3.TextButton(
                                 onClick = { host = ip; save(); scanResults = null },
@@ -2939,7 +2968,7 @@ private fun ProPresenterSettingsCard(
                 }
             },
             confirmButton = {
-                androidx.compose.material3.TextButton(onClick = { scanResults = null }) { Text("Close") }
+                androidx.compose.material3.TextButton(onClick = { scanResults = null }) { Text(context.getString(R.string.s380)) }
             }
         )
     }
@@ -2977,7 +3006,7 @@ private fun ProPresenterSettingsCard(
                     onCheckedChange = { pp2Enabled = it; save2() }
                 )
                 Text(
-                    "Target 2 — English (optional)",
+                    context.getString(R.string.s582),
                     fontSize = 14.sp,
                     fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
                     color = textPrimary,
@@ -2995,17 +3024,17 @@ private fun ProPresenterSettingsCard(
             verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)
         ) {
             Text(
-                "Pushes the English verse to a second ProPresenter (or the same one). Leave disabled to use Target 1 only.",
+                context.getString(R.string.s583),
                 fontSize = 12.sp,
                 color = textSecondary
             )
-            VMixTextField("Target 2 IP or hostname", pp2Host, { pp2Host = it; save2() }, textPrimary, textSecondary)
-            VMixTextField("Target 2 API port (default 50001)", pp2Port, { pp2Port = it; save2() }, textPrimary, textSecondary)
-            Text("Target 2 push target", fontSize = 13.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = textPrimary)
+            VMixTextField(context.getString(R.string.s584), pp2Host, { pp2Host = it; save2() }, textPrimary, textSecondary)
+            VMixTextField(context.getString(R.string.s585), pp2Port, { pp2Port = it; save2() }, textPrimary, textSecondary)
+            Text(context.getString(R.string.s392), fontSize = 13.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = textPrimary)
             androidx.compose.foundation.layout.Row(
                 horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)
             ) {
-                listOf("stage" to "Stage", "audience" to "Audience", "both" to "Both").forEach { (value, label) ->
+                listOf("stage" to context.getString(R.string.s393), "audience" to context.getString(R.string.s394), "both" to context.getString(R.string.s387)).forEach { (value, label) ->
                     androidx.compose.material3.FilterChip(
                         selected = pp2Target == value,
                         onClick = { pp2Target = value; save2() },

@@ -37,6 +37,7 @@ import com.arabicchristianmedia.model.onPrimaryFor
 import com.arabicchristianmedia.model.AnimatedBackgroundType
 import com.arabicchristianmedia.model.isParticleType
 import com.arabicchristianmedia.model.BundledFonts
+import com.arabicchristianmedia.ui.AppLanguage
 import com.arabicchristianmedia.model.BackupImportResult
 import com.arabicchristianmedia.model.BibleVerse
 import com.arabicchristianmedia.model.BroadcastTextAlignment
@@ -8088,11 +8089,16 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         }
         val html = """<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${xmlEscape(saved.name)} — Sermon (read-only)</title>
 <style>body{font-family:system-ui,sans-serif;background:#0d1117;color:#e6edf3;margin:0;padding:16px}main{max-width:900px;margin:auto}.vrow{border-bottom:1px solid #30363d;padding:12px 0}button{padding:10px 14px;border-radius:12px;border:1px solid #334155;background:transparent;color:inherit;cursor:pointer;margin:4px}</style></head>
-<body><main><h1>${xmlEscape(saved.name)}</h1><p>${saved.entries.size} verses — read-only. Copy or download; this page cannot trigger, clear, or edit.</p>
-<button onclick="copyAll()">Copy all</button> <a href="/api/sermons/${saved.id}.json"><button>Download JSON</button></a> <a href="/api/sermons/${saved.id}.txt"><button>Download text</button></a>
+<body><main><h1>${xmlEscape(saved.name)}</h1><p><span id="vcount">${saved.entries.size}</span> <span data-i18n="s802">verses — read-only. Copy or download; this page cannot trigger, clear, or edit.</span></p>
+<button onclick="copyAll()" data-i18n="s803">Copy all</button> <a href="/api/sermons/${saved.id}.json"><button data-i18n="s804">Download JSON</button></a> <a href="/api/sermons/${saved.id}.txt"><button data-i18n="s805">Download text</button></a>
+<!-- 1.9.25 (item 2): per-client interface language. -->
+<select id="p-ui-lang" onchange="__setUiLang(this.value)" style="padding:10px 14px;border-radius:12px;border:1px solid #334155;background:transparent;color:inherit;margin:4px"><option value="" data-i18n="s904">App language</option><option value="ar">العربية</option><option value="en">English</option></select>
 <div id="rows">$rows</div>
-<script>function copyAll(){var t=document.getElementById('rows').innerText;navigator.clipboard.writeText(t).then(function(){alert('Copied');});}</script>
-</main></body></html>"""
+<script>function copyAll(){var t=document.getElementById('rows').innerText;navigator.clipboard.writeText(t).then(function(){alert(window.__i18nT ? __i18nT('s806') : 'Copied');});}
+document.addEventListener('i18n-applied', function(){var h=document.querySelector('h1'); if(h && window.__i18nT) document.title = h.textContent + ' ' + __i18nT('s801');});</script>
+</main>
+${i18nScript()}
+</body></html>"""
         val bytes = html.toByteArray(Charsets.UTF_8)
         val writer = PrintWriter(out)
         writer.print("HTTP/1.1 200 OK\r\n")
@@ -9004,7 +9010,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Stage Monitor</title>
+<title data-i18n="s807">Stage Monitor</title>
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -9088,6 +9094,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     background: var(--chrome-card, #11161f); border: 1px solid var(--chrome-border, #232c40); border-radius: 10px;
     padding: 14px; width: 248px; color: var(--chrome-text, #e8eaf0);
   }
+  /* 1.9.25 (item 2): mirror the fixed gear + panel in RTL. */
+  html[dir="rtl"] #gear, html[dir="rtl"] #panel { right: auto; left: 12px; }
   #panel[hidden] { display: none; }
   #panel h3 { margin: 0 0 10px; font-size: 14px; }
   #panel label {
@@ -9139,48 +9147,58 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     <div id="var" dir="rtl" lang="ar"></div>
     <div id="ven" dir="ltr" lang="en"></div>
   </section>
-  <aside id="sermon"><h2>Sermon</h2><div id="slist"></div></aside>
+  <aside id="sermon"><h2 data-i18n="s810">Sermon</h2><div id="slist"></div></aside>
 </main>
 <footer id="recents"></footer>
-<button id="gear" aria-label="Layout settings">&#9881;</button>
+<button id="gear" aria-label="Layout settings" data-i18n-aria="s811">&#9881;</button>
 <div id="panel" hidden>
-  <h3>Stage layout</h3>
-  <label>Sermon <select id="p-sermon">
-    <option value="side">List at side</option>
-    <option value="context">Prev / current / next</option>
-    <option value="hidden">Hidden</option>
+  <h3 data-i18n="s812">Stage layout</h3>
+  <label><span data-i18n="s813">Sermon</span> <select id="p-sermon">
+    <option value="side" data-i18n="s814">List at side</option>
+    <option value="context" data-i18n="s815">Prev / current / next</option>
+    <option value="hidden" data-i18n="s816">Hidden</option>
   </select></label>
-  <label>Sermon side <select id="p-sermonside">
-    <option value="right">Right</option>
-    <option value="left">Left</option>
+  <label><span data-i18n="s817">Sermon side</span> <select id="p-sermonside">
+    <option value="right" data-i18n="s818">Right</option>
+    <option value="left" data-i18n="s819">Left</option>
   </select></label>
-  <label>Recents <select id="p-recents">
-    <option value="bar">Strip</option>
-    <option value="hidden">Hidden</option>
+  <label><span data-i18n="s820">Recents</span> <select id="p-recents">
+    <option value="bar" data-i18n="s821">Strip</option>
+    <option value="hidden" data-i18n="s816">Hidden</option>
   </select></label>
-  <label>Recents count <input id="p-recentscount" type="number" min="1" max="20" step="1"></label>
-  <label>Verse size <select id="p-verse">
-    <option value="full">Full</option>
-    <option value="compact">Compact</option>
+  <label><span data-i18n="s822">Recents count</span> <input id="p-recentscount" type="number" min="1" max="20" step="1"></label>
+  <label><span data-i18n="s823">Verse size</span> <select id="p-verse">
+    <option value="full" data-i18n="s824">Full</option>
+    <option value="compact" data-i18n="s825">Compact</option>
   </select></label>
-  <label>Language <select id="p-lang">
-    <option value="both">Arabic + English</option>
-    <option value="ar">Arabic</option>
+  <label><span data-i18n="s826">Verse language</span> <select id="p-lang">
+    <option value="both" data-i18n="s827">Arabic + English</option>
+    <option value="ar" data-i18n="s828">Arabic</option>
+    <option value="en" data-i18n="s829">English</option>
+  </select></label>
+  <!-- 1.9.25 (item 2): per-client interface language — App language
+       follows the tablet; العربية / English override it on this device. -->
+  <label><span data-i18n="s903">Interface language</span> <select id="p-ui-lang" onchange="__setUiLang(this.value)">
+    <option value="" data-i18n="s904">App language</option>
+    <option value="ar">العربية</option>
     <option value="en">English</option>
   </select></label>
-  <label>Theme <select id="p-theme">
-    <option value="dark">Dark</option>
-    <option value="light">Light</option>
+  <label><span data-i18n="s830">Theme</span> <select id="p-theme">
+    <option value="dark" data-i18n="s831">Dark</option>
+    <option value="light" data-i18n="s832">Light</option>
   </select></label>
   <div class="prow">
-    <button data-preset="director">Director</button>
-    <button data-preset="stage">Stage</button>
-    <button data-preset="minimal">Minimal</button>
+    <button data-preset="director" data-i18n="s833">Director</button>
+    <button data-preset="stage" data-i18n="s834">Stage</button>
+    <button data-preset="minimal" data-i18n="s835">Minimal</button>
   </div>
-  <button id="copylink">Copy link with layout</button>
+  <button id="copylink" data-i18n="s836">Copy link with layout</button>
 </div>
 <script>
   function el(id) { return document.getElementById(id); }
+  // 1.9.25 (item 2): T(id, fallback) — the per-client UI-language
+  // lookup (see /remote's T for the fallback contract).
+  function T(id, fallback) { return (window.__i18nT ? __i18nT(id) : fallback); }
   function esc(s) {
     return String(s == null ? '' : s)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -9266,7 +9284,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     lastSermon = d;
     var box = el('slist');
     if (!d || !d.ok || !d.entries || !d.entries.length) {
-      box.innerHTML = '<div class="hint">No sermon active</div>';
+      box.innerHTML = '<div class="hint">' + T('s838', 'No sermon active') + '</div>';
       el('sprog').textContent = '';
       return;
     }
@@ -9332,8 +9350,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   el('copylink').onclick = function () {
     pushUrl();
     var done = function () {
-      el('copylink').textContent = 'Copied';
-      setTimeout(function () { el('copylink').textContent = 'Copy link with layout'; }, 1500);
+      el('copylink').textContent = T('s837', 'Copied');
+      setTimeout(function () { el('copylink').textContent = T('s836', 'Copy link with layout'); }, 1500);
     };
     if (navigator.clipboard) { navigator.clipboard.writeText(location.href).then(done, done); }
     else { done(); }
@@ -9349,6 +9367,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   setInterval(loadAll, 30000);
   setInterval(tick, 1000);
 </script>
+${i18nScript()}
 </body>
 </html>
 """.trimIndent()
@@ -9367,6 +9386,204 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         out.flush()
     }
 
+    // 1.9.25 (item 2, language mode): GENERATED from translate-data.json
+    // (web entries) by phaseB-webgen.py — regenerate, don't hand-edit the
+    // map. One script block shared by /remote, /stage and /remote/sermon:
+    // the per-client UI-language map + apply logic. Default = the tablet
+    // app's language; the client overrides it via the Interface-language
+    // select on each page (localStorage). Verse language is separate.
+    // 1.9.25 (item 2, language mode): GENERATED from translate-data.json
+    // (web entries) by phaseB-webgen.py — regenerate, don't hand-edit the
+    // map. One script block shared by /remote, /stage and /remote/sermon:
+    // the per-client UI-language map + apply logic. Default = the tablet
+    // app's language; the client overrides it via the Interface-language
+    // select on each page (localStorage). Verse language is separate.
+    // 1.9.25 (item 2, language mode): GENERATED from translate-data.json
+    // (web entries) by phaseB-webgen.py — regenerate, don't hand-edit the
+    // map. One script block shared by /remote, /stage and /remote/sermon:
+    // the per-client UI-language map + apply logic. Default = the tablet
+    // app's language; the client overrides it via the Interface-language
+    // select on each page (localStorage). Verse language is separate.
+    // BEGIN-GENERATED-I18N
+    private fun i18nScript(): String {
+        val defaultLang = try { AppLanguage.effectiveLang(context) } catch (e: Exception) { Log.w("NdiBroadcastServer", "i18n default language failed, falling back to en", e); "en" }
+        return """
+<script>
+(function () {
+  // 1.9.25 (item 2): per-client interface language (ar/en) for this page.
+  // Default = the tablet app's language (DEFAULT_LANG, injected by the
+  // server); the client can override it via the Interface-language select
+  // (stored in localStorage). Verse language is separate (browseLang).
+  var I18N = {
+    "s725": {"ar": "التحكم عن بُعد — الكتاب المقدس", "en": "Bible Remote"},
+    "s726": {"ar": "الإعدادات", "en": "Settings"},
+    "s727": {"ar": "تبديل المزامنة التلقائية", "en": "Toggle auto-sync"},
+    "s728": {"ar": "مزامنة تلقائية مع الجهاز اللوحي", "en": "Auto-sync with tablet"},
+    "s729": {"ar": "إيقاف مؤقت / استئناف المسح التلقائي", "en": "Pause / resume auto-clear"},
+    "s730": {"ar": "إيقاف المسح التلقائي لهذه الآية", "en": "Stop auto-clear for this verse"},
+    "s731": {"ar": "إيقاف المسح التلقائي", "en": "Stop auto-clear"},
+    "s733": {"ar": "⚠ انقطع الاتصال — جارٍ إعادة الاتصال…", "en": "⚠ CONNECTION LOST — reconnecting…"},
+    "s734": {"ar": "الإصحاح التالي", "en": "Next chapter"},
+    "s735": {"ar": "الإصحاح السابق", "en": "Previous chapter"},
+    "s736": {"ar": "يوحنا 3:16 • John 3:16", "en": "John 3:16 • يوحنا 3:16 • Jn 3:16"},
+    "s737": {"ar": "مرجع سريع", "en": "Quick reference"},
+    "s738": {"ar": "عرض", "en": "Go"},
+    "s739": {"ar": "بحث / مرجع", "en": "Search / reference"},
+    "s740": {"ar": "آيات إستخدمت", "en": "Recents"},
+    "s741": {"ar": "الإصحاح", "en": "Chapter"},
+    "s742": {"ar": "السفر", "en": "Book"},
+    "s743": {"ar": "جارٍ تحميل الأسفار…", "en": "Loading books…"},
+    "s744": {"ar": "الآيات الأخيرة", "en": "Recent verses"},
+    "s745": {"ar": "إغلاق", "en": "Close"},
+    "s746": {"ar": "⌨ اختصارات لوحة المفاتيح", "en": "⌨ Keyboard shortcuts"},
+    "s747": {"ar": "التركيز على المرجع (أو Ctrl+F)", "en": "Focus reference (or Ctrl+F)"},
+    "s748": {"ar": "عرض المرجع / عرض الآية المحددة ON AIR", "en": "Trigger reference / go live on selected verse"},
+    "s749": {"ar": "نقل تحديد الآية", "en": "Move verse selection"},
+    "s750": {"ar": "العظة التالية", "en": "Next sermon"},
+    "s751": {"ar": "العظة السابقة", "en": "Previous sermon"},
+    "s752": {"ar": "مفتاح ON AIR", "en": "ON AIR toggle"},
+    "s753": {"ar": "مسح الآية", "en": "Clear verse"},
+    "s754": {"ar": "لوحة الآيات الأخيرة", "en": "Recents sheet"},
+    "s755": {"ar": "هذه الطبقة", "en": "This overlay"},
+    "s756": {"ar": "إغلاق الطبقة / اللوحة", "en": "Close overlay / sheet"},
+    "s757": {"ar": "إغلاق", "en": "Close"},
+    "s758": {"ar": "الآيات الأخيرة", "en": "Recent verses"},
+    "s759": {"ar": "(توقيف NDI)", "en": "(NDI off)"},
+    "s760": {"ar": "توقيف NDI؛ طبقات HTTP ما زالت تعرض هذه الآية", "en": "NDI senders off; HTTP overlays still show this verse"},
+    "s761": {"ar": "غير متصل — جارٍ إعادة الاتصال…", "en": "Disconnected — reconnecting…"},
+    "s762": {"ar": "غير متصل", "en": "Disconnected"},
+    "s763": {"ar": "المزامنة التلقائية مفعّلة (اضغط للتعطيل)", "en": "Auto-sync ON (tap to disable)"},
+    "s764": {"ar": "المزامنة التلقائية معطّلة (اضغط للتفعيل)", "en": "Auto-sync OFF (tap to enable)"},
+    "s765": {"ar": "إخفاء البحث", "en": "Hide search"},
+    "s766": {"ar": "تخطيط التحكم عن بُعد", "en": "Remote layout"},
+    "s767": {"ar": "نص الآية", "en": "Verse text"},
+    "s768": {"ar": "نص أصغر للآية", "en": "Smaller verse text"},
+    "s770": {"ar": "نص أكبر للآية", "en": "Larger verse text"},
+    "s771": {"ar": "آيات إستخدمت", "en": "Recents"},
+    "s772": {"ar": "ظاهر", "en": "Shown"},
+    "s773": {"ar": "مخفي", "en": "Hidden"},
+    "s774": {"ar": "تلميحات", "en": "Hints"},
+    "s775": {"ar": "المظهر", "en": "Theme"},
+    "s776": {"ar": "تلقائي", "en": "Auto"},
+    "s777": {"ar": "فاتح", "en": "Light"},
+    "s778": {"ar": "داكن", "en": "Dark"},
+    "s779": {"ar": "لغة الآيات", "en": "Verse language"},
+    "s780": {"ar": "العربية", "en": "Arabic"},
+    "s781": {"ar": "الإنجليزية", "en": "English"},
+    "s782": {"ar": "Default", "en": "Default"},
+    "s783": {"ar": "Director", "en": "Director"},
+    "s784": {"ar": "Compact", "en": "Compact"},
+    "s785": {"ar": "نسخ الرابط مع التخطيط", "en": "Copy link with layout"},
+    "s786": {"ar": "تم النسخ", "en": "Copied"},
+    "s787": {"ar": "⌨ اختصارات لوحة المفاتيح", "en": "⌨ Keyboard shortcuts"},
+    "s788": {"ar": "فشل تحميل الأسفار — جارٍ إعادة المحاولة…", "en": "Loading books failed — retrying…"},
+    "s789": {"ar": "تعذّر تحميل الأسفار — اختر إعادة المحاولة أدناه", "en": "Could not load books — choose Retry below"},
+    "s790": {"ar": "↻ إعادة تحميل الأسفار", "en": "↻ Retry loading books"},
+    "s791": {"ar": "تعذّر تحميل الإصحاح", "en": "Could not load chapter"},
+    "s792": {"ar": "خطأ في الشبكة", "en": "Network error"},
+    "s793": {"ar": "جارٍ الإرسال…", "en": "Sending…"},
+    "s794": {"ar": "✓ الآيات المستخدمة", "en": "✓ Verse set"},
+    "s795": {"ar": "فشل", "en": "failed"},
+    "s796": {"ar": "✗ خطأ في الشبكة", "en": "✗ Network error"},
+    "s797": {"ar": "اكتب مرجعًا أولاً", "en": "Type a reference first"},
+    "s798": {"ar": "✓ تم المسح (OFF AIR)", "en": "✓ Cleared (off air)"},
+    "s799": {"ar": "⚠ انقطع الاتصال بالجهاز اللوحي — جارٍ إعادة المحاولة…", "en": "⚠ Disconnected from tablet — retrying…"},
+    "s800": {"ar": "لم تفتح أي آية بعد.", "en": "No verse opened yet."},
+    "s801": {"ar": "— العظة (للقراءة فقط)", "en": "— Sermon (read-only)"},
+    "s802": {"ar": "آية — للقراءة فقط. انسخ أو نزّل؛ هذه الصفحة لا تعرض ولا تمسح ولا تعدّل.", "en": "verses — read-only. Copy or download; this page cannot trigger, clear, or edit."},
+    "s803": {"ar": "نسخ الكل", "en": "Copy all"},
+    "s804": {"ar": "تنزيل JSON", "en": "Download JSON"},
+    "s805": {"ar": "تنزيل نصي", "en": "Download text"},
+    "s806": {"ar": "تم النسخ", "en": "Copied"},
+    "s807": {"ar": "Stage Monitor", "en": "Stage Monitor"},
+    "s808": {"ar": "OFF AIR", "en": "OFF AIR"},
+    "s809": {"ar": "LIVE", "en": "LIVE"},
+    "s810": {"ar": "العظة", "en": "Sermon"},
+    "s811": {"ar": "إعدادات التخطيط", "en": "Layout settings"},
+    "s812": {"ar": "Stage layout", "en": "Stage layout"},
+    "s813": {"ar": "العظة", "en": "Sermon"},
+    "s814": {"ar": "قائمة جانبية", "en": "List at side"},
+    "s815": {"ar": "السابق / الحالي / التالي", "en": "Prev / current / next"},
+    "s816": {"ar": "مخفي", "en": "Hidden"},
+    "s817": {"ar": "جانب العظة", "en": "Sermon side"},
+    "s818": {"ar": "يمين", "en": "Right"},
+    "s819": {"ar": "يسار", "en": "Left"},
+    "s820": {"ar": "آيات إستخدمت", "en": "Recents"},
+    "s821": {"ar": "شريط", "en": "Strip"},
+    "s822": {"ar": "عدد الآيات الأخيرة", "en": "Recents count"},
+    "s823": {"ar": "حجم الآية", "en": "Verse size"},
+    "s824": {"ar": "كامل", "en": "Full"},
+    "s825": {"ar": "Compact", "en": "Compact"},
+    "s826": {"ar": "لغة الآيات", "en": "Verse language"},
+    "s827": {"ar": "العربية + الإنجليزية", "en": "Arabic + English"},
+    "s828": {"ar": "العربية", "en": "Arabic"},
+    "s829": {"ar": "الإنجليزية", "en": "English"},
+    "s830": {"ar": "المظهر", "en": "Theme"},
+    "s831": {"ar": "داكن", "en": "Dark"},
+    "s832": {"ar": "فاتح", "en": "Light"},
+    "s833": {"ar": "Director", "en": "Director"},
+    "s834": {"ar": "Stage", "en": "Stage"},
+    "s835": {"ar": "Minimal", "en": "Minimal"},
+    "s836": {"ar": "نسخ الرابط مع التخطيط", "en": "Copy link with layout"},
+    "s837": {"ar": "تم النسخ", "en": "Copied"},
+    "s838": {"ar": "لا توجد عظة نشطة", "en": "No sermon active"},
+    "s900": {"ar": "صغير", "en": "Small"},
+    "s901": {"ar": "متوسط", "en": "Medium"},
+    "s902": {"ar": "كبير", "en": "Large"},
+    "s903": {"ar": "لغة الواجهة", "en": "Interface language"},
+    "s904": {"ar": "لغة التطبيق", "en": "App language"},
+    "s905": {"ar": "السابق", "en": "Prev"},
+    "s906": {"ar": "مسح", "en": "Clear"},
+    "s907": {"ar": "التالي", "en": "Next"}
+  };
+  var DEFAULT_LANG = "$defaultLang";
+  function savedLang() {
+    try { var s = localStorage.getItem('bible-ndi-ui-lang'); if (s === 'ar' || s === 'en') return s; } catch (e) {}
+    return '';
+  }
+  function currentLang() { var s = savedLang(); return s ? s : DEFAULT_LANG; }
+  function t(id) {
+    var e = I18N[id];
+    if (!e) return '';
+    return e[currentLang()] || e.en || '';
+  }
+  function applyI18n(lang) {
+    document.documentElement.lang = lang;
+    document.documentElement.dir = (lang === 'ar') ? 'rtl' : 'ltr';
+    document.querySelectorAll('[data-i18n]').forEach(function (el) {
+      var v = t(el.getAttribute('data-i18n')); if (v) el.textContent = v;
+    });
+    document.querySelectorAll('[data-i18n-placeholder]').forEach(function (el) {
+      var v = t(el.getAttribute('data-i18n-placeholder')); if (v) el.setAttribute('placeholder', v);
+    });
+    document.querySelectorAll('[data-i18n-title]').forEach(function (el) {
+      var v = t(el.getAttribute('data-i18n-title')); if (v) el.setAttribute('title', v);
+    });
+    document.querySelectorAll('[data-i18n-aria]').forEach(function (el) {
+      var v = t(el.getAttribute('data-i18n-aria')); if (v) el.setAttribute('aria-label', v);
+    });
+    var sel = document.getElementById('p-ui-lang');
+    if (sel) sel.value = savedLang();
+    // Pages with JS-managed text (sermon title, text-size label) refresh
+    // themselves on this event.
+    try { document.dispatchEvent(new Event('i18n-applied')); } catch (e) {}
+  }
+  window.__applyI18n = applyI18n;
+  window.__i18nT = t;
+  window.__setUiLang = function (lang) {
+    try {
+      if (lang === 'ar' || lang === 'en') localStorage.setItem('bible-ndi-ui-lang', lang);
+      else localStorage.removeItem('bible-ndi-ui-lang');
+    } catch (e) {}
+    applyI18n(currentLang());
+  };
+  applyI18n(currentLang());
+})();
+</script>
+""".trimIndent()
+    }
+    // END-GENERATED-I18N
+
     private fun serveRemotePage(out: OutputStream) {
         val html = """
 <!DOCTYPE html>
@@ -9375,7 +9592,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="color-scheme" content="light dark">
-<title>Bible Remote</title>
+<title data-i18n="s725">Bible Remote</title>
 <style>
   :root { color-scheme: light dark; }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -9532,6 +9749,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   /* 1.9.25 (item 21): the revived control bar is a 3-button row
      (Prev / Clear / Next) under the header — breathing room only. */
   #controlBar { margin: 8px 8px 0 8px; }
+  /* 1.9.25 (item 2): the Prev/Next arrows flip with the page direction. */
+  #controlBar .arr { display: inline-block; }
+  html[dir="rtl"] #controlBar .arr { transform: scaleX(-1); }
   .vlist { margin-top: 8px; max-height: 52dvh; overflow-y: auto; min-height: 0; flex: 1; transition: opacity 0.15s; touch-action: pan-y; overscroll-behavior-y: auto; }
   /* 1.9.16 items 14-15: the browse card is a flex column (so the
      verse list can fill it) and the VERSE list has no dvh cap on
@@ -9661,6 +9881,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     border: 1px solid var(--chrome-border, #cbd5e1); border-radius: 10px;
     padding: 14px; width: 248px; color: inherit;
   }
+  /* 1.9.25 (item 2): mirror the fixed gear + panel in RTL. */
+  html[dir="rtl"] #gear, html[dir="rtl"] #panel { right: auto; left: 12px; }
   #panel[hidden] { display: none; }
   #panel h3 { margin: 0 0 10px; font-size: 14px; }
   #panel label {
@@ -9790,21 +10012,21 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
        is in the nav row. (1.9.19 item 2: the Reference icon left this
        top bar — the search 🔍 lives in the nav row now, so the
        reference gets more room.) -->
-  <button id="gearTop" aria-label="Settings" onclick="togglePanel()">&#9881;</button>
-  <button id="syncBtn" aria-label="Toggle auto-sync" onclick="toggleSync()" style="font-size:18px;" title="Auto-sync with tablet">&#128279;</button>
+  <button id="gearTop" aria-label="Settings" data-i18n-aria="s726" onclick="togglePanel()">&#9881;</button>
+  <button id="syncBtn" aria-label="Toggle auto-sync" data-i18n-aria="s727" onclick="toggleSync()" style="font-size:18px;" title="Auto-sync with tablet" data-i18n-title="s728">&#128279;</button>
   <!-- Item 32: keyboard shortcuts moved into the gear panel (learn-once reference). -->
   <div id="topRef" dir="auto">—</div>
   <!-- 1.9.23 (item 10): auto-clear ring — hidden unless a countdown is
        running. Tap the ring to pause/resume, ✕ to stop for this verse. -->
   <span id="acWrap" hidden>
-    <span id="acRing" onclick="toggleAutoClearPause()" title="Pause / resume auto-clear">
+    <span id="acRing" onclick="toggleAutoClearPause()" title="Pause / resume auto-clear" data-i18n-title="s729">
       <svg viewBox="0 0 36 36" width="40" height="40" aria-hidden="true">
         <circle id="acTrack" cx="18" cy="18" r="15.9155" fill="none" stroke-width="3.5"></circle>
         <circle id="acArc" cx="18" cy="18" r="15.9155" fill="none" stroke-width="3.5" stroke-linecap="round" stroke-dasharray="100" stroke-dashoffset="0" transform="rotate(-90 18 18)"></circle>
       </svg>
       <span id="acText">2:00</span>
     </span>
-    <button id="acStop" onclick="stopAutoClear()" title="Stop auto-clear for this verse" aria-label="Stop auto-clear">✕</button>
+    <button id="acStop" onclick="stopAutoClear()" title="Stop auto-clear for this verse" data-i18n-title="s730" aria-label="Stop auto-clear" data-i18n-aria="s731">✕</button>
   </span>
   <button class="onair off" id="onAirBtnTop" onclick="toggleOnAir()">OFF AIR</button>
 </header>
@@ -9814,12 +10036,12 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
      sermonStep() handlers; labels come from the per-client language
      map (data-i18n) with English as the shipped default. -->
 <div id="controlBar">
-  <button id="prevBtn" data-i18n="sermonPrev" onclick="sermonStep('prev')">◀ Prev</button>
-  <button id="clearBtn" data-i18n="clear" onclick="clearVerse()">Clear</button>
-  <button id="nextBtn" data-i18n="sermonNext" onclick="sermonStep('next')">Next ▶</button>
+  <button id="prevBtn" onclick="sermonStep('prev')"><span class="arr" aria-hidden="true">◀</span> <span data-i18n="s905">Prev</span></button>
+  <button id="clearBtn" data-i18n="s906" onclick="clearVerse()">Clear</button>
+  <button id="nextBtn" onclick="sermonStep('next')"><span data-i18n="s907">Next</span> <span class="arr" aria-hidden="true">▶</span></button>
 </div>
 <!-- Item 71 (1.9.9): CONNECTION LOST banner — shown while the sync link is down. -->
-<div id="connBanner" hidden style="background:#dc2626;color:#fff;text-align:center;font-weight:bold;font-size:14px;padding:8px 12px;">⚠ CONNECTION LOST — reconnecting…</div>
+<div id="connBanner" hidden data-i18n="s733" style="background:#dc2626;color:#fff;text-align:center;font-weight:bold;font-size:14px;padding:8px 12px;">⚠ CONNECTION LOST — reconnecting…</div>
 <main>
   <!-- 1.9.19 item 2: the nav row — chapter arrows (left), the inline
        reference search (middle, hidden until the 🔍 is tapped), and
@@ -9829,28 +10051,28 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
        holds only the two dropdowns, so the book name gets full width. -->
   <div class="card" id="navRow" dir="ltr">
     <!-- Item 29: RTL visual order — right arrow (previous) before left arrow (next). Actions unchanged. -->
-    <button id="nextChBtn" onclick="stepChapter(1)" aria-label="Next chapter">&#9664;</button>
-    <button id="prevChBtn" onclick="stepChapter(-1)" aria-label="Previous chapter">&#9654;</button>
+    <button id="nextChBtn" onclick="stepChapter(1)" aria-label="Next chapter" data-i18n-aria="s734">&#9664;</button>
+    <button id="prevChBtn" onclick="stepChapter(-1)" aria-label="Previous chapter" data-i18n-aria="s735">&#9654;</button>
     <!-- Item 19 (1.9.8): RTL — arrows point in reading direction (previous=right, next=left). -->
     <div id="navSearch" dir="rtl">
       <!-- 2026-11-02: flexbox layout (was absolute positioning, broke on narrow RTL screens). -->
       <input id="ref" type="text" inputmode="text" autocomplete="off"
-             placeholder="John 3:16  •  يوحنا 3:16  •  Jn 3:16"
-             enterkeyhint="go" aria-label="Quick reference"
+             placeholder="John 3:16  •  يوحنا 3:16  •  Jn 3:16" data-i18n-placeholder="s736"
+             enterkeyhint="go" aria-label="Quick reference" data-i18n-aria="s737"
              style="flex:1;min-width:0;">
-      <button class="btn" id="goBtn" onclick="triggerRef()" aria-label="Go"
+      <button class="btn" id="goBtn" onclick="triggerRef()" aria-label="Go" data-i18n-aria="s738"
               style="flex:none;width:auto;min-height:44px;font-size:14px;background:#16a34a;color:white;border:none;border-radius:6px;padding:8px 12px;">▶</button>
     </div>
-    <button id="searchBtn" onclick="toggleNavSearch()" aria-label="Search / reference" style="font-size:18px;" title="Search / reference">&#128269;</button>
-    <button id="recentsBtn" onclick="toggleRecents()" aria-label="Recents" style="font-size:18px;" title="Recents">&#128341;</button>
+    <button id="searchBtn" onclick="toggleNavSearch()" aria-label="Search / reference" data-i18n-aria="s739" style="font-size:18px;" title="Search / reference" data-i18n-title="s739">&#128269;</button>
+    <button id="recentsBtn" onclick="toggleRecents()" aria-label="Recents" data-i18n-aria="s740" style="font-size:18px;" title="Recents" data-i18n-title="s740">&#128341;</button>
   </div>
   <!-- v1.9.5: Row 3 — [chapter][book] (book gets the full width now). -->
   <!-- 1.9.19 item 2: the browse bar holds ONLY the chapter + book
        dropdowns — the arrows and the Recents icon moved to the nav
        row above, so the book name is never cut on a small screen. -->
   <div class="card" id="browseBar" dir="ltr">
-    <select id="chSel" aria-label="Chapter"></select>
-    <select id="bookSel" aria-label="Book"><option value="">Loading books…</option></select>
+    <select id="chSel" aria-label="Chapter" data-i18n-aria="s741"></select>
+    <select id="bookSel" aria-label="Book" data-i18n-aria="s742"><option value="" data-i18n="s743">Loading books…</option></select>
   </div>
   <!-- Recents popup with close button -->
   <div id="recentsPopup" hidden style="position:fixed;top:10px;left:10px;right:10px;bottom:10px;max-width:600px;margin:0 auto;background:var(--chrome-card,#fff);border:1px solid var(--chrome-border,#e2e8f0);border-radius:12px;z-index:90;overflow:hidden;">
@@ -9860,32 +10082,32 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       <span style="width:40px;height:5px;border-radius:3px;background:var(--chrome-textsec,#94a3b8);"></span>
     </div>
     <div style="display:flex;justify-content:space-between;align-items:center;padding:12px;border-bottom:1px solid var(--chrome-border,#e2e8f0);position:sticky;top:0;background:var(--chrome-card,#fff);z-index:1;">
-      <strong>Recent verses</strong>
-      <button onclick="toggleRecents()" aria-label="Close" style="background:none;border:none;font-size:18px;cursor:pointer;">×</button>
+      <strong data-i18n="s744">Recent verses</strong>
+      <button onclick="toggleRecents()" aria-label="Close" data-i18n-aria="s745" style="background:none;border:none;font-size:18px;cursor:pointer;">×</button>
     </div>
     <div id="recentsList" style="overflow-y:auto;padding:12px;height:calc(100% - 60px);"></div>
   </div>
   <!-- Batch-3: shortcuts line removed (now behind keyboard icon); recents moved to control bar -->
   <div id="kbdOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:100;align-items:center;justify-content:center;" onclick="if(event.target===this)toggleKbdOverlay(false)">
     <div class="card" style="max-width:420px;max-height:80vh;overflow-y:auto;">
-      <label>⌨ Keyboard shortcuts</label>
+      <label data-i18n="s746">⌨ Keyboard shortcuts</label>
       <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:14px;margin-top:8px;">
-        <b>/</b><span>Focus reference (or Ctrl+F)</span>
-        <b>Enter</b><span>Trigger reference / go live on selected verse</span>
-        <b>↑ / ↓</b><span>Move verse selection</span>
-        <b>→ / PageDown</b><span>Next sermon</span>
-        <b>← / PageUp</b><span>Previous sermon</span>
-        <b>O</b><span>ON AIR toggle</span>
-        <b>C</b><span>Clear verse</span>
-        <b>R</b><span>Recents sheet</span>
-        <b>?</b><span>This overlay</span>
-        <b>Esc</b><span>Close overlay / sheet</span>
+        <b>/</b><span data-i18n="s747">Focus reference (or Ctrl+F)</span>
+        <b>Enter</b><span data-i18n="s748">Trigger reference / go live on selected verse</span>
+        <b>↑ / ↓</b><span data-i18n="s749">Move verse selection</span>
+        <b>→ / PageDown</b><span data-i18n="s750">Next sermon</span>
+        <b>← / PageUp</b><span data-i18n="s751">Previous sermon</span>
+        <b>O</b><span data-i18n="s752">ON AIR toggle</span>
+        <b>C</b><span data-i18n="s753">Clear verse</span>
+        <b>R</b><span data-i18n="s754">Recents sheet</span>
+        <b>?</b><span data-i18n="s755">This overlay</span>
+        <b>Esc</b><span data-i18n="s756">Close overlay / sheet</span>
       </div>
-      <div style="margin-top:12px;"><button class="btn" onclick="toggleKbdOverlay(false)">Close</button></div>
+      <div style="margin-top:12px;"><button class="btn" data-i18n="s757" onclick="toggleKbdOverlay(false)">Close</button></div>
     </div>
   </div>
   <div class="card" id="recentCard">
-    <label>الآيات الأخيرة — Recent verses</label>
+    <label data-i18n="s758">الآيات الأخيرة — Recent verses</label>
     <div id="recentList" class="vlist"></div>
   </div>
   <div class="card" id="browseCard">
@@ -9895,36 +10117,48 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
 </main>
 <!-- Batch-3: gear moved to top bar (gearTop) -->
 <div id="panel" hidden>
-  <h3>Remote layout</h3>
-  <label>Verse text <span class="stepper"><button id="p-textsize-minus" type="button" aria-label="Smaller verse text">&#8722;</button><span id="p-textsize-label">Medium</span><button id="p-textsize-plus" type="button" aria-label="Larger verse text">+</button></span></label>
-  <label>Recents <select id="p-recents">
-    <option value="shown">Shown</option>
-    <option value="hidden">Hidden</option>
+  <h3 data-i18n="s766">Remote layout</h3>
+  <label><span data-i18n="s767">Verse text</span> <span class="stepper"><button id="p-textsize-minus" type="button" aria-label="Smaller verse text" data-i18n-aria="s768">&#8722;</button><span id="p-textsize-label">Medium</span><button id="p-textsize-plus" type="button" aria-label="Larger verse text" data-i18n-aria="s770">+</button></span></label>
+  <label><span data-i18n="s771">Recents</span> <select id="p-recents">
+    <option value="shown" data-i18n="s772">Shown</option>
+    <option value="hidden" data-i18n="s773">Hidden</option>
   </select></label>
-  <label>Hints <select id="p-hints">
-    <option value="shown">Shown</option>
-    <option value="hidden">Hidden</option>
+  <label><span data-i18n="s774">Hints</span> <select id="p-hints">
+    <option value="shown" data-i18n="s772">Shown</option>
+    <option value="hidden" data-i18n="s773">Hidden</option>
   </select></label>
-  <label>Theme <select id="p-theme">
-    <option value="auto">Auto</option>
-    <option value="light">Light</option>
-    <option value="dark">Dark</option>
+  <label><span data-i18n="s775">Theme</span> <select id="p-theme">
+    <option value="auto" data-i18n="s776">Auto</option>
+    <option value="light" data-i18n="s777">Light</option>
+    <option value="dark" data-i18n="s778">Dark</option>
   </select></label>
-  <label>Language <select id="p-lang">
+  <label><span data-i18n="s779">Verse language</span> <select id="p-lang">
+    <option value="ar">العربية</option>
+    <option value="en">English</option>
+  </select></label>
+  <!-- 1.9.25 (item 2): per-client interface language — App language
+       follows the tablet; العربية / English override it on this device. -->
+  <label><span data-i18n="s903">Interface language</span> <select id="p-ui-lang" onchange="__setUiLang(this.value)">
+    <option value="" data-i18n="s904">App language</option>
     <option value="ar">العربية</option>
     <option value="en">English</option>
   </select></label>
   <div class="prow">
-    <button data-preset="default">Default</button>
-    <button data-preset="director">Director</button>
-    <button data-preset="compact">Compact</button>
+    <button data-preset="default" data-i18n="s782">Default</button>
+    <button data-preset="director" data-i18n="s783">Director</button>
+    <button data-preset="compact" data-i18n="s784">Compact</button>
   </div>
-  <button id="copylink">Copy link with layout</button>
+  <button id="copylink" data-i18n="s785">Copy link with layout</button>
   <!-- Item 32: keyboard shortcuts live here now (was in the top bar). -->
-  <button id="kbdBtn" aria-label="Keyboard shortcuts" onclick="toggleKbdOverlay(true)">&#9000; Keyboard shortcuts</button>
+  <button id="kbdBtn" aria-label="Keyboard shortcuts" data-i18n-aria="s787" data-i18n="s787" onclick="toggleKbdOverlay(true)">&#9000; Keyboard shortcuts</button>
 </div>
 <script>
   var books = [];
+  // 1.9.25 (item 2): T(id, fallback) — the per-client UI-language
+  // lookup. __i18nT comes from the i18n script at the end of the
+  // page; before it loads (or if it ever fails), the English
+  // fallback keeps the page working.
+  function T(id, fallback) { return (window.__i18nT ? __i18nT(id) : fallback); }
   var numLabels = null; // v1.9.2 (#5): server-formatted Eastern Arabic chapter labels (Arabic mode)
   var curBookIdx = -1;
   var curChapter = 0;
@@ -10008,7 +10242,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     var btn = document.getElementById('syncBtn');
     if (btn) {
       btn.style.opacity = syncEnabled ? '1' : '0.4';
-      btn.title = syncEnabled ? 'Auto-sync ON (tap to disable)' : 'Auto-sync OFF (tap to enable)';
+      btn.title = syncEnabled ? T('s763', 'Auto-sync ON (tap to disable)') : T('s764', 'Auto-sync OFF (tap to enable)');
     }
   }
   function toggleSync() {
@@ -10028,8 +10262,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     var open = row.classList.toggle('nav-search-open');
     var btn = document.getElementById('searchBtn');
     if (btn) {
-      btn.setAttribute('aria-label', open ? 'Hide search' : 'Search / reference');
-      btn.setAttribute('title', open ? 'Hide search' : 'Search / reference');
+      btn.setAttribute('aria-label', open ? T('s765', 'Hide search') : T('s739', 'Search / reference'));
+      btn.setAttribute('title', open ? T('s765', 'Hide search') : T('s739', 'Search / reference'));
       btn.classList.toggle('search-on', open);
     }
     if (open) {
@@ -10267,11 +10501,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   function bookLoadFailed(keepPlace) {
     bookLoadTries++;
     if (bookLoadTries <= 5) {
-      setStatus('Loading books failed — retrying…', 'err');
+      setStatus(T('s788', 'Loading books failed — retrying…'), 'err');
       setTimeout(function() { loadBooks(keepPlace); }, 3000);
     } else {
-      setStatus('Could not load books — choose Retry below', 'err');
-      bookSel.innerHTML = '<option value="__retry">↻ Retry loading books</option>';
+      setStatus(T('s789', 'Could not load books — choose Retry below'), 'err');
+      bookSel.innerHTML = '<option value="__retry">' + T('s790', '↻ Retry loading books') + '</option>';
     }
   }
 
@@ -10318,7 +10552,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       .then(function(j) {
         if (seq !== loadSeq) return;
         vList.classList.remove('loading');
-        if (!j.ok) { if (!vList.querySelector('.vrow')) vList.innerHTML = '<div class="hint">Could not load chapter</div>'; return; }
+        if (!j.ok) { if (!vList.querySelector('.vrow')) vList.innerHTML = '<div class="hint">' + T('s791', 'Could not load chapter') + '</div>'; return; }
         var html = '';
         for (var i = 0; i < j.verses.length; i++) {
           var v = j.verses[i];
@@ -10362,8 +10596,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       .catch(function() {
         if (seq !== loadSeq) return;
         vList.classList.remove('loading');
-        if (!vList.querySelector('.vrow')) vList.innerHTML = '<div class="hint">Network error</div>';
-        else setStatus('Network error', 'err');
+        if (!vList.querySelector('.vrow')) vList.innerHTML = '<div class="hint">' + T('s792', 'Network error') + '</div>';
+        else setStatus(T('s792', 'Network error'), 'err');
       });
   }
 
@@ -10409,20 +10643,20 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     // already visible — just mark it live.
     var tapBook = books[curBookIdx];
     _localTap = { bookId: tapBook ? tapBook.id : '', chapter: curChapter, verse: verseNum, at: Date.now() };
-    setStatus('Sending…', '');
+    setStatus(T('s793', 'Sending…'), '');
     fetch('/api/trigger?book=' + (curBookIdx + 1) + '&chapter=' + curChapter + '&verse=' + verseNum)
       .then(function(r) { return r.json(); })
       .then(function(j) {
-        if (j.ok) { setStatus('✓ Verse set', 'ok'); pollNow(); }
-        else setStatus('✗ ' + (j.error || 'failed'), 'err');
+        if (j.ok) { setStatus(T('s794', '✓ Verse set'), 'ok'); pollNow(); }
+        else setStatus('✗ ' + (j.error || T('s795', 'failed')), 'err');
       })
-      .catch(function() { setStatus('✗ Network error', 'err'); });
+      .catch(function() { setStatus(T('s796', '✗ Network error'), 'err'); });
   }
 
   function triggerRef() {
     var ref = refInput.value.trim();
-    if (!ref) { setStatus('Type a reference first', 'err'); refInput.focus(); return; }
-    setStatus('Sending…', '');
+    if (!ref) { setStatus(T('s797', 'Type a reference first'), 'err'); refInput.focus(); return; }
+    setStatus(T('s793', 'Sending…'), '');
     fetch('/api/trigger?ref=' + encodeURIComponent(ref))
       .then(function(r) { return r.json(); })
       .then(function(j) {
@@ -10434,9 +10668,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
           if (row && row.classList.contains('nav-search-open')) toggleNavSearch();
           pollNow();
         }
-        else setStatus('✗ ' + (j.error || 'failed'), 'err');
+        else setStatus('✗ ' + (j.error || T('s795', 'failed')), 'err');
       })
-      .catch(function() { setStatus('✗ Network error', 'err'); });
+      .catch(function() { setStatus(T('s796', '✗ Network error'), 'err'); });
   }
 
   function toggleOnAir() {
@@ -10448,7 +10682,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     })
       .then(function(r) { return r.json(); })
       .then(function(j) { if (j.ok) pollNow(); })
-      .catch(function() { setStatus('✗ Network error', 'err'); });
+      .catch(function() { setStatus(T('s796', '✗ Network error'), 'err'); });
   }
 
   // Item 28: the /api/clear route existed but no page UI called it.
@@ -10457,8 +10691,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   function clearVerse() {
     fetch('/api/clear')
       .then(function(r) { return r.json(); })
-      .then(function(j) { if (j.ok) { setStatus('✓ Cleared (off air)', 'ok'); pollNow(); } })
-      .catch(function() { setStatus('✗ Network error', 'err'); });
+      .then(function(j) { if (j.ok) { setStatus(T('s798', '✓ Cleared (off air)'), 'ok'); pollNow(); } })
+      .catch(function() { setStatus(T('s796', '✗ Network error'), 'err'); });
   }
 
   // Sermon APIs: Prev/Next step the working sermon list and go live,
@@ -10470,9 +10704,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       .then(function(r) { return r.json(); })
       .then(function(j) {
         if (j.ok && j.entry) { setStatus('✓ ' + (j.entry.englishCitation || ''), 'ok'); pollNow(); }
-        else setStatus('✗ ' + (j.error || 'failed'), 'err');
+        else setStatus('✗ ' + (j.error || T('s795', 'failed')), 'err');
       })
-      .catch(function() { setStatus('✗ Network error', 'err'); });
+      .catch(function() { setStatus(T('s796', '✗ Network error'), 'err'); });
   }
 
   function renderOnAir() {
@@ -10531,13 +10765,13 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     fetch('/api/autoclear/' + action)
       .then(function(r) { return r.json(); })
       .then(function(j) { if (j.ok) pollNow(); })
-      .catch(function() { setStatus('✗ Network error', 'err'); });
+      .catch(function() { setStatus(T('s796', '✗ Network error'), 'err'); });
   }
   function stopAutoClear() {
     fetch('/api/autoclear/stop')
       .then(function(r) { return r.json(); })
       .then(function(j) { if (j.ok) pollNow(); })
-      .catch(function() { setStatus('✗ Network error', 'err'); });
+      .catch(function() { setStatus(T('s796', '✗ Network error'), 'err'); });
   }
 
   // 2026-10-28: phone Recents is an icon opening a sheet, Browse first.
@@ -10606,7 +10840,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     var countEl = document.getElementById('recentsCount');
     if (countEl) { countEl.textContent = recents.length ? '(' + recents.length + ')' : ''; }
     if (!recents.length) {
-      var emptyHtml = '<div class="hint">لم تفتح أي آية بعد.</div>';
+      var emptyHtml = '<div class="hint">' + T('s800', 'لم تفتح أي آية بعد.') + '</div>';
       if (list) list.innerHTML = emptyHtml;
       if (boxList) boxList.innerHTML = emptyHtml;
       markRecentRows(); return;
@@ -10653,7 +10887,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     // handler removing 'recents-open' from the body.)
     var popup = document.getElementById('recentsPopup');
     if (popup) popup.hidden = true;
-    setStatus('Sending…', '');
+    setStatus(T('s793', 'Sending…'), '');
     fetch('/api/trigger?ref=' + encodeURIComponent(ref))
       .then(function(r) { return r.json(); })
       .then(function(j) {
@@ -10665,9 +10899,9 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
           if (j.bookId && j.chapter && j.verse) showVerse(j.bookId, j.chapter, j.verse);
           pollNow();
         }
-        else setStatus('✗ ' + (j.error || 'failed'), 'err');
+        else setStatus('✗ ' + (j.error || T('s795', 'failed')), 'err');
       })
-      .catch(function() { setStatus('✗ Network error', 'err'); });
+      .catch(function() { setStatus(T('s796', '✗ Network error'), 'err'); });
   }
 
   function hexToRgb(hex) {
@@ -10703,8 +10937,8 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
         // Item 30: removed the redundant "Off air — " prefix (the top-right
         // ON AIR button is the explicit status). Tint the verse ref red when
         // ON AIR as the at-a-glance signal.
-        topRefEl.textContent = cit ? (ndiOff ? cit + ' (NDI off)' : cit) : '—';
-        topRefEl.title = ndiOff ? cit + ' — NDI senders off; HTTP overlays still show this verse' : (cit || '');
+        topRefEl.textContent = cit ? (ndiOff ? cit + ' ' + T('s759', '(NDI off)') : cit) : '—';
+        topRefEl.title = ndiOff ? cit + ' — ' + T('s760', 'NDI senders off; HTTP overlays still show this verse') : (cit || '');
         topRefEl.style.color = live.onAir ? '#dc2626' : '';
       }
       // Theme bands + recents + chrome: mirror the app's selected theme
@@ -10766,11 +11000,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
       // Item 19: poll failures were swallowed, so the pill and button
       // froze on the last-known state while the tablet was gone.
       pollFailed = true;
-      document.getElementById('topRef').textContent = 'Disconnected — reconnecting…';
+      document.getElementById('topRef').textContent = T('s761', 'Disconnected — reconnecting…');
       /* Batch-3: livePill removed; disconnected state shown via topRef */
       var tr = document.getElementById('topRef');
-      if (tr) { tr.textContent = 'Disconnected'; tr.style.color = ''; }
-      setStatus('⚠ Disconnected from tablet — retrying…', 'err');
+      if (tr) { tr.textContent = T('s762', 'Disconnected'); tr.style.color = ''; }
+      setStatus(T('s799', '⚠ Disconnected from tablet — retrying…'), 'err');
     });
   }
 
@@ -10850,8 +11084,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   //   theme=auto|light|dark  force light/dark regardless of the device
   //   preset=default|director|compact
   var DEF = { textsize: 'md', recents: 'shown', hints: 'shown', theme: 'auto' };
-  // 1.9.14 (item 29): − / + stepper labels for the three textsize steps.
-  var TEXTSIZE_LABELS = { sm: 'Small', md: 'Medium', lg: 'Large' };
+  // 1.9.14 (item 29): − / + stepper labels for the three textsize
+  // steps. 1.9.25 (item 2): the labels follow the interface language.
+  var TEXTSIZE_LABELS = { sm: 's900', md: 's901', lg: 's902' };
+  function textSizeLabel(key) { return T(TEXTSIZE_LABELS[key] || 's901', key === 'sm' ? 'Small' : (key === 'lg' ? 'Large' : 'Medium')); }
   var TEXTSIZE_ORDER = ['sm', 'md', 'lg'];
   var PRESETS = {
     default: { textsize: 'md', recents: 'shown', hints: 'shown', theme: 'auto' },
@@ -10901,7 +11137,7 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     // 1.9.14 (item 29): textsize is a − / + stepper, not a select — sync
     // its label and the end stops from the same L.textsize.
     var lbl = document.getElementById('p-textsize-label');
-    if (lbl) lbl.textContent = TEXTSIZE_LABELS[L.textsize] || 'Medium';
+    if (lbl) lbl.textContent = textSizeLabel(L.textsize);
     var mn = document.getElementById('p-textsize-minus');
     if (mn) mn.disabled = L.textsize === 'sm';
     var pl = document.getElementById('p-textsize-plus');
@@ -10961,17 +11197,21 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
   document.getElementById('copylink').onclick = function () {
     pushUrl();
     var done = function () {
-      document.getElementById('copylink').textContent = 'Copied';
-      setTimeout(function () { document.getElementById('copylink').textContent = 'Copy link with layout'; }, 1500);
+      document.getElementById('copylink').textContent = T('s786', 'Copied');
+      setTimeout(function () { document.getElementById('copylink').textContent = T('s785', 'Copy link with layout'); }, 1500);
     };
     if (navigator.clipboard) { navigator.clipboard.writeText(location.href).then(done, done); }
     else { done(); }
   };
 
+  // 1.9.25 (item 2): the text-size label is JS-managed (not
+  // data-i18n) — refresh it when the interface language changes.
+  document.addEventListener('i18n-applied', function() { syncPanel(); });
   loadBooks();
   applyLayout();
   setInterval(pollNow, 3000);
 </script>
+${i18nScript()}
 </body>
 </html>
 """.trimIndent()

@@ -58,6 +58,7 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import com.arabicchristianmedia.R
 import kotlin.math.roundToInt
 import com.arabicchristianmedia.data.ArabicTextFormatter
 import com.arabicchristianmedia.data.TemplateRepository
@@ -77,12 +78,20 @@ import java.util.concurrent.ConcurrentHashMap
  * under the preview-header dots. The mode's own displayNameAr is too long
  * for the 10sp label.
  */
-fun streamBackgroundShortNameAr(mode: StreamBackgroundMode): String = when (mode) {
-    StreamBackgroundMode.TRANSPARENT_ALPHA -> "شفاف (Transparent)"
-    StreamBackgroundMode.DARK_STUDIO -> "استوديو داكن (Dark Studio)"
-    StreamBackgroundMode.PURE_BLACK -> "أسود (Pure Black)"
-    StreamBackgroundMode.CHROMA_GREEN -> "كروما خضراء (Chroma Green)"
+// 1.9.25 (item 2): renamed (was streamBackgroundShortNameAr) — the name
+// now resolves in the interface language, not always Arabic. Takes a
+// Context because it is a pure helper, not a composable.
+fun streamBackgroundShortName(mode: StreamBackgroundMode, context: Context): String = when (mode) {
+    StreamBackgroundMode.TRANSPARENT_ALPHA -> context.getString(R.string.s118)
+    StreamBackgroundMode.DARK_STUDIO -> context.getString(R.string.s137)
+    StreamBackgroundMode.PURE_BLACK -> context.getString(R.string.s138)
+    StreamBackgroundMode.CHROMA_GREEN -> context.getString(R.string.s139)
 }
+
+// 1.9.25 (item 2): localized on/off word for the Editor section summaries
+// (s141/s147/s295/s306 pass it as a format arg).
+private fun onOffWord(context: Context, on: Boolean): String =
+    context.getString(if (on) R.string.s887 else R.string.s888)
 
 /**
  * v2.0: Coordinated card style pairing for motion backgrounds.
@@ -356,9 +365,9 @@ fun TemplateEditorScreen(
                 context.contentResolver.openInputStream(uri)?.bufferedReader()?.readText()?.let { text ->
                     importText = text
                     importError = null
-                } ?: run { importError = "تعذر قراءة الملف (could not read file)" }
+                } ?: run { importError = context.getString(R.string.s97) }
             } catch (e: Exception) {
-                importError = "تعذر قراءة الملف (could not read file)"
+                importError = context.getString(R.string.s97)
             }
         }
     }
@@ -554,13 +563,13 @@ fun TemplateEditorScreen(
     val designMenuButtonBlock: @Composable () -> Unit = {
         if (!topBarDesignButtonVisible) {
             val designName = templates.firstOrNull { it.id == highlightedId }?.name ?: editingTemplate.name
-            val designLabel = if (tabIsDirty) "معدّل · $designName" else designName
+            val designLabel = if (tabIsDirty) context.getString(R.string.s48, designName) else designName
             Surface(shape = RoundedCornerShape(10.dp), color = bento.primaryContainer, onClick = { onShowModifiedMenuChange(true) }) {
                 // Batch-4: ☰ icon indicates this is a menu button, not just a label.
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)) {
                     Text(designLabel, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.onPrimaryContainer, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Icon(Icons.Filled.Menu, contentDescription = "قائمة (Menu)", tint = bento.onPrimaryContainer, modifier = Modifier.size(14.dp))
+                    Icon(Icons.Filled.Menu, contentDescription = context.getString(R.string.s49), tint = bento.onPrimaryContainer, modifier = Modifier.size(14.dp))
                 }
             }
         }
@@ -573,18 +582,18 @@ fun TemplateEditorScreen(
         // (title popup + tips-reopen) are merged into ONE ⓘ whose dialog
         // also offers to restore the How-it-works tips when hidden.
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("Template Editor", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            Text(context.getString(R.string.s65), fontSize = 16.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
             designMenuButtonBlock()
             var showTitleInfo by remember { mutableStateOf(false) }
             IconButton(onClick = { showTitleInfo = true }, modifier = Modifier.size(32.dp)) {
-                Icon(Icons.Default.Info, "Template Editor", tint = bento.primary, modifier = Modifier.size(18.dp))
+                Icon(Icons.Default.Info, context.getString(R.string.s65), tint = bento.primary, modifier = Modifier.size(18.dp))
             }
             if (showTitleInfo) {
                 AlertDialog(
                     onDismissRequest = { showTitleInfo = false },
-                    title = { Text("Template Editor") },
-                    text = { Text("تخصيص كامل وشامل لطبقات البث والعرض المباشر") },
-                    confirmButton = { TextButton(onClick = { showTitleInfo = false }) { Text("تم") } },
+                    title = { Text(context.getString(R.string.s65)) },
+                    text = { Text(context.getString(R.string.s66)) },
+                    confirmButton = { TextButton(onClick = { showTitleInfo = false }) { Text(context.getString(R.string.s15)) } },
                     dismissButton = {
                         if (!showHowItWorks) {
                             TextButton(onClick = {
@@ -593,13 +602,13 @@ fun TemplateEditorScreen(
                                 onShowHowItWorksChange(true)
                                 howItWorksExpanded = true
                                 showTitleInfo = false
-                            }) { Text("إظهار تلميحات الاستخدام") }
+                            }) { Text(context.getString(R.string.s67)) }
                         }
                     }
                 )
             }
             IconButton(onClick = { onResetDefaults(editorTab == 1) }, modifier = Modifier.size(32.dp)) {
-                Icon(Icons.Default.Refresh, "إعادة تعيين", tint = bento.primary, modifier = Modifier.size(18.dp))
+                Icon(Icons.Default.Refresh, context.getString(R.string.s51), tint = bento.primary, modifier = Modifier.size(18.dp))
             }
         }
     }
@@ -612,8 +621,8 @@ fun TemplateEditorScreen(
                 .background(bento.surfaceVariant)
                 .padding(4.dp)
         ) {
-            EditorTabItem("الكامل (Full)", editorTab == 1, { onEditorTabChange(1) })
-            EditorTabItem("السفلي (Lower)", editorTab == 0, { onEditorTabChange(0) })
+            EditorTabItem(context.getString(R.string.s119), editorTab == 1, { onEditorTabChange(1) })
+            EditorTabItem(context.getString(R.string.s120), editorTab == 0, { onEditorTabChange(0) })
         }
     }
     val tipsBlock: @Composable () -> Unit = {
@@ -623,30 +632,30 @@ fun TemplateEditorScreen(
             Card(shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = bento.primaryContainer), modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Text("كيف يعمل المحرر (How it works)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = bento.onPrimaryContainer)
+                        Text(context.getString(R.string.s121), fontWeight = FontWeight.Bold, fontSize = 12.sp, color = bento.onPrimaryContainer)
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             TextButton(onClick = {
                                 tipsPrefs.edit().putBoolean("show_how_it_works", false).apply()
                                 onShowHowItWorksChange(false)
                             }) {
-                                Text("عدم الإظهار مجدداً", fontSize = 10.sp, color = bento.onPrimaryContainer)
+                                Text(context.getString(R.string.s122), fontSize = 10.sp, color = bento.onPrimaryContainer)
                             }
                             IconButton(onClick = {
                                 howItWorksExpanded = !howItWorksExpanded
                                 tipsPrefs.edit().putBoolean("how_it_works_expanded", howItWorksExpanded).apply()
                             }) {
-                                Icon(if (howItWorksExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore, "طي/فتح", tint = bento.onPrimaryContainer)
+                                Icon(if (howItWorksExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore, context.getString(R.string.s123), tint = bento.onPrimaryContainer)
                             }
                         }
                     }
                     if (howItWorksExpanded) {
                         val tips = listOf(
-                            "اختر نمطاً من القائمة لتطبيقه فوراً على المعاينة والبث.",
-                            "أي تعديل يظهر مباشرة؛ الحفظ والتصدير والاستيراد من قائمة التصميم (اسم النمط أعلى الشاشة).",
-                            "التعديل بدون حفظ يمسح التمييز عن النمط ويظهر شارة «معدّل».",
-                            "«حفظ كقالب جديد» ينشئ نمطاً جديداً في قائمة هذا التبويب فقط.",
-                            "«إعادة التعيين» يرجع لآخر نمط محدد، أو للوضع الافتراضي.",
-                            "اضغط مطولاً على أي نمط لحذفه."
+                            context.getString(R.string.s124),
+                            context.getString(R.string.s125),
+                            context.getString(R.string.s126),
+                            context.getString(R.string.s127),
+                            context.getString(R.string.s128),
+                            context.getString(R.string.s129)
                         )
                         tips.forEach { tip ->
                             Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -687,14 +696,14 @@ fun TemplateEditorScreen(
                     Column(modifier = Modifier.padding(vertical = 16.dp, horizontal = 4.dp)) {
                         Text(
                             if (editorTab == 1)
-                                "لا توجد أنماط للعرض الكامل بعد — عدّل ثم «حفظ كقالب جديد» لإنشاء أول نمط."
+                                context.getString(R.string.s130)
                             else
-                                "لا توجد أنماط للطبقة السفلى بعد — عدّل ثم «حفظ كقالب جديد» لإنشاء أول نمط.",
+                                context.getString(R.string.s131),
                             fontSize = 11.sp,
                             color = bento.textSecondary
                         )
                         TextButton(onClick = onRestoreFactoryTemplates) {
-                            Text("استعادة الأنماط الافتراضية (Restore factory styles)", fontSize = 11.sp)
+                            Text(context.getString(R.string.s132), fontSize = 11.sp)
                         }
                     }
                 }
@@ -756,7 +765,7 @@ fun TemplateEditorScreen(
         Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = bento.card), modifier = Modifier.fillMaxWidth().then(if (onPreviewClick != null) Modifier.clickable { onPreviewClick() } else Modifier)) {
             Column(Modifier.padding(14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text(if (editorTab == 0) "معاينة البث (Lower Third Preview)" else "معاينة العرض (Full Show Preview)", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = bento.textPrimary)
+                    Text(if (editorTab == 0) context.getString(R.string.s133) else context.getString(R.string.s134), fontWeight = FontWeight.Bold, fontSize = 13.sp, color = bento.textPrimary)
                     
                     // 1.9.15 item 8: the 4 stream-background dots live here now
                     // (merged from the Motion Video section). They iterate
@@ -781,12 +790,12 @@ fun TemplateEditorScreen(
                         }
                     }
                 }
-                Text(streamBackgroundShortNameAr(editingTemplate.streamBackgroundMode), fontSize = 10.sp, color = bento.textSecondary, modifier = Modifier.padding(top = 2.dp))
+                Text(streamBackgroundShortName(editingTemplate.streamBackgroundMode, context), fontSize = 10.sp, color = bento.textSecondary, modifier = Modifier.padding(top = 2.dp))
                 Spacer(Modifier.height(8.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    FilterChip(selected = boxEdit, onClick = { val next = !boxEdit; boxEdit = next; if (next) setSectionExpanded("frame", true) }, label = { Text("تعديل الصندوق (Edit Box)", fontSize = 10.sp) })
+                    FilterChip(selected = boxEdit, onClick = { val next = !boxEdit; boxEdit = next; if (next) setSectionExpanded("frame", true) }, label = { Text(context.getString(R.string.s135), fontSize = 10.sp) })
                     if (boxEdit) {
-                        InfoPopupButton("تعديل الصندوق (Edit Box)", "اسحب حواف الصندوق — drag the box edges")
+                        InfoPopupButton(context.getString(R.string.s135), context.getString(R.string.s136))
                     }
                 }
                 Spacer(Modifier.height(6.dp))
@@ -866,7 +875,7 @@ fun TemplateEditorScreen(
     val layersSectionBlock: @Composable () -> Unit = {
         CollapsibleSection(
             modifier = anchorModifier("layers"),
-            title = "الطبقات (Layers)",
+            title = context.getString(R.string.s140),
             // 1.9.14 (item 22): all sections start collapsed — except
             // Layers (1.9.23 item 6): it opens expanded by default so
             // the layer toggles are visible immediately. Detail
@@ -874,14 +883,14 @@ fun TemplateEditorScreen(
             initiallyExpanded = true,
             expanded = isSectionExpanded("layers", true),
             onExpandedChange = { setSectionExpanded("layers", it) },
-            summary = "Video " + (if (videoLayerOn) "on" else "off") + " · Particles " + (if (particlesLayerOn) "on" else "off") + " · Card " + (if (cardLayerOn) "on" else "off") + " · Logo " + (if (logoLayerOn) "on" else "off")
+            summary = context.getString(R.string.s141, onOffWord(context, videoLayerOn), onOffWord(context, particlesLayerOn), onOffWord(context, cardLayerOn), onOffWord(context, logoLayerOn))
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 // Logo (z-4): image, position, size, offsets, opacity.
                 LayerCard(
                     layerId = "logo",
                     layerColor = bento.layerLogo,
-                    name = "الشعار (Logo)",
+                    name = context.getString(R.string.s142),
                     zIndex = 4,
                     isOn = logoLayerOn,
                     sectionId = "logo",
@@ -897,16 +906,16 @@ fun TemplateEditorScreen(
                         if (on) anchorScope.launch { delay(120); jumpToAnchor("logo") }
                     },
                     valuesSummary = if (logoLayerOn) {
-                        editingTemplate.logoPosition + " · " + editingTemplate.logoBoxSizePercent.toInt() + "% · " + (editingTemplate.logoOpacity * 100).toInt() + "%"
+                        context.getString(R.string.s891, editingTemplate.logoPosition, editingTemplate.logoBoxSizePercent.toInt(), (editingTemplate.logoOpacity * 100).toInt())
                     } else {
-                        "None — no logo"
+                        context.getString(R.string.s143)
                     }
                 )
                 // Particles (z-2): effect, opacity, density, color.
                 LayerCard(
                     layerId = "particles",
                     layerColor = bento.layerParticles,
-                    name = "الجسيمات (Particles)",
+                    name = context.getString(R.string.s242),
                     zIndex = 2,
                     isOn = particlesLayerOn,
                     sectionId = "particles",
@@ -920,16 +929,16 @@ fun TemplateEditorScreen(
                         if (on) anchorScope.launch { delay(120); jumpToAnchor("particles") }
                     },
                     valuesSummary = if (particlesLayerOn) {
-                        editingTemplate.particleEffect.displayNameAr + " · " + (editingTemplate.particleOpacity * 100).toInt() + "% · density " + editingTemplate.particleDensity + if (editingTemplate.particleColorHex.isNotEmpty()) " · " + editingTemplate.particleColorHex else ""
+                        context.getString(R.string.s144, context.getString(editingTemplate.particleEffect.nameRes), (editingTemplate.particleOpacity * 100).toInt(), editingTemplate.particleDensity) + if (editingTemplate.particleColorHex.isNotEmpty()) " · " + editingTemplate.particleColorHex else ""
                     } else {
-                        "Off — no particles"
+                        context.getString(R.string.s145)
                     }
                 )
                 // Card Color (z-1): color, opacity, gradient, glow, accent border.
                 LayerCard(
                     layerId = "card",
                     layerColor = bento.layerCard,
-                    name = "لون البطاقة (Card Color)",
+                    name = context.getString(R.string.s146),
                     zIndex = 1,
                     isOn = cardLayerOn,
                     sectionId = "card",
@@ -943,16 +952,16 @@ fun TemplateEditorScreen(
                         if (on) anchorScope.launch { delay(120); jumpToAnchor("card") }
                     },
                     valuesSummary = if (cardLayerOn) {
-                        editingTemplate.bgColorHex + " · " + (editingTemplate.bgOpacity * 100).toInt() + "% · gradient " + (if (editingTemplate.gradientEnabled) "on" else "off") + " · glow " + (if (editingTemplate.cardGlowEnabled) "on" else "off") + " · border " + (if (editingTemplate.showAccentBorder) "on" else "off")
+                        context.getString(R.string.s147, editingTemplate.bgColorHex, (editingTemplate.bgOpacity * 100).toInt(), onOffWord(context, editingTemplate.gradientEnabled), onOffWord(context, editingTemplate.cardGlowEnabled), onOffWord(context, editingTemplate.showAccentBorder))
                     } else {
-                        "Transparent — no card color"
+                        context.getString(R.string.s148)
                     }
                 )
                 // Video (z-0): background, motion speed, loop mode, custom video.
                 LayerCard(
                     layerId = "video",
                     layerColor = bento.layerVideo,
-                    name = "الفيديو (Video)",
+                    name = context.getString(R.string.s149),
                     zIndex = 0,
                     isOn = videoLayerOn,
                     sectionId = "motion",
@@ -966,9 +975,9 @@ fun TemplateEditorScreen(
                         if (on) anchorScope.launch { delay(120); jumpToAnchor("motion") }
                     },
                     valuesSummary = if (videoLayerOn) {
-                        editingTemplate.animatedBackground.displayNameAr + " · speed " + editingTemplate.motionSpeed + " · " + editingTemplate.videoLoopMode.displayName
+                        context.getString(R.string.s150, context.getString(editingTemplate.animatedBackground.nameRes), editingTemplate.motionSpeed, context.getString(editingTemplate.videoLoopMode.labelRes))
                     } else {
-                        "Off — no video background"
+                        context.getString(R.string.s151)
                     }
                 )
             }
@@ -977,7 +986,7 @@ fun TemplateEditorScreen(
     val frameSectionBlock: @Composable () -> Unit = {
         CollapsibleSection(
             modifier = anchorModifier("frame"),
-            title = "الإطار والحشوة (Frame & Padding)",
+            title = context.getString(R.string.s152),
             // v1.9.2 (#10b): Edit Box opens this section explicitly
             // (setSectionExpanded("frame", true) at the Edit Box chip) —
             // the drag handles and these sliders are two forms of the same
@@ -989,7 +998,7 @@ fun TemplateEditorScreen(
             initiallyExpanded = false,
             expanded = isSectionExpanded("frame", false),
             onExpandedChange = { setSectionExpanded("frame", it) },
-            summary = "Box " + editingTemplate.boxHeightPercent + "% \u00b7 bottom " + editingTemplate.positionBottomPercent + "% \u00b7 margin " + editingTemplate.horizontalMarginPercent + "%"
+            summary = context.getString(R.string.s153, editingTemplate.boxHeightPercent, editingTemplate.positionBottomPercent, editingTemplate.horizontalMarginPercent)
         ) {
                     // 1.9.4: Per-language alignment controls moved to Arabic/English
                     // sections. The general alignment here is removed.
@@ -1001,7 +1010,7 @@ fun TemplateEditorScreen(
                     // Follow-up: true fullscreen bypasses the card/box on the
                     // Full feed (edge-to-edge verse, no card chrome). Shown for
                     // both feeds; only meaningful on Full.
-                    FeatureToggleRow("ملء الشاشة الحقيقي (True Fullscreen · Full feed)", editingTemplate.trueFullscreen) { onUpdate(editingTemplate.copy(trueFullscreen = it)) }
+                    FeatureToggleRow(context.getString(R.string.s155), editingTemplate.trueFullscreen) { onUpdate(editingTemplate.copy(trueFullscreen = it)) }
                     Spacer(Modifier.height(8.dp))
 
                     // 1.9.14 (item 24): Framing — the 4 box-geometry sliders
@@ -1020,14 +1029,14 @@ fun TemplateEditorScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            "التأطير (Framing)",
+                            context.getString(R.string.s156),
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
                             color = bento.textSecondary
                         )
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                "Box " + editingTemplate.boxHeightPercent + "% \u00b7 bottom " + editingTemplate.positionBottomPercent + "% \u00b7 margin " + editingTemplate.horizontalMarginPercent + "% \u00b7 radius " + editingTemplate.cornerRadiusDp,
+                                context.getString(R.string.s154, editingTemplate.boxHeightPercent, editingTemplate.positionBottomPercent, editingTemplate.horizontalMarginPercent, editingTemplate.cornerRadiusDp),
                                 fontSize = 11.sp,
                                 color = bento.textSecondary
                             )
@@ -1044,13 +1053,13 @@ fun TemplateEditorScreen(
                         // v1.9.1: position / margins / corner radius — template
                         // fields the renderers always honored but the Editor
                         // never exposed (no write path existed anywhere).
-                        SliderWithLabel("المسافة من أسفل الشاشة (Bottom Position %)", editingTemplate.positionBottomPercent.toFloat(), 0f..30f, modifier = anchorModifier("frame-position")) { onUpdate(editingTemplate.copy(positionBottomPercent = it.toInt())) }
-                        SliderWithLabel("الهامش الأفقي (Horizontal Margin %)", editingTemplate.horizontalMarginPercent.toFloat(), 0f..30f) { onUpdate(editingTemplate.copy(horizontalMarginPercent = it.toInt())) }
+                        SliderWithLabel(context.getString(R.string.s157), editingTemplate.positionBottomPercent.toFloat(), 0f..30f, modifier = anchorModifier("frame-position")) { onUpdate(editingTemplate.copy(positionBottomPercent = it.toInt())) }
+                        SliderWithLabel(context.getString(R.string.s158), editingTemplate.horizontalMarginPercent.toFloat(), 0f..30f) { onUpdate(editingTemplate.copy(horizontalMarginPercent = it.toInt())) }
                         // v1.9.1: the text box height auto-fit fits into (was a
                         // hardcoded 45% for Lower). Editable visually too — the
                         // Edit Box toggle above the preview.
-                        SliderWithLabel("ارتفاع صندوق النص (Text Box Height %)", editingTemplate.boxHeightPercent.toFloat(), 10f..100f) { onUpdate(editingTemplate.copy(boxHeightPercent = it.toInt())) }
-                        SliderWithLabel("انحناء زوايا البطاقة (Corner Radius)", editingTemplate.cornerRadiusDp.toFloat(), 0f..60f) { onUpdate(editingTemplate.copy(cornerRadiusDp = it.toInt())) }
+                        SliderWithLabel(context.getString(R.string.s159), editingTemplate.boxHeightPercent.toFloat(), 10f..100f) { onUpdate(editingTemplate.copy(boxHeightPercent = it.toInt())) }
+                        SliderWithLabel(context.getString(R.string.s160), editingTemplate.cornerRadiusDp.toFloat(), 0f..60f) { onUpdate(editingTemplate.copy(cornerRadiusDp = it.toInt())) }
                     }
                     Spacer(Modifier.height(8.dp))
 
@@ -1068,7 +1077,7 @@ fun TemplateEditorScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            "حشوة البطاقة (Card Padding)",
+                            context.getString(R.string.s161),
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
                             color = bento.textSecondary
@@ -1089,14 +1098,14 @@ fun TemplateEditorScreen(
                         }
                     }
                     if (paddingExpanded) {
-                        SliderWithLabel("علوي (Top)", editingTemplate.cardPaddingTopDp, 0f..300f) { onUpdate(editingTemplate.copy(cardPaddingTopDp = it)) }
-                        SliderWithLabel("سفلي (Bottom)", editingTemplate.cardPaddingBottomDp, 0f..300f) { onUpdate(editingTemplate.copy(cardPaddingBottomDp = it)) }
-                        SliderWithLabel("أيسر (Left)", editingTemplate.cardPaddingLeftDp, 0f..300f) { onUpdate(editingTemplate.copy(cardPaddingLeftDp = it)) }
-                        SliderWithLabel("أيمن (Right)", editingTemplate.cardPaddingRightDp, 0f..300f) { onUpdate(editingTemplate.copy(cardPaddingRightDp = it)) }
+                        SliderWithLabel(context.getString(R.string.s162), editingTemplate.cardPaddingTopDp, 0f..300f) { onUpdate(editingTemplate.copy(cardPaddingTopDp = it)) }
+                        SliderWithLabel(context.getString(R.string.s163), editingTemplate.cardPaddingBottomDp, 0f..300f) { onUpdate(editingTemplate.copy(cardPaddingBottomDp = it)) }
+                        SliderWithLabel(context.getString(R.string.s164), editingTemplate.cardPaddingLeftDp, 0f..300f) { onUpdate(editingTemplate.copy(cardPaddingLeftDp = it)) }
+                        SliderWithLabel(context.getString(R.string.s165), editingTemplate.cardPaddingRightDp, 0f..300f) { onUpdate(editingTemplate.copy(cardPaddingRightDp = it)) }
                         // Item 24 (1.9.8): redirect note when trueFullscreen ignores padding.
                         if (editingTemplate.trueFullscreen) {
                             Text(
-                                "ملاحظة: يتم تجاهل الحشو في وضع ملء الشاشة الحقيقي (Note: padding ignored in True Fullscreen)",
+                                context.getString(R.string.s166),
                                 fontSize = 11.sp,
                                 color = bento.textSecondary,
                                 modifier = Modifier.padding(top = 4.dp)
@@ -1108,7 +1117,7 @@ fun TemplateEditorScreen(
                     // v1.9: Auto-fit — shrink a too-long verse (with its citation
                     // and English section) to fit the text box instead of
                     // overflowing the card or screen. Short verses are untouched.
-                    FeatureToggleRow("ملاءمة تلقائية للنص (Auto-fit text)", editingTemplate.autoFitText, modifier = anchorModifier("frame-autofit")) { onUpdate(editingTemplate.copy(autoFitText = it)) }
+                    FeatureToggleRow(context.getString(R.string.s167), editingTemplate.autoFitText, modifier = anchorModifier("frame-autofit")) { onUpdate(editingTemplate.copy(autoFitText = it)) }
                     // 1.9.18 Item 4: no separate max-size or citation-floor
                     // sliders — the selected font size is the maximum and
                     // the citation follows the verse ratio (see locks below).
@@ -1116,15 +1125,15 @@ fun TemplateEditorScreen(
                     // auto-fit block — they are settable whether auto-fit
                     // is on or off (decoupled), and apply whenever text
                     // is scaled. Each lock scales its pair together.
-                    FeatureToggleRow("قفل النسبة العربي (Arabic verse + citation together)", editingTemplate.autoFitRatioLockArabic) { onUpdate(editingTemplate.copy(autoFitRatioLockArabic = it)) }
-                    FeatureToggleRow("قفل النسبة الإنجليزي (English verse + citation together)", editingTemplate.autoFitRatioLockEnglish) { onUpdate(editingTemplate.copy(autoFitRatioLockEnglish = it)) }
+                    FeatureToggleRow(context.getString(R.string.s168), editingTemplate.autoFitRatioLockArabic) { onUpdate(editingTemplate.copy(autoFitRatioLockArabic = it)) }
+                    FeatureToggleRow(context.getString(R.string.s169), editingTemplate.autoFitRatioLockEnglish) { onUpdate(editingTemplate.copy(autoFitRatioLockEnglish = it)) }
                     // Audit fix (D): a WARNING, never a block — a very
                     // short box shrinks verses tiny, so say so right
                     // where the numbers are set. (1.9.18 Item 4: the
                     // old cap-vs-verse-size warning went with the cap.)
                     if (editingTemplate.autoFitText && editingTemplate.boxHeightPercent < 20) {
                         Text(
-                            "⚠ " + "ارتفاع الصندوق " + editingTemplate.boxHeightPercent + "% صغير جداً" + " — ستظهر الآيات صغيرة (verses will render tiny)",
+                            context.getString(R.string.s170, editingTemplate.boxHeightPercent),
                             fontSize = 11.sp,
                             color = bento.warning,
                             modifier = Modifier.padding(top = 6.dp)
@@ -1181,11 +1190,11 @@ fun TemplateEditorScreen(
     val arabicSectionBlock: @Composable () -> Unit = {
 CollapsibleSection(
                     modifier = anchorModifier("arabic"),
-                    title = "تنسيق الخط العربي (Verse Text · Arabic)",
+                    title = context.getString(R.string.s171),
                     initiallyExpanded = false,
                     expanded = isSectionExpanded("arabic", false),
                     onExpandedChange = { setSectionExpanded("arabic", it) },
-                    summary = if (!editingTemplate.showArabic) "مخفي (Hidden)" else editingTemplate.fontFamily + " \u00b7 verse " + editingTemplate.verseFontSize + " \u00b7 citation " + editingTemplate.referenceFontSize
+                    summary = if (!editingTemplate.showArabic) context.getString(R.string.s172) else context.getString(R.string.s173, editingTemplate.fontFamily, editingTemplate.verseFontSize, editingTemplate.referenceFontSize)
                 ) {
                     // Item 56 (1.9.8): Show Arabic switch at the TOP of the
                     // Arabic section (moved from the deleted Language
@@ -1196,7 +1205,7 @@ CollapsibleSection(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text("عرض العربية (Show Arabic)", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary)
+                        Text(context.getString(R.string.s174), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary)
                         Switch(
                             checked = editingTemplate.showArabic,
                             onCheckedChange = { onUpdate(editingTemplate.copy(showArabic = it)) },
@@ -1214,12 +1223,12 @@ CollapsibleSection(
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                "التشكيل (Tashkeel Diacritics)",
+                                context.getString(R.string.s175),
                                 fontSize = 13.sp, fontWeight = FontWeight.Bold,
                                 color = bento.textPrimary
                             )
                             Text(
-                                "يطبق على كل الأنماط (applies to all styles)",
+                                context.getString(R.string.s176),
                                 fontSize = 10.sp, color = bento.textSecondary
                             )
                         }
@@ -1242,15 +1251,15 @@ CollapsibleSection(
                     )
                 
                     Row(modifier = anchorModifier("arabic-citation"), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text("الشاهد:", fontSize = 11.sp, color = bento.textSecondary)
+                        Text(context.getString(R.string.s177), fontSize = 11.sp, color = bento.textSecondary)
                         StyleToggle("B", editingTemplate.referenceIsBold) { onUpdate(editingTemplate.copy(referenceIsBold = it)) }
                         StyleToggle("I", editingTemplate.referenceIsItalic) { onUpdate(editingTemplate.copy(referenceIsItalic = it)) }
                     }
                     // One-update item 6: verse + citation colors as one linked group.
-                    LinkedColorGroup("ألوان النص العربي (Arabic text colors)") {
-                            ColorGradePickerRow("لون الشاهد العربي (Citation Color)", editingTemplate.referenceColorHex, { onUpdate(editingTemplate.copy(referenceColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor, previewTemplate = editingTemplate, previewField = "referenceColorHex")
+                    LinkedColorGroup(context.getString(R.string.s178)) {
+                            ColorGradePickerRow(context.getString(R.string.s179), editingTemplate.referenceColorHex, { onUpdate(editingTemplate.copy(referenceColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor, previewTemplate = editingTemplate, previewField = "referenceColorHex")
                     }
-                    SliderWithLabel("حجم الشاهد العربي", editingTemplate.referenceFontSize.toFloat(), 10f..120f) {
+                    SliderWithLabel(context.getString(R.string.s180), editingTemplate.referenceFontSize.toFloat(), 10f..120f) {
                         val newCit = it.toInt()
                         // One-update item 8: an explicit citation size sets
                         // the new frozen ratio (verse:citation).
@@ -1263,36 +1272,36 @@ CollapsibleSection(
                     }
 
                     // 1.9.4: Arabic citation alignment (per-language, default RIGHT).
-                    Text("محاذاة الشاهد العربي (Arabic Citation Alignment)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
+                    Text(context.getString(R.string.s181), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
                     Spacer(Modifier.height(4.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         BroadcastTextAlignment.entries.forEach { align ->
-                            FilterChip(selected = editingTemplate.citationAlignmentArabic == align, onClick = { onUpdate(editingTemplate.copy(citationAlignmentArabic = align)) }, label = { Text(align.displayName, fontSize = 10.sp) })
+                            FilterChip(selected = editingTemplate.citationAlignmentArabic == align, onClick = { onUpdate(editingTemplate.copy(citationAlignmentArabic = align)) }, label = { Text(context.getString(align.labelRes), fontSize = 10.sp) })
                         }
                     }
                     Spacer(Modifier.height(8.dp))
 
                     Row(modifier = anchorModifier("arabic-verse"), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text("الآية:", fontSize = 11.sp, color = bento.textSecondary)
+                        Text(context.getString(R.string.s182), fontSize = 11.sp, color = bento.textSecondary)
                         StyleToggle("B", editingTemplate.verseIsBold) { onUpdate(editingTemplate.copy(verseIsBold = it)) }
                         StyleToggle("I", editingTemplate.verseIsItalic) { onUpdate(editingTemplate.copy(verseIsItalic = it)) }
                     }
-                    ColorGradePickerRow("لون النص العربي (Verse Color)", editingTemplate.textColorHex, { onUpdate(editingTemplate.copy(textColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor, previewTemplate = editingTemplate, previewField = "textColorHex")
+                    ColorGradePickerRow(context.getString(R.string.s183), editingTemplate.textColorHex, { onUpdate(editingTemplate.copy(textColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor, previewTemplate = editingTemplate, previewField = "textColorHex")
                     // 1.9.4: Arabic verse alignment (per-language, default RIGHT).
                     // The `alignment` field is the Arabic verse alignment.
-                    Text("محاذاة النص العربي (Arabic Verse Alignment)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
+                    Text(context.getString(R.string.s184), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
                     Spacer(Modifier.height(4.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         BroadcastTextAlignment.entries.forEach { align ->
-                            FilterChip(selected = editingTemplate.alignment == align, onClick = { onUpdate(editingTemplate.copy(alignment = align)) }, label = { Text(align.displayName, fontSize = 10.sp) })
+                            FilterChip(selected = editingTemplate.alignment == align, onClick = { onUpdate(editingTemplate.copy(alignment = align)) }, label = { Text(context.getString(align.labelRes), fontSize = 10.sp) })
                         }
                     }
                     Spacer(Modifier.height(8.dp))
                     // 1.9.16: ONE vertical alignment for the whole verse
                     // block (Top / Center / Bottom) — it moves the full
                     // container on the stage, Arabic + English together.
-                    VerticalAlignmentChoiceRow("المحاذاة العمودية (Vertical Alignment)", editingTemplate.verticalAlignment) { onUpdate(editingTemplate.copy(verticalAlignment = it)) }
-                    SliderWithLabel("حجم النص العربي", editingTemplate.verseFontSize.toFloat(), 10f..180f) {
+                    VerticalAlignmentChoiceRow(context.getString(R.string.s185), editingTemplate.verticalAlignment) { onUpdate(editingTemplate.copy(verticalAlignment = it)) }
+                    SliderWithLabel(context.getString(R.string.s186), editingTemplate.verseFontSize.toFloat(), 10f..180f) {
                         val newVerse = it.toInt()
                         // One-update item 8: once the ratio is frozen, a
                         // verse-size move scales the citation with it.
@@ -1318,19 +1327,19 @@ CollapsibleSection(
                     // percentage, so the user sees what a size change does.
                     if (editingTemplate.autoFitText && editingTemplate.autoFitFrozenRatio != null) {
                         Text(
-                            "النسبة المحفوظة: " + AutoFitRatio.percent(editingTemplate.autoFitFrozenRatio!!) + "% (الآية " + editingTemplate.verseFontSize + "sp · الشاهد " + editingTemplate.referenceFontSize + "sp)",
+                            context.getString(R.string.s187, AutoFitRatio.percent(editingTemplate.autoFitFrozenRatio!!), editingTemplate.verseFontSize, editingTemplate.referenceFontSize),
                             fontSize = 11.sp, color = bento.textSecondary
                         )
                     }
                     // One-update item 7: per-language line spacing.
-                    SliderWithLabel("تباعد أسطر العربي (Arabic line spacing)", editingTemplate.lineSpacingArabic, 1f..5f) { onUpdate(editingTemplate.copy(lineSpacingArabic = it)) }
+                    SliderWithLabel(context.getString(R.string.s188), editingTemplate.lineSpacingArabic, 1f..5f) { onUpdate(editingTemplate.copy(lineSpacingArabic = it)) }
                     // Follow-up: verse-citation gap (was a hardcoded 16dp in the renderers).
                     // 1.9.12: max raised 48 -> 100 — with no multiplier the slider IS the
                     // gap, so it must reach NDI-scale gaps (Amiri's visual gap was 66px).
-                    SliderWithLabel("المسافة بين الآية والشاهد (Verse-Citation Gap · Arabic)", editingTemplate.verseCitationGapArabicDp, 0f..100f) { onUpdate(editingTemplate.copy(verseCitationGapArabicDp = it)) }
-                    FeatureToggleRow("علامات الترقيم العربية (Use Arabic punctuation ، ؛ ؟)", editingTemplate.useArabicPunctuation) { onUpdate(editingTemplate.copy(useArabicPunctuation = it)) }
-                    FeatureToggleRow("الأرقام العربية المشرقية (Eastern Arabic numerals ١٢٣)", editingTemplate.useEasternArabicNumerals) { onUpdate(editingTemplate.copy(useEasternArabicNumerals = it)) }
-                    FeatureToggleRow("تصحيح الأقواس بخط النظام (Use system font for brackets ( ) [ ] { })", editingTemplate.useSystemFontForBrackets) { onUpdate(editingTemplate.copy(useSystemFontForBrackets = it)) }
+                    SliderWithLabel(context.getString(R.string.s189), editingTemplate.verseCitationGapArabicDp, 0f..100f) { onUpdate(editingTemplate.copy(verseCitationGapArabicDp = it)) }
+                    FeatureToggleRow(context.getString(R.string.s190), editingTemplate.useArabicPunctuation) { onUpdate(editingTemplate.copy(useArabicPunctuation = it)) }
+                    FeatureToggleRow(context.getString(R.string.s191), editingTemplate.useEasternArabicNumerals) { onUpdate(editingTemplate.copy(useEasternArabicNumerals = it)) }
+                    FeatureToggleRow(context.getString(R.string.s192), editingTemplate.useSystemFontForBrackets) { onUpdate(editingTemplate.copy(useSystemFontForBrackets = it)) }
 
                     // v1.8: Three-way language mode (replaces the bilingual toggle).
                 
@@ -1345,11 +1354,11 @@ CollapsibleSection(
     val englishSectionBlock: @Composable () -> Unit = {
 CollapsibleSection(
                     modifier = anchorModifier("english"),
-                    title = "تنسيق الخط الإنجليزي (Verse Text · English)",
+                    title = context.getString(R.string.s193),
                     initiallyExpanded = false,
                     expanded = isSectionExpanded("english", false),
                     onExpandedChange = { setSectionExpanded("english", it) },
-                    summary = if (!editingTemplate.showEnglish) "مخفي (Hidden)" else editingTemplate.secondaryFontFamily + " \u00b7 verse " + editingTemplate.secondaryVerseFontSize + " \u00b7 citation " + editingTemplate.secondaryReferenceFontSize
+                    summary = if (!editingTemplate.showEnglish) context.getString(R.string.s172) else context.getString(R.string.s173, editingTemplate.secondaryFontFamily, editingTemplate.secondaryVerseFontSize, editingTemplate.secondaryReferenceFontSize)
                 ) {
                     // Item 56 (1.9.8): Show English switch at the TOP of the
                     // English section (moved from the deleted Language
@@ -1360,7 +1369,7 @@ CollapsibleSection(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text("عرض الإنجليزية (Show English)", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary)
+                        Text(context.getString(R.string.s194), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary)
                         Switch(
                             checked = editingTemplate.showEnglish,
                             onCheckedChange = { onUpdate(editingTemplate.copy(showEnglish = it)) },
@@ -1372,12 +1381,12 @@ CollapsibleSection(
                     // English group - GLOBAL (applies to all styles).
                     Column(modifier = Modifier.fillMaxWidth()) {
                         Text(
-                            "الترجمة الإنجليزية (English Bible Version)",
+                            context.getString(R.string.s195),
                             fontSize = 13.sp, fontWeight = FontWeight.Bold,
                             color = bento.textPrimary
                         )
                         Text(
-                            "يطبق على كل الأنماط (applies to all styles)",
+                            context.getString(R.string.s176),
                             fontSize = 10.sp, color = bento.textSecondary
                         )
                         Spacer(modifier = Modifier.height(4.dp))
@@ -1391,7 +1400,7 @@ CollapsibleSection(
                             }
                         }
                         Text(
-                            "All versions are public domain",
+                            context.getString(R.string.s196),
                             fontSize = 10.sp, color = bento.textSecondary,
                             modifier = Modifier.padding(top = 2.dp)
                         )
@@ -1399,21 +1408,21 @@ CollapsibleSection(
                     Spacer(modifier = Modifier.height(8.dp))
                     // English Citation Controls
                         Row(modifier = anchorModifier("english-citation"), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Text("الشاهد الإنجليزي:", fontSize = 11.sp, color = bento.textSecondary)
+                            Text(context.getString(R.string.s197), fontSize = 11.sp, color = bento.textSecondary)
                             StyleToggle("B", editingTemplate.secondaryReferenceIsBold) { onUpdate(editingTemplate.copy(secondaryReferenceIsBold = it)) }
                             StyleToggle("I", editingTemplate.secondaryReferenceIsItalic) { onUpdate(editingTemplate.copy(secondaryReferenceIsItalic = it)) }
                         }
                         // One-update item 6: verse + citation colors as one linked group.
-                        LinkedColorGroup("ألوان النص الإنجليزي (English text colors)") {
-                                ColorGradePickerRow("لون الشاهد الإنجليزي (English Citation Color)", editingTemplate.secondaryReferenceColorHex, { onUpdate(editingTemplate.copy(secondaryReferenceColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor, previewTemplate = editingTemplate, previewField = "secondaryReferenceColorHex")
+                        LinkedColorGroup(context.getString(R.string.s198)) {
+                                ColorGradePickerRow(context.getString(R.string.s199), editingTemplate.secondaryReferenceColorHex, { onUpdate(editingTemplate.copy(secondaryReferenceColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor, previewTemplate = editingTemplate, previewField = "secondaryReferenceColorHex")
                         }
-                        SliderWithLabel("حجم الشاهد الإنجليزي", editingTemplate.secondaryReferenceFontSize.toFloat(), 8f..100f) { onUpdate(editingTemplate.copy(secondaryReferenceFontSize = it.toInt())) }
+                        SliderWithLabel(context.getString(R.string.s200), editingTemplate.secondaryReferenceFontSize.toFloat(), 8f..100f) { onUpdate(editingTemplate.copy(secondaryReferenceFontSize = it.toInt())) }
                         // 1.9.4: English citation alignment (per-language, default RIGHT).
-                        Text("محاذاة الشاهد الإنجليزي (English Citation Alignment)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
+                        Text(context.getString(R.string.s201), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
                         Spacer(Modifier.height(4.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             BroadcastTextAlignment.entries.forEach { align ->
-                                FilterChip(selected = editingTemplate.citationAlignmentEnglish == align, onClick = { onUpdate(editingTemplate.copy(citationAlignmentEnglish = align)) }, label = { Text(align.displayName, fontSize = 10.sp) })
+                                FilterChip(selected = editingTemplate.citationAlignmentEnglish == align, onClick = { onUpdate(editingTemplate.copy(citationAlignmentEnglish = align)) }, label = { Text(context.getString(align.labelRes), fontSize = 10.sp) })
                             }
                         }
                         Spacer(Modifier.height(8.dp))
@@ -1427,62 +1436,62 @@ CollapsibleSection(
                             onDeleteCustomFont = { fontToDelete = it }
                         )
                         Row(modifier = anchorModifier("english-verse"), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Text("الآية الإنجليزية:", fontSize = 11.sp, color = bento.textSecondary)
+                            Text(context.getString(R.string.s202), fontSize = 11.sp, color = bento.textSecondary)
                             StyleToggle("B", editingTemplate.secondaryVerseIsBold) { onUpdate(editingTemplate.copy(secondaryVerseIsBold = it)) }
                             StyleToggle("I", editingTemplate.secondaryVerseIsItalic) { onUpdate(editingTemplate.copy(secondaryVerseIsItalic = it)) }
                         }
-                        ColorGradePickerRow("لون النص الإنجليزي (English Verse Color)", editingTemplate.secondaryTextColorHex, { onUpdate(editingTemplate.copy(secondaryTextColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor, previewTemplate = editingTemplate, previewField = "secondaryTextColorHex")
+                        ColorGradePickerRow(context.getString(R.string.s203), editingTemplate.secondaryTextColorHex, { onUpdate(editingTemplate.copy(secondaryTextColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor, previewTemplate = editingTemplate, previewField = "secondaryTextColorHex")
                         // 1.9.4: English verse alignment (per-language, default LEFT).
-                        Text("محاذاة النص الإنجليزي (English Verse Alignment)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
+                        Text(context.getString(R.string.s204), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
                         Spacer(Modifier.height(4.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             BroadcastTextAlignment.entries.forEach { align ->
-                                FilterChip(selected = editingTemplate.verseAlignmentEnglish == align, onClick = { onUpdate(editingTemplate.copy(verseAlignmentEnglish = align)) }, label = { Text(align.displayName, fontSize = 10.sp) })
+                                FilterChip(selected = editingTemplate.verseAlignmentEnglish == align, onClick = { onUpdate(editingTemplate.copy(verseAlignmentEnglish = align)) }, label = { Text(context.getString(align.labelRes), fontSize = 10.sp) })
                             }
                         }
                         Spacer(Modifier.height(8.dp))
                         // 1.9.16: the English vertical-alignment row is
                         // gone — one alignment (above, Arabic section)
                         // moves the whole verse block, both languages.
-                        SliderWithLabel("حجم النص الإنجليزي", editingTemplate.secondaryVerseFontSize.toFloat(), 8f..120f) { onUpdate(editingTemplate.copy(secondaryVerseFontSize = it.toInt())) }
+                        SliderWithLabel(context.getString(R.string.s205), editingTemplate.secondaryVerseFontSize.toFloat(), 8f..120f) { onUpdate(editingTemplate.copy(secondaryVerseFontSize = it.toInt())) }
                         // One-update item 7: per-language line spacing.
-                        SliderWithLabel("تباعد أسطر الإنجليزي (English line spacing)", editingTemplate.lineSpacingEnglish, 1f..5f) { onUpdate(editingTemplate.copy(lineSpacingEnglish = it)) }
+                        SliderWithLabel(context.getString(R.string.s206), editingTemplate.lineSpacingEnglish, 1f..5f) { onUpdate(editingTemplate.copy(lineSpacingEnglish = it)) }
                         // Follow-up: verse-citation gap (was a hardcoded 4px in the renderers).
                         // 1.9.12: max raised 48 -> 100, same as the Arabic gap — the slider
                         // IS the gap (no multiplier), so it needs the same headroom.
-                        SliderWithLabel("المسافة بين الآية والشاهد (Verse-Citation Gap · English)", editingTemplate.verseCitationGapEnglishDp, 0f..100f) { onUpdate(editingTemplate.copy(verseCitationGapEnglishDp = it)) }
+                        SliderWithLabel(context.getString(R.string.s207), editingTemplate.verseCitationGapEnglishDp, 0f..100f) { onUpdate(editingTemplate.copy(verseCitationGapEnglishDp = it)) }
 
-                        SliderWithLabel("المسافة الفاصلة بين اللغتين", editingTemplate.bilingualSpacing.toFloat(), 0f..150f) { onUpdate(editingTemplate.copy(bilingualSpacing = it.toInt())) }
-                        FeatureToggleRow("إظهار المسافة بين اللغتين (Show spacing)", editingTemplate.showBilingualSpacing) { onUpdate(editingTemplate.copy(showBilingualSpacing = it)) }
+                        SliderWithLabel(context.getString(R.string.s208), editingTemplate.bilingualSpacing.toFloat(), 0f..150f) { onUpdate(editingTemplate.copy(bilingualSpacing = it.toInt())) }
+                        FeatureToggleRow(context.getString(R.string.s209), editingTemplate.showBilingualSpacing) { onUpdate(editingTemplate.copy(showBilingualSpacing = it)) }
                     }
     }
 
     val cardSectionBlock: @Composable () -> Unit = {
 CollapsibleSection(
                     modifier = anchorModifier("card"),
-                    title = "لون البطاقة (Card Color)",
+                    title = context.getString(R.string.s146),
                     accentColor = bento.layerCard,
                     initiallyExpanded = false,
                     expanded = isSectionExpanded("card", false),
                     onExpandedChange = { setSectionExpanded("card", it) },
-                    summary = "Card " + (editingTemplate.bgOpacity * 100).toInt() + "%" + (if (editingTemplate.gradientEnabled) " · gradient" else "")
+                    summary = context.getString(R.string.s892, (editingTemplate.bgOpacity * 100).toInt(), if (editingTemplate.gradientEnabled) context.getString(R.string.s893) else "")
                 ) {
 
-                        SliderWithLabel("درجة شفافية الكارت (Background Opacity)", editingTemplate.bgOpacity, 0f..1f) { onUpdate(editingTemplate.copy(bgOpacity = it)) }
-                        Text("شفافية 0% تعني شفافاً تماماً (Pure) — لا زر منفصل بعد الآن.", fontSize = 11.sp, color = bento.textSecondary)
+                        SliderWithLabel(context.getString(R.string.s210), editingTemplate.bgOpacity, 0f..1f) { onUpdate(editingTemplate.copy(bgOpacity = it)) }
+                        Text(context.getString(R.string.s211), fontSize = 11.sp, color = bento.textSecondary)
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Box(modifier = Modifier.weight(1f)) {
-                                ColorGradePickerRow("لون كارت الخلفية (Card Color)", editingTemplate.bgColorHex, { onUpdate(editingTemplate.copy(bgColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor, previewTemplate = editingTemplate, previewField = "bgColorHex")
+                                ColorGradePickerRow(context.getString(R.string.s212), editingTemplate.bgColorHex, { onUpdate(editingTemplate.copy(bgColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor, previewTemplate = editingTemplate, previewField = "bgColorHex")
                             }
                             // v1.8: Quick transparent option for card color.
                             TextButton(
                                 onClick = { onUpdate(editingTemplate.copy(bgColorHex = "#00000000", bgOpacity = 0f)) }
                             ) {
-                                Text("شفاف", fontSize = 11.sp, color = bento.primary)
+                                Text(context.getString(R.string.s213), fontSize = 11.sp, color = bento.primary)
                             }
                         }
                     // 2026-10-28 gradient card: OFF by default, so every
@@ -1494,7 +1503,7 @@ CollapsibleSection(
                     // text sits above it (layer order unchanged).
                     // Angle uses the CSS convention: 90 = left-to-right,
                     // 270 = right-to-left, 0 = bottom-to-top.
-                    FeatureToggleRow("بطاقة متدرجة اللونين (Gradient card)", editingTemplate.gradientEnabled) { onUpdate(editingTemplate.copy(gradientEnabled = it)) }
+                    FeatureToggleRow(context.getString(R.string.s214), editingTemplate.gradientEnabled) { onUpdate(editingTemplate.copy(gradientEnabled = it)) }
                     if (editingTemplate.gradientEnabled) {
                         // Combined batch, linked gradient group: the
                         // gradient runs from the Card Color above
@@ -1509,17 +1518,17 @@ CollapsibleSection(
                         // batch re-added it via a phantom-field fix.
                         androidx.compose.material3.Surface(shape = RoundedCornerShape(12.dp), border = androidx.compose.foundation.BorderStroke(1.dp, bento.border), color = bento.surfaceVariant) {
                             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("ألوان التدرج المرتبطة (Linked gradient colors)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary)
-                        ColorGradePickerRow("اللون الثاني (Second color)", editingTemplate.gradientColorHex2, { onUpdate(editingTemplate.copy(gradientColorHex2 = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor, previewTemplate = editingTemplate, previewField = "gradientColorHex2")
-                        SliderWithLabel("زاوية التدرج (Angle, 0-360°)", editingTemplate.gradientAngleDeg.toFloat(), 0f..360f) { onUpdate(editingTemplate.copy(gradientAngleDeg = it.toInt())) }
+                        Text(context.getString(R.string.s215), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary)
+                        ColorGradePickerRow(context.getString(R.string.s216), editingTemplate.gradientColorHex2, { onUpdate(editingTemplate.copy(gradientColorHex2 = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor, previewTemplate = editingTemplate, previewField = "gradientColorHex2")
+                        SliderWithLabel(context.getString(R.string.s217), editingTemplate.gradientAngleDeg.toFloat(), 0f..360f) { onUpdate(editingTemplate.copy(gradientAngleDeg = it.toInt())) }
                         val gradientAnims = listOf(
-                            GradientAnimationType.NONE to "ثابت (None)",
-                            GradientAnimationType.SLIDE to "انزلاق يمين-يسار (Slide)",
-                            GradientAnimationType.ROTATE to "تدوير الزاوية ببطء (Rotate)",
-                            GradientAnimationType.PULSE to "نبض (Pulse)",
-                            GradientAnimationType.FLOW to "تدفق (Flow)",
-                            GradientAnimationType.SHIMMER to "لمعان (Shimmer)",
-                            GradientAnimationType.WAVE to "موجة (Wave)"
+                            GradientAnimationType.NONE to context.getString(R.string.s218),
+                            GradientAnimationType.SLIDE to context.getString(R.string.s219),
+                            GradientAnimationType.ROTATE to context.getString(R.string.s220),
+                            GradientAnimationType.PULSE to context.getString(R.string.s221),
+                            GradientAnimationType.FLOW to context.getString(R.string.s222),
+                            GradientAnimationType.SHIMMER to context.getString(R.string.s223),
+                            GradientAnimationType.WAVE to context.getString(R.string.s224)
                         )
                         // Wrapping scroll row: 7 chips must not overflow a narrow phone.
                         Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -1533,7 +1542,7 @@ CollapsibleSection(
                         // Item 69 (1.9.9): always visible — disabled while
                         // the animation is None, so the control is never
                         // hidden (it used to vanish with the animation).
-                        SliderWithLabel("سرعة حركة التدرج (Gradient animation speed)", editingTemplate.gradientSpeed, 0f..3f, enabled = editingTemplate.gradientAnimation != GradientAnimationType.NONE) { onUpdate(editingTemplate.copy(gradientSpeed = it)) }
+                        SliderWithLabel(context.getString(R.string.s225), editingTemplate.gradientSpeed, 0f..3f, enabled = editingTemplate.gradientAnimation != GradientAnimationType.NONE) { onUpdate(editingTemplate.copy(gradientSpeed = it)) }
                             }
                         }
                     }
@@ -1544,14 +1553,14 @@ CollapsibleSection(
                     // above its own toggle, inviting a dead edit). Same
                     // gated pattern as the Card Glow color in Shadow & Glow.
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        FeatureToggleRow("إظهار الحدود الملونة", editingTemplate.showAccentBorder) { onUpdate(editingTemplate.copy(showAccentBorder = it)) }
+                        FeatureToggleRow(context.getString(R.string.s226), editingTemplate.showAccentBorder) { onUpdate(editingTemplate.copy(showAccentBorder = it)) }
                     }
                     if (editingTemplate.showAccentBorder) {
-                        ColorGradePickerRow("لون إطار التمييز (Accent Color)", editingTemplate.accentColorHex, { onUpdate(editingTemplate.copy(accentColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor, previewTemplate = editingTemplate, previewField = "accentColorHex")
-                        SliderWithLabel("سمك إطار التمييز (Border Thickness)", editingTemplate.showAccentBorderWidthDp, 1f..12f) {
+                        ColorGradePickerRow(context.getString(R.string.s227), editingTemplate.accentColorHex, { onUpdate(editingTemplate.copy(accentColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor, previewTemplate = editingTemplate, previewField = "accentColorHex")
+                        SliderWithLabel(context.getString(R.string.s228), editingTemplate.showAccentBorderWidthDp, 1f..12f) {
                             onUpdate(editingTemplate.copy(showAccentBorderWidthDp = it))
                         }
-                        SliderWithLabel("شفافية الإطار (Border Opacity)", editingTemplate.accentOpacity, 0f..1f) {
+                        SliderWithLabel(context.getString(R.string.s229), editingTemplate.accentOpacity, 0f..1f) {
                             onUpdate(editingTemplate.copy(accentOpacity = it))
                         }
                     }
@@ -1563,19 +1572,19 @@ CollapsibleSection(
                     // or Both — each finishes on its own duration.
                     // Old templates migrate with box == verse, so they
                     // look exactly as before until the user changes one.
-                    Text("انتقال الصندوق (Box Transition)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
-                    Text("يحرّك الصندوق نفسه عند تغيّر الآية — منفصل عن انتقال الآية في قسم الانتقال أعلاه.", fontSize = 11.sp, color = bento.textSecondary)
+                    Text(context.getString(R.string.s230), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
+                    Text(context.getString(R.string.s231), fontSize = 11.sp, color = bento.textSecondary)
                     Spacer(Modifier.height(4.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
                         TransitionType.entries.forEach { t ->
                             FilterChip(
                                 selected = editingTemplate.boxTransition == t,
                                 onClick = { onUpdate(editingTemplate.copy(boxTransition = t)) },
-                                label = { Text(t.displayName, fontSize = 10.sp) }
+                                label = { Text(context.getString(t.labelRes), fontSize = 10.sp) }
                             )
                         }
                     }
-                    SliderWithLabel("مدة انتقال الصندوق (Box duration ms)", editingTemplate.boxTransitionDurationMs.toFloat(), 0f..2000f) { onUpdate(editingTemplate.copy(boxTransitionDurationMs = it.toInt())) }
+                    SliderWithLabel(context.getString(R.string.s232), editingTemplate.boxTransitionDurationMs.toFloat(), 0f..2000f) { onUpdate(editingTemplate.copy(boxTransitionDurationMs = it.toInt())) }
                     Spacer(Modifier.height(4.dp))
                     // Continuous box effects (combined batch): each has
                     // its own on/off flag; one shared Box Motion Speed
@@ -1585,19 +1594,19 @@ CollapsibleSection(
                     // then grow smoothly after it ends (NDI BoxMotion /
                     // HTTP timer share the same sin math). Design-
                     // gradient Pulse is colour only and stays separate.
-                    Text("حركة الصندوق المستمرة (Continuous Box Motion)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
-                    Text("تأثيرات مستمرة على الصندوق كله (فيديو + لون + نص معاً). كل تأثير له زر مستقل، ويمكن الجمع بينها.", fontSize = 11.sp, color = bento.textSecondary)
-                    FeatureToggleRow("تكبير البطاقة (Card Zoom)", editingTemplate.boxZoomEnabled) { onUpdate(editingTemplate.copy(boxZoomEnabled = it)) }
-                    FeatureToggleRow("طفو (Float)", editingTemplate.boxFloatEnabled) { onUpdate(editingTemplate.copy(boxFloatEnabled = it)) }
-                    FeatureToggleRow("تمايل (Sway)", editingTemplate.boxSwayEnabled) { onUpdate(editingTemplate.copy(boxSwayEnabled = it)) }
-                    FeatureToggleRow("نبض التوهج (Glow Pulse)", editingTemplate.boxGlowPulseEnabled) { onUpdate(editingTemplate.copy(boxGlowPulseEnabled = it)) }
+                    Text(context.getString(R.string.s233), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
+                    Text(context.getString(R.string.s234), fontSize = 11.sp, color = bento.textSecondary)
+                    FeatureToggleRow(context.getString(R.string.s235), editingTemplate.boxZoomEnabled) { onUpdate(editingTemplate.copy(boxZoomEnabled = it)) }
+                    FeatureToggleRow(context.getString(R.string.s236), editingTemplate.boxFloatEnabled) { onUpdate(editingTemplate.copy(boxFloatEnabled = it)) }
+                    FeatureToggleRow(context.getString(R.string.s237), editingTemplate.boxSwayEnabled) { onUpdate(editingTemplate.copy(boxSwayEnabled = it)) }
+                    FeatureToggleRow(context.getString(R.string.s238), editingTemplate.boxGlowPulseEnabled) { onUpdate(editingTemplate.copy(boxGlowPulseEnabled = it)) }
                     // Follow-up: when OFF, the continuous box motion plays once
                     // per verse then holds still (was always looping).
-                    FeatureToggleRow("تكرار حركة الصندوق (Box Loop Continuous)", editingTemplate.boxLoopContinuous) { onUpdate(editingTemplate.copy(boxLoopContinuous = it)) }
+                    FeatureToggleRow(context.getString(R.string.s239), editingTemplate.boxLoopContinuous) { onUpdate(editingTemplate.copy(boxLoopContinuous = it)) }
                     if (editingTemplate.boxZoomEnabled || editingTemplate.boxFloatEnabled || editingTemplate.boxSwayEnabled || editingTemplate.boxGlowPulseEnabled) {
-                        SliderWithLabel("سرعة مؤثرات الصندوق (Box effects speed)", editingTemplate.boxMotionSpeed, 0f..3f) { onUpdate(editingTemplate.copy(boxMotionSpeed = it)) }
+                        SliderWithLabel(context.getString(R.string.s240), editingTemplate.boxMotionSpeed, 0f..3f) { onUpdate(editingTemplate.copy(boxMotionSpeed = it)) }
                     }
-                    Text("تكبير: 1.0 إلى 1.05 وعودة. طفو: ±8dp عمودياً. تمايل: ±8dp أفقياً. نبض التوهج: شدة الظل فقط، بلا حركة.", fontSize = 11.sp, color = bento.textSecondary)
+                    Text(context.getString(R.string.s241), fontSize = 11.sp, color = bento.textSecondary)
 
                 }
     }
@@ -1610,20 +1619,20 @@ CollapsibleSection(
     val particlesSectionBlock: @Composable () -> Unit = {
 CollapsibleSection(
                     modifier = anchorModifier("particles"),
-                    title = "الجسيمات (Particles)",
+                    title = context.getString(R.string.s242),
                     accentColor = bento.layerParticles,
                     initiallyExpanded = false,
                     expanded = isSectionExpanded("particles", false),
                     onExpandedChange = { setSectionExpanded("particles", it) },
-                    summary = if (isParticleType(editingTemplate.particleEffect)) editingTemplate.particleEffect.displayNameAr + " \u00b7 " + (editingTemplate.particleOpacity * 100).toInt() + "%" else "بدون (None)"
+                    summary = if (isParticleType(editingTemplate.particleEffect)) context.getString(R.string.s894, context.getString(editingTemplate.particleEffect.nameRes), (editingTemplate.particleOpacity * 100).toInt()) else context.getString(R.string.s243)
                 ) {
-                    Text("تأثيرات الجسيمات (Particle Effects) — الطبقة فوق الفيديو", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
+                    Text(context.getString(R.string.s244), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(listOf(AnimatedBackgroundType.NONE) + particleEffectTypes) { type ->
                             FilterChip(
                                 selected = editingTemplate.particleEffect == type,
                                 onClick = { onUpdate(applyParticleEffect(editingTemplate, type)) },
-                                label = { Text(type.displayNameAr, fontSize = 10.sp) }
+                                label = { Text(context.getString(type.nameRes), fontSize = 10.sp) }
                             )
                         }
                     }
@@ -1631,14 +1640,14 @@ CollapsibleSection(
                     // Item 63 (1.9.8): particle opacity — own slider,
                     // independent from video opacity (0 = hidden).
                     SliderWithLabel(
-                        label = "شفافية الجسيمات (Particle Opacity)",
+                        label = context.getString(R.string.s245),
                         value = editingTemplate.particleOpacity,
                         range = 0f..1f,
                         onValueChange = { onUpdate(editingTemplate.copy(particleOpacity = it)) }
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     SliderWithLabel(
-                        "سرعة الجسيمات (Particle Speed)",
+                        context.getString(R.string.s246),
                         editingTemplate.motionSpeed,
                         0f..3f
                     ) {
@@ -1648,7 +1657,7 @@ CollapsibleSection(
                     // Item 66 (1.9.9): particle density — how many
                     // particles (0.25 = sparse, 1.0 = normal, 2.0 = dense).
                     SliderWithLabel(
-                        label = "كثافة الجسيمات (Particle Density)",
+                        label = context.getString(R.string.s247),
                         value = editingTemplate.particleDensity,
                         range = 0.25f..2.0f,
                         onValueChange = { onUpdate(editingTemplate.copy(particleDensity = it)) }
@@ -1657,10 +1666,10 @@ CollapsibleSection(
                     // Item 67 (1.9.9): per-effect particle color. Empty =
                     // the effect's own default color; the Default button
                     // clears a custom color back to it.
-                    ColorGradePickerRow("لون الجسيمات (Particle Color)", if (editingTemplate.particleColorHex.isEmpty()) particleDefaultColorHex(editingTemplate.particleEffect) else editingTemplate.particleColorHex, { onUpdate(editingTemplate.copy(particleColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor, previewTemplate = editingTemplate, previewField = "particleColorHex")
+                    ColorGradePickerRow(context.getString(R.string.s248), if (editingTemplate.particleColorHex.isEmpty()) particleDefaultColorHex(editingTemplate.particleEffect) else editingTemplate.particleColorHex, { onUpdate(editingTemplate.copy(particleColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor, previewTemplate = editingTemplate, previewField = "particleColorHex")
                     if (editingTemplate.particleColorHex.isNotEmpty()) {
                         TextButton(onClick = { onUpdate(editingTemplate.copy(particleColorHex = "")) }) {
-                            Text("افتراضي (Default)", fontSize = 11.sp, color = bento.primary)
+                            Text(context.getString(R.string.s249), fontSize = 11.sp, color = bento.primary)
                         }
                     }
                 }
@@ -1669,15 +1678,15 @@ CollapsibleSection(
     val motionSectionBlock: @Composable () -> Unit = {
 CollapsibleSection(
                     modifier = anchorModifier("motion"),
-                    title = "الفيديو المتحرك (Motion Video)",
+                    title = context.getString(R.string.s250),
                     accentColor = bento.layerVideo,
                     initiallyExpanded = false,
                     expanded = isSectionExpanded("motion", false),
                     onExpandedChange = { setSectionExpanded("motion", it) },
-                    summary = "Motion: " + editingTemplate.animatedBackground.displayNameAr + " · video " + (editingTemplate.animatedBackgroundOpacity * 100).toInt() + "%"
+                    summary = context.getString(R.string.s251, context.getString(editingTemplate.animatedBackground.nameRes), (editingTemplate.animatedBackgroundOpacity * 100).toInt())
                 ) {
                     // Animated Motion Backgrounds (Layer 1: Bottom background layer)
-                    Text("الخلفيات المتحركة (Motion Video Backgrounds) — طبقة الخلفية", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary, modifier = anchorModifier("bg-motion"))
+                    Text(context.getString(R.string.s252), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary, modifier = anchorModifier("bg-motion"))
                     // Item 75 (1.9.9): video types only — particle effects
                     // live in the Particles section above, not here.
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1689,7 +1698,7 @@ CollapsibleSection(
                                     // style + accent only, never transparency.
                                     onUpdate(applyAnimatedBackground(editingTemplate, type))
                                 },
-                                label = { Text(type.displayNameAr, fontSize = 10.sp) }
+                                label = { Text(context.getString(type.nameRes), fontSize = 10.sp) }
                             )
                         }
                     }
@@ -1706,7 +1715,7 @@ CollapsibleSection(
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        "✓ فيديو مخصص محدد (Custom video set)",
+                                        context.getString(R.string.s253),
                                         fontSize = 11.sp,
                                         color = bento.textSecondary
                                     )
@@ -1726,20 +1735,20 @@ CollapsibleSection(
                                 TextButton(onClick = {
                                     onUpdate(editingTemplate.copy(customVideoId = "", animatedBackground = AnimatedBackgroundType.NONE))
                                 }) {
-                                    Text("إزالة (Remove)", fontSize = 11.sp, color = bento.primary)
+                                    Text(context.getString(R.string.s254), fontSize = 11.sp, color = bento.primary)
                                 }
                             }
                             // v1.8: Muted toggle for custom video (default muted for church production).
                             Spacer(modifier = Modifier.height(4.dp))
                             FeatureToggleRow(
-                                "كتم صوت الفيديو (Mute video audio)",
+                                context.getString(R.string.s255),
                                 editingTemplate.customVideoMuted
                             ) {
                                 onUpdate(editingTemplate.copy(customVideoMuted = it))
                             }
                         } else if (editingTemplate.customVideoUrl.isNotEmpty()) {
                             Text(
-                                "⚠ تعذر العثور على الفيديو المحفوظ — اختر ملفاً جديداً",
+                                context.getString(R.string.s256),
                                 fontSize = 11.sp,
                                 color = bento.primary
                             )
@@ -1752,7 +1761,7 @@ CollapsibleSection(
                         ) {
                             Icon(Icons.Default.VideoLibrary, null, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(6.dp))
-                            Text(if (isImportingVideo) "جاري الاستيراد..." else "اختيار ملف فيديو مخصص (MP4)", fontSize = 12.sp)
+                            Text(if (isImportingVideo) context.getString(R.string.s257) else context.getString(R.string.s258), fontSize = 12.sp)
                         }
                         Spacer(modifier = Modifier.height(4.dp))
                         // Follow-up Phase 4 (item 6): recent videos row.
@@ -1771,7 +1780,7 @@ CollapsibleSection(
                         // before Opacity/Speed (was after them).
                         if (editingTemplate.animatedBackground == AnimatedBackgroundType.CUSTOM_VIDEO) {
                             Text(
-                                "طريقة تشغيل الفيديو (Video playback)",
+                                context.getString(R.string.s259),
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 color = bento.textPrimary
@@ -1784,10 +1793,10 @@ CollapsibleSection(
                             // confused. Legacy PLAY_ONCE is not offered.
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
                                 val playbackOptions = listOf(
-                                    VideoLoopMode.FADE to "تكرار مع تلاشي (Loop with fade)",
-                                    VideoLoopMode.CUT to "تكرار مع قص (Loop with cut)",
-                                    VideoLoopMode.PLAY_ONCE_PER_VERSE to "تشغيل مرة لكل آية ثم إيقاف (Play once per verse, then off)",
-                                    VideoLoopMode.PLAY_ONCE_PER_GOLIVE to "تشغيل مرة عند البث ثم إيقاف (Play once per go live, then off)"
+                                    VideoLoopMode.FADE to context.getString(R.string.s260),
+                                    VideoLoopMode.CUT to context.getString(R.string.s261),
+                                    VideoLoopMode.PLAY_ONCE_PER_VERSE to context.getString(R.string.s262),
+                                    VideoLoopMode.PLAY_ONCE_PER_GOLIVE to context.getString(R.string.s263)
                                 )
                                 playbackOptions.forEach { (mode, label) ->
                                     FilterChip(
@@ -1801,7 +1810,7 @@ CollapsibleSection(
                         }
                         // v1.8: opacity slider for ALL animated backgrounds (not just custom video).
                         SliderWithLabel(
-                            label = "شفافية الحركة (Animation Opacity)",
+                            label = context.getString(R.string.s264),
                             value = editingTemplate.animatedBackgroundOpacity,
                             range = 0f..1f,
                             onValueChange = { onUpdate(editingTemplate.copy(animatedBackgroundOpacity = it)) }
@@ -1811,7 +1820,7 @@ CollapsibleSection(
                         // One-update item 5: distinct name — this is the VIDEO
                         // motion speed (custom video + procedural animation).
                         SliderWithLabel(
-                            "سرعة فيديو الحركة (Video motion speed)",
+                            context.getString(R.string.s265),
                             editingTemplate.motionSpeed,
                             0f..3f
                         ) {
@@ -1829,7 +1838,7 @@ CollapsibleSection(
                             ) {
                                 Icon(Icons.Default.VideoLibrary, null, modifier = Modifier.size(16.dp))
                                 Spacer(Modifier.width(6.dp))
-                                Text(if (isImportingVideo) "جاري الاستيراد..." else "اختيار ملف فيديو مخصص (MP4)", fontSize = 12.sp)
+                                Text(if (isImportingVideo) context.getString(R.string.s257) else context.getString(R.string.s258), fontSize = 12.sp)
                             }
                         }
                     }
@@ -1849,25 +1858,25 @@ CollapsibleSection(
     val transitionSectionBlock: @Composable () -> Unit = {
 CollapsibleSection(
                     modifier = anchorModifier("transition"),
-                    title = "الانتقال — الآية (Verse Transition)",
+                    title = context.getString(R.string.s266),
                     initiallyExpanded = false,
                     expanded = isSectionExpanded("transition", false),
                     onExpandedChange = { setSectionExpanded("transition", it) },
-                    summary = editingTemplate.transition.displayName + " \u00b7 clear " + (if (editingTemplate.clearMode == com.arabicchristianmedia.model.ClearMode.CLEAR_VERSE_ONLY) "verse only" else "all")
+                    summary = context.getString(R.string.s267, context.getString(editingTemplate.transition.labelRes), context.getString(if (editingTemplate.clearMode == com.arabicchristianmedia.model.ClearMode.CLEAR_VERSE_ONLY) R.string.s889 else R.string.s890))
                 ) {
-                    Text("حركة انتقال الآية فقط — النص والشاهد داخل البطاقة (Verse Transition — text + citation only)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary, modifier = anchorModifier("bg-transition"))
+                    Text(context.getString(R.string.s268), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary, modifier = anchorModifier("bg-transition"))
                     Spacer(Modifier.height(4.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
                         TransitionType.entries.forEach { t ->
                             FilterChip(
                                 selected = editingTemplate.transition == t,
                                 onClick = { onUpdate(editingTemplate.copy(transition = t)) },
-                                label = { Text(t.displayName, fontSize = 10.sp) }
+                                label = { Text(context.getString(t.labelRes), fontSize = 10.sp) }
                             )
                         }
                     }
-                    SliderWithLabel("مدة انتقال الآية (Verse duration ms)", editingTemplate.transitionDurationMs.toFloat(), 0f..2000f) { onUpdate(editingTemplate.copy(transitionDurationMs = it.toInt())) }
-                    Text("انتقال الصندوق نفسه له تحكم مستقل في قسم البطاقة، قرب حدود البطاقة. عيّن أحدهما None لعزل الآخر، أو كليهما لحركة مشتركة.", fontSize = 11.sp, color = bento.textSecondary)
+                    SliderWithLabel(context.getString(R.string.s269), editingTemplate.transitionDurationMs.toFloat(), 0f..2000f) { onUpdate(editingTemplate.copy(transitionDurationMs = it.toInt())) }
+                    Text(context.getString(R.string.s270), fontSize = 11.sp, color = bento.textSecondary)
                     Spacer(Modifier.height(4.dp))
                     // 1.9.14 (item 24): Clear Mode moved here from Frame —
                     // what Clear / OFF AIR does to THIS tab's template only
@@ -1876,13 +1885,13 @@ CollapsibleSection(
                     // border; All removes every layer, as today.
                     // Defaults: Full -> verse only, Lower -> all
                     // (see model + fromJson).
-                    Text("عند المسح (Clear mode)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
+                    Text(context.getString(R.string.s271), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
                     Spacer(Modifier.height(4.dp))
                     Row(modifier = anchorModifier("transition-clear"), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        FilterChip(selected = editingTemplate.clearMode == com.arabicchristianmedia.model.ClearMode.CLEAR_VERSE_ONLY, onClick = { onUpdate(editingTemplate.copy(clearMode = com.arabicchristianmedia.model.ClearMode.CLEAR_VERSE_ONLY)) }, label = { Text("مسح الآية فقط (Clear verse only)", fontSize = 10.sp) })
-                        FilterChip(selected = editingTemplate.clearMode == com.arabicchristianmedia.model.ClearMode.CLEAR_ALL, onClick = { onUpdate(editingTemplate.copy(clearMode = com.arabicchristianmedia.model.ClearMode.CLEAR_ALL)) }, label = { Text("مسح الكل (Clear all layers)", fontSize = 10.sp) })
+                        FilterChip(selected = editingTemplate.clearMode == com.arabicchristianmedia.model.ClearMode.CLEAR_VERSE_ONLY, onClick = { onUpdate(editingTemplate.copy(clearMode = com.arabicchristianmedia.model.ClearMode.CLEAR_VERSE_ONLY)) }, label = { Text(context.getString(R.string.s272), fontSize = 10.sp) })
+                        FilterChip(selected = editingTemplate.clearMode == com.arabicchristianmedia.model.ClearMode.CLEAR_ALL, onClick = { onUpdate(editingTemplate.copy(clearMode = com.arabicchristianmedia.model.ClearMode.CLEAR_ALL)) }, label = { Text(context.getString(R.string.s273), fontSize = 10.sp) })
                     }
-                    Text(if (editingTemplate.clearMode == com.arabicchristianmedia.model.ClearMode.CLEAR_VERSE_ONLY) "عند الإيقاف تبقى الخلفية (بطاقة/فيديو/توهج) بدون نص" else "عند الإيقاف تختفي الآية وكل الطبقات", fontSize = 11.sp, color = bento.textSecondary)
+                    Text(if (editingTemplate.clearMode == com.arabicchristianmedia.model.ClearMode.CLEAR_VERSE_ONLY) context.getString(R.string.s274) else context.getString(R.string.s275), fontSize = 11.sp, color = bento.textSecondary)
                     // v1.9: stream background — what fills the space around the card
                     // (chroma/luma keys, dark studio, or full transparency).
                     // v1.9.1: this setting is read ONLY by the MJPEG /stream
@@ -1899,12 +1908,12 @@ CollapsibleSection(
     val logoSectionBlock: @Composable () -> Unit = {
 CollapsibleSection(
                     modifier = anchorModifier("logo"),
-                    title = "الشعار (Logo)",
+                    title = context.getString(R.string.s142),
                     accentColor = bento.layerLogo,
                     initiallyExpanded = false,
                     expanded = isSectionExpanded("logo", false),
                     onExpandedChange = { setSectionExpanded("logo", it) },
-                    summary = if (editingTemplate.logoUri.isEmpty()) "بدون شعار (none)" else "شعار مضبوط (logo set)"
+                    summary = if (editingTemplate.logoUri.isEmpty()) context.getString(R.string.s276) else context.getString(R.string.s277)
                 ) {
                     // Picked logo thumbnail (private storage, via LogoStore).
                     val logoFile = remember(editingTemplate.logoUri) {
@@ -1915,7 +1924,7 @@ CollapsibleSection(
                         if (logoFile != null) {
                             AsyncImage(
                                 model = logoFile,
-                                contentDescription = "Logo preview",
+                                contentDescription = context.getString(R.string.s278),
                                 contentScale = ContentScale.Fit,
                                 modifier = Modifier.size(64.dp).clip(RoundedCornerShape(8.dp))
                             )
@@ -1926,7 +1935,7 @@ CollapsibleSection(
                                 enabled = !isImportingLogo,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Text(if (isImportingLogo) "جارٍ الاستيراد…" else if (editingTemplate.logoUri.isEmpty()) "اختيار شعار (Choose logo)" else "تغيير الشعار (Change logo)", fontSize = 11.sp)
+                                Text(if (isImportingLogo) context.getString(R.string.s279) else if (editingTemplate.logoUri.isEmpty()) context.getString(R.string.s280) else context.getString(R.string.s281), fontSize = 11.sp)
                             }
                             // Rec 2 (1.9.8): one-tap bundled sample logo (gold cross,
                             // assets/sample-logo.png) — picked on demand only, never
@@ -1951,7 +1960,7 @@ CollapsibleSection(
                                 enabled = !isImportingLogo,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Text("شعار تجريبي (Use sample logo)", fontSize = 11.sp)
+                                Text(context.getString(R.string.s282), fontSize = 11.sp)
                             }
                             if (editingTemplate.logoUri.isNotEmpty()) {
                                 TextButton(
@@ -1961,23 +1970,23 @@ CollapsibleSection(
                                     },
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
-                                    Text("إزالة الشعار (Remove logo)", fontSize = 11.sp)
+                                    Text(context.getString(R.string.s283), fontSize = 11.sp)
                                 }
                             }
                         }
                     }
                     Spacer(Modifier.height(8.dp))
-                    Text("الموضع (Position)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
+                    Text(context.getString(R.string.s284), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
                     Spacer(Modifier.height(4.dp))
                     @OptIn(ExperimentalLayoutApi::class)
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         val logoPositions = listOf(
-                            "top_left" to "أعلى يسار (Top-left)",
-                            "top_right" to "أعلى يمين (Top-right)",
-                            "bottom_left" to "أسفل يسار (Bottom-left)",
-                            "bottom_right" to "أسفل يمين (Bottom-right)",
-                            "top_center" to "أعلى وسط (Top-center)",
-                            "bottom_center" to "أسفل وسط (Bottom-center)"
+                            "top_left" to context.getString(R.string.s285),
+                            "top_right" to context.getString(R.string.s286),
+                            "bottom_left" to context.getString(R.string.s287),
+                            "bottom_right" to context.getString(R.string.s288),
+                            "top_center" to context.getString(R.string.s289),
+                            "bottom_center" to context.getString(R.string.s290)
                         )
                         for ((posId, posLabel) in logoPositions) {
                             FilterChip(
@@ -1988,36 +1997,36 @@ CollapsibleSection(
                         }
                     }
                     Spacer(Modifier.height(4.dp))
-                    SliderWithLabel("حجم الصندوق (Box size)", editingTemplate.logoBoxSizePercent, 5f..50f) { onUpdate(editingTemplate.copy(logoBoxSizePercent = it)) }
-                    SliderWithLabel("إزاحة أفقية (Offset X)", editingTemplate.logoOffsetXPercent, -20f..20f) { onUpdate(editingTemplate.copy(logoOffsetXPercent = it)) }
-                    SliderWithLabel("إزاحة عمودية (Offset Y)", editingTemplate.logoOffsetYPercent, -20f..20f) { onUpdate(editingTemplate.copy(logoOffsetYPercent = it)) }
-                    SliderWithLabel("الشفافية (Opacity)", editingTemplate.logoOpacity, 0f..1f) { onUpdate(editingTemplate.copy(logoOpacity = it)) }
+                    SliderWithLabel(context.getString(R.string.s291), editingTemplate.logoBoxSizePercent, 5f..50f) { onUpdate(editingTemplate.copy(logoBoxSizePercent = it)) }
+                    SliderWithLabel(context.getString(R.string.s292), editingTemplate.logoOffsetXPercent, -20f..20f) { onUpdate(editingTemplate.copy(logoOffsetXPercent = it)) }
+                    SliderWithLabel(context.getString(R.string.s293), editingTemplate.logoOffsetYPercent, -20f..20f) { onUpdate(editingTemplate.copy(logoOffsetYPercent = it)) }
+                    SliderWithLabel(context.getString(R.string.s116), editingTemplate.logoOpacity, 0f..1f) { onUpdate(editingTemplate.copy(logoOpacity = it)) }
                 }
     }
 
     val textShadowSectionBlock: @Composable () -> Unit = {
 CollapsibleSection(
                     modifier = anchorModifier("textshadow"),
-                    title = "ظل النص (Text Shadow)",
+                    title = context.getString(R.string.s294),
                     initiallyExpanded = false,
                     expanded = isSectionExpanded("textshadow", false),
                     onExpandedChange = { setSectionExpanded("textshadow", it) },
-                    summary = "Shadow " + (if (editingTemplate.textShadowEnabled) "on" else "off")
+                    summary = context.getString(R.string.s295, onOffWord(context, editingTemplate.textShadowEnabled))
                 ) {
-                    FeatureToggleRow("ظل النص (Text Shadow)", editingTemplate.textShadowEnabled, modifier = anchorModifier("shadow-text")) { onUpdate(editingTemplate.copy(textShadowEnabled = it)) }
+                    FeatureToggleRow(context.getString(R.string.s294), editingTemplate.textShadowEnabled, modifier = anchorModifier("shadow-text")) { onUpdate(editingTemplate.copy(textShadowEnabled = it)) }
                     // v1.9.5: 3D Text Effects — integrated into the shadow box.
                     // Effect chips + depth slider. The shadow angle (direction)
                     // doubles as the 3D light-source anchor.
-                    Text("تأثير ثلاثي الأبعاد (3D Effect)", fontSize = 11.sp, color = bento.textSecondary)
+                    Text(context.getString(R.string.s296), fontSize = 11.sp, color = bento.textSecondary)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         val effects = listOf(
-                            com.arabicchristianmedia.model.TextEffectType.NONE to "بدون (None)",
-                            com.arabicchristianmedia.model.TextEffectType.EMBOSS to "بارز (Emboss)",
-                            com.arabicchristianmedia.model.TextEffectType.DEBOSS to "غائر (Deboss)",
-                            com.arabicchristianmedia.model.TextEffectType.OUTLINE to "حدود (Outline)"
+                            com.arabicchristianmedia.model.TextEffectType.NONE to context.getString(R.string.s243),
+                            com.arabicchristianmedia.model.TextEffectType.EMBOSS to context.getString(R.string.s297),
+                            com.arabicchristianmedia.model.TextEffectType.DEBOSS to context.getString(R.string.s298),
+                            com.arabicchristianmedia.model.TextEffectType.OUTLINE to context.getString(R.string.s299)
                         )
                         effects.forEach { (type, label) ->
                             FilterChip(
@@ -2028,20 +2037,20 @@ CollapsibleSection(
                         }
                     }
                     if (editingTemplate.textEffect != com.arabicchristianmedia.model.TextEffectType.NONE) {
-                        SliderWithLabel("عمق التأثير (Depth)", editingTemplate.textEffectDepthDp, 0f..10f) {
+                        SliderWithLabel(context.getString(R.string.s300), editingTemplate.textEffectDepthDp, 0f..10f) {
                             onUpdate(editingTemplate.copy(textEffectDepthDp = it))
                         }
                     }
                     if (editingTemplate.textShadowEnabled) {
-                        ColorGradePickerRow("لون ظل النص (Text Shadow Color)", editingTemplate.textShadowColorHex, { onUpdate(editingTemplate.copy(textShadowColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor, previewTemplate = editingTemplate, previewField = "textShadowColorHex")
+                        ColorGradePickerRow(context.getString(R.string.s301), editingTemplate.textShadowColorHex, { onUpdate(editingTemplate.copy(textShadowColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor, previewTemplate = editingTemplate, previewField = "textShadowColorHex")
                         // v1.8: shadow thickness (blur), distance (offset), and 8-direction compass.
-                        SliderWithLabel("سماكة الظل (Thickness)", editingTemplate.textShadowBlurDp, 0f..32f) {
+                        SliderWithLabel(context.getString(R.string.s302), editingTemplate.textShadowBlurDp, 0f..32f) {
                             onUpdate(editingTemplate.copy(textShadowBlurDp = it))
                         }
-                        SliderWithLabel("مسافة الظل (Distance)", editingTemplate.textShadowOffsetDp, 0f..32f) {
+                        SliderWithLabel(context.getString(R.string.s303), editingTemplate.textShadowOffsetDp, 0f..32f) {
                             onUpdate(editingTemplate.copy(textShadowOffsetDp = it))
                         }
-                        Text("اتجاه الظل (Direction)", fontSize = 11.sp, color = bento.textSecondary)
+                        Text(context.getString(R.string.s304), fontSize = 11.sp, color = bento.textSecondary)
                         // 8-direction compass: 0°=→, 45°=↘, 90°=↓, 135°=↙, 180°=←, 225°=↖, 270°=↑, 315°=↗
                         // v1.8: Constrained to max 200dp so it doesn't blow up on tablets.
                         val directions = listOf(
@@ -2094,23 +2103,23 @@ CollapsibleSection(
     val glowSectionBlock: @Composable () -> Unit = {
         CollapsibleSection(
             modifier = anchorModifier("glow"),
-            title = "التوهج (Glow)",
+            title = context.getString(R.string.s305),
             accentColor = bento.layerCard,
             // Batch-4: Glow never auto-expands — only manual tap or anchor.
             initiallyExpanded = false,
             expanded = isSectionExpanded("glow", false),
             onExpandedChange = { setSectionExpanded("glow", it) },
-            summary = "Glow " + (if (editingTemplate.cardGlowEnabled) "on" else "off")
+            summary = context.getString(R.string.s306, onOffWord(context, editingTemplate.cardGlowEnabled))
         ) {
-            FeatureToggleRow("توهج الكارت (Card Glow)", editingTemplate.cardGlowEnabled, modifier = anchorModifier("shadow-glow")) { onUpdate(editingTemplate.copy(cardGlowEnabled = it)) }
+            FeatureToggleRow(context.getString(R.string.s307), editingTemplate.cardGlowEnabled, modifier = anchorModifier("shadow-glow")) { onUpdate(editingTemplate.copy(cardGlowEnabled = it)) }
             if (editingTemplate.cardGlowEnabled) {
                 // 1.9.17: glow mode — Outline (outer halo), Inner (inward light), Both.
-                CardGlowModeChoiceRow("نمط التوهج (Glow Mode)", editingTemplate.cardGlowMode) { onUpdate(editingTemplate.copy(cardGlowMode = it)) }
-                ColorGradePickerRow("لون توهج الكارت (Card Glow Color)", editingTemplate.cardGlowColorHex, { onUpdate(editingTemplate.copy(cardGlowColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor, previewTemplate = editingTemplate, previewField = "cardGlowColorHex")
-                SliderWithLabel("حجم نطاق التوهج (Glow Radius)", editingTemplate.cardGlowRadiusDp, 0f..48f) {
+                CardGlowModeChoiceRow(context.getString(R.string.s308), editingTemplate.cardGlowMode) { onUpdate(editingTemplate.copy(cardGlowMode = it)) }
+                ColorGradePickerRow(context.getString(R.string.s309), editingTemplate.cardGlowColorHex, { onUpdate(editingTemplate.copy(cardGlowColorHex = it)) }, recentColors, onRemoveRecentColor, onAddRecentColor, previewTemplate = editingTemplate, previewField = "cardGlowColorHex")
+                SliderWithLabel(context.getString(R.string.s310), editingTemplate.cardGlowRadiusDp, 0f..48f) {
                     onUpdate(editingTemplate.copy(cardGlowRadiusDp = it))
                 }
-                SliderWithLabel("شفافية التوهج (Glow Opacity)", editingTemplate.cardGlowOpacity, 0f..1f) {
+                SliderWithLabel(context.getString(R.string.s311), editingTemplate.cardGlowOpacity, 0f..1f) {
                     onUpdate(editingTemplate.copy(cardGlowOpacity = it))
                 }
             }
@@ -2170,30 +2179,30 @@ CollapsibleSection(
     // its chip hides too (item 9), so no chip jumps to nothing.
     // Sub-anchors ride with their parent.
     val anchorSections: List<Pair<String, Pair<String, List<Pair<String, String>>>>> = listOf(
-        "layers" to ("الطبقات (Layers)" to emptyList()),
-        "arabic" to ("تنسيق الخط العربي (Verse Text · Arabic)" to listOf(
-            "arabic-citation" to "الشاهد (Citation)",
-            "arabic-verse" to "الآية (Verse)"
+        "layers" to (context.getString(R.string.s140) to emptyList()),
+        "arabic" to (context.getString(R.string.s171) to listOf(
+            "arabic-citation" to context.getString(R.string.s312),
+            "arabic-verse" to context.getString(R.string.s313)
         )),
-        "english" to ("تنسيق الخط الإنجليزي (Verse Text · English)" to listOf(
-            "english-citation" to "الشاهد الإنجليزي (English Citation)",
-            "english-verse" to "الآية الإنجليزية (English Verse)"
+        "english" to (context.getString(R.string.s193) to listOf(
+            "english-citation" to context.getString(R.string.s314),
+            "english-verse" to context.getString(R.string.s315)
         )),
-        "textshadow" to ("ظل النص (Text Shadow)" to emptyList()),
-        "card" to ("لون البطاقة (Card Color)" to emptyList()),
-        "glow" to ("التوهج (Glow)" to emptyList()),
-        "particles" to ("الجسيمات (Particles)" to emptyList()),
-        "motion" to ("الفيديو المتحرك (Motion Video)" to listOf(
-            "bg-motion" to "الخلفيات المتحركة (Motion Backgrounds)"
+        "textshadow" to (context.getString(R.string.s294) to emptyList()),
+        "card" to (context.getString(R.string.s146) to emptyList()),
+        "glow" to (context.getString(R.string.s305) to emptyList()),
+        "particles" to (context.getString(R.string.s242) to emptyList()),
+        "motion" to (context.getString(R.string.s250) to listOf(
+            "bg-motion" to context.getString(R.string.s316)
         )),
-        "frame" to ("الإطار والحشوة (Frame & Padding)" to listOf(
-            "frame-framing" to "التأطير (Framing)",
-            "frame-padding" to "حشوة البطاقة (Card Padding)",
-            "frame-autofit" to "ملاءمة تلقائية (Auto-fit)"
+        "frame" to (context.getString(R.string.s152) to listOf(
+            "frame-framing" to context.getString(R.string.s156),
+            "frame-padding" to context.getString(R.string.s161),
+            "frame-autofit" to context.getString(R.string.s317)
         )),
-        "logo" to ("الشعار (Logo)" to emptyList()),
-        "transition" to ("انتقال الآية (Verse Transition)" to listOf(
-            "transition-clear" to "عند المسح (Clear mode)"
+        "logo" to (context.getString(R.string.s142) to emptyList()),
+        "transition" to (context.getString(R.string.s318) to listOf(
+            "transition-clear" to context.getString(R.string.s271)
         ))
     ).filter { (sectionId, _) ->
         when (sectionId) {
@@ -2217,9 +2226,9 @@ CollapsibleSection(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text("الانتقال السريع (Jump to)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = bento.textPrimary)
+                    Text(context.getString(R.string.s319), fontWeight = FontWeight.Bold, fontSize = 12.sp, color = bento.textPrimary)
                     TextButton(onClick = { anchorsExpanded = !anchorsExpanded }) {
-                        Text(if (anchorsExpanded) "إخفاء القائمة" else "كل الأقسام", fontSize = 11.sp)
+                        Text(if (anchorsExpanded) context.getString(R.string.s320) else context.getString(R.string.s321), fontSize = 11.sp)
                     }
                 }
                 Row(
@@ -2397,10 +2406,10 @@ CollapsibleSection(
         if (showSaveDialog) {
             AlertDialog(
                 onDismissRequest = { showSaveDialog = false },
-                title = { Text("حفظ القالب") },
-                text = { OutlinedTextField(value = newTemplateName, onValueChange = { newTemplateName = it }, label = { Text("اسم القالب") }, singleLine = true) },
-                confirmButton = { Button(onClick = { if (newTemplateName.isNotBlank()) { onSaveAsNew(newTemplateName, editingTemplate, editorTab == 1); showSaveDialog = false } }) { Text("حفظ") } },
-                dismissButton = { TextButton(onClick = { showSaveDialog = false }) { Text("إلغاء") } }
+                title = { Text(context.getString(R.string.s68)) },
+                text = { OutlinedTextField(value = newTemplateName, onValueChange = { newTemplateName = it }, label = { Text(context.getString(R.string.s69)) }, singleLine = true) },
+                confirmButton = { Button(onClick = { if (newTemplateName.isNotBlank()) { onSaveAsNew(newTemplateName, editingTemplate, editorTab == 1); showSaveDialog = false } }) { Text(context.getString(R.string.s70)) } },
+                dismissButton = { TextButton(onClick = { showSaveDialog = false }) { Text(context.getString(R.string.s7)) } }
             )
         }
 
@@ -2415,7 +2424,7 @@ CollapsibleSection(
         // buttons exist anymore.
         if (showModifiedMenu) {
             val designMenuName = templates.firstOrNull { it.id == highlightedId }?.name ?: editingTemplate.name
-            val designMenuTitle = if (tabIsDirty) "معدّل · $designMenuName" else designMenuName
+            val designMenuTitle = if (tabIsDirty) context.getString(R.string.s71, designMenuName) else designMenuName
             val highlightedTpl = templates.firstOrNull { it.id == highlightedId }
             AlertDialog(
                 onDismissRequest = { onShowModifiedMenuChange(false) },
@@ -2435,27 +2444,27 @@ CollapsibleSection(
                                 },
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Text("حفظ الحالي «$originName» (Save current / Update)", fontSize = 13.sp)
+                                Text(context.getString(R.string.s72, originName), fontSize = 13.sp)
                             }
                         }
                         Button(
                             onClick = {
                                 onShowModifiedMenuChange(false)
-                                newTemplateName = "${editingTemplate.name} النسخة"
+                                newTemplateName = context.getString(R.string.s100, editingTemplate.name)
                                 showSaveDialog = true
                             },
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text("حفظ كنمط جديد (Save as new style)", fontSize = 13.sp)
+                            Text(context.getString(R.string.s73), fontSize = 13.sp)
                         }
                         Button(
                             onClick = {
                                 onShowModifiedMenuChange(false)
-                                onSaveAsNew("${editingTemplate.name} النسخة", editingTemplate, editorTab == 1)
+                                onSaveAsNew(context.getString(R.string.s100, editingTemplate.name), editingTemplate, editorTab == 1)
                             },
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text("نسخ (Duplicate)", fontSize = 13.sp)
+                            Text(context.getString(R.string.s74), fontSize = 13.sp)
                         }
                         if (highlightedId != null) {
                             Button(
@@ -2466,7 +2475,7 @@ CollapsibleSection(
                                 },
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Text("إعادة تسمية (Rename)", fontSize = 13.sp)
+                                Text(context.getString(R.string.s75), fontSize = 13.sp)
                             }
                         }
                         TextButton(
@@ -2475,15 +2484,15 @@ CollapsibleSection(
                                 onExportWorkingTemplate(editorTab == 1)?.let { json ->
                                     val intent = Intent(Intent.ACTION_SEND).apply {
                                         type = "text/plain"
-                                        putExtra(Intent.EXTRA_SUBJECT, "Bible NDI style: ${editingTemplate.name}")
+                                        putExtra(Intent.EXTRA_SUBJECT, context.getString(R.string.s98, editingTemplate.name))
                                         putExtra(Intent.EXTRA_TEXT, json)
                                     }
-                                    context.startActivity(Intent.createChooser(intent, "تصدير القالب (Export style)"))
+                                    context.startActivity(Intent.createChooser(intent, context.getString(R.string.s89)))
                                 }
                             },
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text("تصدير / مشاركة (Export / Share)", fontSize = 13.sp)
+                            Text(context.getString(R.string.s76), fontSize = 13.sp)
                         }
                         TextButton(
                             onClick = {
@@ -2492,7 +2501,7 @@ CollapsibleSection(
                             },
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text("استيراد قالب جديد (Import new style)", fontSize = 13.sp)
+                            Text(context.getString(R.string.s77), fontSize = 13.sp)
                         }
                         if (highlightedTpl != null) {
                             TextButton(
@@ -2502,7 +2511,7 @@ CollapsibleSection(
                                 },
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Text("تحديث باستيراد JSON (Update from import)", fontSize = 13.sp)
+                                Text(context.getString(R.string.s78), fontSize = 13.sp)
                             }
                             // One-update item 16: factory styles ARE deletable
                             // (they restore from code on data clear).
@@ -2513,21 +2522,21 @@ CollapsibleSection(
                                 },
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Text("حذف (Delete)", fontSize = 13.sp, color = bento.liveRed)
+                                Text(context.getString(R.string.s79), fontSize = 13.sp, color = bento.liveRed)
                             }
                         }
                     }
                 },
                 confirmButton = {},
-                dismissButton = { TextButton(onClick = { onShowModifiedMenuChange(false) }) { Text("إلغاء") } }
+                dismissButton = { TextButton(onClick = { onShowModifiedMenuChange(false) }) { Text(context.getString(R.string.s7)) } }
             )
         }
 
         if (showRenameDialog) {
             AlertDialog(
                 onDismissRequest = { showRenameDialog = false },
-                title = { Text("إعادة تسمية النمط (Rename style)") },
-                text = { OutlinedTextField(value = renameInput, onValueChange = { renameInput = it }, label = { Text("اسم النمط") }, singleLine = true) },
+                title = { Text(context.getString(R.string.s80)) },
+                text = { OutlinedTextField(value = renameInput, onValueChange = { renameInput = it }, label = { Text(context.getString(R.string.s81)) }, singleLine = true) },
                 confirmButton = {
                     Button(onClick = {
                         val id = highlightedId
@@ -2535,9 +2544,9 @@ CollapsibleSection(
                             onRenameTemplate(id, renameInput.trim(), editorTab == 1)
                         }
                         showRenameDialog = false
-                    }) { Text("حفظ") }
+                    }) { Text(context.getString(R.string.s70)) }
                 },
-                dismissButton = { TextButton(onClick = { showRenameDialog = false }) { Text("إلغاء") } }
+                dismissButton = { TextButton(onClick = { showRenameDialog = false }) { Text(context.getString(R.string.s7)) } }
             )
         }
 
@@ -2546,18 +2555,18 @@ CollapsibleSection(
         pendingFontUri?.let { uri ->
             AlertDialog(
                 onDismissRequest = { pendingFontUri = null },
-                title = { Text("استيراد خط (Import font)") },
+                title = { Text(context.getString(R.string.s82)) },
                 text = {
                     Column {
                         OutlinedTextField(
                             value = fontNameInput,
                             onValueChange = { fontNameInput = it },
-                            label = { Text("اسم الخط (Font name)") },
+                            label = { Text(context.getString(R.string.s83)) },
                             singleLine = true
                         )
                         Spacer(Modifier.height(6.dp))
                         Text(
-                            "سيظهر الخط بهذا الاسم في قائمتي الخطوط العربية والإنجليزية، ويعمل في المعاينة وNDI وصفحات HTTP.",
+                            context.getString(R.string.s84),
                             fontSize = 11.sp, color = bento.textSecondary
                         )
                     }
@@ -2566,9 +2575,9 @@ CollapsibleSection(
                     Button(onClick = {
                         onImportCustomFont(uri.toString(), fontNameInput)
                         pendingFontUri = null
-                    }) { Text("استيراد") }
+                    }) { Text(context.getString(R.string.s85)) }
                 },
-                dismissButton = { TextButton(onClick = { pendingFontUri = null }) { Text("إلغاء") } }
+                dismissButton = { TextButton(onClick = { pendingFontUri = null }) { Text(context.getString(R.string.s7)) } }
             )
         }
 
@@ -2577,12 +2586,12 @@ CollapsibleSection(
         fontToDelete?.let { font ->
             AlertDialog(
                 onDismissRequest = { fontToDelete = null },
-                title = { Text("حذف الخط «${font.name}»؟") },
-                text = { Text("سيتم حذف ملف الخط من الجهاز. الأنماط التي تستخدمه ستعود إلى خط النظام حتى تختار خطاً آخر.") },
+                title = { Text(context.getString(R.string.s86, font.name)) },
+                text = { Text(context.getString(R.string.s87)) },
                 confirmButton = {
-                    Button(onClick = { onDeleteCustomFont(font); fontToDelete = null }) { Text("حذف") }
+                    Button(onClick = { onDeleteCustomFont(font); fontToDelete = null }) { Text(context.getString(R.string.s88)) }
                 },
-                dismissButton = { TextButton(onClick = { fontToDelete = null }) { Text("إلغاء") } }
+                dismissButton = { TextButton(onClick = { fontToDelete = null }) { Text(context.getString(R.string.s7)) } }
             )
         }
 
@@ -2599,29 +2608,29 @@ CollapsibleSection(
                                 onExportTemplate(tpl.id)?.let { json ->
                                     val intent = Intent(Intent.ACTION_SEND).apply {
                                         type = "text/plain"
-                                        putExtra(Intent.EXTRA_SUBJECT, "Bible NDI style: ${tpl.name}")
+                                        putExtra(Intent.EXTRA_SUBJECT, context.getString(R.string.s99, tpl.name))
                                         putExtra(Intent.EXTRA_TEXT, json)
                                     }
-                                    context.startActivity(Intent.createChooser(intent, "تصدير القالب (Export style)"))
+                                    context.startActivity(Intent.createChooser(intent, context.getString(R.string.s89)))
                                 }
                                 styleMenuTpl = null
                             },
                             modifier = Modifier.fillMaxWidth()
-                        ) { Text("تصدير / مشاركة (Export / Share)", fontSize = 13.sp) }
+                        ) { Text(context.getString(R.string.s76), fontSize = 13.sp) }
                         TextButton(
                             onClick = { onImportTargetTplChange(tpl); onShowImportDialogChange(true); styleMenuTpl = null },
                             modifier = Modifier.fillMaxWidth()
-                        ) { Text("تحديث باستيراد JSON (Update from import)", fontSize = 13.sp) }
+                        ) { Text(context.getString(R.string.s78), fontSize = 13.sp) }
                         // One-update item 16: factory styles ARE deletable
                         // (they restore from code on data clear).
                         TextButton(
                             onClick = { templateToDelete = tpl; styleMenuTpl = null },
                             modifier = Modifier.fillMaxWidth()
-                        ) { Text("حذف (Delete)", fontSize = 13.sp, color = bento.liveRed) }
+                        ) { Text(context.getString(R.string.s79), fontSize = 13.sp, color = bento.liveRed) }
                     }
                 },
                 confirmButton = {},
-                dismissButton = { TextButton(onClick = { styleMenuTpl = null }) { Text("إلغاء") } }
+                dismissButton = { TextButton(onClick = { styleMenuTpl = null }) { Text(context.getString(R.string.s7)) } }
             )
         }
 
@@ -2633,14 +2642,14 @@ CollapsibleSection(
                 onDismissRequest = { onShowImportDialogChange(false); onImportTargetTplChange(null) },
                 title = {
                     Text(
-                        if (targetName == null) "استيراد قالب جديد (Import new style)" else "تحديث \"$targetName\" بالاستيراد",
+                        if (targetName == null) context.getString(R.string.s77) else context.getString(R.string.s90, targetName),
                         fontSize = 15.sp, fontWeight = FontWeight.Bold
                     )
                 },
                 text = {
                     Column(modifier = Modifier.fillMaxWidth()) {
                         Text(
-                            "الصق JSON القالب أدناه أو اختر ملف .json:",
+                            context.getString(R.string.s91),
                             fontSize = 12.sp, color = bento.textSecondary
                         )
                         Spacer(Modifier.height(8.dp))
@@ -2655,7 +2664,7 @@ CollapsibleSection(
                             Text(importError!!, fontSize = 12.sp, color = bento.liveRed, modifier = Modifier.padding(top = 4.dp))
                         }
                         TextButton(onClick = { jsonPicker.launch(arrayOf("application/json", "text/plain")) }) {
-                            Text("اختر ملف JSON (Choose file)", fontSize = 12.sp)
+                            Text(context.getString(R.string.s92), fontSize = 12.sp)
                         }
                     }
                 },
@@ -2671,12 +2680,12 @@ CollapsibleSection(
                             onShowImportDialogChange(false)
                             onImportTargetTplChange(null)
                         } else {
-                            importError = "JSON غير صالح — تحقق من النص وحاول مجدداً (invalid style JSON)"
+                            importError = context.getString(R.string.s93)
                         }
-                    }) { Text("استيراد (Import)") }
+                    }) { Text(context.getString(R.string.s94)) }
                 },
                 dismissButton = {
-                    TextButton(onClick = { onShowImportDialogChange(false); onImportTargetTplChange(null) }) { Text("إلغاء") }
+                    TextButton(onClick = { onShowImportDialogChange(false); onImportTargetTplChange(null) }) { Text(context.getString(R.string.s7)) }
                 }
             )
         }
@@ -2685,15 +2694,15 @@ CollapsibleSection(
         templateToDelete?.let { tpl ->
             AlertDialog(
                 onDismissRequest = { templateToDelete = null },
-                title = { Text("حذف القالب") },
-                text = { Text("هل تريد حذف القالب \"${tpl.name}\"؟ لا يمكن التراجع عن الحذف. المظهر الحالي يبقى كما هو، كتعديلات غير محفوظة.") },
+                title = { Text(context.getString(R.string.s95)) },
+                text = { Text(context.getString(R.string.s96, tpl.name)) },
                 confirmButton = {
                     Button(
                         onClick = { onDeleteTemplate(tpl.id, tpl.isFullScreen); templateToDelete = null },
                         colors = ButtonDefaults.buttonColors(containerColor = bento.liveRed)
-                    ) { Text("حذف") }
+                    ) { Text(context.getString(R.string.s88)) }
                 },
-                dismissButton = { TextButton(onClick = { templateToDelete = null }) { Text("إلغاء") } }
+                dismissButton = { TextButton(onClick = { templateToDelete = null }) { Text(context.getString(R.string.s7)) } }
             )
         }
 }
@@ -2748,7 +2757,7 @@ CollapsibleSection(
         val context = LocalContext.current
         if (customFonts.isNotEmpty()) {
             DropdownMenuItem(
-                text = { Text("خطوطي المستوردة (My fonts)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = LocalBentoColors.current.textSecondary) },
+                text = { Text(context.getString(R.string.s101), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = LocalBentoColors.current.textSecondary) },
                 onClick = {},
                 enabled = false
             )
@@ -2761,7 +2770,7 @@ CollapsibleSection(
                         IconButton(onClick = { closeMenu(); onDeleteCustomFont(font) }) {
                             Icon(
                                 imageVector = Icons.Default.Delete,
-                                contentDescription = "حذف الخط (Delete font)",
+                                contentDescription = context.getString(R.string.s102),
                                 tint = LocalBentoColors.current.textSecondary,
                                 modifier = Modifier.size(18.dp)
                             )
@@ -2771,7 +2780,7 @@ CollapsibleSection(
             }
         }
         DropdownMenuItem(
-            text = { Text("استيراد خط… (Import font…)", fontSize = 13.sp, fontWeight = FontWeight.SemiBold) },
+            text = { Text(context.getString(R.string.s103), fontSize = 13.sp, fontWeight = FontWeight.SemiBold) },
             onClick = { closeMenu(); onImportFont() },
             leadingIcon = {
                 Icon(
@@ -2808,7 +2817,7 @@ CollapsibleSection(
                 value = ArabicFonts.arabicName(selected)?.let { "$it · $selected" } ?: selected,
                 onValueChange = {},
                 readOnly = true,
-                label = { Text("الخط (Font)", fontSize = 10.sp) },
+                label = { Text(context.getString(R.string.s104), fontSize = 10.sp) },
                 textStyle = TextStyle(fontFamily = selectedFamily, fontSize = 14.sp),
                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
                 modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable).fillMaxWidth(),
@@ -2870,7 +2879,7 @@ CollapsibleSection(
                 value = selected,
                 onValueChange = {},
                 readOnly = true,
-                label = { Text("الخط الإنجليزي (English Font)", fontSize = 10.sp) },
+                label = { Text(context.getString(R.string.s105), fontSize = 10.sp) },
                 textStyle = TextStyle(fontFamily = selectedFamily, fontSize = 14.sp),
                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
                 modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable).fillMaxWidth(),
@@ -2994,6 +3003,7 @@ CollapsibleSection(
 // subject as title and the explanation as body.
 @Composable
 fun InfoPopupButton(infoTitle: String, infoText: String) {
+    val context = LocalContext.current
     var showInfo by remember { mutableStateOf(false) }
     val bento = LocalBentoColors.current
     IconButton(onClick = { showInfo = true }, modifier = Modifier.size(32.dp)) {
@@ -3004,7 +3014,7 @@ fun InfoPopupButton(infoTitle: String, infoText: String) {
             onDismissRequest = { showInfo = false },
             title = { Text(infoTitle) },
             text = { Text(infoText) },
-            confirmButton = { TextButton(onClick = { showInfo = false }) { Text("تم") } }
+            confirmButton = { TextButton(onClick = { showInfo = false }) { Text(context.getString(R.string.s15)) } }
         )
     }
 }
@@ -3067,12 +3077,13 @@ fun VerticalAlignmentChoiceRow(
     selected: VerticalAlignment,
     onSelect: (VerticalAlignment) -> Unit
 ) {
+    val context = LocalContext.current
     val bento = LocalBentoColors.current
     Text(label, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
     Spacer(Modifier.height(4.dp))
     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         VerticalAlignment.entries.forEach { align ->
-            FilterChip(selected = selected == align, onClick = { onSelect(align) }, label = { Text(align.displayName, fontSize = 10.sp) })
+            FilterChip(selected = selected == align, onClick = { onSelect(align) }, label = { Text(context.getString(align.labelRes), fontSize = 10.sp) })
         }
     }
     Spacer(Modifier.height(8.dp))
@@ -3085,12 +3096,13 @@ fun CardGlowModeChoiceRow(
     selected: CardGlowMode,
     onSelect: (CardGlowMode) -> Unit
 ) {
+    val context = LocalContext.current
     val bento = LocalBentoColors.current
     Text(label, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
     Spacer(Modifier.height(4.dp))
     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         CardGlowMode.entries.forEach { mode ->
-            FilterChip(selected = selected == mode, onClick = { onSelect(mode) }, label = { Text(mode.displayName, fontSize = 10.sp) })
+            FilterChip(selected = selected == mode, onClick = { onSelect(mode) }, label = { Text(context.getString(mode.labelRes), fontSize = 10.sp) })
         }
     }
     Spacer(Modifier.height(8.dp))
@@ -3110,6 +3122,7 @@ fun ColorGradePickerRow(
     previewTemplate: LowerThirdTemplate? = null,
     previewField: String? = null
 ) {
+    val context = LocalContext.current
     val bento = LocalBentoColors.current
     var showGradeDialog by remember { mutableStateOf(false) }
 
@@ -3155,7 +3168,7 @@ fun ColorGradePickerRow(
                             onClick = { showGradeDialog = true },
                             modifier = Modifier.size(32.dp)
                         ) {
-                            Icon(Icons.Default.Palette, contentDescription = "درجات الألوان (Color Grade)", tint = bento.primary, modifier = Modifier.size(18.dp))
+                            Icon(Icons.Default.Palette, contentDescription = context.getString(R.string.s106), tint = bento.primary, modifier = Modifier.size(18.dp))
                         }
                     } else {
                         Surface(
@@ -3169,7 +3182,7 @@ fun ColorGradePickerRow(
                                 horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
                                 Icon(Icons.Default.Palette, contentDescription = null, tint = bento.onPrimaryContainer, modifier = Modifier.size(12.dp))
-                                Text("درجات الألوان (Color Grade)", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = bento.onPrimaryContainer, maxLines = 1)
+                                Text(context.getString(R.string.s106), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = bento.onPrimaryContainer, maxLines = 1)
                             }
                         }
                     }
@@ -3209,7 +3222,7 @@ fun ColorGradePickerRow(
                                 }
                             }
                         }
-                        Text("شفاف (Transparent)", fontSize = 9.sp, fontWeight = FontWeight.SemiBold, color = bento.textSecondary, maxLines = 1)
+                        Text(context.getString(R.string.s118), fontSize = 9.sp, fontWeight = FontWeight.SemiBold, color = bento.textSecondary, maxLines = 1)
                     }
                 }
             }
@@ -3263,7 +3276,7 @@ fun ColorGradePickerRow(
                             onClick = { onRemoveRecentColor(hex) },
                             modifier = Modifier.size(20.dp)
                         ) {
-                            Icon(Icons.Default.Close, contentDescription = "حذف", tint = bento.textSecondary, modifier = Modifier.size(12.dp))
+                            Icon(Icons.Default.Close, contentDescription = context.getString(R.string.s88), tint = bento.textSecondary, modifier = Modifier.size(12.dp))
                         }
                     }
                 }
@@ -3296,6 +3309,7 @@ fun ColorGradeSpectrumModal(
     previewTemplate: LowerThirdTemplate? = null,
     previewField: String? = null
 ) {
+    val context = LocalContext.current
     var hexInput by remember { mutableStateOf(currentHex) }
     // Deep-test fix: an invalid hex used to silently become #FFFFFF on
     // confirm. Now it shows an error and keeps the previous colour.
@@ -3355,7 +3369,7 @@ fun ColorGradeSpectrumModal(
         title = {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Icon(Icons.Default.Palette, null, tint = bento.primary)
-                Text("لوحة درجات الألوان (Color Grade Spectrum)", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                Text(context.getString(R.string.s107), fontSize = 15.sp, fontWeight = FontWeight.Bold)
             }
         },
         text = {
@@ -3368,7 +3382,7 @@ fun ColorGradeSpectrumModal(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text("اللون المختار:", fontSize = 12.sp, color = bento.textSecondary)
+                    Text(context.getString(R.string.s108), fontSize = 12.sp, color = bento.textSecondary)
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         Box(
                             modifier = Modifier
@@ -3425,7 +3439,7 @@ fun ColorGradeSpectrumModal(
                         )
                     } else null
                     val showGlow = tpl.cardGlowEnabled && previewField != "cardGlowColorHex" || previewField == "cardGlowColorHex"
-                    Text("معاينة حية (Live preview)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
+                    Text(context.getString(R.string.s109), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -3492,7 +3506,7 @@ fun ColorGradeSpectrumModal(
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                Text("درجات الألوان المجهزة (Preset Grades)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
+                Text(context.getString(R.string.s110), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
                 Box(modifier = Modifier.height(130.dp)) {
                     LazyVerticalGrid(
                         columns = GridCells.Adaptive(minSize = 34.dp),
@@ -3513,7 +3527,7 @@ fun ColorGradeSpectrumModal(
                     }
                 }
 
-                Text("شريط الطيف الضوئي (Hue Spectrum Cycle)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
+                Text(context.getString(R.string.s111), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -3539,7 +3553,7 @@ fun ColorGradeSpectrumModal(
                     colors = SliderDefaults.colors(thumbColor = bento.primary, activeTrackColor = Color.Transparent, inactiveTrackColor = Color.Transparent)
                 )
 
-                Text("التشبع (Saturation)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
+                Text(context.getString(R.string.s112), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
                 Slider(
                     value = satValue,
                     onValueChange = { s ->
@@ -3551,7 +3565,7 @@ fun ColorGradeSpectrumModal(
                     valueRange = 0f..1f,
                     colors = SliderDefaults.colors(thumbColor = bento.primary)
                 )
-                Text("السطوع (Brightness)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
+                Text(context.getString(R.string.s113), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
                 Slider(
                     value = valValue,
                     onValueChange = { v ->
@@ -3567,17 +3581,17 @@ fun ColorGradeSpectrumModal(
                 OutlinedTextField(
                     value = hexInput,
                     onValueChange = { input -> applyHex(input); hexError = false },
-                    label = { Text("رمز اللون (Hex Code e.g. #FBBF24)") },
+                    label = { Text(context.getString(R.string.s114)) },
                     singleLine = true,
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.fillMaxWidth(),
                     isError = hexError,
                     supportingText = if (hexError) {
-                        { Text("رمز لون غير صالح — بقي اللون السابق (Invalid hex — previous colour kept)", color = bento.liveRed) }
+                        { Text(context.getString(R.string.s115), color = bento.liveRed) }
                     } else null
                 )
 
-                Text("الشفافية (Opacity)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
+                Text(context.getString(R.string.s116), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
                 Slider(
                     value = opacityValue,
                     onValueChange = { o ->
@@ -3609,7 +3623,7 @@ fun ColorGradeSpectrumModal(
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = bento.primary)
             ) {
-                Text("تأكيد الاختيار")
+                Text(context.getString(R.string.s117))
             }
         },
         dismissButton = {
@@ -3617,8 +3631,8 @@ fun ColorGradeSpectrumModal(
                 // 2026-10-28: Clear is always present in the modal too —
                 // it returns the transparent hex, which downstream code
                 // already parses as fully transparent.
-                TextButton(onClick = { onSelectColor("#00000000") }) { Text("شفاف (Transparent)") }
-                TextButton(onClick = onDismiss) { Text("إلغاء") }
+                TextButton(onClick = { onSelectColor("#00000000") }) { Text(context.getString(R.string.s118)) }
+                TextButton(onClick = onDismiss) { Text(context.getString(R.string.s7)) }
             }
         }
     )
@@ -3669,6 +3683,7 @@ fun BoxEditHandle(xPx: Float, yPx: Float, color: Color, onDrag: (Float, Float) -
  */
 @Composable
 fun BoxEditOverlay(template: LowerThirdTemplate, stageW: Int, stageH: Int, onTemplateChange: (LowerThirdTemplate) -> Unit) {
+    val context = LocalContext.current
     val bento = LocalBentoColors.current
     val density = LocalDensity.current
     val w = stageW.toFloat()
@@ -3694,9 +3709,7 @@ fun BoxEditOverlay(template: LowerThirdTemplate, stageW: Int, stageH: Int, onTem
     )
 
     val wPct = 100 - 2 * template.horizontalMarginPercent
-    val label = "Box $wPct% × ${template.boxHeightPercent}%" +
-        " · B ${template.positionBottomPercent}%" +
-        " — ${wPct * 1920 / 100}×${template.boxHeightPercent * 1080 / 100} px @1080p"
+    val label = context.getString(R.string.s322, wPct, template.boxHeightPercent, template.positionBottomPercent, wPct * 1920 / 100, template.boxHeightPercent * 1080 / 100)
     Box(
         modifier = Modifier
             .offset { IntOffset(8, 8) }

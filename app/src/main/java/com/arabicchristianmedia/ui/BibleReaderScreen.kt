@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.material3.LocalTextStyle
@@ -54,6 +55,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
+import com.arabicchristianmedia.R
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import androidx.compose.ui.tooling.preview.Preview
@@ -135,6 +137,7 @@ fun BibleReaderScreen(
     onSetLibraryGridRtl: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     var showSearchBar by remember { mutableStateOf(false) }
     var showRecentsSheet by remember { mutableStateOf(false) }
     val searchFocusRequester = remember { FocusRequester() }
@@ -330,16 +333,16 @@ fun BibleReaderScreen(
                             FilterChip(
                                 selected = otNtFilter == Testament.OLD_TESTAMENT,
                                 onClick = { otNtFilter = if (otNtFilter == Testament.OLD_TESTAMENT) null else Testament.OLD_TESTAMENT },
-                                label = { Text("OT", fontSize = 12.sp) }
+                                label = { Text(context.getString(R.string.s29), fontSize = 12.sp) }
                             )
                             FilterChip(
                                 selected = otNtFilter == Testament.NEW_TESTAMENT,
                                 onClick = { otNtFilter = if (otNtFilter == Testament.NEW_TESTAMENT) null else Testament.NEW_TESTAMENT },
-                                label = { Text("NT", fontSize = 12.sp) }
+                                label = { Text(context.getString(R.string.s30), fontSize = 12.sp) }
                             )
                             // Batch-4: search icon button instead of full-width field.
                             IconButton(onClick = { searchExpanded = !searchExpanded }) {
-                                Icon(Icons.Default.Search, "بحث (Search)", tint = bento.textPrimary)
+                                Icon(Icons.Default.Search, context.getString(R.string.s31), tint = bento.textPrimary)
                             }
                             // 1.9.14 item 19: grid direction as a single
                             // icon-only toggle at the far end of the search
@@ -348,7 +351,7 @@ fun BibleReaderScreen(
                             IconButton(onClick = { onSetLibraryGridRtl(!uiState.libraryGridRtl) }) {
                                 Icon(
                                     if (uiState.libraryGridRtl) Icons.Default.FormatTextdirectionRToL else Icons.Default.FormatTextdirectionLToR,
-                                    "اتجاه الشبكة (Grid direction)",
+                                    context.getString(R.string.s32),
                                     tint = bento.textPrimary
                                 )
                             }
@@ -359,12 +362,12 @@ fun BibleReaderScreen(
                             OutlinedTextField(
                                 value = bookSearch,
                                 onValueChange = { bookSearch = it },
-                                placeholder = { Text("ابحث…", fontSize = 12.sp) },
+                                placeholder = { Text(context.getString(R.string.s33), fontSize = 12.sp) },
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth().trackTextInputFocus(),
                                 trailingIcon = {
                                     IconButton(onClick = { searchExpanded = false; bookSearch = "" }) {
-                                        Icon(Icons.Default.Close, "إغلاق", tint = bento.textSecondary)
+                                        Icon(Icons.Default.Close, context.getString(R.string.s34), tint = bento.textSecondary)
                                     }
                                 }
                             )
@@ -425,7 +428,7 @@ fun BibleReaderScreen(
                         CompositionLocalProvider(LocalLayoutDirection provides gridDirection) {
                         if (pickerBooks.isEmpty()) {
                             Text(
-                                "لا نتائج مطابقة.",
+                                context.getString(R.string.s35),
                                 fontSize = 12.sp, color = bento.textSecondary,
                                 modifier = Modifier.padding(vertical = 8.dp)
                             )
@@ -568,10 +571,10 @@ fun BibleReaderScreen(
                             libraryIsSelecting = false
                             librarySelectedIds = emptySet()
                         }) {
-                            Text("تم (Done)", fontSize = 12.sp)
+                            Text(context.getString(R.string.s22), fontSize = 12.sp)
                         }
                         Text(
-                            text = "${librarySelectedIds.size} selected",
+                            text = context.getString(R.string.s23, librarySelectedIds.size),
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold,
                             color = bento.textPrimary,
@@ -582,7 +585,7 @@ fun BibleReaderScreen(
                             librarySelectedIds = if (libraryAllSelected) emptySet() else libraryAllIds
                         }) {
                             Text(
-                                if (libraryAllSelected) "إلغاء تحديد الكل" else "تحديد الكل (Select All)",
+                                if (libraryAllSelected) context.getString(R.string.s24) else context.getString(R.string.s25),
                                 fontSize = 12.sp
                             )
                         }
@@ -596,7 +599,7 @@ fun BibleReaderScreen(
                                     librarySelectedIds = emptySet()
                                 }
                             }) {
-                                Text("إضافة للعظة (Add)", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text(context.getString(R.string.s26), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     } else {
@@ -607,17 +610,17 @@ fun BibleReaderScreen(
                     // 2026-11-02 bugfix: arrows scroll the new chapter to verse 1
                     // (pickerJumpChapter = -1 sentinel; see LaunchedEffect above).
                     IconButton(onClick = { pickerJumpChapter = -1; onNextChapter() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Next chapter", tint = bento.textSecondary)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, context.getString(R.string.s37), tint = bento.textSecondary)
                     }
                     IconButton(onClick = { pickerJumpChapter = -1; onPrevChapter() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowForward, "Previous chapter", tint = bento.textSecondary)
+                        Icon(Icons.AutoMirrored.Filled.ArrowForward, context.getString(R.string.s38), tint = bento.textSecondary)
                     }
 
                     Spacer(modifier = Modifier.weight(1f))
                     // v1.9.5: Search + Recent grouped on the right as "find" actions
                     // (matches /remote page). Recent is now a labeled button, not icon-only.
                     TextButton(onClick = { showRecentsSheet = true }) {
-                        Text("Recent", color = bento.textSecondary, fontSize = 12.sp)
+                        Text(context.getString(R.string.s39), color = bento.textSecondary, fontSize = 12.sp)
                     }
                     IconButton(onClick = {
                         showSearchBar = !showSearchBar
@@ -636,7 +639,7 @@ fun BibleReaderScreen(
                         librarySelectedIds = emptySet()
                         libraryIsSelecting = true
                     }) {
-                        Icon(Icons.Filled.Check, "تحديد (Select)", tint = bento.textSecondary)
+                        Icon(Icons.Filled.Check, context.getString(R.string.s21), tint = bento.textSecondary)
                     }
                     // Batch-3: the ON AIR button and the display-settings
                     // gear moved to MainActivity's top bar (ON AIR replaces
@@ -651,8 +654,8 @@ fun BibleReaderScreen(
                 // is non-empty; an empty list merges directly).
                 if (showLibrarySendDialog) {
                     SendToSermonDialog(
-                        title = "إرسال الآيات المحددة للعظة",
-                        text = "القائمة الحالية تحتوي على آيات. هل تستبدلها بالآيات المحددة، أم تدمجها في أعلى القائمة الحالية؟",
+                        title = context.getString(R.string.s1),
+                        text = context.getString(R.string.s2),
                         onReplace = {
                             onSendVersesToSermon(librarySelectedVerses, false)
                             showLibrarySendDialog = false
@@ -676,7 +679,7 @@ fun BibleReaderScreen(
                     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
                     OutlinedTextField(
                         value = uiState.searchQuery, onValueChange = onSearchChanged,
-                        placeholder = { Text("بحث…", maxLines = 1) },
+                        placeholder = { Text(context.getString(R.string.s36), maxLines = 1) },
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)
                             .focusRequester(searchFocusRequester)
                             .trackTextInputFocus(),
@@ -713,7 +716,7 @@ fun BibleReaderScreen(
                                         onClearSearch()
                                         searchFocusRequester.requestFocus()
                                     }) {
-                                        Icon(Icons.Default.Close, "Clear search", tint = bento.textSecondary)
+                                        Icon(Icons.Default.Close, context.getString(R.string.s40), tint = bento.textSecondary)
                                     }
                                 }
                             }
@@ -780,7 +783,7 @@ fun BibleReaderScreen(
                                         recentsIsSelecting = false
                                         recentsSelectedIds = emptySet()
                                     }) {
-                                        Text("تم (Done)", fontSize = 12.sp)
+                                        Text(context.getString(R.string.s22), fontSize = 12.sp)
                                     }
                                     Text(
                                         text = "${recentsSelectedIds.size} selected",
@@ -794,7 +797,7 @@ fun BibleReaderScreen(
                                         recentsSelectedIds = if (recentsAllSelected) emptySet() else recentsAllIds
                                     }) {
                                         Text(
-                                            if (recentsAllSelected) "إلغاء تحديد الكل" else "تحديد الكل (Select All)",
+                                            if (recentsAllSelected) context.getString(R.string.s24) else context.getString(R.string.s25),
                                             fontSize = 12.sp
                                         )
                                     }
@@ -809,7 +812,7 @@ fun BibleReaderScreen(
                                                 showRecentsSheet = false
                                             }
                                         }) {
-                                            Text("إضافة للعظة (Add)", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                            Text(context.getString(R.string.s26), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                         }
                                     }
                                 }
@@ -817,15 +820,15 @@ fun BibleReaderScreen(
                             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                 // One-update item 3: per-section font gear.
                                 IconButton(onClick = { recentsFontDialog = true }) {
-                                    Icon(Icons.Filled.Settings, "حجم خط الآيات الأخيرة", tint = bento.textSecondary)
+                                    Icon(Icons.Filled.Settings, context.getString(R.string.s16), tint = bento.textSecondary)
                                 }
                                 if (uiState.recentVerses.isNotEmpty()) {
                                     IconButton(onClick = { showSendDialog = true }) {
-                                        Icon(Icons.Filled.Share, "إرسال للعظة (To Sermon)", tint = bento.textSecondary)
+                                        Icon(Icons.Filled.Share, context.getString(R.string.s20), tint = bento.textSecondary)
                                     }
                                 }
                                 Text(
-                                    text = "الآيات الأخيرة",
+                                    text = context.getString(R.string.s18),
                                     fontSize = 16.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = bento.textPrimary,
@@ -840,14 +843,14 @@ fun BibleReaderScreen(
                                         recentsSelectedIds = emptySet()
                                         recentsIsSelecting = true
                                     }) {
-                                        Icon(Icons.Filled.Check, "تحديد (Select)", tint = bento.textSecondary)
+                                        Icon(Icons.Filled.Check, context.getString(R.string.s21), tint = bento.textSecondary)
                                     }
                                 }
                                 // Item 10: user reset for the persisted recents
                                 // (stays open so the empty state confirms it).
                                 if (uiState.recentVerses.isNotEmpty()) {
                                     TextButton(onClick = { onClearRecents() }) {
-                                        Text("مسح (Clear)", fontSize = 12.sp)
+                                        Text(context.getString(R.string.s19), fontSize = 12.sp)
                                     }
                                 }
                             }
@@ -855,8 +858,8 @@ fun BibleReaderScreen(
                             // Item 12: Send recents to sermon (all).
                             if (showSendDialog) {
                                 SendToSermonDialog(
-                                    title = "إرسال الآيات الأخيرة للعظة",
-                                    text = "القائمة الحالية تحتوي على آيات. هل تستبدلها بالآيات الأخيرة، أم تدمجها في أعلى القائمة الحالية؟",
+                                    title = context.getString(R.string.s3),
+                                    text = context.getString(R.string.s4),
                                     onReplace = {
                                         onSendRecentsToSermon(false)
                                         showSendDialog = false
@@ -875,8 +878,8 @@ fun BibleReaderScreen(
                             // the app lands on the sermon list (nonce bump).
                             if (showSelectionSendDialog) {
                                 SendToSermonDialog(
-                                    title = "إرسال الآيات المحددة للعظة",
-                                    text = "القائمة الحالية تحتوي على آيات. هل تستبدلها بالآيات المحددة، أم تدمجها في أعلى القائمة الحالية؟",
+                                    title = context.getString(R.string.s1),
+                                    text = context.getString(R.string.s2),
                                     onReplace = {
                                         onSendVersesToSermon(recentsSelectedVerses, false)
                                         showSelectionSendDialog = false
@@ -897,7 +900,7 @@ fun BibleReaderScreen(
                             Spacer(modifier = Modifier.height(8.dp))
                             if (uiState.recentVerses.isEmpty()) {
                                 Text(
-                                    text = "لم تفتح أي آية بعد.",
+                                    text = context.getString(R.string.s27),
                                     fontSize = 13.sp,
                                     color = bento.textSecondary
                                 )
@@ -920,8 +923,8 @@ fun BibleReaderScreen(
                                                     onRemoveRecent(verse)
                                                     recentsScope.launch {
                                                         val result = recentsSnackbarHostState.showSnackbar(
-                                                            message = "تم حذف الآية من الآيات الأخيرة",
-                                                            actionLabel = "تراجع",
+                                                            message = context.getString(R.string.s689),
+                                                            actionLabel = context.getString(R.string.s690),
                                                             duration = SnackbarDuration.Long
                                                         )
                                                         if (result == SnackbarResult.ActionPerformed) {
@@ -948,7 +951,7 @@ fun BibleReaderScreen(
                                                 ) {
                                                     Icon(
                                                         imageVector = Icons.Filled.Delete,
-                                                        contentDescription = "حذف الآية (Remove verse)",
+                                                        contentDescription = context.getString(R.string.s42),
                                                         tint = MaterialTheme.colorScheme.onErrorContainer,
                                                         modifier = Modifier.padding(end = 20.dp)
                                                     )
@@ -1012,7 +1015,7 @@ fun BibleReaderScreen(
                         if (recentsFontDialog) {
                             AlertDialog(
                                 onDismissRequest = { recentsFontDialog = false },
-                                title = { Text("حجم خط الآيات الأخيرة", fontSize = 15.sp, fontWeight = FontWeight.Bold) },
+                                title = { Text(context.getString(R.string.s16), fontSize = 15.sp, fontWeight = FontWeight.Bold) },
                                 text = {
                                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                         val followUniversal = uiState.recentsFontSize == null
@@ -1024,7 +1027,7 @@ fun BibleReaderScreen(
                                         ) {
                                             RadioButton(selected = followUniversal, onClick = { onSetRecentsFontSize(null); recentsFontDialog = false })
                                             Spacer(modifier = Modifier.width(8.dp))
-                                            Text("اتبع العام (Follow universal: ${uiState.readerFontSize}sp)", fontSize = 13.sp)
+                                            Text(context.getString(R.string.s17, uiState.readerFontSize), fontSize = 13.sp)
                                         }
                                         listOf(12, 14, 16, 18, 20, 24).forEach { size ->
                                             val selected = uiState.recentsFontSize == size
@@ -1069,7 +1072,7 @@ fun BibleReaderScreen(
                             CircularProgressIndicator(color = bento.primary)
                             Spacer(modifier = Modifier.height(12.dp))
                             Text(
-                                "جاري تحميل الكتاب المقدس...",
+                                context.getString(R.string.s41),
                                 fontSize = 13.sp,
                                 color = bento.textSecondary
                             )
@@ -1167,23 +1170,23 @@ fun BibleReaderScreen(
     if (displayMenuExpanded) {
         AlertDialog(
             onDismissRequest = { displayMenuExpanded = false },
-            title = { Text("إعدادات العرض") },
+            title = { Text(context.getString(R.string.s8)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("حجم الخط (${uiState.readerFontSize}sp)")
+                    Text(context.getString(R.string.s9, uiState.readerFontSize))
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                         Button(onClick = onDecreaseFontSize) { Text("-") }
                         Text(uiState.readerFontSize.toString(), fontWeight = FontWeight.Bold)
                         Button(onClick = onIncreaseFontSize) { Text("+") }
                     }
                     HorizontalDivider()
-                    Text("المظهر")
+                    Text(context.getString(R.string.s10))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         AppThemeMode.values().forEach { mode ->
                             FilterChip(
                                 selected = uiState.appThemeMode == mode,
                                 onClick = { onSetAppThemeMode(mode) },
-                                label = { Text(mode.displayName) }
+                                label = { Text(context.getString(mode.labelRes)) }
                             )
                         }
                     }
@@ -1199,11 +1202,11 @@ fun BibleReaderScreen(
                     ) {
                         Icon(Icons.Filled.Keyboard, contentDescription = null)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("اختصارات لوحة المفاتيح (Keyboard shortcuts)")
+                        Text(context.getString(R.string.s14))
                     }
                 }
             },
-            confirmButton = { TextButton(onClick = { displayMenuExpanded = false }) { Text("تم") } }
+            confirmButton = { TextButton(onClick = { displayMenuExpanded = false }) { Text(context.getString(R.string.s15)) } }
         )
     }
 }
@@ -1241,17 +1244,18 @@ private fun SendToSermonDialog(
     onMerge: () -> Unit,
     onDismiss: () -> Unit
 ) {
+    val context = LocalContext.current
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = { Text(text) },
         confirmButton = {
-            TextButton(onClick = onReplace) { Text("استبدال (Replace)") }
+            TextButton(onClick = onReplace) { Text(context.getString(R.string.s5)) }
         },
         dismissButton = {
             Row {
-                TextButton(onClick = onMerge) { Text("دمج (Merge)") }
-                TextButton(onClick = onDismiss) { Text("إلغاء") }
+                TextButton(onClick = onMerge) { Text(context.getString(R.string.s6)) }
+                TextButton(onClick = onDismiss) { Text(context.getString(R.string.s7)) }
             }
         }
     )

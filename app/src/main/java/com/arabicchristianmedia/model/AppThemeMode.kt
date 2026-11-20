@@ -1,7 +1,10 @@
 package com.arabicchristianmedia.model
 
-enum class AppThemeMode(val displayName: String) {
-    SYSTEM("تلقائي (System)"),
-    LIGHT("فاتح (Light)"),
-    DARK("داكن (Dark)")
+import androidx.annotation.StringRes
+import com.arabicchristianmedia.R
+
+enum class AppThemeMode(@StringRes val labelRes: Int) {
+    SYSTEM(R.string.s11),
+    LIGHT(R.string.s12),
+    DARK(R.string.s13)
 }

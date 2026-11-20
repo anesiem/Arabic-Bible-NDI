@@ -4,8 +4,10 @@ import android.app.Application
 import android.content.Context
 import android.content.SharedPreferences
 import android.net.Uri
+import androidx.annotation.StringRes
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.arabicchristianmedia.R
 import com.arabicchristianmedia.data.BibleRepository
 import com.arabicchristianmedia.data.RecentRef
 import com.arabicchristianmedia.data.RecentStore
@@ -195,6 +197,12 @@ data class BibleNdiUiState(
 
 class BibleNdiViewModel(application: Application) : AndroidViewModel(application) {
 
+    // 1.9.25 (item 2, language mode): status/toast strings resolve through
+    // the app resources so they follow the interface language. AndroidViewModel
+    // holds the Application, so getApplication() is non-null by contract.
+    private fun str(@StringRes id: Int, vararg args: Any): String =
+        getApplication<Application>().getString(id, *args)
+
     companion object {
         /** Factory default for the Full Show tab (not a saved style). */
         fun defaultShowTemplate(): LowerThirdTemplate =
@@ -300,7 +308,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
                     isNativeNdiActive = false,
                     isNativeShowActive = false,
                     isLiveOnAir = false,
-                    statusMessage = "NDI Server Stopped"
+                    statusMessage = str(R.string.s652)
                 )
                 // 1.9.23 (item 10): broadcast stopped externally — the
                 // verse is off air, so the countdown is cancelled.
@@ -400,7 +408,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             activeIpAddress = info.ip,
             serverUrl = url,
             streamUrl = streamUrl,
-            statusMessage = "تم تعيين العنوان: ${info.ip}"
+            statusMessage = str(R.string.s653, info.ip)
         )
     }
 
@@ -423,7 +431,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
                 // empty with nothing in logcat to explain it.
                 android.util.Log.w("BibleNdiViewModel", "loadInitialData failed", e)
                 _uiState.value = _uiState.value.copy(
-                    statusMessage = "تعذر تحميل الكتاب المقدس: ${e.message}"
+                    statusMessage = str(R.string.s654, e.message)
                 )
             } finally {
                 _uiState.value = _uiState.value.copy(isLoadingBible = false)
@@ -485,7 +493,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             showWorkingDirty = templateRepo.isWorkingDirty(true),
             activeVerse = null,
             isLiveOnAir = false, // Start OFF AIR as per request 8
-            statusMessage = "Ready. Tap a verse to go LIVE."
+            statusMessage = str(R.string.s655)
         )
         loadPersistedNdiSpecs()
         loadThemePrefs()
@@ -533,8 +541,8 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
                 selectedChapter = resumedVerse?.chapter ?: initialChapter,
                 displayedVerses = resumedVerses,
                 statusMessage = if (resumedVerse != null && broadcastServer.isLive)
-                    "Broadcast auto-resumed after restart."
-                else "Ready. Tap a verse to go LIVE."
+                    str(R.string.s656)
+                else str(R.string.s655)
             )
         } else {
             broadcastServer.currentVerse = null
@@ -578,13 +586,13 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
                 streamUrl = streamUrl,
                 activeIpAddress = ip,
                 serverPort = port,
-                statusMessage = "Broadcast Server Active"
+                statusMessage = str(R.string.s657)
             )
         }
         val handleError: (String) -> Unit = { err ->
             _uiState.value = _uiState.value.copy(
                 isServerRunning = false,
-                statusMessage = "Server Error: $err"
+                statusMessage = str(R.string.s658, err)
             )
         }
         if (broadcastServer.isRunning) {
@@ -620,9 +628,9 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         val s = _uiState.value
         _uiState.value = s.copy(
             statusMessage = when {
-                s.ndiLowerEnabled && s.ndiFullShowEnabled -> "NDI Sources (Lower Third + Full Show) Started"
-                s.ndiLowerEnabled -> "NDI Source (Lower Third) Started"
-                else -> "NDI Source (Full Show) Started"
+                s.ndiLowerEnabled && s.ndiFullShowEnabled -> str(R.string.s659)
+                s.ndiLowerEnabled -> str(R.string.s660)
+                else -> str(R.string.s661)
             }
         )
     }
@@ -658,7 +666,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             isNativeNdiActive = false,
             isNativeShowActive = false,
             isLiveOnAir = if (httpRunning) _uiState.value.isLiveOnAir else false,
-            statusMessage = "All NDI Sources Stopped"
+            statusMessage = str(R.string.s662)
         )
         if (!httpRunning) {
             broadcastServer.setLiveState(false)
@@ -1139,7 +1147,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             isServerRunning = false,
             isNativeNdiActive = false,
             isNativeShowActive = false,
-            statusMessage = "NDI Server Stopped"
+            statusMessage = str(R.string.s652)
         )
     }
 
@@ -1358,7 +1366,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         _uiState.value = _uiState.value.copy(
             activeVerse = displayVerse,
             readerFocusVerseId = null,
-            statusMessage = "Selected: ${displayVerse.getFormattedArabicCitation()}",
+            statusMessage = str(R.string.s663, displayVerse.getFormattedArabicCitation()),
             isSearching = false,
             recentVerses = if (previousVerse1 != null && previousVerse1.id != displayVerse.id)
                 (listOf(previousVerse1) + _uiState.value.recentVerses.filterNot { it.id == previousVerse1.id }).take(20)
@@ -1418,7 +1426,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             activeVerse = displayVerse,
             isLiveOnAir = true,
             readerFocusVerseId = null,
-            statusMessage = "Cued & Live: ${displayVerse.getFormattedArabicCitation()}",
+            statusMessage = str(R.string.s664, displayVerse.getFormattedArabicCitation()),
             isSearching = false, // Close search view on click
             recentVerses = if (previousVerse2 != null && previousVerse2.id != displayVerse.id)
                 (listOf(previousVerse2) + _uiState.value.recentVerses.filterNot { it.id == previousVerse2.id }).take(20)
@@ -1485,14 +1493,14 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         // the toggle must match or the button appears broken).
         if (_uiState.value.activeVerse == null && !_uiState.value.isLiveOnAir) {
             _uiState.value = _uiState.value.copy(
-                statusMessage = "Cue a verse first (اختر آية أولاً)"
+                statusMessage = str(R.string.s665)
             )
             return
         }
         val newLive = !_uiState.value.isLiveOnAir
         _uiState.value = _uiState.value.copy(
             isLiveOnAir = newLive,
-            statusMessage = if (newLive) "LIVE ON AIR (NDI Streaming)" else "BROADCAST CLEARED (Transparent)"
+            statusMessage = if (newLive) str(R.string.s666) else str(R.string.s667)
         )
         broadcastServer.setLiveState(newLive)
         triggerAllFrames()
@@ -1509,7 +1517,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
     fun setOnAir(on: Boolean) {
         _uiState.value = _uiState.value.copy(
             isLiveOnAir = on,
-            statusMessage = if (on) "LIVE ON AIR (NDI Streaming)" else "BROADCAST CLEARED (Transparent)"
+            statusMessage = if (on) str(R.string.s666) else str(R.string.s667)
         )
         broadcastServer.setLiveState(on)
         triggerAllFrames()
@@ -1524,7 +1532,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         cancelAutoClearTimer()
         _uiState.value = _uiState.value.copy(
             isLiveOnAir = false,
-            statusMessage = "Lower Third Cleared (100% Transparent Screen)"
+            statusMessage = str(R.string.s668)
         )
         broadcastServer.setLiveState(false)
         triggerAllFrames()
@@ -1660,7 +1668,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             _uiState.value = _uiState.value.copy(
                 activeVerse = verse,
                 isLiveOnAir = true,
-                statusMessage = "Remote trigger: ${verse.getFormattedArabicCitation()}",
+                statusMessage = str(R.string.s669, verse.getFormattedArabicCitation()),
                 recentVerses = if (previousVerse3 != null && previousVerse3.id != verse.id)
                     (listOf(previousVerse3) + _uiState.value.recentVerses.filterNot { it.id == previousVerse3.id }).take(20)
                 else _uiState.value.recentVerses
@@ -1732,7 +1740,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         }
         if (groups.isEmpty()) {
             _uiState.value = _uiState.value.copy(
-                statusMessage = "لم يتم العثور على مرجع كتابي في النص المشارَك (No verse reference found in the shared text)"
+                statusMessage = str(R.string.s670)
             )
             return
         }
@@ -1749,7 +1757,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         _uiState.value = _uiState.value.copy(
             sermonPlaylist = merged,
             sermonListNonce = _uiState.value.sermonListNonce + 1,
-            statusMessage = "أُضيفت ${newEntries.size} آية إلى أعلى القائمة — اضغط أي آية لبثّها على الهواء"
+            statusMessage = str(R.string.s671, newEntries.size)
         )
         persistSermonWorking()
     }
@@ -1765,7 +1773,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         triggerVerseByReference(verse.bookId, verse.chapter, verse.verse, "both", source = "sermon")
         syncReaderToVerse(verse)
         _uiState.value = _uiState.value.copy(
-            statusMessage = "على الهواء: ${verse.getFormattedArabicCitation()}"
+            statusMessage = str(R.string.s672, verse.getFormattedArabicCitation())
         )
     }
 
@@ -2164,7 +2172,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             savedSermons = saved,
             currentSermonId = id,
             currentSermonName = trimmed,
-            statusMessage = "تم حفظ العظة «$trimmed» (${refs.size} آية)"
+            statusMessage = str(R.string.s673, trimmed, refs.size)
         )
     }
 
@@ -2188,7 +2196,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
                 sermonPlaylist = expanded,
                 currentSermonId = saved.id,
                 currentSermonName = saved.name,
-                statusMessage = "تم فتح العظة «${saved.name}» (${expanded.size} آية)"
+                statusMessage = str(R.string.s674, saved.name, expanded.size)
             )
             sermonStore.setCurrent(saved.id, saved.name)
         } else {
@@ -2208,7 +2216,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
             val merged = incoming + _uiState.value.sermonPlaylist.filterNot { it.key in incomingKeys }
             _uiState.value = _uiState.value.copy(
                 sermonPlaylist = merged,
-                statusMessage = "تم دمج العظة «${saved.name}» في أعلى القائمة"
+                statusMessage = str(R.string.s675, saved.name)
             )
         }
         persistSermonWorking()
@@ -2266,35 +2274,35 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         val store = FontStore(getApplication())
         val uri = try { Uri.parse(uriString) } catch (e: Exception) { null }
         if (uri == null) {
-            _uiState.value = _uiState.value.copy(statusMessage = "تعذر قراءة ملف الخط (Could not read the font file)")
+            _uiState.value = _uiState.value.copy(statusMessage = str(R.string.s676))
             return
         }
         val finalName = name.trim().ifEmpty {
             store.displayNameFor(uri)?.substringBeforeLast('.')?.trim().orEmpty()
         }
         if (finalName.isEmpty()) {
-            _uiState.value = _uiState.value.copy(statusMessage = "أدخل اسماً للخط (Enter a name for the font)")
+            _uiState.value = _uiState.value.copy(statusMessage = str(R.string.s677))
             return
         }
         if (com.arabicchristianmedia.model.BundledFonts.find(finalName) != null ||
             finalName == com.arabicchristianmedia.model.ArabicFonts.SYSTEM
         ) {
             _uiState.value = _uiState.value.copy(
-                statusMessage = "هذا الاسم محجوز لخط مدمج — اختر اسماً آخر (That name belongs to a bundled font — pick another)"
+                statusMessage = str(R.string.s678)
             )
             return
         }
         val imported = store.importFromUri(uri, finalName)
         if (imported == null) {
             _uiState.value = _uiState.value.copy(
-                statusMessage = "فشل استيراد الخط — تأكد أنه ملف TTF أو OTF وأن الاسم غير مكرر (Import failed: TTF/OTF only, name must be unique)"
+                statusMessage = str(R.string.s679)
             )
             return
         }
         refreshCustomFonts()
         broadcastServer.invalidateFittedLayoutCache()
         _uiState.value = _uiState.value.copy(
-            statusMessage = "تم استيراد الخط «${imported.name}» — متاح الآن في قوائم الخطوط"
+            statusMessage = str(R.string.s680, imported.name)
         )
     }
 
@@ -2307,7 +2315,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         refreshCustomFonts()
         broadcastServer.invalidateFittedLayoutCache()
         _uiState.value = _uiState.value.copy(
-            statusMessage = "تم حذف الخط «${font.name}»"
+            statusMessage = str(R.string.s681, font.name)
         )
     }
 
@@ -2377,8 +2385,8 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         _uiState.value = _uiState.value.copy(
             sermonPlaylist = updated,
             sermonListNonce = _uiState.value.sermonListNonce + 1,
-            statusMessage = if (merge) "Merged ${verses.size} verses into sermon"
-                           else "Sermon replaced with ${verses.size} verses"
+            statusMessage = if (merge) str(R.string.s682, verses.size)
+                           else str(R.string.s683, verses.size)
         )
         persistSermonWorking()
     }
@@ -3091,7 +3099,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
                 highlightedShowStyleId = originId,
                 editingShowStyleId = originId,
                 showWorkingDirty = false,
-                statusMessage = "تم تحديث النمط «${saved.name}»"
+                statusMessage = str(R.string.s684, saved.name)
             )
             templateRepo.setActiveShowTemplateId(originId)
             broadcastServer.updateShowTemplate(updated)
@@ -3103,7 +3111,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
                 highlightedLowerStyleId = originId,
                 editingLowerStyleId = originId,
                 lowerWorkingDirty = false,
-                statusMessage = "تم تحديث النمط «${saved.name}»"
+                statusMessage = str(R.string.s684, saved.name)
             )
             templateRepo.setActiveTemplateId(originId)
             broadcastServer.updateTemplate(updated)
@@ -3179,7 +3187,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         if (TemplateRepository.isFactoryStyleId(templateId)) {
             saveAsNewTemplate(current.name, imported.copy(isFullScreen = isFullScreen), isFullScreen)
             _uiState.value = _uiState.value.copy(
-                statusMessage = "تم حفظ الاستيراد كنسختك الخاصة من «${current.name}»"
+                statusMessage = str(R.string.s685, current.name)
             )
             return true
         }
@@ -3329,7 +3337,7 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         val newKeep = !_uiState.value.isKeepScreenOn
         _uiState.value = _uiState.value.copy(
             isKeepScreenOn = newKeep,
-            statusMessage = if (newKeep) "تم تفعيل إبقاء الشاشة مضاءة (Keep Screen Awake)" else "تم إيقاف إبقاء الشاشة مضاءة"
+            statusMessage = if (newKeep) str(R.string.s686) else str(R.string.s687)
         )
         persistUiPrefs()
     }

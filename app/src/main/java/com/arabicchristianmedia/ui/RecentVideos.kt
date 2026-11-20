@@ -32,6 +32,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.arabicchristianmedia.R
 import com.arabicchristianmedia.ui.theme.LocalBentoColors
 
 /**
@@ -102,7 +103,7 @@ fun RecentVideosRow(
     val bento = LocalBentoColors.current
     Column(modifier = modifier.fillMaxWidth()) {
         Text(
-            "فيديوهات أخيرة (Recent videos)",
+            context.getString(R.string.s63),
             fontSize = 11.sp,
             fontWeight = FontWeight.Bold,
             color = bento.textSecondary
@@ -146,7 +147,7 @@ fun RecentVideosRow(
                         ) {
                             Icon(
                                 Icons.Default.Close,
-                                contentDescription = "Remove",
+                                contentDescription = context.getString(R.string.s64),
                                 tint = bento.textSecondary,
                                 modifier = Modifier.size(14.dp)
                             )

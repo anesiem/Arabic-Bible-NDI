@@ -1,5 +1,6 @@
 package com.arabicchristianmedia
 
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.view.KeyEvent
@@ -87,6 +88,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.arabicchristianmedia.ui.AppLanguage
 import com.arabicchristianmedia.ui.BibleNdiViewModel
 import com.arabicchristianmedia.ui.BibleReaderScreen
 import com.arabicchristianmedia.ui.BroadcastControlScreen
@@ -134,6 +136,7 @@ private fun AutoClearRing(
     onTogglePause: () -> Unit,
     onStop: () -> Unit
 ) {
+    val context = LocalContext.current
     val bento = LocalBentoColors.current
     val warning = remainingSec <= 15
     val ringColor = when {
@@ -172,7 +175,7 @@ private fun AutoClearRing(
                 .clip(CircleShape)
                 .clickable { onStop() }
         ) {
-            Icon(Icons.Filled.Close, "Stop auto-clear", tint = bento.textSecondary, modifier = Modifier.size(16.dp))
+            Icon(Icons.Filled.Close, context.getString(R.string.s43), tint = bento.textSecondary, modifier = Modifier.size(16.dp))
         }
     }
 }
@@ -312,6 +315,14 @@ class MainActivity : ComponentActivity() {
     }
 
     @OptIn(ExperimentalMaterial3Api::class)
+    // 1.9.25 (item 2, language mode): wrap the Activity base context with
+    // the chosen interface language (with the Application wrap, this is
+    // what makes the choice stick on API < 33; on API 33+ the
+    // LocaleManager override agrees with it).
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(AppLanguage.wrap(newBase))
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -501,7 +512,7 @@ class MainActivity : ComponentActivity() {
                                             ) {
                                                 Icon(
                                                     imageVector = Icons.Filled.LiveTv,
-                                                    contentDescription = "إعدادات العرض (Display settings)",
+                                                    contentDescription = context.getString(R.string.s52),
                                                     tint = bento.onSecondary,
                                                     modifier = Modifier.size(22.dp)
                                                 )
@@ -527,7 +538,7 @@ class MainActivity : ComponentActivity() {
                                                 color = bento.primaryContainer
                                             ) {
                                                 Text(
-                                                    if (editorTab == 0) "السفلي · Lower" else "الكامل · Full",
+                                                    if (editorTab == 0) context.getString(R.string.s46) else context.getString(R.string.s47),
                                                     fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.onPrimaryContainer,
                                                     maxLines = 1,
                                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
@@ -548,9 +559,9 @@ class MainActivity : ComponentActivity() {
                                                 Surface(shape = RoundedCornerShape(10.dp), color = bento.primaryContainer, onClick = { editorShowModifiedMenu = true }) {
                                                     // Batch-4: ☰ icon indicates this is a menu button, not just a label.
                                                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)) {
-                                                        Text(if (dirty) "معدّل · $designName" else designName, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.onPrimaryContainer, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                                                        Text(if (dirty) context.getString(R.string.s48, designName) else designName, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = bento.onPrimaryContainer, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
                                                         Spacer(modifier = Modifier.width(4.dp))
-                                                        Icon(Icons.Filled.Menu, contentDescription = "قائمة (Menu)", tint = bento.onPrimaryContainer, modifier = Modifier.size(14.dp))
+                                                        Icon(Icons.Filled.Menu, contentDescription = context.getString(R.string.s49), tint = bento.onPrimaryContainer, modifier = Modifier.size(14.dp))
                                                     }
                                                 }
                                             }
@@ -560,9 +571,9 @@ class MainActivity : ComponentActivity() {
                                                 IconButton(onClick = {
                                                     context.getSharedPreferences("editor_ui_prefs", android.content.Context.MODE_PRIVATE).edit().putBoolean("show_how_it_works", true).apply()
                                                     editorTipsVisible = true
-                                                }) { Icon(Icons.Filled.Info, "كيفية الاستخدام", tint = bento.primary) }
+                                                }) { Icon(Icons.Filled.Info, context.getString(R.string.s50), tint = bento.primary) }
                                             }
-                                            IconButton(onClick = { viewModel.resetTemplate(editorTab == 1) }) { Icon(Icons.Filled.Refresh, "إعادة تعيين", tint = bento.primary) }
+                                            IconButton(onClick = { viewModel.resetTemplate(editorTab == 1) }) { Icon(Icons.Filled.Refresh, context.getString(R.string.s51), tint = bento.primary) }
                                         }
                                     }
 
@@ -602,7 +613,7 @@ class MainActivity : ComponentActivity() {
                                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
                                     ) {
                                         Text(
-                                            if (topBarIsOnAir) "ON AIR" else "OFF AIR",
+                                            if (topBarIsOnAir) context.getString(R.string.s53) else context.getString(R.string.s54),
                                             fontSize = 12.sp, fontWeight = FontWeight.Bold
                                         )
                                     }
@@ -655,10 +666,10 @@ class MainActivity : ComponentActivity() {
                                     icon = {
                                         Icon(
                                             imageVector = if (selectedTab == 0) Icons.AutoMirrored.Filled.MenuBook else Icons.AutoMirrored.Outlined.MenuBook,
-                                            contentDescription = "Bible & Live Broadcast"
+                                            contentDescription = context.getString(R.string.s56)
                                         )
                                     },
-                                    label = { Text("Library (الآيات)", fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
+                                    label = { Text(context.getString(R.string.s55), fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
                                     colors = NavigationBarItemDefaults.colors(
                                         selectedIconColor = bento.onPrimaryContainer,
                                         selectedTextColor = bento.primary,
@@ -675,10 +686,10 @@ class MainActivity : ComponentActivity() {
                                     icon = {
                                         Icon(
                                             imageVector = if (selectedTab == 1) Icons.Filled.Palette else Icons.Outlined.Palette,
-                                            contentDescription = "Lower Third Template Editor"
+                                            contentDescription = context.getString(R.string.s58)
                                         )
                                     },
-                                    label = { Text("Editor (القوالب)", fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
+                                    label = { Text(context.getString(R.string.s57), fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
                                     colors = NavigationBarItemDefaults.colors(
                                         selectedIconColor = bento.onPrimaryContainer,
                                         selectedTextColor = bento.primary,
@@ -695,10 +706,10 @@ class MainActivity : ComponentActivity() {
                                     icon = {
                                         Icon(
                                             imageVector = if (selectedTab == 2) Icons.AutoMirrored.Filled.PlaylistPlay else Icons.AutoMirrored.Outlined.PlaylistPlay,
-                                            contentDescription = "Sermon list (verses shared from notes)"
+                                            contentDescription = context.getString(R.string.s60)
                                         )
                                     },
-                                    label = { Text("Sermon (القائمة)", fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
+                                    label = { Text(context.getString(R.string.s59), fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
                                     colors = NavigationBarItemDefaults.colors(
                                         selectedIconColor = bento.onPrimaryContainer,
                                         selectedTextColor = bento.primary,
@@ -715,10 +726,10 @@ class MainActivity : ComponentActivity() {
                                     icon = {
                                         Icon(
                                             imageVector = if (selectedTab == 3) Icons.Filled.Settings else Icons.Outlined.Settings,
-                                            contentDescription = "NDI & Broadcast Settings"
+                                            contentDescription = context.getString(R.string.s62)
                                         )
                                     },
-                                    label = { Text("الإعدادات (Setup)", fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
+                                    label = { Text(context.getString(R.string.s61), fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
                                     colors = NavigationBarItemDefaults.colors(
                                         selectedIconColor = bento.onPrimaryContainer,
                                         selectedTextColor = bento.primary,
@@ -874,7 +885,14 @@ class MainActivity : ComponentActivity() {
                                 onSetSectionExpanded = { tabId, sectionId, expanded -> viewModel.setSectionExpanded(tabId, sectionId, expanded) },
                                 // 1.9.23 (item 10): auto-clear settings.
                                 onSetAutoClearEnabled = { viewModel.setAutoClearEnabled(it) },
-                                onSetAutoClearDurationMinutes = { viewModel.setAutoClearDurationMinutes(it) }
+                                onSetAutoClearDurationMinutes = { viewModel.setAutoClearDurationMinutes(it) },
+                                // 1.9.25 (item 2, language mode): persist
+                                // the choice, then recreate so every
+                                // string + the layout direction re-resolve.
+                                onSetAppLanguage = { choice ->
+                                    AppLanguage.applyChoice(this, choice)
+                                    recreate()
+                                }
                             )
                             2 -> SermonListScreen(
                                 uiState = uiState,

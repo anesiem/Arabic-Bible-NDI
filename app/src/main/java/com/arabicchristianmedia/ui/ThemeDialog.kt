@@ -36,9 +36,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.arabicchristianmedia.R
 import com.arabicchristianmedia.model.BibleBookGroups
 import com.arabicchristianmedia.model.ColorTheme
 import com.arabicchristianmedia.model.ColorThemes
@@ -81,6 +83,7 @@ fun ThemeDialog(
     onDeleteTheme: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
+    val context = LocalContext.current
     val bento = LocalBentoColors.current
     // Re-seeds when the selection changes (select / save) — unsaved
     // customize edits are discarded on theme switch, by design.
@@ -88,18 +91,18 @@ fun ThemeDialog(
     val dirty = working != selectedTheme
     val selectedIsBuiltIn = ColorThemes.isBuiltIn(selectedTheme.id)
     var showNameField by remember { mutableStateOf(false) }
-    var newName by remember { mutableStateOf("My theme") }
+    var newName by remember { mutableStateOf(context.getString(R.string.s638)) }
     var themeToDelete by remember { mutableStateOf<ColorTheme?>(null) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("مظهر التطبيق (App theme)", fontSize = 15.sp, fontWeight = FontWeight.Bold) },
+        title = { Text(context.getString(R.string.s485), fontSize = 15.sp, fontWeight = FontWeight.Bold) },
         text = {
             Column(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Text("المظاهر (Themes)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
+                Text(context.getString(R.string.s605), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
                 (ColorThemes.BUILT_INS + customThemes).forEach { theme ->
                     ThemeRow(
                         theme = theme,
@@ -110,10 +113,10 @@ fun ThemeDialog(
                 }
                 Spacer(Modifier.height(8.dp))
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("تخصيص (Customize)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
+                    Text(context.getString(R.string.s615), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = bento.textSecondary)
                     if (dirty) {
                         Text(
-                            "تم التعديل (Modified)",
+                            context.getString(R.string.s616),
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
                             color = bento.primary
@@ -121,36 +124,36 @@ fun ThemeDialog(
                     }
                 }
                 // Item 11: full color picker for bands (was preset pairs).
-                Text("الوضع الداكن — لون الصف أ (Dark band A)", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = bento.textPrimary)
+                Text(context.getString(R.string.s617), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = bento.textPrimary)
                 ColorGradePickerRow(
-                    label = "Band A",
+                    label = context.getString(R.string.s629),
                     selectedHex = working.dark.bandA.toArgbHex(),
                     onColorSelected = { hex -> working = working.copy(dark = working.dark.copy(bandA = hex.hexToArgbLong())) },
                     recentColors = emptyList(),
                     onRemoveRecentColor = {},
                     onAddRecentColor = {}
                 )
-                Text("الوضع الداكن — لون الصف ب (Dark band B)", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = bento.textPrimary)
+                Text(context.getString(R.string.s618), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = bento.textPrimary)
                 ColorGradePickerRow(
-                    label = "Band B",
+                    label = context.getString(R.string.s630),
                     selectedHex = working.dark.bandB.toArgbHex(),
                     onColorSelected = { hex -> working = working.copy(dark = working.dark.copy(bandB = hex.hexToArgbLong())) },
                     recentColors = emptyList(),
                     onRemoveRecentColor = {},
                     onAddRecentColor = {}
                 )
-                Text("الوضع الفاتح — لون الصف أ (Light band A)", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = bento.textPrimary)
+                Text(context.getString(R.string.s619), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = bento.textPrimary)
                 ColorGradePickerRow(
-                    label = "Band A",
+                    label = context.getString(R.string.s629),
                     selectedHex = working.light.bandA.toArgbHex(),
                     onColorSelected = { hex -> working = working.copy(light = working.light.copy(bandA = hex.hexToArgbLong())) },
                     recentColors = emptyList(),
                     onRemoveRecentColor = {},
                     onAddRecentColor = {}
                 )
-                Text("الوضع الفاتح — لون الصف ب (Light band B)", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = bento.textPrimary)
+                Text(context.getString(R.string.s620), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = bento.textPrimary)
                 ColorGradePickerRow(
-                    label = "Band B",
+                    label = context.getString(R.string.s630),
                     selectedHex = working.light.bandB.toArgbHex(),
                     onColorSelected = { hex -> working = working.copy(light = working.light.copy(bandB = hex.hexToArgbLong())) },
                     recentColors = emptyList(),
@@ -158,18 +161,18 @@ fun ThemeDialog(
                     onAddRecentColor = {}
                 )
                 // Item 11: full color picker for recents (was preset swatches).
-                Text("الوضع الداكن — لون الآيات الأخيرة (Dark recents)", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = bento.textPrimary)
+                Text(context.getString(R.string.s621), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = bento.textPrimary)
                 ColorGradePickerRow(
-                    label = "Recents",
+                    label = context.getString(R.string.s631),
                     selectedHex = working.dark.recents.toArgbHex(),
                     onColorSelected = { hex -> working = working.copy(dark = working.dark.copy(recents = hex.hexToArgbLong())) },
                     recentColors = emptyList(),
                     onRemoveRecentColor = {},
                     onAddRecentColor = {}
                 )
-                Text("الوضع الفاتح — لون الآيات الأخيرة (Light recents)", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = bento.textPrimary)
+                Text(context.getString(R.string.s622), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = bento.textPrimary)
                 ColorGradePickerRow(
-                    label = "Recents",
+                    label = context.getString(R.string.s631),
                     selectedHex = working.light.recents.toArgbHex(),
                     onColorSelected = { hex -> working = working.copy(light = working.light.copy(recents = hex.hexToArgbLong())) },
                     recentColors = emptyList(),
@@ -177,18 +180,18 @@ fun ThemeDialog(
                     onAddRecentColor = {}
                 )
                 // Item 11: sermon tint (NEW — was not customizable).
-                Text("الوضع الداكن — لون آيات العظة (Dark sermon tint)", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = bento.textPrimary)
+                Text(context.getString(R.string.s623), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = bento.textPrimary)
                 ColorGradePickerRow(
-                    label = "Sermon tint",
+                    label = context.getString(R.string.s632),
                     selectedHex = working.dark.sermonTint.toArgbHex(),
                     onColorSelected = { hex -> working = working.copy(dark = working.dark.copy(sermonTint = hex.hexToArgbLong())) },
                     recentColors = emptyList(),
                     onRemoveRecentColor = {},
                     onAddRecentColor = {}
                 )
-                Text("الوضع الفاتح — لون آيات العظة (Light sermon tint)", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = bento.textPrimary)
+                Text(context.getString(R.string.s624), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = bento.textPrimary)
                 ColorGradePickerRow(
-                    label = "Sermon tint",
+                    label = context.getString(R.string.s632),
                     selectedHex = working.light.sermonTint.toArgbHex(),
                     onColorSelected = { hex -> working = working.copy(light = working.light.copy(sermonTint = hex.hexToArgbLong())) },
                     recentColors = emptyList(),
@@ -196,18 +199,18 @@ fun ThemeDialog(
                     onAddRecentColor = {}
                 )
                 // Item 11: live color (NEW — was not customizable).
-                Text("الوضع الداكن — لون البث المباشر (Dark live)", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = bento.textPrimary)
+                Text(context.getString(R.string.s625), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = bento.textPrimary)
                 ColorGradePickerRow(
-                    label = "Live",
+                    label = context.getString(R.string.s633),
                     selectedHex = working.dark.liveHighlight.toArgbHex(),
                     onColorSelected = { hex -> working = working.copy(dark = working.dark.copy(liveHighlight = hex.hexToArgbLong())) },
                     recentColors = emptyList(),
                     onRemoveRecentColor = {},
                     onAddRecentColor = {}
                 )
-                Text("الوضع الفاتح — لون البث المباشر (Light live)", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = bento.textPrimary)
+                Text(context.getString(R.string.s626), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = bento.textPrimary)
                 ColorGradePickerRow(
-                    label = "Live",
+                    label = context.getString(R.string.s633),
                     selectedHex = working.light.liveHighlight.toArgbHex(),
                     onColorSelected = { hex -> working = working.copy(light = working.light.copy(liveHighlight = hex.hexToArgbLong())) },
                     recentColors = emptyList(),
@@ -216,7 +219,7 @@ fun ThemeDialog(
                 )
                 // One-update item 21: the 10 Bible-study group colors are
                 // theme variables — fully user-controllable per mode.
-                Text("الوضع الداكن — ألوان مجموعات الأسفار (Dark book groups)", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = bento.textPrimary)
+                Text(context.getString(R.string.s627), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = bento.textPrimary)
                 BibleBookGroups.ALL.forEach { group ->
                     GroupColorRow(
                         groupName = group.arabicName,
@@ -225,7 +228,7 @@ fun ThemeDialog(
                         onPick = { argb -> working = working.copy(dark = working.dark.withGroupColor(group.id, argb)) }
                     )
                 }
-                Text("الوضع الفاتح — ألوان مجموعات الأسفار (Light book groups)", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = bento.textPrimary)
+                Text(context.getString(R.string.s628), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = bento.textPrimary)
                 BibleBookGroups.ALL.forEach { group ->
                     GroupColorRow(
                         groupName = group.arabicName,
@@ -238,25 +241,25 @@ fun ThemeDialog(
                     Spacer(Modifier.height(8.dp))
                     if (!selectedIsBuiltIn) {
                         TextButton(onClick = { onUpdateTheme(working) }) {
-                            Text("تحديث المظهر (Update theme)", fontSize = 13.sp)
+                            Text(context.getString(R.string.s634), fontSize = 13.sp)
                         }
                     }
                     if (!showNameField) {
                         TextButton(onClick = { showNameField = true }) {
-                            Text("حفظ كمظهر جديد (Save as new)", fontSize = 13.sp)
+                            Text(context.getString(R.string.s635), fontSize = 13.sp)
                         }
                     } else {
                         OutlinedTextField(
                             value = newName,
                             onValueChange = { newName = it },
-                            label = { Text("اسم المظهر (Theme name)", fontSize = 11.sp) },
+                            label = { Text(context.getString(R.string.s636), fontSize = 11.sp) },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(8.dp)
                         )
                         TextButton(
                             onClick = {
-                                val name = newName.ifBlank { "My theme" }
+                                val name = newName.ifBlank { context.getString(R.string.s638) }
                                 onSaveNewTheme(
                                     working.copy(
                                         id = "custom_" + System.currentTimeMillis(),
@@ -264,32 +267,32 @@ fun ThemeDialog(
                                     )
                                 )
                                 showNameField = false
-                                newName = "My theme"
+                                newName = context.getString(R.string.s638)
                             }
                         ) {
-                            Text("حفظ (Save)", fontSize = 13.sp)
+                            Text(context.getString(R.string.s637), fontSize = 13.sp)
                         }
                     }
                 }
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text("إغلاق (Close)") }
+            TextButton(onClick = onDismiss) { Text(context.getString(R.string.s376)) }
         }
     )
     themeToDelete?.let { theme ->
         AlertDialog(
             onDismissRequest = { themeToDelete = null },
-            title = { Text("حذف المظهر (Delete theme)", fontSize = 15.sp, fontWeight = FontWeight.Bold) },
+            title = { Text(context.getString(R.string.s601), fontSize = 15.sp, fontWeight = FontWeight.Bold) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
-                        "سيتم حذف المظهر \"${theme.name}\" نهائياً. (Theme \"${theme.name}\" will be permanently deleted.)",
+                        context.getString(R.string.s602, theme.displayName(context)),
                         fontSize = 13.sp
                     )
                     if (theme.id == selectedTheme.id) {
                         Text(
-                            "المظهر الحالي سيعود إلى Classic. (The current theme will fall back to Classic.)",
+                            context.getString(R.string.s603),
                             fontSize = 13.sp
                         )
                     }
@@ -306,10 +309,10 @@ fun ThemeDialog(
                         if (working.id == theme.id) working = ColorThemes.CLASSIC
                         themeToDelete = null
                     }
-                ) { Text("حذف (Delete)") }
+                ) { Text(context.getString(R.string.s79)) }
             },
             dismissButton = {
-                TextButton(onClick = { themeToDelete = null }) { Text("إلغاء (Cancel)") }
+                TextButton(onClick = { themeToDelete = null }) { Text(context.getString(R.string.s604)) }
             }
         )
     }
@@ -329,7 +332,7 @@ private fun ThemeRow(theme: ColorTheme, selected: Boolean, onClick: () -> Unit, 
             Box(Modifier.size(22.dp).background(Color(theme.light.bandB), RoundedCornerShape(6.dp)))
             Box(Modifier.size(22.dp).background(Color(theme.light.recents), RoundedCornerShape(6.dp)))
         }
-        Text(theme.name, fontSize = 13.sp, color = bento.textPrimary, modifier = Modifier.weight(1f))
+        Text(theme.displayName(context), fontSize = 13.sp, color = bento.textPrimary, modifier = Modifier.weight(1f))
         if (selected) Icon(Icons.Filled.Check, null, tint = bento.primary)
     }
 }

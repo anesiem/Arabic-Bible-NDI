@@ -1,5 +1,8 @@
 package com.arabicchristianmedia.model
 
+import android.content.Context
+import androidx.annotation.StringRes
+import com.arabicchristianmedia.R
 import org.json.JSONObject
 
 /**
@@ -109,9 +112,19 @@ data class ColorTheme(
     val id: String,
     val name: String,
     val dark: ColorThemeTokens,
-    val light: ColorThemeTokens
+    val light: ColorThemeTokens,
+    // 1.9.25 (item 2, language mode): built-in themes resolve their display
+    // name through resources; custom themes (user-named, incl. migrated)
+    // keep nameRes null and display `name` as-is. Not serialized: toJson /
+    // fromJson only carry id/name/tokens, so saved custom themes are
+    // unaffected.
+    @StringRes val nameRes: Int? = null
 ) {
     fun tokens(isDark: Boolean): ColorThemeTokens = if (isDark) dark else light
+
+    /** Display name in the interface language. */
+    fun displayName(context: Context): String =
+        nameRes?.let { context.getString(it) } ?: name
 }
 
 /** Button text on a primary fill: whichever of white / Classic dark-purple reads better. */
@@ -142,6 +155,7 @@ object ColorThemes {
     val CLASSIC = ColorTheme(
         id = "classic",
         name = "Classic",
+        nameRes = R.string.s606,
         dark = ColorThemeTokens(
             bg = 0xFF141218, card = 0xFF1D1B20, surfaceContainer = 0xFF2B2930,
             surfaceVariant = 0xFF4A4458, border = 0xFF49454F, borderSubtle = 0xFF36343B,
@@ -186,6 +200,7 @@ object ColorThemes {
     val CLEAR = ColorTheme(
         id = "clear",
         name = "Clear",
+        nameRes = R.string.s607,
         dark = ColorThemeTokens(
             bg = 0xFF1A1712, card = 0xFF26221C, surfaceContainer = 0xFF2E2820,
             surfaceVariant = 0xFF4A3F2A, border = 0xFF57503F, borderSubtle = 0xFF3A332A,
@@ -231,6 +246,7 @@ object ColorThemes {
     val PULSE = ColorTheme(
         id = "pulse",
         name = "Pulse",
+        nameRes = R.string.s608,
         dark = ColorThemeTokens(
             bg = 0xFF0F0A1E, card = 0xFF1E1533, surfaceContainer = 0xFF271B40,
             surfaceVariant = 0xFF3D2A5E, border = 0xFF4A3A6B, borderSubtle = 0xFF2E2347,
@@ -274,6 +290,7 @@ object ColorThemes {
     val FRESH = ColorTheme(
         id = "fresh",
         name = "Fresh",
+        nameRes = R.string.s609,
         dark = ColorThemeTokens(
             bg = 0xFF0C1A17, card = 0xFF142A25, surfaceContainer = 0xFF1C332C,
             surfaceVariant = 0xFF2A4A3E, border = 0xFF3D5A4E, borderSubtle = 0xFF24382F,
@@ -317,6 +334,7 @@ object ColorThemes {
     val GENTLE = ColorTheme(
         id = "gentle",
         name = "Gentle",
+        nameRes = R.string.s610,
         dark = ColorThemeTokens(
             bg = 0xFF1C1917, card = 0xFF292524, surfaceContainer = 0xFF322C26,
             surfaceVariant = 0xFF4A3F31, border = 0xFF57503F, borderSubtle = 0xFF3A332B,
@@ -361,6 +379,7 @@ object ColorThemes {
     val BENTO_BLUE = ColorTheme(
         id = "bento_blue",
         name = "Bento Blue",
+        nameRes = R.string.s611,
         dark = ColorThemeTokens(
             bg = 0xFF101418, card = 0xFF1A2027, surfaceContainer = 0xFF222B34,
             surfaceVariant = 0xFF2E3947, border = 0xFF3A4552, borderSubtle = 0xFF28303A,
@@ -404,6 +423,7 @@ object ColorThemes {
     val DESERT_DAWN = ColorTheme(
         id = "desert_dawn",
         name = "Desert Dawn",
+        nameRes = R.string.s612,
         dark = ColorThemeTokens(
             bg = 0xFF1C1712, card = 0xFF262019, surfaceContainer = 0xFF2E2820,
             surfaceVariant = 0xFF453A2A, border = 0xFF57493A, borderSubtle = 0xFF38302A,
@@ -446,6 +466,7 @@ object ColorThemes {
     val MIDNIGHT = ColorTheme(
         id = "midnight",
         name = "Midnight",
+        nameRes = R.string.s613,
         dark = ColorThemeTokens(
             // 1.9.23 (item 8): tuned to the Setup mockup shades.
             bg = 0xFF0B1220, card = 0xFF111C30, surfaceContainer = 0xFF111A2E,

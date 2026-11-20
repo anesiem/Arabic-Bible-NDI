@@ -1,5 +1,6 @@
 package com.arabicchristianmedia.ui
 
+import android.content.Context
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -75,6 +76,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import com.arabicchristianmedia.R
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -239,7 +241,7 @@ fun SermonListScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = uiState.currentSermonName ?: "قائمة الخدمة (Sermon list)",
+                    text = uiState.currentSermonName ?: context.getString(R.string.s347),
                     fontSize = 17.sp,
                     fontWeight = FontWeight.Bold,
                     color = bento.textPrimary,
@@ -273,14 +275,14 @@ fun SermonListScreen(
                 ) {
                     Icon(
                         imageVector = Icons.Filled.Save,
-                        contentDescription = "حفظ القائمة (Save sermon)",
+                        contentDescription = context.getString(R.string.s352),
                         tint = if (playlist.isNotEmpty()) bento.primary else bento.textSecondary
                     )
                 }
                 IconButton(onClick = { showOpenSheet = true }) {
                     Icon(
                         imageVector = Icons.Filled.FolderOpen,
-                        contentDescription = "فتح عظة محفوظة (Open saved sermon)",
+                        contentDescription = context.getString(R.string.s353),
                         tint = bento.primary
                     )
                 }
@@ -288,7 +290,7 @@ fun SermonListScreen(
                     IconButton(onClick = { showClearConfirm = true }) {
                         Icon(
                             imageVector = Icons.Filled.Delete,
-                            contentDescription = "مسح كل القائمة (Clear all)",
+                            contentDescription = context.getString(R.string.s354),
                             tint = bento.textSecondary
                         )
                     }
@@ -297,7 +299,7 @@ fun SermonListScreen(
                     IconButton(onClick = { showHeaderMenu = true }) {
                         Icon(
                             imageVector = Icons.Filled.MoreVert,
-                            contentDescription = "المزيد (More)",
+                            contentDescription = context.getString(R.string.s883),
                             tint = bento.textSecondary
                         )
                     }
@@ -306,7 +308,7 @@ fun SermonListScreen(
                         onDismissRequest = { showHeaderMenu = false }
                     ) {
                         DropdownMenuItem(
-                            text = { Text("مشاركة (Share)") },
+                            text = { Text(context.getString(R.string.s356)) },
                             onClick = {
                                 showHeaderMenu = false
                                 val text = playlist.joinToString("\n") { entry ->
@@ -316,23 +318,23 @@ fun SermonListScreen(
                                     type = "text/plain"
                                     putExtra(android.content.Intent.EXTRA_TEXT, text)
                                 }
-                                context.startActivity(android.content.Intent.createChooser(intent, "مشاركة العظة (Share sermon)"))
+                                context.startActivity(android.content.Intent.createChooser(intent, context.getString(R.string.s355)))
                             },
                             leadingIcon = { Icon(Icons.Filled.Share, contentDescription = null) },
                             enabled = playlist.isNotEmpty()
                         )
                         DropdownMenuItem(
-                            text = { Text("حجم خط آيات العظة") },
+                            text = { Text(context.getString(R.string.s330)) },
                             onClick = { showHeaderMenu = false; sermonFontDialog = true },
                             leadingIcon = { Icon(Icons.Filled.Settings, contentDescription = null) }
                         )
                         DropdownMenuItem(
-                            text = { Text("تلميحات (Hints)") },
+                            text = { Text(context.getString(R.string.s351)) },
                             onClick = { showHeaderMenu = false; showInfoDialog = true },
                             leadingIcon = { Icon(Icons.Filled.Info, contentDescription = null) }
                         )
                         DropdownMenuItem(
-                            text = { Text("تراجع (Undo)") },
+                            text = { Text(context.getString(R.string.s350)) },
                             onClick = { showHeaderMenu = false; onUndo() },
                             leadingIcon = { Icon(Icons.AutoMirrored.Filled.Undo, contentDescription = null) },
                             enabled = uiState.canUndoDelete
@@ -349,7 +351,7 @@ fun SermonListScreen(
                 SingleChoiceSegmentedButtonRow(
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    val options = listOf("الأصل", "حسب السفر", "OT/NT")
+                    val options = listOf(context.getString(R.string.s357), context.getString(R.string.s358), context.getString(R.string.s359))
                     options.forEachIndexed { index, label ->
                         SegmentedButton(
                             selected = groupingMode == index,
@@ -390,7 +392,7 @@ fun SermonListScreen(
                                         ) {
                                             Icon(
                                                 imageVector = if (allCollapsed) Icons.Filled.KeyboardArrowDown else Icons.Filled.KeyboardArrowUp,
-                                                contentDescription = if (allCollapsed) "Expand all" else "Collapse all",
+                                                contentDescription = if (allCollapsed) context.getString(R.string.s360) else context.getString(R.string.s361),
                                                 modifier = Modifier.size(16.dp)
                                             )
                                         }
@@ -417,7 +419,7 @@ fun SermonListScreen(
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
-                        text = "شارك ملاحظة من Google Keep أو من تطبيق الكتاب المقدس إلى «Bible NDI» — ستظهر مراجعها هنا مجمّعة بالألوان، واضغط أي آية لبثّها. أو افتح عظة محفوظة من أيقونة المجلد بالأعلى.",
+                        text = context.getString(R.string.s362),
                         fontSize = 14.sp,
                         color = bento.textSecondary,
                         textAlign = TextAlign.Center,
@@ -430,7 +432,7 @@ fun SermonListScreen(
                 // computed on the verse sequence in final display order.
                 // (bookOrder and otBookIds are defined at the top for the 1.9.3 collapse/expand arrows.)
                 val displayItems = remember(playlist, groupingMode, collapsedHeaders) {
-                    buildSermonDisplayItems(playlist, groupingMode, collapsedHeaders, bookOrder, otBookIds)
+                    buildSermonDisplayItems(context, playlist, groupingMode, collapsedHeaders, bookOrder, otBookIds)
                 }
                 // Share-group-local move constraints (ViewModel contract):
                 // position of each entry inside its own share-group.
@@ -473,8 +475,8 @@ fun SermonListScreen(
                     onRemove(entry)
                     scope.launch {
                         val result = snackbarHostState.showSnackbar(
-                            message = "تم حذف الآية من القائمة",
-                            actionLabel = "تراجع",
+                            message = context.getString(R.string.s688),
+                            actionLabel = context.getString(R.string.s690),
                             duration = SnackbarDuration.Long
                         )
                         if (result == SnackbarResult.ActionPerformed) {
@@ -586,7 +588,7 @@ fun SermonListScreen(
                         ) {
                             Icon(
                                 Icons.Filled.ArrowUpward,
-                                contentDescription = "العودة للآية المباشرة (Jump to live)"
+                                contentDescription = context.getString(R.string.s363)
                             )
                         }
                     }
@@ -604,22 +606,22 @@ fun SermonListScreen(
         if (showInfoDialog) {
             AlertDialog(
                 onDismissRequest = { showInfoDialog = false },
-                title = { Text("تلميحات قائمة الخدمة") },
+                title = { Text(context.getString(R.string.s323)) },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("• اضغط أي آية لبثّها مباشرة.", fontSize = 13.sp, color = bento.textPrimary)
-                        Text("• اسحب الآية لليسار لحذفها (مع تراجع).", fontSize = 13.sp, color = bento.textPrimary)
-                        Text("• أسهم ⌃ ⌄ تنقل الآية داخل مجموعتها.", fontSize = 13.sp, color = bento.textPrimary)
+                        Text(context.getString(R.string.s324), fontSize = 13.sp, color = bento.textPrimary)
+                        Text(context.getString(R.string.s325), fontSize = 13.sp, color = bento.textPrimary)
+                        Text(context.getString(R.string.s326), fontSize = 13.sp, color = bento.textPrimary)
                         Text(
-                            "• «الأصل» يعرض ترتيبك اليدوي صفوفاً مضغوطة. «حسب السفر» و«OT/NT» يجمّعان الآيات تحت عناوين لاصقة قابلة للطي مرتبة بسفر/إصحاح/آية — والتبديل بينها لا يمس ترتيبك الأصلي.",
+                            context.getString(R.string.s327),
                             fontSize = 13.sp,
                             color = bento.textPrimary
                         )
-                        Text("• لون الصف يتبدل مع تغيّر الإصحاح لتعرف أنك انتقلت لمنطقة جديدة.", fontSize = 13.sp, color = bento.textPrimary)
+                        Text(context.getString(R.string.s328), fontSize = 13.sp, color = bento.textPrimary)
                     }
                 },
                 confirmButton = {
-                    TextButton(onClick = { showInfoDialog = false }) { Text("فهمت") }
+                    TextButton(onClick = { showInfoDialog = false }) { Text(context.getString(R.string.s329)) }
                 }
             )
         }
@@ -629,7 +631,7 @@ fun SermonListScreen(
         if (sermonFontDialog) {
             AlertDialog(
                 onDismissRequest = { sermonFontDialog = false },
-                title = { Text("حجم خط آيات العظة", fontSize = 15.sp, fontWeight = FontWeight.Bold) },
+                title = { Text(context.getString(R.string.s330), fontSize = 15.sp, fontWeight = FontWeight.Bold) },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         val followUniversal = uiState.sermonFontSize == null
@@ -641,7 +643,7 @@ fun SermonListScreen(
                         ) {
                             RadioButton(selected = followUniversal, onClick = { onSetSermonFontSize(null); sermonFontDialog = false })
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("اتبع العام (Follow universal: ${uiState.readerFontSize}sp)", fontSize = 13.sp)
+                            Text(context.getString(R.string.s17, uiState.readerFontSize), fontSize = 13.sp)
                         }
                         listOf(12, 14, 16, 18, 20, 24).forEach { size ->
                             val selected = uiState.sermonFontSize == size
@@ -666,19 +668,19 @@ fun SermonListScreen(
         if (showSaveDialog) {
             AlertDialog(
                 onDismissRequest = { showSaveDialog = false },
-                title = { Text("حفظ العظة (Save sermon)") },
+                title = { Text(context.getString(R.string.s331)) },
                 text = {
                     Column {
                         OutlinedTextField(
                             value = saveNameInput,
                             onValueChange = { saveNameInput = it },
-                            label = { Text("اسم العظة (Sermon name)") },
+                            label = { Text(context.getString(R.string.s332)) },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth()
                         )
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            text = "الحفظ بنفس اسم عظة موجودة يحدّثها بدلاً من إنشاء نسخة جديدة.",
+                            text = context.getString(R.string.s333),
                             fontSize = 11.sp,
                             color = bento.textSecondary
                         )
@@ -688,10 +690,10 @@ fun SermonListScreen(
                     Button(
                         onClick = { onSave(saveNameInput); showSaveDialog = false },
                         enabled = saveNameInput.isNotBlank()
-                    ) { Text("حفظ") }
+                    ) { Text(context.getString(R.string.s70)) }
                 },
                 dismissButton = {
-                    TextButton(onClick = { showSaveDialog = false }) { Text("إلغاء") }
+                    TextButton(onClick = { showSaveDialog = false }) { Text(context.getString(R.string.s7)) }
                 }
             )
         }
@@ -700,15 +702,15 @@ fun SermonListScreen(
         if (showClearConfirm) {
             AlertDialog(
                 onDismissRequest = { showClearConfirm = false },
-                title = { Text("مسح كل القائمة؟") },
-                text = { Text("سيتم مسح ${playlist.size} آية من القائمة الحالية نهائياً، وفصلها عن العظة المحفوظة إن كانت مرتبطة بها.") },
+                title = { Text(context.getString(R.string.s334)) },
+                text = { Text(context.getString(R.string.s335, playlist.size)) },
                 confirmButton = {
                     Button(onClick = { onClear(); showClearConfirm = false }) {
-                        Text("مسح الكل")
+                        Text(context.getString(R.string.s336))
                     }
                 },
                 dismissButton = {
-                    TextButton(onClick = { showClearConfirm = false }) { Text("إلغاء") }
+                    TextButton(onClick = { showClearConfirm = false }) { Text(context.getString(R.string.s7)) }
                 }
             )
         }
@@ -718,7 +720,7 @@ fun SermonListScreen(
             ModalBottomSheet(onDismissRequest = { showOpenSheet = false }) {
                 Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
                     Text(
-                        text = "العظات المحفوظة (Saved sermons)",
+                        text = context.getString(R.string.s337),
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
                         color = bento.textPrimary
@@ -726,7 +728,7 @@ fun SermonListScreen(
                     Spacer(modifier = Modifier.height(8.dp))
                     if (uiState.savedSermons.isEmpty()) {
                         Text(
-                            text = "لا توجد عظات محفوظة بعد — ابنِ قائمة ثم احفظها من أيقونة الحفظ بالأعلى.",
+                            text = context.getString(R.string.s338),
                             fontSize = 13.sp,
                             color = bento.textSecondary,
                             modifier = Modifier.padding(vertical = 16.dp)
@@ -755,7 +757,7 @@ fun SermonListScreen(
                                             overflow = TextOverflow.Ellipsis
                                         )
                                         Text(
-                                            text = "${saved.entries.size} آية • " +
+                                            text = context.getString(R.string.s339, saved.entries.size) +
                                                 SimpleDateFormat("yyyy/MM/dd", Locale.US).format(Date(saved.updatedAt)),
                                             fontSize = 11.sp,
                                             color = bento.textSecondary
@@ -765,13 +767,13 @@ fun SermonListScreen(
                                         IconButton(onClick = { menuOpen = true }) {
                                             Icon(
                                                 imageVector = Icons.Filled.MoreVert,
-                                                contentDescription = "خيارات (Options)",
+                                                contentDescription = context.getString(R.string.s340),
                                                 tint = bento.textSecondary
                                             )
                                         }
                                         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                                             DropdownMenuItem(
-                                                text = { Text("إعادة تسمية (Rename)") },
+                                                text = { Text(context.getString(R.string.s75)) },
                                                 onClick = {
                                                     menuOpen = false
                                                     showOpenSheet = false
@@ -780,7 +782,7 @@ fun SermonListScreen(
                                                 }
                                             )
                                             DropdownMenuItem(
-                                                text = { Text("حذف (Delete)") },
+                                                text = { Text(context.getString(R.string.s79)) },
                                                 onClick = {
                                                     menuOpen = false
                                                     showOpenSheet = false
@@ -802,21 +804,21 @@ fun SermonListScreen(
         pendingOpen?.let { saved ->
             AlertDialog(
                 onDismissRequest = { pendingOpen = null },
-                title = { Text("فتح «${saved.name}»") },
+                title = { Text(context.getString(R.string.s341, saved.name)) },
                 text = {
-                    Text("القائمة الحالية تحتوي على آيات. هل تستبدلها بهذه العظة، أم تدمج العظة في أعلى القائمة الحالية؟")
+                    Text(context.getString(R.string.s342))
                 },
                 confirmButton = {
                     Button(onClick = { onOpenSaved(saved.id, false); pendingOpen = null }) {
-                        Text("استبدال (Replace)")
+                        Text(context.getString(R.string.s5))
                     }
                 },
                 dismissButton = {
                     Row {
                         TextButton(onClick = { onOpenSaved(saved.id, true); pendingOpen = null }) {
-                            Text("دمج (Merge)")
+                            Text(context.getString(R.string.s6))
                         }
-                        TextButton(onClick = { pendingOpen = null }) { Text("إلغاء") }
+                        TextButton(onClick = { pendingOpen = null }) { Text(context.getString(R.string.s7)) }
                     }
                 }
             )
@@ -826,12 +828,12 @@ fun SermonListScreen(
         renameTarget?.let { saved ->
             AlertDialog(
                 onDismissRequest = { renameTarget = null },
-                title = { Text("إعادة تسمية العظة (Rename)") },
+                title = { Text(context.getString(R.string.s343)) },
                 text = {
                     OutlinedTextField(
                         value = renameInput,
                         onValueChange = { renameInput = it },
-                        label = { Text("الاسم الجديد (New name)") },
+                        label = { Text(context.getString(R.string.s344)) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -840,10 +842,10 @@ fun SermonListScreen(
                     Button(
                         onClick = { onRenameSaved(saved.id, renameInput); renameTarget = null },
                         enabled = renameInput.isNotBlank()
-                    ) { Text("حفظ") }
+                    ) { Text(context.getString(R.string.s70)) }
                 },
                 dismissButton = {
-                    TextButton(onClick = { renameTarget = null }) { Text("إلغاء") }
+                    TextButton(onClick = { renameTarget = null }) { Text(context.getString(R.string.s7)) }
                 }
             )
         }
@@ -852,15 +854,15 @@ fun SermonListScreen(
         deleteTarget?.let { saved ->
             AlertDialog(
                 onDismissRequest = { deleteTarget = null },
-                title = { Text("حذف «${saved.name}»؟") },
-                text = { Text("سيتم حذف هذه العظة المحفوظة نهائياً. القائمة الحالية لن تتأثر.") },
+                title = { Text(context.getString(R.string.s345, saved.name)) },
+                text = { Text(context.getString(R.string.s346)) },
                 confirmButton = {
                     Button(onClick = { onDeleteSaved(saved.id); deleteTarget = null }) {
-                        Text("حذف")
+                        Text(context.getString(R.string.s88))
                     }
                 },
                 dismissButton = {
-                    TextButton(onClick = { deleteTarget = null }) { Text("إلغاء") }
+                    TextButton(onClick = { deleteTarget = null }) { Text(context.getString(R.string.s7)) }
                 }
             )
         }
@@ -895,6 +897,7 @@ private fun SermonRow(
     bodySize: TextUnit = 15.sp,
     citationSize: TextUnit = 11.sp
 ) {
+    val context = LocalContext.current
     val bento = LocalBentoColors.current
     val listColors = LocalListColors.current
     val verse = entry.verse
@@ -923,7 +926,7 @@ private fun SermonRow(
             ) {
                 Icon(
                     imageVector = Icons.Filled.Delete,
-                    contentDescription = "حذف الآية (Remove verse)",
+                    contentDescription = context.getString(R.string.s42),
                     tint = MaterialTheme.colorScheme.onErrorContainer,
                     modifier = Modifier.padding(end = 20.dp)
                 )
@@ -982,7 +985,7 @@ private fun SermonRow(
                                 color = listColors.sermonLiveYellow
                             ) {
                                 Text(
-                                    text = "على الهواء • LIVE",
+                                    text = context.getString(R.string.s364),
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = listColors.sermonLiveNavy,
@@ -1017,7 +1020,7 @@ private fun SermonRow(
                     ) {
                         Icon(
                             imageVector = Icons.Filled.KeyboardArrowUp,
-                            contentDescription = "نقل لأعلى (Move up)",
+                            contentDescription = context.getString(R.string.s366),
                             tint = if (canMoveUp) (if (isLive) listColors.sermonLivePaleYellow else bento.primary)
                                    else bento.textSecondary.copy(alpha = 0.35f),
                             modifier = Modifier.size(18.dp)
@@ -1030,7 +1033,7 @@ private fun SermonRow(
                     ) {
                         Icon(
                             imageVector = Icons.Filled.KeyboardArrowDown,
-                            contentDescription = "نقل لأسفل (Move down)",
+                            contentDescription = context.getString(R.string.s367),
                             tint = if (canMoveDown) (if (isLive) listColors.sermonLivePaleYellow else bento.primary)
                                    else bento.textSecondary.copy(alpha = 0.35f),
                             modifier = Modifier.size(18.dp)
@@ -1043,7 +1046,7 @@ private fun SermonRow(
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.MenuBook,
-                        contentDescription = "فتح في المكتبة (Open in Library)",
+                        contentDescription = context.getString(R.string.s368),
                         tint = if (isLive) listColors.sermonLivePaleYellow else bento.primary,
                         modifier = Modifier.size(20.dp)
                     )
@@ -1077,6 +1080,7 @@ private fun SermonCompactRow(
     // SermonCompactRow is a separate function, so it arrives as a param.
     compactBodySize: TextUnit = 13.sp
 ) {
+    val context = LocalContext.current
     val bento = LocalBentoColors.current
     val listColors = LocalListColors.current
     val verse = entry.verse
@@ -1103,7 +1107,7 @@ private fun SermonCompactRow(
             ) {
                 Icon(
                     imageVector = Icons.Filled.Delete,
-                    contentDescription = "حذف الآية (Remove verse)",
+                    contentDescription = context.getString(R.string.s42),
                     tint = MaterialTheme.colorScheme.onErrorContainer,
                     modifier = Modifier.padding(end = 20.dp)
                 )
@@ -1161,7 +1165,7 @@ private fun SermonCompactRow(
                         color = listColors.sermonLiveYellow
                     ) {
                         Text(
-                            text = "LIVE",
+                            text = context.getString(R.string.s365),
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
                             color = listColors.sermonLiveNavy,
@@ -1178,7 +1182,7 @@ private fun SermonCompactRow(
                     ) {
                         Icon(
                             imageVector = Icons.Filled.KeyboardArrowUp,
-                            contentDescription = "نقل لأعلى (Move up)",
+                            contentDescription = context.getString(R.string.s366),
                             tint = if (canMoveUp) (if (isLive) listColors.sermonLivePaleYellow else bento.primary)
                                    else bento.textSecondary.copy(alpha = 0.35f),
                             modifier = Modifier.size(18.dp)
@@ -1191,7 +1195,7 @@ private fun SermonCompactRow(
                     ) {
                         Icon(
                             imageVector = Icons.Filled.KeyboardArrowDown,
-                            contentDescription = "نقل لأسفل (Move down)",
+                            contentDescription = context.getString(R.string.s367),
                             tint = if (canMoveDown) (if (isLive) listColors.sermonLivePaleYellow else bento.primary)
                                    else bento.textSecondary.copy(alpha = 0.35f),
                             modifier = Modifier.size(18.dp)
@@ -1207,7 +1211,7 @@ private fun SermonCompactRow(
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.MenuBook,
-                        contentDescription = "فتح في المكتبة (Open in Library)",
+                        contentDescription = context.getString(R.string.s368),
                         tint = if (isLive) listColors.sermonLivePaleYellow else bento.primary,
                         modifier = Modifier.size(20.dp)
                     )
@@ -1262,7 +1266,12 @@ private fun getAllHeaderIdsForMode(
     }
 }
 
+// 1.9.25 (item 2): takes a Context for the OT/NT group-header labels
+// (s369/s370) — a pure helper, not a composable, so it cannot read
+// LocalContext itself. The call site is inside remember; a locale change
+// recreates the Activity, so the remembered items re-resolve.
 private fun buildSermonDisplayItems(
+    context: Context,
     playlist: List<SermonEntry>,
     groupingMode: Int,
     collapsedHeaders: Set<String>,
@@ -1319,7 +1328,7 @@ private fun buildSermonDisplayItems(
             while (i < sorted.size) {
                 val isOt = sorted[i].verse.bookId in otBookIds
                 val headerId = if (isOt) "testament-ot" else "testament-nt"
-                val title = if (isOt) "العهد القديم" else "العهد الجديد"
+                val title = if (isOt) context.getString(R.string.s369) else context.getString(R.string.s370)
                 var j = i
                 while (j < sorted.size && (sorted[j].verse.bookId in otBookIds) == isOt) j++
                 items += SermonDisplayItem.Header(headerId, title, j - i)

@@ -28,9 +28,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.arabicchristianmedia.R
 import com.arabicchristianmedia.ui.theme.LocalBentoColors
 
 /**
@@ -40,31 +42,32 @@ import com.arabicchristianmedia.ui.theme.LocalBentoColors
  */
 @Composable
 fun ShortcutsHelpDialog(onDismiss: () -> Unit) {
+    val context = LocalContext.current
     val bento = LocalBentoColors.current
     val rows = listOf(
-        "→ / PageDown" to "الآية التالية في العظة (next sermon live)",
-        "← / PageUp" to "الآية السابقة في العظة (previous, stops at ends)",
-        "↑ / ↓" to "تحريك التحديد في المكتبة/البحث (move selection, focus ring)",
-        "Enter" to "عرض المحدد على الهواء (go live on selected)",
-        "Space" to "التالي في العظة (next in sermon)",
-        "Esc" to "إغلاق ثم مسح → خارج الهواء (close, then Clear → OFF AIR)",
-        "C" to "مسح (Clear, per-feed Clear mode)",
-        "O" to "تبديل ON AIR",
-        "Ctrl+F" to "البحث (search)",
-        "Ctrl+1..4" to "التبويبات (Library, Editor, Setup, Sermon)",
-        "+ / −" to "حجم خط المكتبة (Library font size)",
-        "?" to "هذه البطاقة (this help card)",
+        "→ / PageDown" to context.getString(R.string.s640),
+        "← / PageUp" to context.getString(R.string.s641),
+        "↑ / ↓" to context.getString(R.string.s642),
+        "Enter" to context.getString(R.string.s643),
+        "Space" to context.getString(R.string.s644),
+        "Esc" to context.getString(R.string.s645),
+        "C" to context.getString(R.string.s646),
+        "O" to context.getString(R.string.s647),
+        "Ctrl+F" to context.getString(R.string.s648),
+        "Ctrl+1..4" to context.getString(R.string.s649),
+        "+ / −" to context.getString(R.string.s650),
+        "?" to context.getString(R.string.s651),
     )
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("اختصارات لوحة المفاتيح (Keyboard shortcuts)", fontSize = 15.sp, fontWeight = FontWeight.Bold) },
+        title = { Text(context.getString(R.string.s14), fontSize = 15.sp, fontWeight = FontWeight.Bold) },
         text = {
             Column(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Text(
-                    "لا تعمل أثناء الكتابة في حقل نص (never while typing).",
+                    context.getString(R.string.s639),
                     fontSize = 11.sp, color = bento.textSecondary
                 )
                 rows.forEach { (key, desc) ->
@@ -92,31 +95,31 @@ fun ShortcutsHelpDialog(onDismiss: () -> Unit) {
                 // to the keys. No new ⓘ icon: this card IS the ⓘ surface.
                 HorizontalDivider(color = bento.border)
                 Text(
-                    "أيقونات التطبيق (App icons)",
+                    context.getString(R.string.s886),
                     fontSize = 13.sp, fontWeight = FontWeight.Bold, color = bento.textPrimary
                 )
-                LegendRow(icon = { Icon(Icons.Filled.Check, contentDescription = null, tint = bento.textSecondary, modifier = Modifier.size(18.dp)) }, text = "تحديد متعدد (Multi-select)")
-                LegendRow(icon = { Icon(Icons.Filled.Search, contentDescription = null, tint = bento.textSecondary, modifier = Modifier.size(18.dp)) }, text = "بحث (Search)")
+                LegendRow(icon = { Icon(Icons.Filled.Check, contentDescription = null, tint = bento.textSecondary, modifier = Modifier.size(18.dp)) }, text = context.getString(R.string.s884))
+                LegendRow(icon = { Icon(Icons.Filled.Search, contentDescription = null, tint = bento.textSecondary, modifier = Modifier.size(18.dp)) }, text = context.getString(R.string.s31))
                 // The app icon IS the display-settings button (1.9.25
                 // item 1: the gear merged into the icon).
-                LegendRow(icon = { Icon(Icons.Filled.LiveTv, contentDescription = null, tint = bento.textSecondary, modifier = Modifier.size(18.dp)) }, text = "إعدادات العرض (Display settings)")
+                LegendRow(icon = { Icon(Icons.Filled.LiveTv, contentDescription = null, tint = bento.textSecondary, modifier = Modifier.size(18.dp)) }, text = context.getString(R.string.s52))
                 LegendRow(
                     icon = {
                         Surface(shape = RoundedCornerShape(6.dp), color = bento.liveRed) {
                             Text("ON AIR", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp))
                         }
                     },
-                    text = "تبديل ON AIR"
+                    text = context.getString(R.string.s647)
                 )
-                LegendRow(icon = { Icon(Icons.Filled.Menu, contentDescription = null, tint = bento.textSecondary, modifier = Modifier.size(18.dp)) }, text = "قائمة (Menu)")
-                LegendRow(icon = { Icon(Icons.Filled.MoreVert, contentDescription = null, tint = bento.textSecondary, modifier = Modifier.size(18.dp)) }, text = "المزيد (More)")
-                LegendRow(icon = { Text("▼ / ▲", fontSize = 12.sp, color = bento.textSecondary) }, text = "توسيع / طي القسم (Expand / collapse a section)")
-                LegendRow(icon = { Icon(Icons.Filled.Info, contentDescription = null, tint = bento.textSecondary, modifier = Modifier.size(18.dp)) }, text = "تلميحات (Hints)")
-                LegendRow(icon = { Icon(Icons.Filled.Refresh, contentDescription = null, tint = bento.textSecondary, modifier = Modifier.size(18.dp)) }, text = "إعادة تعيين")
+                LegendRow(icon = { Icon(Icons.Filled.Menu, contentDescription = null, tint = bento.textSecondary, modifier = Modifier.size(18.dp)) }, text = context.getString(R.string.s49))
+                LegendRow(icon = { Icon(Icons.Filled.MoreVert, contentDescription = null, tint = bento.textSecondary, modifier = Modifier.size(18.dp)) }, text = context.getString(R.string.s883))
+                LegendRow(icon = { Text("▼ / ▲", fontSize = 12.sp, color = bento.textSecondary) }, text = context.getString(R.string.s885))
+                LegendRow(icon = { Icon(Icons.Filled.Info, contentDescription = null, tint = bento.textSecondary, modifier = Modifier.size(18.dp)) }, text = context.getString(R.string.s351))
+                LegendRow(icon = { Icon(Icons.Filled.Refresh, contentDescription = null, tint = bento.textSecondary, modifier = Modifier.size(18.dp)) }, text = context.getString(R.string.s51))
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text("إغلاق (Close)") }
+            TextButton(onClick = onDismiss) { Text(context.getString(R.string.s376)) }
         }
     )
 }

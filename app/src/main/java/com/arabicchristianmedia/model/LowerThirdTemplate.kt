@@ -1,5 +1,7 @@
 package com.arabicchristianmedia.model
 
+import androidx.annotation.StringRes
+import com.arabicchristianmedia.R
 import kotlin.math.roundToInt
 
 enum class TemplateStyle(val displayName: String, val description: String) {
@@ -11,25 +13,25 @@ enum class TemplateStyle(val displayName: String, val description: String) {
     ROYAL_LITURGICAL("Cathedral Liturgical", "Deep liturgical colors with gold frame and cross accent")
 }
 
-enum class TransitionType(val displayName: String) {
+enum class TransitionType(@StringRes val labelRes: Int) {
     // Split transitions (combined batch): NONE = instant, no animation.
     // It is a no-op in every existing transition when-branch, so adding it
     // cannot change any saved template's behaviour.
-    NONE("None"),
-    FADE("Smooth Fade"),
-    SLIDE_UP("Slide From Bottom"),
-    SLIDE_DOWN("Slide From Top"),
-    SLIDE_RIGHT("Slide From Right"),
-    SLIDE_LEFT("Slide From Left"),
-    SCALE_ZOOM("Zoom In / Scale"),
-    BOUNCE("Pop / Elastic Bounce"),
-    CUT("Instant Cut")
+    NONE(R.string.s698),
+    FADE(R.string.s699),
+    SLIDE_UP(R.string.s700),
+    SLIDE_DOWN(R.string.s701),
+    SLIDE_RIGHT(R.string.s702),
+    SLIDE_LEFT(R.string.s703),
+    SCALE_ZOOM(R.string.s704),
+    BOUNCE(R.string.s705),
+    CUT(R.string.s706)
 }
 
-enum class BroadcastTextAlignment(val displayName: String) {
-    RIGHT("Right (RTL Standard)"),
-    CENTER("Centered"),
-    LEFT("Left (LTR)")
+enum class BroadcastTextAlignment(@StringRes val labelRes: Int) {
+    RIGHT(R.string.s707),
+    CENTER(R.string.s708),
+    LEFT(R.string.s709)
 }
 
 /**
@@ -40,10 +42,10 @@ enum class BroadcastTextAlignment(val displayName: String) {
  * lower-third look). One value per language so Arabic and English can
  * anchor independently.
  */
-enum class VerticalAlignment(val displayName: String) {
-    TOP("Top"),
-    CENTER("Centered"),
-    BOTTOM("Bottom")
+enum class VerticalAlignment(@StringRes val labelRes: Int) {
+    TOP(R.string.s710),
+    CENTER(R.string.s708),
+    BOTTOM(R.string.s711)
 }
 
 /**
@@ -66,9 +68,9 @@ enum class VerticalAlignment(val displayName: String) {
  * defaults to CLEAR_VERSE_ONLY, Lower Third to CLEAR_ALL. Old
  * templates without the key migrate to those defaults in fromJson.
  */
-enum class ClearMode(val displayName: String) {
-    CLEAR_ALL("Clear all layers"),
-    CLEAR_VERSE_ONLY("Clear verse only")
+enum class ClearMode(@StringRes val labelRes: Int) {
+    CLEAR_ALL(R.string.s712),
+    CLEAR_VERSE_ONLY(R.string.s713)
 }
 
 /**
@@ -80,10 +82,10 @@ enum class ClearMode(val displayName: String) {
  * - BOTH: inner + outer combined.
  * Default OUTLINE so existing templates keep their current look.
  */
-enum class CardGlowMode(val displayName: String) {
-    OUTLINE("Outline"),
-    INNER("Inner"),
-    BOTH("Both")
+enum class CardGlowMode(@StringRes val labelRes: Int) {
+    OUTLINE(R.string.s714),
+    INNER(R.string.s715),
+    BOTH(R.string.s716)
 }
 
 /** Pure off-air frame decision, unit-testable without Android.
@@ -104,10 +106,10 @@ object ClearModeDecision {
     }
 }
 
-enum class LanguageMode(val displayName: String) {
-    ARABIC_ONLY("Arabic only"),
-    ENGLISH_ONLY("English only"),
-    BOTH("Arabic + English")
+enum class LanguageMode(@StringRes val labelRes: Int) {
+    ARABIC_ONLY(R.string.s717),
+    ENGLISH_ONLY(R.string.s718),
+    BOTH(R.string.s719)
 }
 
 /**
@@ -126,17 +128,17 @@ enum class LanguageMode(val displayName: String) {
  * procedural animated backgrounds have no clip end, so Play Once
  * does not apply to them (no invented duration).
  */
-enum class VideoLoopMode(val id: String, val displayName: String) {
-    CUT("cut", "Cut"),
-    FADE("fade", "Crossfade"),
+enum class VideoLoopMode(val id: String, @StringRes val labelRes: Int) {
+    CUT("cut", R.string.s720),
+    FADE("fade", R.string.s721),
     // Legacy single Play Once (combined batch, unpushed): kept only
     // as a saved-value alias for Per Verse, never offered in UI.
-    PLAY_ONCE("once", "Play once then off"),
+    PLAY_ONCE("once", R.string.s722),
     /** Play once on EVERY new verse going live, then layer off. */
-    PLAY_ONCE_PER_VERSE("once_verse", "Play once per verse"),
+    PLAY_ONCE_PER_VERSE("once_verse", R.string.s723),
     /** Play once only on the first verse after OFF AIR -> ON AIR,
      * then layer off through verse changes until OFF AIR again. */
-    PLAY_ONCE_PER_GOLIVE("once_golive", "Play once per go live");
+    PLAY_ONCE_PER_GOLIVE("once_golive", R.string.s724);
     companion object {
         fun fromId(id: String): VideoLoopMode = when (id) {
             "once", "play_once", "playOnce" -> PLAY_ONCE_PER_VERSE
@@ -165,33 +167,33 @@ object PlayOnceState {
     fun isLayerVisible(state: State): Boolean = state == State.PLAYING
 }
 
-enum class AnimatedBackgroundType(val id: String, val displayNameAr: String, val description: String) {
-    NONE("none", "بدون فيديو (شفاف / عادي)", "No animated video"),
-    GOLDEN_DIVINE_RAYS("golden_rays", "أشعة ذهبية سماوية (Golden Rays)", "Gentle moving golden celestial rays"),
-    ETHEREAL_BLUE_WAVES("blue_waves", "أمواج زرقاء لاهوتية (Blue Waves)", "Soft ethereal deep blue undulating wave ribbons"),
-    CANDLE_LITURGICAL_GLOW("candle_glow", "توهج قناديل كنسية (Candle Glow)", "Warm breathing cathedral liturgical candle ambience"),
-    ROYAL_PURPLE_SILK("purple_silk", "حرير ملوكي بنفسجي (Purple Silk)", "Graceful royal liturgical violet curtains"),
-    PARTICLE_STARS("particles", "ذرات نورانية عائمة (Holy Particles)", "Slowly floating stardust holy particles"),
-    EMERALD_GARDEN_WAVES("emerald_waves", "أمواج زمردية (Emerald Waves)", "Soft green flowing garden waves"),
-    ROSE_DAWN_GLOW("rose_glow", "توهج وردي فجري (Rose Dawn)", "Gentle pink rose dawn glow"),
-    GOLDEN_PARTICLES("gold_particles", "ذرات ذهبية (Golden Particles)", "Floating golden light particles"),
+enum class AnimatedBackgroundType(val id: String, @StringRes val nameRes: Int, @StringRes val descriptionRes: Int) {
+    NONE("none", R.string.s839, R.string.s840),
+    GOLDEN_DIVINE_RAYS("golden_rays", R.string.s841, R.string.s842),
+    ETHEREAL_BLUE_WAVES("blue_waves", R.string.s843, R.string.s844),
+    CANDLE_LITURGICAL_GLOW("candle_glow", R.string.s845, R.string.s846),
+    ROYAL_PURPLE_SILK("purple_silk", R.string.s847, R.string.s848),
+    PARTICLE_STARS("particles", R.string.s849, R.string.s850),
+    EMERALD_GARDEN_WAVES("emerald_waves", R.string.s851, R.string.s852),
+    ROSE_DAWN_GLOW("rose_glow", R.string.s853, R.string.s854),
+    GOLDEN_PARTICLES("gold_particles", R.string.s855, R.string.s856),
     // Item 64 phase 1 (1.9.8): worship particle effects — snow, light
     // rays, dove feathers. Particle layer (z-index 1), own opacity
     // slider (particleOpacity), own Editor section above Motion Video.
-    SNOW("snow", "ثلج متساقط (Snowfall)", "Gentle falling snowflakes"),
-    LIGHT_RAYS("light_rays", "أشعة نور (Light Rays)", "Soft rotating heavenly light rays"),
-    DOVE_FEATHERS("dove_feathers", "ريش حمامة (Dove Feathers)", "White dove feathers drifting down"),
-    CUSTOM_VIDEO("custom_video", "رابط فيديو مخصص (Custom MP4)", "Custom transparent/looping video URL"),
+    SNOW("snow", R.string.s857, R.string.s858),
+    LIGHT_RAYS("light_rays", R.string.s859, R.string.s860),
+    DOVE_FEATHERS("dove_feathers", R.string.s861, R.string.s862),
+    CUSTOM_VIDEO("custom_video", R.string.s863, R.string.s864),
     // Item 76 (1.9.9): phase-2 particle effects — 7 more, 12 total.
     // Smooth loop by construction (see the NDI draw functions): continuous
     // time functions with edge-wrapping, sway/twinkle via sine waves.
-    EMBERS("embers", "جمر متصاعد (Embers)", "Rising warm glowing embers"),
-    PETALS("petals", "بتلات متساقطة (Petals)", "Gently falling flower petals"),
-    BUBBLES("bubbles", "فقاعات صاعدة (Bubbles)", "Soft rising translucent bubbles"),
-    CROSS_SPARKLES("cross_sparkles", "شرارات صليب (Cross Sparkles)", "Twinkling golden crosses"),
-    CLOUDS_MIST("clouds_mist", "غيوم وضباب (Clouds & Mist)", "Slow drifting clouds and mist"),
-    FIREFLIES("fireflies", "يراعات مضيئة (Fireflies)", "Wandering glowing fireflies"),
-    DOVES("doves", "حمام أبيض (Doves)", "White doves drifting peacefully")
+    EMBERS("embers", R.string.s865, R.string.s866),
+    PETALS("petals", R.string.s867, R.string.s868),
+    BUBBLES("bubbles", R.string.s869, R.string.s870),
+    CROSS_SPARKLES("cross_sparkles", R.string.s871, R.string.s872),
+    CLOUDS_MIST("clouds_mist", R.string.s873, R.string.s874),
+    FIREFLIES("fireflies", R.string.s875, R.string.s876),
+    DOVES("doves", R.string.s877, R.string.s878)
 }
 
 // Item 64 (1.9.8): the particle effects — a subset of the animated

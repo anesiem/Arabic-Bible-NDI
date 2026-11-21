@@ -167,4 +167,53 @@ class RenderStatePersistenceTest {
         server.setLiveState(true)
         assertFalse("CUT go-live must be instant", server.isGoLiveTransitionActiveFor(false))
     }
+
+    // ── 1.10.0 (item 5): persisted auto-clear deadline ────────────────
+
+    private fun persistedDeadlineMs(): Long =
+        context.getSharedPreferences("bible_ndi_render_state", Context.MODE_PRIVATE)
+            .getLong("auto_clear_deadline_ms", 0L)
+
+    @Test
+    fun `expired auto-clear deadline clears the live verse on resume`() {
+        val first = NdiBroadcastServer(context, 8091)
+        first.updateVerse(verse, live = true)
+        first.persistAutoClearDeadline(System.currentTimeMillis() - 1000L, 120, paused = false, remainingSec = 0)
+
+        val second = NdiBroadcastServer(context, 8091)
+        val restored = second.restorePersistedRenderState(repo) { _, _ -> listOf(verse) }
+
+        assertTrue(restored)
+        assertEquals(verse, second.currentVerse)
+        assertFalse("an expired deadline must clear the verse on resume", second.isLive)
+        assertEquals("the fired deadline must be cleared so it never re-fires", -1L, persistedDeadlineMs())
+    }
+
+    @Test
+    fun `paused auto-clear deadline does not clear on resume`() {
+        val first = NdiBroadcastServer(context, 8091)
+        first.updateVerse(verse, live = true)
+        first.persistAutoClearDeadline(System.currentTimeMillis() - 1000L, 120, paused = true, remainingSec = 60)
+
+        val second = NdiBroadcastServer(context, 8091)
+        val restored = second.restorePersistedRenderState(repo) { _, _ -> listOf(verse) }
+
+        assertTrue(restored)
+        assertEquals(verse, second.currentVerse)
+        assertTrue("a paused countdown must never clear server-side", second.isLive)
+    }
+
+    @Test
+    fun `no auto-clear deadline restores live unchanged`() {
+        val first = NdiBroadcastServer(context, 8091)
+        first.updateVerse(verse, live = true)
+
+        val second = NdiBroadcastServer(context, 8091)
+        val restored = second.restorePersistedRenderState(repo) { _, _ -> listOf(verse) }
+
+        assertTrue(restored)
+        assertEquals(verse, second.currentVerse)
+        assertTrue(second.isLive)
+        assertEquals(-1L, persistedDeadlineMs())
+    }
 }

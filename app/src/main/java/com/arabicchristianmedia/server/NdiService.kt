@@ -457,6 +457,11 @@ class NdiService : Service() {
                     // once the feeds are live again.
                     serviceScope.launch {
                         try {
+                            // 1.10.0 (item 1): record the restart FIRST,
+                            // before the restore — the marker must exist
+                            // even if the restore throws. A normal user
+                            // start never reaches this branch.
+                            CrashRecorder.noteRestart(this@NdiService)
                             BibleRepository.initialize(this@NdiService)
                             val srv = ensureServer(this@NdiService)
                             val verseRestored = srv.restorePersistedRenderState(TemplateRepository(this@NdiService))

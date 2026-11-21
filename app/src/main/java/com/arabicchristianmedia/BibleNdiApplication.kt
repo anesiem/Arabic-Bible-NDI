@@ -2,6 +2,7 @@ package com.arabicchristianmedia
 
 import android.app.Application
 import android.content.Context
+import com.arabicchristianmedia.server.CrashRecorder
 import com.arabicchristianmedia.ui.AppLanguage
 
 /**
@@ -14,5 +15,13 @@ import com.arabicchristianmedia.ui.AppLanguage
 class BibleNdiApplication : Application() {
     override fun attachBaseContext(base: Context) {
         super.attachBaseContext(AppLanguage.wrap(base))
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        // 1.10.0 (item 1): install the crash recorder first — onCreate
+        // runs before any Activity or Service, so the handler is in
+        // place from the first moment the app can crash.
+        CrashRecorder.install(this)
     }
 }

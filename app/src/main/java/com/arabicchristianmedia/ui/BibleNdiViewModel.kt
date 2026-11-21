@@ -1759,6 +1759,11 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         val totalSec = state.autoClearDurationMinutes.coerceIn(1, 60) * 60
         _uiState.value = _uiState.value.copy(autoClearRemainingSec = totalSec, autoClearPaused = false)
         launchAutoClearCountdown(totalSec)
+        // 1.10.0 (item 5): persist the deadline so the server can clear
+        // the verse if the process dies before the countdown fires.
+        broadcastServer.persistAutoClearDeadline(
+            System.currentTimeMillis() + totalSec * 1000L, totalSec, paused = false, remainingSec = totalSec
+        )
     }
 
     /** Cancel any running countdown and clear its state. */
@@ -1768,14 +1773,22 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         if (_uiState.value.autoClearRemainingSec != null || _uiState.value.autoClearPaused) {
             _uiState.value = _uiState.value.copy(autoClearRemainingSec = null, autoClearPaused = false)
         }
+        // 1.10.0 (item 5): the single funnel — a cancelled countdown
+        // must never leave a stale deadline behind to clear a verse
+        // that should stay live.
+        broadcastServer.clearAutoClearDeadline()
     }
 
     /** Pause: freeze the countdown (tap the ring again to resume). */
     fun pauseAutoClear() {
-        if (_uiState.value.autoClearRemainingSec == null || _uiState.value.autoClearPaused) return
+        val remaining = _uiState.value.autoClearRemainingSec ?: return
+        if (_uiState.value.autoClearPaused) return
         autoClearJob?.cancel()
         autoClearJob = null
         _uiState.value = _uiState.value.copy(autoClearPaused = true)
+        // 1.10.0 (item 5): persist the paused state — the server never
+        // clears a paused countdown; the deadline stays as-is.
+        broadcastServer.setAutoClearPaused(paused = true, remainingSec = remaining)
     }
 
     /** Resume a paused countdown from the remaining seconds. */
@@ -1784,6 +1797,12 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
         if (!_uiState.value.autoClearPaused) return
         _uiState.value = _uiState.value.copy(autoClearPaused = false)
         launchAutoClearCountdown(remaining)
+        // 1.10.0 (item 5): deadline recomputed from the frozen remaining.
+        broadcastServer.persistAutoClearDeadline(
+            System.currentTimeMillis() + remaining * 1000L,
+            _uiState.value.autoClearDurationMinutes.coerceIn(1, 60) * 60,
+            paused = false, remainingSec = remaining
+        )
     }
 
     /** Stop: cancel auto-clear for this verse — it stays live until a manual clear or a new verse. */

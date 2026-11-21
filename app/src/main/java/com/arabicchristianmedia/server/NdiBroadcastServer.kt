@@ -44,6 +44,7 @@ import com.arabicchristianmedia.model.BroadcastTextAlignment
 import com.arabicchristianmedia.model.CardGlowMode
 import com.arabicchristianmedia.model.SermonCreateResult
 import com.arabicchristianmedia.model.SermonEntry
+import com.arabicchristianmedia.model.SermonNavigator
 import com.arabicchristianmedia.model.SermonStepOutcome
 import com.arabicchristianmedia.model.GradientAnimationType
 import com.arabicchristianmedia.model.LanguageMode
@@ -334,6 +335,10 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             } else null
             if (verse != null) {
                 updateVerse(verse, live = live)
+                // 1.10.0 (item 5): if the auto-clear deadline passed while
+                // the process was dead, the verse clears immediately on
+                // resume instead of sitting live with no countdown.
+                checkAutoClearDeadline()
                 true
             } else {
                 setLiveState(false)
@@ -341,6 +346,84 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             }
         } catch (e: Exception) {
             false
+        }
+    }
+
+    // ── 1.10.0 (item 5): persisted auto-clear deadline ────────────────
+    // The countdown's deadline lives in the render-state prefs so the
+    // server can clear a verse whose countdown died with the process
+    // (the 18:14 death left John 3:16 live 40+ min with no countdown).
+    // The server owns this prefs file — the ViewModel persists through
+    // these methods, never by opening the file directly. persistVerseState
+    // touches only its 4 verse/live keys, so these keys survive every
+    // verse/live update. Sentinels: deadlineMs -1 = none, remainingSec
+    // -1 = none.
+
+    /** Persist a running countdown: absolute deadline (epoch ms) + duration + paused state. */
+    fun persistAutoClearDeadline(deadlineMs: Long, durationSec: Int, paused: Boolean, remainingSec: Int) {
+        try {
+            verseStatePrefs.edit()
+                .putLong("auto_clear_deadline_ms", deadlineMs)
+                .putInt("auto_clear_duration_sec", durationSec)
+                .putBoolean("auto_clear_paused", paused)
+                .putInt("auto_clear_remaining_sec", remainingSec)
+                .apply()
+        } catch (e: Exception) {
+            // Best-effort: a failed write just means the server cannot
+            // enforce this countdown after a death.
+            Log.w("NdiBroadcastServer", "persistAutoClearDeadline failed", e)
+        }
+    }
+
+    /** Clear all four deadline keys (the countdown was cancelled/stopped, or a fallback fired). */
+    fun clearAutoClearDeadline() {
+        try {
+            verseStatePrefs.edit()
+                .putLong("auto_clear_deadline_ms", -1L)
+                .putInt("auto_clear_duration_sec", 0)
+                .putBoolean("auto_clear_paused", false)
+                .putInt("auto_clear_remaining_sec", -1)
+                .apply()
+        } catch (e: Exception) {
+            Log.w("NdiBroadcastServer", "clearAutoClearDeadline failed", e)
+        }
+    }
+
+    /**
+     * Pause touches paused + remaining ONLY — the deadline stays as-is.
+     * A paused countdown never clears server-side (paused = frozen); the
+     * remaining is persisted for a later adopt-on-reopen, not used now.
+     */
+    fun setAutoClearPaused(paused: Boolean, remainingSec: Int) {
+        try {
+            verseStatePrefs.edit()
+                .putBoolean("auto_clear_paused", paused)
+                .putInt("auto_clear_remaining_sec", remainingSec)
+                .apply()
+        } catch (e: Exception) {
+            Log.w("NdiBroadcastServer", "setAutoClearPaused failed", e)
+        }
+    }
+
+    /**
+     * Enforce the persisted deadline: clears the live verse ONLY when
+     * all hold — a deadline exists, it is not paused, a verse is live,
+     * and the deadline has passed. Called from restorePersistedRenderState
+     * (startup) and the watchdog loop (periodic, 10 s cadence). The keys
+     * are cleared BEFORE setLiveState so the check can never re-fire.
+     */
+    private fun checkAutoClearDeadline() {
+        try {
+            val deadlineMs = verseStatePrefs.getLong("auto_clear_deadline_ms", -1L)
+            if (deadlineMs == -1L) return
+            if (verseStatePrefs.getBoolean("auto_clear_paused", false)) return
+            if (!isLive) return
+            if (System.currentTimeMillis() < deadlineMs) return
+            Log.i("NdiBroadcastServer", "Auto-clear deadline passed while ViewModel dead — clearing live verse")
+            clearAutoClearDeadline()
+            setLiveState(false)
+        } catch (e: Exception) {
+            Log.w("NdiBroadcastServer", "checkAutoClearDeadline failed", e)
         }
     }
 
@@ -499,7 +582,14 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             watchdogJob = scope.launch {
                 while (isActive && isRunning) {
                     delay(10_000)
-                    if (isActive && isRunning) watchdogCheck()
+                    if (isActive && isRunning) {
+                        watchdogCheck()
+                        // 1.10.0 (item 5): separate call next to the
+                        // watchdog probe, NEVER inside it — the restart
+                        // logic stays untouched. A prefs read + a
+                        // comparison; cannot slow the health probe.
+                        checkAutoClearDeadline()
+                    }
                 }
             }
         } catch (e: Exception) {
@@ -1332,6 +1422,22 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     /** R5: an ARGB Long as a #RRGGBB CSS hex (alpha dropped). */
     private fun bandHex(argb: Long): String = "#%06X".format(argb and 0xFFFFFF)
 
+    /**
+     * 1.10.0 (item 2): sermon counts straight from the store — the
+     * fallback when the ViewModel is dead and sermonCountsProvider is
+     * null, so the /remote arrows stay enabled (and /api/debug counts
+     * stay honest) through a death. One store read for both counts.
+     */
+    private fun sermonCountsFromStore(): Pair<Int, Int> {
+        return try {
+            val store = SermonStore(context)
+            store.loadWorking().size to store.loadSaved().size
+        } catch (e: Exception) {
+            Log.w("NdiBroadcastServer", "sermonCountsFromStore failed", e)
+            0 to 0
+        }
+    }
+
     private fun buildLightJsonState(): String {
         val tpl = currentTemplate
         val verse = currentVerse
@@ -1346,7 +1452,11 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             // sermon arrows — the page greys them out when it is 0 (no
             // sermon loaded). First of the sermonCounts pair; 0 when
             // the provider is unset or throws.
-            put("sermonTotal", try { sermonCountsProvider?.invoke()?.first } catch (e: Exception) { null } ?: 0)
+            // 1.10.0 (item 2): when the provider is null (ViewModel
+            // dead), fall back to the store so the arrows stay enabled
+            // through a death — the sermon-step fallback would otherwise
+            // work via API but the buttons would be disabled.
+            put("sermonTotal", try { sermonCountsProvider?.invoke()?.first } catch (e: Exception) { null } ?: sermonCountsFromStore().first)
             // 1.9.23 (item 10): auto-clear countdown for the /remote ring.
             // remaining -1 = no countdown running; the page counts down
             // locally between polls and re-syncs from these fields.
@@ -7585,12 +7695,84 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
             val verse = BibleRepository.getVerses(bookId, chapter)
                 .firstOrNull { it.verse == verseNum } ?: return false
             updateVerse(verse, live = true)
+            // 1.10.0 (item 5): a fallback-triggered verse must NOT be
+            // cleared by the OLD deadline (it would fire seconds after
+            // the verse went live). The verse stays live until the app
+            // is foregrounded, when the 1.9.27 restore restarts the
+            // countdown — the documented limit, preserved.
+            clearAutoClearDeadline()
             setLastTrigger("remote-fallback", verse.getFormattedArabicCitation())
             true
         } catch (e: Exception) {
             Log.w("NdiBroadcastServer", "triggerVerseFallback failed for $bookId $chapter:$verseNum", e)
             false
         }
+    }
+
+    /**
+     * 1.10.0 (item 2): sermon-step fallback when the ViewModel is dead
+     * (onSermonStep == null). Same pattern as triggerVerseFallback:
+     * expand the working refs to entries (mirroring
+     * BibleNdiViewModel.restoreSermonState), step with the same pure
+     * SermonNavigator.step the ViewModel uses (so API and presenter
+     * keys can never disagree on position, and the boundary strings are
+     * identical), updateVerse as the single funnel. Distinct source tag
+     * "sermon-fallback" so /api/debug shows which fallback fired. Honest
+     * limits, same as the trigger fallback: no UiState, no reader sync,
+     * no recents, no vMix/ProPresenter push, no auto-clear countdown
+     * start (the stepped verse follows item 5's deadline rules). Returns
+     * null only on an unexpected failure (caller sends 503, same as a
+     * throwing callback); boundary errors come back as an outcome with
+     * entry == null (caller sends 400).
+     */
+    private fun sermonStepFallback(step: Int): SermonStepOutcome? {
+        return try {
+            val refs = SermonStore(context).loadWorking()
+            val entries = refs.mapNotNull { ref ->
+                BibleRepository.getVerses(ref.bookId, ref.chapter)
+                    .firstOrNull { it.verse == ref.verse }
+                    ?.let { SermonEntry(it, ref.groupId, ref.shade) }
+            }
+            val outcome = SermonNavigator.step(entries, currentVerse, step)
+            val entry = outcome.entry
+            if (entry != null) {
+                updateVerse(entry.verse, live = true)
+                setLastTrigger("sermon-fallback", entry.verse.getFormattedArabicCitation())
+            }
+            outcome
+        } catch (e: Exception) {
+            Log.w("NdiBroadcastServer", "sermonStepFallback failed for step=$step", e)
+            null
+        }
+    }
+
+    /**
+     * 1.10.0 (item 3): clear fallback when the ViewModel is dead
+     * (onClearVerse == null). setLiveState is the server's own
+     * primitive (flag, bitmap-cache invalidate so NDI picks it up on
+     * the next poll ~120 ms, SSE broadcast, persist). A manual clear
+     * cancels the countdown — mirrors clearBroadcast's
+     * cancelAutoClearTimer(). Honest limits: no UiState, no
+     * triggerAllFrames(), no ProPresenter stage-message clear.
+     */
+    private fun clearVerseFallback() {
+        setLiveState(false)
+        clearAutoClearDeadline()
+        Log.i("NdiBroadcastServer", "clearVerseFallback: cleared live state (ViewModel dead)")
+    }
+
+    /**
+     * 1.10.0 (item 4): ON AIR fallback when the ViewModel is dead
+     * (onSetOnAir == null). Turning off cancels the countdown — mirrors
+     * setOnAir's cancelAutoClearTimer() on off. Turning on leaves the
+     * deadline alone: no countdown starts while the ViewModel is dead
+     * (documented limit, same as the trigger fallback). Honest limits:
+     * no UiState, no triggerAllFrames(), no ProPresenter clear on off.
+     */
+    private fun setOnAirFallback(on: Boolean) {
+        setLiveState(on)
+        if (!on) clearAutoClearDeadline()
+        Log.i("NdiBroadcastServer", "setOnAirFallback: onAir=$on (ViewModel dead)")
     }
 
     /** GET /api/books — the book list for the /remote Bible browser.
@@ -7664,14 +7846,32 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     private fun serveApiOnAir(out: OutputStream, fullPath: String) {
         val params = parseQueryParams(fullPath)
         val on = params["on"] == "1" || params["on"] == "true"
-        try { onSetOnAir?.invoke(on) } catch (e: Exception) { }
+        // 1.10.0 (item 4): gated STRICTLY on a null callback — the bare
+        // onSetOnAir?.invoke() used to return ok:true while nothing
+        // happened when the ViewModel was dead. Snapshot-then-branch,
+        // same shape as serveApiTrigger.
+        val onAirCallback = onSetOnAir
+        if (onAirCallback == null) {
+            setOnAirFallback(on)
+        } else {
+            try { onAirCallback(on) } catch (e: Exception) { }
+        }
         sendJson(out, 200, "{\"ok\":true,\"onAir\":$on}")
     }
 
     /** GET /api/clear — take outputs off-air. Only the live flag is
      * cleared: the verse itself stays in recents and is not deleted. */
     private fun serveApiClear(out: OutputStream) {
-        try { onClearVerse?.invoke() } catch (e: Exception) { }
+        // 1.10.0 (item 3): gated STRICTLY on a null callback — the bare
+        // onClearVerse?.invoke() used to return ok:true while nothing
+        // happened when the ViewModel was dead. Snapshot-then-branch,
+        // same shape as serveApiTrigger.
+        val clearCallback = onClearVerse
+        if (clearCallback == null) {
+            clearVerseFallback()
+        } else {
+            try { clearCallback() } catch (e: Exception) { }
+        }
         sendJson(out, 200, """{"ok":true,"cleared":true}""")
     }
 
@@ -7724,7 +7924,16 @@ class NdiBroadcastServer(private val context: Context, private var port: Int = 8
     }
 
     private fun serveSermonStep(out: OutputStream, step: Int) {
-        val outcome = try { onSermonStep?.invoke(step) } catch (e: Exception) { null }
+        // 1.10.0 (item 2): gated STRICTLY on a null callback — the null
+        // branch used to 503 "Sermon service unavailable" when the
+        // ViewModel was dead. Snapshot-then-branch, same shape as
+        // serveApiTrigger. A throwing callback still yields 503.
+        val stepCallback = onSermonStep
+        val outcome = if (stepCallback == null) {
+            sermonStepFallback(step)
+        } else {
+            try { stepCallback(step) } catch (e: Exception) { null }
+        }
         if (outcome == null) {
             sendJson(out, 503, """{"ok":false,"error":"Sermon service unavailable"}""")
             return
@@ -8641,12 +8850,23 @@ ${i18nScript()}
             return ndiPrefs?.getBoolean("${feedKey}_motion", d.motionEnabled) ?: d.motionEnabled
         }
         val (lowerActive, fullActive) = try { ndiFeedStatesProvider?.invoke() } catch (e: Exception) { null } ?: (false to false)
-        val (sermonWorking, savedSermons) = try { sermonCountsProvider?.invoke() } catch (e: Exception) { null } ?: (0 to 0)
+        // 1.10.0 (item 2): same store fallback as the light payload —
+        // counts stay honest when the ViewModel is dead.
+        val (sermonWorking, savedSermons) = try { sermonCountsProvider?.invoke() } catch (e: Exception) { null } ?: sermonCountsFromStore()
+        // 1.10.0 (item 1): crash + restart evidence for the cause-hunt.
+        val lastCrash = try { CrashRecorder.readLastCrash(context) } catch (e: Exception) { null }
+        val lastRestart = try { CrashRecorder.readLastRestart(context) } catch (e: Exception) { null }
+        // 1.10.0 (item 5): persisted auto-clear deadline state.
+        val autoClearDeadlineMs = try { verseStatePrefs.getLong("auto_clear_deadline_ms", -1L) } catch (e: Exception) { -1L }
+        val autoClearDeadlinePaused = try { verseStatePrefs.getBoolean("auto_clear_paused", false) } catch (e: Exception) { false }
         val sb = StringBuilder()
         sb.append("{\"ok\":true,")
         sb.append("\"app\":{\"versionName\":\"${jsonEscape(versionName)}\",\"versionCode\":$versionCode},")
         sb.append("\"device\":{\"manufacturer\":\"${jsonEscape(android.os.Build.MANUFACTURER)}\",\"model\":\"${jsonEscape(android.os.Build.MODEL)}\",\"deviceName\":\"${jsonEscape(deviceName)}\",\"android\":\"${android.os.Build.VERSION.RELEASE}\",\"sdk\":${android.os.Build.VERSION.SDK_INT}},")
         sb.append("\"server\":{\"running\":$isRunning,\"port\":$port,\"ip\":\"${getLocalIpAddress()}\",\"uptimeMs\":$up,\"frameVersion\":$frameVersion,\"isLive\":${isLive && currentVerse != null},\"sseClients\":${sseClients.size},\"broadcastDispatcher\":\"Dispatchers.IO (Safe)\",\"hdmiConnected\":$hdmiConnected,\"hdmiPresentationShowing\":$hdmiPresentationShowing,\"watchdog\":{\"lastCheckMs\":$watchdogLastCheckMs,\"failures\":$watchdogFailures,\"restarts\":$watchdogRestarts,\"lastRestartMs\":$watchdogLastRestartMs}},")
+        sb.append("\"process\":{\"lastCrashAtMs\":${lastCrash?.atMs ?: -1},\"lastCrashTrace\":\"${jsonEscape(lastCrash?.trace?.take(4096) ?: "")}\",\"lastRestartAtMs\":${lastRestart?.atMs ?: -1},\"lastRestartWasOsResume\":${lastRestart?.wasOsResume ?: false},\"crashFilePresent\":${lastCrash != null}},")
+        sb.append("\"autoClearDeadlineMs\":$autoClearDeadlineMs,")
+        sb.append("\"autoClearPaused\":$autoClearDeadlinePaused,")
         sb.append("\"current\":{\"bookId\":\"${verse?.bookId ?: ""}\",\"bookNum\":$bookNum,\"chapter\":${verse?.chapter ?: 0},\"verse\":${verse?.verse ?: 0},\"citation\":\"${jsonEscape(verse?.getFormattedEnglishCitation() ?: "")}\"},")
         sb.append("\"lower\":${tplJson(currentTemplate)},")
         sb.append("\"full\":${tplJson(currentShowTemplate)},")

@@ -237,8 +237,13 @@ class BibleNdiViewModel(application: Application) : AndroidViewModel(application
     // 1.9.25 (item 2, language mode): status/toast strings resolve through
     // the app resources so they follow the interface language. AndroidViewModel
     // holds the Application, so getApplication() is non-null by contract.
+    // 1.10.1: format ONLY when args are present. The old code always called
+    // the formatting getString(id, *args) overload, so a no-arg string with a
+    // literal % (s668 "100% Transparent") crashed the whole app in
+    // String.format every time clearBroadcast() ran — auto-clear at 0.
     private fun str(@StringRes id: Int, vararg args: Any?): String =
-        getApplication<Application>().getString(id, *args)
+        if (args.isEmpty()) getApplication<Application>().getString(id)
+        else getApplication<Application>().getString(id, *args)
 
     companion object {
         /** Factory default for the Full Show tab (not a saved style). */

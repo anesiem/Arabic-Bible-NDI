@@ -1,212 +1,184 @@
 # Arabic Bible NDI
 
-**Professional Arabic/English Bible broadcast control for Android.**
-
-Turn your tablet or phone into a broadcast studio source: put any verse on air in
-seconds — beautifully styled, in Arabic and English — over **NDI®**, **HTTP
-overlays for OBS & vMix**, and a full remote-control API. Built for churches,
-ministries, and live production. **Fully offline** — fonts, Bible texts, and
-every resource are bundled on the device; no internet is needed at the venue.
+**Your tablet is the broadcast. One tap puts the verse on the projector, the stream, or both — in Arabic and English, beautifully styled, over real NDI. Built by a pastor who preaches with it live, every service.**
 
 > 📲 **Coming soon to Google Play.** Today, download the signed APK from the
 > [Releases page](https://github.com/anesiem/Arabic-Bible-NDI/releases).
 
 ---
 
-## ✨ What It Does
+## Built for live. Trusted in the service.
 
-You prepare the service. During the service, one tap puts the verse on the
-projector, the stream, or both — in a designed lower-third or a full-screen
-show, with motion backgrounds, your church's colors, and your choice of Arabic
-calligraphy. Switch verses live, in reading order, without ever touching the
-production computer.
+This app was not made in an office and tested in a demo. It was built to carry
+a real service, and it does — in front of a real congregation, service after
+service.
 
----
-
-## 📺 Broadcast Outputs
-
-### Two genuine NDI® 6 sources
-- **`… - Bible-NDI-Lower`** — a designed lower third for streams and IMAG.
-- **`… - Bible-NDI-Full`** — a full-screen show for projectors and screens.
-- Both run **simultaneously and independently**: separate styles, resolutions
-  (up to **1080p**, all 16:9), frame rates (60/50/30/25/24/15/10/5 fps), and
-  Motion settings per feed.
-- Real NDI discovery: the sources appear under your device's name in NDI Studio
-  Monitor, OBS, vMix, and any NDI receiver on your network.
-
-### HTTP overlays for OBS & vMix
-- `/lower` and `/full` — transparent browser-source overlays that match the NDI
-  feeds pixel-for-purpose, updated live over SSE with reconnect-safe state.
-- `/stream` — an MJPEG stream output with selectable stream backgrounds
-  (transparent, chroma green, black, dark studio) for keying anywhere.
-- `/remote` — a phone-friendly remote control page: trigger verses from
-  anywhere in the room.
-- `/lower/bibleshow.xml` + `/full/bibleshow.xml`, `/lower/bibleshow.json` + `/full/bibleshow.json` (JSON mirror of the XML feed, with `onAir` + `stateVersion`) + **vMix SetText push** —
-  verse text flows straight into your vMix GT titles over the LAN, per feed.
-  Both feeds carry the Arabic and English text as **separate fields** (plus
-  the combined `Scripture`/`VerseText` for BibleShow compatibility), and
-  each slot declares its version — Arabic is Smith–Van Dyck (SVD); English
-  is the version you selected in the app (ASV/KJV).
-
-### Background broadcasting
-Broadcasting runs in a foreground service: it continues with the screen off or
-the app minimized, and **auto-resumes after an OS process kill** — server, both
-NDI senders, and the last live verse come back on their own. Stop it from the
-persistent notification or by swiping the app away.
+- **It stays on air.** Broadcasting runs as a foreground service: the server,
+  both NDI senders, and the last live verse come back on their own after an
+  OS kill. The tablet can stay on the pulpit while you preach.
+- **It keeps running in the background.** With the tablet screen off or the app
+  in the background, the broadcast keeps going and the remote keeps changing
+  verses — triggers, sermon stepping, clear, and ON AIR all keep working.
+- **Triggers keep working through a background restart.** If the OS kills the
+  app while it sits in the background, the remote keeps changing verses —
+  the service answers triggers itself until the app is opened again.
+- **It recovers by itself.** Overlays run over reconnect-safe live state — a
+  projector PC that drops its connection picks the verse back up on its own.
+- **It checks itself.** A remote heartbeat watches the connection between the
+  tablet and every screen, and a post-service connection check shows you
+  exactly what was live.
+- **No internet at the venue. No account. No subscription.** Everything runs
+  on your own Wi-Fi — fully offline, fully yours.
+- **One tap, and the verse is live.** No menus to fight while you preach.
 
 ---
 
-## 📝 From Sermon Notes to On Air
+## See it live
 
-Prepare your sermon the way you already do — in **Google Keep** or any Bible
-app — then:
-
-1. Write your references naturally: `العبرانيين ٩: ١١`, a range
-   `العبرانيين ٩: ٧-٩`, or a whole chapter `المزامير ٢٣`. Short Arabic names,
-   Eastern numerals, and English names/abbreviations all work.
-2. **Share** the note to Arabic Bible NDI (or select text → the app appears in
-   the text-selection toolbar).
-3. Every reference becomes a group in your **Sermon list** — ranges expanded
-   verse by verse, each reference shaded its own alternating color so you
-   can see where one selection ends and the next begins. **Nothing goes on
-   air automatically**: tap a row when you're ready and that verse goes
-   live, with the Library silently moving to it in the background.
-4. Build the service your way: share more notes and they stack on top,
-   swipe a verse away, jump from any row straight to that verse in the
-   Library (without airing it), and pick your sermon verses out of any
-   chapter at a glance — they're tinted in the reader.
-5. The list **survives closing the app**, and you can **save it under a
-   sermon name** and reopen it next week — replacing the current list or
-   merging into it — and keep adding to it.
-
-Text always comes from the app's own database, so your styles and tashkeel
-setting apply exactly as if you'd tapped the verse in the reader.
+- **Full show** — a verse live on the projector.
+- **Lower third** — the same verse over video.
+- **The Library** — the reader with the sermon verse tinted.
+- **/remote on a phone** — triggering from anywhere in the room.
 
 ---
 
-## 📖 The Bible Library — Fully Offline
+## One tap. On air.
 
-- Complete Arabic Bible with **optional tashkeel (diacritics)** — one toggle;
-  31,101 verses carry full vocalization. Search stays diacritic-proof either
-  way.
-- **Two English translations bundled**: ASV and KJV.
-- Fast offline search across the whole text, with Arabic normalization
-  (alef forms, tashkeel and tatweel stripped from queries).
-- Arabic + English shown together, each in its own typography, with
-  direction-aware (RTL/LTR) layout done correctly.
+1. **Prepare** — share a note from Google Keep (or any Bible app); references become your sermon list.
+2. **Tap** — one tap puts the verse live.
+3. **Step** — arrow keys / a foot pedal step through the sermon in order.
+
+A volunteer can run the service after one rehearsal.
 
 ---
 
-## 🎨 A Design Studio in Your Pocket
+## Your helpers run it with you
 
-- **38 professionally designed styles** ship with the app — motion-first
-  families (Gold & Glory, Heavens & Waters, Night & Stars, Royal Purple,
-  Garden & Peace, Dawn & Rose, Candlelight, Broadcast & Clean): 27 lower
-  thirds + 11 full shows, 30 of them animated.
-- **Every one of the 61 style settings is editable**: card style and opacity,
-  per-side padding, auto-fit text with a minimum size, text shadow and card
-  glow, accent colors, borders, emblem (any emoji or symbol), alignment,
-  transitions (fade/slide/cut, 0–2000 ms), and more.
-- **Animated motion backgrounds** — divine rays, waves, silk, particle fields,
-  candle glow — plus **your own looping video** backgrounds (CUT/FADE loop
-  modes, opacity control). Picking a motion background auto-coordinates the
-  card, opacity, and accent; adjust anything afterward.
-- **69+ bundled fonts, zero downloads**: 57 Arabic display fonts (Aref Ruqaa,
-  Katibeh, El Messiri, Scheherazade, Kufi…) and 12 classic Latin families
-  (Cinzel, Playfair Display, Lora, EB Garamond…) — the same type renders on
-  NDI, HTTP, and the editor preview. Need a font that isn't bundled?
-  **Import your own TTF/OTF** from the font menu — it works on every output,
-  still fully offline.
-- **Style sharing**: export/import styles as JSON, device to device;
-  long-press any style to export, update from an import, or delete. Tweaked
-  a style? **Update it in place** — no more delete-and-recreate.
-- What you see is what goes out: the editor preview, NDI, and HTTP render the
-  same design — same fit, same wrapping, same spacing.
+You do not carry the service alone — and neither does the app. Anyone helping
+you can open a page in the browser on their own phone and work alongside you.
+No app to install, no account, nothing to set up.
+
+- **/remote** — trigger any verse, step through the sermon, search the Bible,
+  see the live verse and the ON AIR state, all from a phone anywhere in the room.
+- **/stage** — the stage screen: the live verse big and clear, the sermon list
+  beside it, the recents strip below — so the person on stage always knows
+  what is coming next.
+- **Every helper sees the same live verse.** A tap on one phone moves every
+  screen — the projector, the stream, the stage, and every remote — together.
+- **In their language.** The remote and stage pages speak Arabic or English,
+  per device — each helper picks their own.
 
 ---
 
-## 🎛️ Control & Integration
+## Two real NDI sources
 
-- **HTTP API** for automation: `/api/trigger?ref=John+3:16` (Arabic refs too,
-  ranges included), `/api/verse`, `/api/clear`, `/api/status`, `/api/videos`.
-- **Sermon list** — the service order, built from your notes or by hand,
-  advanced with a tap.
-- Per-feed settings persist across restarts; tab and editor state survive
-  rotation; large system font sizes are fully supported.
+- **Two genuine NDI® 6 sources, simultaneous and independent** — Lower and Full, each with its own style, resolution (up to 1080p, all 16:9), frame rate (60/50/30/25/24/15/10/5), and motion settings.
+- **They appear under your device's name** in NDI Studio Monitor, OBS, vMix, and any NDI receiver.
+- **HTTP overlays that match NDI** — `/lower` and `/full` as transparent browser sources, live over SSE, reconnect-safe.
+- **Background broadcasting** — foreground service, auto-resumes after an OS kill; server + both senders + last live verse come back on their own.
 
 ---
 
-## 🔮 Coming Soon
+## A design studio, not a template picker
 
-- **Chromecast broadcasting** — send the show straight to any Chromecast or
-  Google TV in the room.
-- **Apple AirPlay broadcasting** — mirror the output to Apple TV and
-  AirPlay-enabled screens.
-- **Hardwired HDMI output** — a direct wired display feed for zero-latency,
-  network-free projection.
-
----
-
-## ⌨️ Keyboard Shortcuts
-
-The app is fully keyboard-operable (tablet + Bluetooth keyboard). Shortcuts
-never fire while typing in a text field. Press `?` or tap the keyboard icon
-in the top bar for the in-app card.
-
-| Key | Action |
-|-----|--------|
-| `→` / `PageDown` | Next sermon verse live |
-| `←` / `PageUp` | Previous sermon verse live (stops at ends) |
-| `↑` / `↓` | Move selection in Library / search / recents / sermon (focus ring) |
-| `Enter` | Go live on the selected verse |
-| `Space` | Next in sermon |
-| `Esc` | Close sheet/search/dialog, then Clear → OFF AIR |
-| `C` | Clear (per-feed Clear mode) |
-| `O` | ON AIR toggle |
-| `Ctrl+F` | Search |
-| `Ctrl+1` … `Ctrl+4` | Switch tabs (Library, Editor, Broadcast, Sermon) |
-| `+` / `−` | Library font size |
-| `?` | Shortcuts help card |
-
-The **remote page** (desktop browser) has its own map: `/` or `Ctrl+F`
-focuses the reference, `Enter` triggers, `↑↓` + `Enter` navigate/trigger
-verses, `←→` / `PageUp` / `PageDown` step the sermon, `O` / `C` / `R` /
-`Esc` / `?` work as above, and `?` opens the shortcuts overlay (hint line
-under the control bar).
-
-## 🎨 Templates
-
-20 built-in designs (10 Lower Third + 10 Full Show): Pure Word
-(transparent), Royal Gold, Midnight Sapphire, Emerald Garden, Rose Dawn,
-Desert Sand, Ocean Deep, Violet Dusk, Classic White, Crimson Liturgy. Each
-sets every value explicitly (gradient pairs are real companions, never
-equal). Factory styles are fully user-editable (Update/Delete allowed) and
-restore on data clear.
+- **20 professionally designed templates** ship with the app — **10 lower thirds + 10 full shows** (Pure Word transparent, Royal Gold, Royal Purple, Midnight Sapphire, Emerald Garden, Rose Dawn, Desert Sand, Ocean Deep, Violet Dusk, Classic White, Crimson Liturgy). Every value is yours — card, glow, borders, alignment, transitions, motion.
+- **68 bundled font families (119 files), zero downloads** — 56 Arabic families (Aref Ruqaa, Katibeh, El Messiri, Scheherazade, Kufi…) and 12 Latin families (Cinzel, Playfair Display, Lora, EB Garamond…). Import your own TTF/OTF — still fully offline.
+- **Motion + video backgrounds** — 12 particle effects, 7 motion-video backgrounds, plus your own looping MP4 (CUT/FADE, opacity control).
+- **Style sharing** as JSON — export, import, update in place.
+- *What you see in the editor is what goes out on NDI and HTTP.*
 
 ---
 
-## 📲 Install
+## Beautiful, in your language
+
+- **8 built-in themes** — including Midnight, the deep-navy dark theme — plus
+  your own custom themes. One change of theme restyles the whole app: Library,
+  sermon list, remote, stage, everything.
+- **The whole app speaks Arabic or English.** The complete interface — every
+  screen, every button — in the language your team reads. Switch anytime; the
+  Bible text itself is untouched.
+- **Direction-aware throughout** — Arabic reads right-to-left, English
+  left-to-right, in the reader, the picker, and the overlays.
+
+---
+
+## It talks to everything in the room
+
+**Shipped today (in 1.10.1):**
+
+- **HTTP API** — `/api/trigger?ref=John+3:16` (Arabic refs and ranges too), `/api/verse`, `/api/clear`, `/api/onair`, `/api/status`, `/api/health`, `/api/sermons` (+ next/prev), `/api/recents`, `/api/books`, `/api/chapter`, `/api/videos`, `/api/autoclear/{pause,resume,stop}`, `/api/export/all`, `/api/import/backup`, `/api/debug`, `/api/preflight`, `/api/clientstat`.
+- **Live state** — SSE `/events` (reconnect-safe), MJPEG `/stream` (transparent / chroma green / black / dark studio), snapshot PNGs (`/lower/snapshot.png`, `/full/snapshot.png`, `/api/verse/card.png`) rendered by the same native code as NDI.
+- **Feeds** — `/lower` + `/full` RSS, `bibleshow.xml` + `bibleshow.json` per feed (Arabic + English as separate fields, SVD + ASV/KJV declared per slot).
+- **vMix** — verse text pushed straight into vMix GT titles over the LAN (SetText), per feed.
+- **ProPresenter** — Stage + Audience over its HTTP API.
+- **Auto-clear** — the live verse clears itself after a set time, with a ring timer on screen. On by default; you set the minutes (1–60).
+- **Keyboard-first** — full shortcut map (arrows, Enter, Space, Esc, C, O, Ctrl+F, Ctrl+1–4).
+
+### Coming next — planned, not yet shipped
+
+- **Facebook Live Posting** — auto-post the live verse (user-defined grace period), plus a manual "Post to Facebook" button. Planned, opt-in, off by default.
+- **Sermon-listener** — the app is the hub for a Whisper listener that hears the spoken reference and fires `/api/trigger`.
+- **Chromecast, AirPlay, hardwired HDMI** — already under "Coming Soon" today.
+
+---
+
+## Why this, not the others
+
+*Researched 2026-11-11. Every cell is only what is verifiably true.*
+
+**General presentation software:**
+
+| | Arabic Bible NDI | ProPresenter | OpenLP | Quelea | FreeShow | EasyWorship | MediaShout 7 | Proclaim | VideoPsalm |
+|---|---|---|---|---|---|---|---|---|---|
+| Arabic Bible built in | ✅ Smith–Van Dyke, full, with tashkeel | Not confirmed | Not confirmed | Not confirmed | Not confirmed | Not confirmed | Not confirmed | Not confirmed | Not confirmed |
+| Real NDI® 6 broadcast (2 independent feeds) | ✅ from a tablet/phone | ✅ (desktop) | ❌ | ❌ | ✅ (desktop) | ✅ (desktop) | Not confirmed | ✅ (desktop) | ❌ |
+| HTTP overlays + full API | ✅ | Partial (no public HTTP API confirmed) | Partial (web remote; API unconfirmed) | ❌ (remote only) | Partial (remote + web output) | ❌ (remote only) | ❌ | ❌ (remote only) | ❌ |
+| Fully offline, no account, no internet at venue | ✅ | Partial (local app; cloud/seat mgmt web) | ✅ | Not confirmed | Not confirmed (scripture via online API.Bible) | ✅ (local app) | ✅ (local app) | ❌ (cloud-first) | ✅ |
+| Live preaching workflow (sermon list, one-tap verses, keyboard/foot-pedal stepping) | ✅ built for it | Partial (general presentation) | Partial | Partial | Partial | Partial | Partial | Partial | Partial |
+| Runs on a tablet/phone you already own | ✅ Android 7.0+ | ❌ needs Mac/Windows | ❌ needs a computer | ❌ needs a computer | ❌ needs a computer | ❌ needs Windows | ❌ needs Mac/Windows | ❌ needs Windows | ❌ needs Windows |
+| Free | ✅ | ❌ $29/mo or $289/yr per seat | ✅ free | ✅ free | ✅ free | ❌ from $17.50/mo | ❌ $599 one-time or $198/yr | ❌ from $269.99/yr | ✅ free |
+
+**Arabic Bible presentation apps:**
+
+| | Arabic Bible NDI | VerseVIEW | Tasbe7na | Verentics MultiVerse | Big Screen | Coptic Reader | VerseCAST |
+|---|---|---|---|---|---|---|---|---|
+| Arabic Bible built in | ✅ Smith–Van Dyke, full, tashkeel | ✅ (40+ languages incl. Arabic; translation not named) | ✅ (Bible included; translation not named) | ✅ Arabic Van Dyke | ✅ Smith Van Dyke | ✅ (translation not named) | ✅ via YouVersion (translation not named) |
+| Presents songs too | ❌ (Bible only) | ✅ | ✅ (10,000+ songs — its main strength) | ❌ | ✅ | ✅ (hymns/psalmody) | ✅ |
+| Real NDI® broadcast | ✅ (2 feeds) | Not confirmed | Not confirmed | Not confirmed | Not confirmed | Not confirmed | ❌ (Chromecast / smart-TV browser) |
+| HTTP overlays + API | ✅ | Not confirmed | Not confirmed | ❌ (web presenter) | ❌ (web control) | Not confirmed | ❌ |
+| Fully offline | ✅ | Not confirmed | Not confirmed | ❌ (web, credits) | Partial (keeps running once loaded) | ✅ once downloaded | ❌ (needs Wi-Fi + internet) |
+| Platform | Android 7.0+ | Windows, Mac, Android, iOS | iOS, Android | Web | Web | Android, iOS, Windows, Mac, web | Android, iOS (phone) |
+| Free | ✅ | ✅ free | ✅ free | Freemium (€0 / €5 per 20 credits / €10/mo Pro) | ❌ $15 AUD/mo | ✅ free | Freemium |
+
+**Tasbe7na** (by Malak George, Egypt; iOS + Android; free; 10,000+ songs and the Bible) is the most widely used app for praise lyrics and Bible presentation in Egypt and Arab churches. Its strength is songs. It does not do NDI, an API, or a broadcast workflow — that is the gap this app fills.
+
+> *ProPresenter is a presentation suite for a computer. Bible apps are for reading. Tasbe7na is for songs. This is the one tool built to put the verse on air from the tablet in the preacher's hand — in Arabic, live, over NDI.*
+
+*ProPresenter is a trademark of Renewed Vision; OpenLP and Quelea are open-source projects; YouVersion is a trademark of Life.Church. This project is not affiliated with or endorsed by any of them. NDI® is a registered trademark of Vizrt NDI AB; this project uses the NDI 6 runtime and is not affiliated with or endorsed by Vizrt.*
+
+---
+
+## The Bible Library — fully offline
+
+- Complete Arabic Bible with optional tashkeel — 31,101 verses carry full vocalization. Search stays diacritic-proof either way.
+- Two English translations bundled: ASV and KJV.
+- Fast offline search with Arabic normalization (alef forms, tashkeel and tatweel stripped from queries).
+- Arabic + English shown together, direction-aware (RTL/LTR).
+
+---
+
+## Install
 
 Requires **Android 7.0+**. Download the signed APK from the
-[Releases page](https://github.com/anesiem/Arabic-Bible-NDI/releases/latest)
-and install. Google Play availability is coming soon.
+[Releases page](https://github.com/anesiem/Arabic-Bible-NDI/releases/latest).
+Google Play availability is coming soon. Application ID: `com.arabicchristianmedia`.
 
-Application ID: `com.arabicchristianmedia`
+## Developers
 
-## 🛠️ Developers
+See [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) for architecture and build instructions.
 
-See [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) for architecture, build
-instructions, and development preferences. Release details live on the
-[Releases page](https://github.com/anesiem/Arabic-Bible-NDI/releases).
+## Support Through Prayer
 
-## 🙏 Support Through Prayer
+Arabic Bible NDI is built for churches and ministries, freely given for the work of the Kingdom. There is no donation link — the best way to support this project is to **pray for it**. Prayers are deeply appreciated.
 
-Arabic Bible NDI is built for churches and ministries, freely given for the
-work of the Kingdom. There is no donation link — the best way to support this
-project is to **pray for it**: for the churches that use it, the services it
-serves, and its continued development. Prayers are deeply appreciated.
-
-*“Freely you have received; freely give.” — Matthew 10:8*
-
-*NDI® is a registered trademark of Vizrt NDI AB. This project uses the NDI 6
-runtime; it is not affiliated with or endorsed by Vizrt.*
+*"Freely you have received; freely give." — Matthew 10:8*

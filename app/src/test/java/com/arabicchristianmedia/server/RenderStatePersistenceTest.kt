@@ -172,7 +172,7 @@ class RenderStatePersistenceTest {
 
     private fun persistedDeadlineMs(): Long =
         context.getSharedPreferences("bible_ndi_render_state", Context.MODE_PRIVATE)
-            .getLong("auto_clear_deadline_ms", 0L)
+            .getLong("auto_clear_deadline_ms", -1L)
 
     @Test
     fun `expired auto-clear deadline clears the live verse on resume`() {
